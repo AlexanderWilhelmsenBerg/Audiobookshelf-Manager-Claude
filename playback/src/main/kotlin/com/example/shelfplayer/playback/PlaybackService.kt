@@ -679,10 +679,10 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun positionSnapshot(): PositionSnapshot? {
         val current = player ?: return null
-        val item = current.currentMediaItem ?: return null
+        val item = current.currentMediaItem
         // Issue #88 — this position was copied from cached/server progress solely for system presentation.
         // No audio session owns it, so journalling it would manufacture a local playback write.
-        if (MediaItems.isResumePlaceholder(item)) return null
+        if (item == null || MediaItems.isResumePlaceholder(item)) return null
         val positionMs = current.currentPosition
         /*
          * Two reasons there is nothing worth writing, in one condition because they are one idea.
@@ -770,14 +770,15 @@ class PlaybackService : MediaLibraryService() {
      */
     private suspend fun materializeHeldResume(stillAuthorized: () -> Boolean): Boolean {
         val target = heldResumeTarget() ?: return true
-        val profileId = target.profileId ?: return false
-        if (!stillAuthorized() || lock.isActiveProfileLocked()) return false
-        val queue = openQueue(target.bookId, startAt = null) ?: return false
+        val profileId = target.profileId
+        if (profileId == null || !stillAuthorized() || lock.isActiveProfileLocked()) return false
+        val queue = openQueue(target.bookId, startAt = null)
 
-        val canInstall = stillAuthorized() &&
+        return queue != null &&
+            stillAuthorized() &&
             !lock.isActiveProfileLocked() &&
-            MediaItems.ownerOf(queue.item) == profileId
-        return canInstall && installMaterializedResume(target.copy(profileId = profileId), queue, stillAuthorized)
+            MediaItems.ownerOf(queue.item) == profileId &&
+            installMaterializedResume(target.copy(profileId = profileId), queue, stillAuthorized)
     }
 
     private suspend fun heldResumeTarget(): HeldResumeTarget? = withContext(mainDispatcher) {
