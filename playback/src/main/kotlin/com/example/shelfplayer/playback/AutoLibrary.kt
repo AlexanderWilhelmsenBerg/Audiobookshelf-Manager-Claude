@@ -302,8 +302,9 @@ class AutoLibrary @Inject constructor(
     /**
      * Metadata-only current item for an idle Media3 session.
      *
-     * It carries identity, owner, title, cover and the last known position but intentionally no URI or track
-     * list. Android Auto can therefore render the last book without opening an Audiobookshelf /play session.
+     * It carries identity, owner, title, cover and the last known position plus one tiny app-local inert WAV
+     * source so ExoPlayer can own it. It carries no audiobook URI or track list, so Android Auto can render the
+     * last book without opening an Audiobookshelf /play session.
      */
     suspend fun heldResume(): HeldResume? = resumeCandidate()?.let { candidate -> heldResume(candidate) }
 
