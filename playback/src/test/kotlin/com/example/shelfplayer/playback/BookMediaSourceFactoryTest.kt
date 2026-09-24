@@ -162,11 +162,9 @@ class BookMediaSourceFactoryTest {
     }
 
     /**
-     * An item this app did not build still has to play something.
-     *
-     * Media3 can hand the session an item from anywhere — a restored session after process death, a
-     * controller that built its own. With no track list there is nothing to concatenate, so the plain
-     * factory gets it and plays the item's own URI.
+     * Issue #88 — the display-only holder still needs a valid MediaSource because ExoPlayer creates one as
+     * soon as an item enters the playlist. The source stays local and the placeholder marker still forces a
+     * fresh /play resolution before actual playback.
      */
     @Test
     fun `the idle resume holder has a valid inert local media source`() {
@@ -185,6 +183,14 @@ class BookMediaSourceFactoryTest {
         assertFalse(MediaItems.isReadyToPlay(held), "the inert URI must never bypass fresh /play resolution")
         assertTrue(logger.events.isEmpty())
     }
+
+    /**
+     * An item this app did not build still has to play something.
+     *
+     * Media3 can hand the session an item from anywhere — a restored session after process death, a
+     * controller that built its own. With no track list there is nothing to concatenate, so the plain
+     * factory gets it and plays the item's own URI.
+     */
     @Test
     fun `an item with no track list goes to the plain factory`() {
         val foreign = MediaItem.Builder()
