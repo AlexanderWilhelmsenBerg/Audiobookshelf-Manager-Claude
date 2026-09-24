@@ -766,38 +766,47 @@ class PlaybackService : MediaLibraryService() {
      * after the network suspension so a profile switch, Pause, Stop, seek or media replacement always wins.
      */
     private suspend fun materializeHeldResume(stillAuthorized: () -> Boolean): Boolean {
-        val target = withContext(mainDispatcher) {
-            val current = player ?: return@withContext null
-            val item = current.currentMediaItem ?: return@withContext null
-            if (!MediaItems.isResumePlaceholder(item)) return@withContext null
-            val owner = MediaItems.ownerOf(item) ?: return@withContext HeldResumeTarget.Invalid
-            HeldResumeTarget.Ready(owner, MediaItems.bookIdOf(item))
-        } ?: return true
-
-        if (target !is HeldResumeTarget.Ready || !stillAuthorized() || lock.isActiveProfileLocked()) return false
-        val queue = openQueue(target.bookId, startAt = null) ?: return false
+        val target = heldResumeTarget() ?: return true
+        val profileId = target.profileId ?: return false
         if (!stillAuthorized() || lock.isActiveProfileLocked()) return false
-        if (MediaItems.ownerOf(queue.item) != target.profileId) return false
+        val queue = openQueue(target.bookId, startAt = null) ?: return false
 
-        return withContext(mainDispatcher) {
-            if (!stillAuthorized()) return@withContext false
-            val current = player ?: return@withContext false
-            val item = current.currentMediaItem ?: return@withContext false
-            val sameHolder = MediaItems.isResumePlaceholder(item) &&
-                MediaItems.ownerOf(item) == target.profileId &&
-                MediaItems.bookIdOf(item) == target.bookId
-            if (!sameHolder) return@withContext false
+        val canInstall = stillAuthorized() &&
+            !lock.isActiveProfileLocked() &&
+            MediaItems.ownerOf(queue.item) == profileId
+        return canInstall && installMaterializedResume(target.copy(profileId = profileId), queue, stillAuthorized)
+    }
 
+    private suspend fun heldResumeTarget(): HeldResumeTarget? = withContext(mainDispatcher) {
+        val item = player?.currentMediaItem ?: return@withContext null
+        if (!MediaItems.isResumePlaceholder(item)) return@withContext null
+        HeldResumeTarget(
+            profileId = MediaItems.ownerOf(item),
+            bookId = MediaItems.bookIdOf(item),
+        )
+    }
+
+    private suspend fun installMaterializedResume(
+        target: HeldResumeTarget,
+        queue: MediaItems.Queue,
+        stillAuthorized: () -> Boolean,
+    ): Boolean = withContext(mainDispatcher) {
+        val item = player?.currentMediaItem
+        val sameHolder = item != null &&
+            MediaItems.isResumePlaceholder(item) &&
+            MediaItems.ownerOf(item) == target.profileId &&
+            MediaItems.bookIdOf(item) == target.bookId
+        val current = player
+        if (!stillAuthorized() || !sameHolder || current == null) {
+            false
+        } else {
             current.setMediaItem(queue.item, queue.startPositionMs)
             logger.info(LogCategory.Playback, "Materialized the held resume book for explicit Play")
             true
         }
     }
 
-    private sealed interface HeldResumeTarget {
-        data object Invalid : HeldResumeTarget
-        data class Ready(val profileId: ProfileId, val bookId: LibraryItemId) : HeldResumeTarget
-    }
+    private data class HeldResumeTarget(val profileId: ProfileId?, val bookId: LibraryItemId)
 
     private suspend fun applyFreshnessPlan(
         plan: ResumeFreshnessPlan,
@@ -1142,7 +1151,7 @@ class PlaybackService : MediaLibraryService() {
             // PRODUCT_SPEC PLAY-006 — the startup stopwatch starts here rather than at `prepare()`, because
             // this fires for every book including one started from a car or by a media button, and the wait
             // to hear a book is the wait for *that* book.
-            if (mediaItem != null) metrics.onItemPrepared()
+            if (mediaItem != null && !MediaItems.isResumePlaceholder(mediaItem)) metrics.onItemPrepared()
             // PRODUCT_SPEC PLAY-002 — route evidence belongs only to this loaded book generation.
             routeOwnership.onBookChanged(mediaItem != null)
             // Issue #36 — all continuity evidence is generation-bound and dies with the loaded book.
