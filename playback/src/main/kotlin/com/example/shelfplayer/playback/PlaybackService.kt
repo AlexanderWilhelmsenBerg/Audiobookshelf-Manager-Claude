@@ -2621,6 +2621,10 @@ class PlaybackService : MediaLibraryService() {
             val queue = book?.let {
                 openQueue(it.id, startAt = null)
             }
+            if (queue != null && lock.isActiveProfileLocked()) {
+                logger.info(LogCategory.Playback, "A playback resume was withheld after the account locked")
+                return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
+            }
             return if (queue == null) {
                 logger.info(LogCategory.Playback, "A resume was requested with nothing to resume")
                 MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
@@ -2651,6 +2655,10 @@ class PlaybackService : MediaLibraryService() {
                 return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
             }
             val item = auto.resumeItem()
+            if (item != null && lock.isActiveProfileLocked()) {
+                logger.info(LogCategory.Playback, "Resumption metadata was withheld after the account locked")
+                return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
+            }
             if (item == null) {
                 logger.info(LogCategory.Playback, "A resumable book was asked for and there is none")
                 return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
