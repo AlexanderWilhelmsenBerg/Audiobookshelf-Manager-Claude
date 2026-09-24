@@ -2676,12 +2676,32 @@ class PlaybackService : MediaLibraryService() {
             page: Int,
             pageSize: Int,
             params: LibraryParams?,
-        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
-            if (!session.mayBrowse(browser)) return@future deniedList(browser, "onGetSearchResult")
-            val all = auto.search(query)
-            val from = (page * pageSize).coerceAtMost(all.size)
-            val to = (from + pageSize).coerceAtMost(all.size)
-            LibraryResult.ofItemList(ImmutableList.copyOf(all.subList(from, to)), params)
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+            val trace = autoTraceFor(browser.packageName)
+            val startedAt = clock.elapsed()
+            return future {
+                if (!session.mayBrowse(browser)) return@future deniedList(browser, "onGetSearchResult")
+                val all = auto.search(query)
+                val from = (page * pageSize).coerceAtMost(all.size)
+                val to = (from + pageSize).coerceAtMost(all.size)
+                val returned = all.subList(from, to)
+                logAutoItems(
+                    trace = trace,
+                    callback = "onGetSearchResult",
+                    direction = "returned",
+                    items = returned,
+                    extraFields = listOf(
+                        LogField.Public("page", page),
+                        LogField.Public("pageSize", pageSize),
+                        LogField.Count("results", all.size),
+                        LogField.Millis(
+                            "callbackElapsed",
+                            (clock.elapsed() - startedAt).inWholeMilliseconds.coerceAtLeast(0L),
+                        ),
+                    ),
+                )
+                LibraryResult.ofItemList(ImmutableList.copyOf(returned), params)
+            }
         }
 
         /**
