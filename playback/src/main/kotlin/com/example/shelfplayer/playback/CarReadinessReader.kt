@@ -63,6 +63,18 @@ class CarConnections @Inject constructor(private val clock: AppClock) {
         bound.updateAndGet { current -> (current - 1).coerceAtLeast(0) }
     }
 
+    /**
+     * A physical projection disconnect invalidates every legacy controller count.
+     *
+     * Android Auto's legacy MediaSession controller may remain notionally connected long after projection is
+     * gone. Keeping that stale count would misclassify a later focus loss as a car departure and would also
+     * prevent the next real drive from producing a fresh 0→1 arrival. A delayed controller disconnect remains
+     * harmless because [onDisconnected] is floored at zero.
+     */
+    fun onProjectionDisconnected() {
+        bound.set(0)
+    }
+
     /** Whether a car is bound to the media session **right now**, as opposed to having been at some point. */
     fun isConnected(): Boolean = bound.get() > 0
 
