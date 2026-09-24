@@ -40,15 +40,15 @@ internal object AndroidAutoDiagnostics {
         val metadata = item.mediaMetadata
         val owner = MediaItems.ownerOf(item)
         return buildList {
-            add(LogField.Public("\${prefix}Kind", itemKind(item)))
-            add(LogField.Identifier("\${prefix}Id", item.mediaId))
-            add(LogField.Public("\${prefix}Playable", metadata.isPlayable?.toString() ?: "unknown"))
-            add(LogField.Public("\${prefix}Browsable", metadata.isBrowsable?.toString() ?: "unknown"))
-            add(LogField.Public("\${prefix}Placeholder", MediaItems.isResumePlaceholder(item)))
-            add(LogField.Public("\${prefix}HasUri", item.localConfiguration != null))
-            add(LogField.Public("\${prefix}UriClass", uriClass(item)))
-            add(LogField.Public("\${prefix}HasArtwork", metadata.artworkUri != null))
-            owner?.let { add(LogField.Identifier("\${prefix}Owner", it.value)) }
+            add(LogField.Public("${prefix}Kind", itemKind(item)))
+            add(LogField.Identifier("${prefix}Id", item.mediaId))
+            add(LogField.Public("${prefix}Playable", metadata.isPlayable?.toString() ?: "unknown"))
+            add(LogField.Public("${prefix}Browsable", metadata.isBrowsable?.toString() ?: "unknown"))
+            add(LogField.Public("${prefix}Placeholder", MediaItems.isResumePlaceholder(item)))
+            add(LogField.Public("${prefix}HasUri", item.localConfiguration != null))
+            add(LogField.Public("${prefix}UriClass", uriClass(item)))
+            add(LogField.Public("${prefix}HasArtwork", metadata.artworkUri != null))
+            owner?.let { add(LogField.Identifier("${prefix}Owner", it.value)) }
         }
     }
 
