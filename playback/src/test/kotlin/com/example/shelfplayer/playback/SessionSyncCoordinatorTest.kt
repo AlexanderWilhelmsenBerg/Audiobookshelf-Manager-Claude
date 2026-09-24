@@ -135,6 +135,7 @@ class SessionSyncCoordinatorTest {
         assertFalse(accepted)
         assertEquals(0, repository.syncCalls)
     }
+
     @Test
     fun `shutdown captures final snapshot before immediate player detach`() = runTest {
         val repository = RecordingSessionSyncRepository()
