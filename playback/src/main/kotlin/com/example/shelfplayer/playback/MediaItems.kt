@@ -66,6 +66,14 @@ object MediaItems {
      */
     const val KEY_OWNER_PROFILE_ID = "com.example.shelfplayer.playback.OWNER_PROFILE_ID"
 
+    /**
+     * Issue #88 — true only for a metadata-only item held so Android system surfaces have a last book.
+     *
+     * A held item carries only a tiny app-local inert URI and no audiobook track list. It must be replaced by
+     * a fresh server-backed queue before Play and must never be treated as a persistable playback position.
+     */
+    const val KEY_RESUME_PLACEHOLDER = "com.example.shelfplayer.playback.RESUME_PLACEHOLDER"
+
     /** A book plus where to start it. */
     data class Queue(val item: MediaItem, val startPositionMs: Long)
 
@@ -178,6 +186,10 @@ object MediaItems {
     fun ownerOf(item: MediaItem): ProfileId? =
         item.mediaMetadata.extras?.getString(KEY_OWNER_PROFILE_ID)?.takeIf(String::isNotBlank)?.let(::ProfileId)
 
+    /** True only for the non-playable idle-session item described by [KEY_RESUME_PLACEHOLDER]. */
+    fun isResumePlaceholder(item: MediaItem): Boolean =
+        item.mediaMetadata.extras?.getBoolean(KEY_RESUME_PLACEHOLDER) == true
+
     /**
      * The tracks an item describes, or an empty list when it is not one of ours.
      *
@@ -223,8 +235,13 @@ object MediaItems {
      * restores the behaviour that worked. The track list is checked as well because it is what
      * [BookMediaSourceFactory] actually reads — a book whose extras describe its tracks is playable whether or
      * not anything kept the URI.
+     *
+     * Issue #88 adds one deliberate exception: the idle resume holder has an inert local URI only so ExoPlayer
+     * can keep it in the playlist. [isResumePlaceholder] must win over Media3's local-configuration test so a
+     * controller can never pass that inert source through as the audiobook.
      */
-    fun isReadyToPlay(item: MediaItem): Boolean = item.localConfiguration != null || tracksOf(item).isNotEmpty()
+    fun isReadyToPlay(item: MediaItem): Boolean =
+        !isResumePlaceholder(item) && (item.localConfiguration != null || tracksOf(item).isNotEmpty())
 
     /**
      * The book's duration, summed from its tracks.

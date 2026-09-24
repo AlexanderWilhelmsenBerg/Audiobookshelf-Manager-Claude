@@ -39,6 +39,8 @@ internal data class AutoBrowseSnapshot(
     val profileScopedParents: Set<String>,
     val deferredProfileCounts: Set<String>,
     val accessibleBookIds: Set<LibraryItemId>,
+    /** Books eligible for a resume identity, including a local remembered book with no cached progress. */
+    val resumableBookIds: Set<LibraryItemId>,
 )
 
 /** One Media3 parent refresh. A null count is resolved without another complete library read. */
@@ -215,6 +217,10 @@ internal object AutoBrowseSnapshotBuilder {
             profileScopedParents = profileScopedParents,
             deferredProfileCounts = setOf(AutoLibrary.RECENT_ROOT),
             accessibleBookIds = books.mapTo(linkedSetOf()) { book -> book.id },
+            resumableBookIds = books
+                .asSequence()
+                .filter { book -> book.progress?.isFinished != true }
+                .mapTo(linkedSetOf()) { book -> book.id },
         )
     }
 

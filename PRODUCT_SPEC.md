@@ -476,6 +476,12 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - If no playable item exists, the command does nothing and logs a non-fatal diagnostic.
 - A media-button command is treated as explicit user intent and may start playback.
 - Playback resumption metadata is published for Android system media controls.
+- When a Media3 playback service is recreated with no current item, BookWave may publish the active profile's
+  last resumable book as an idle current item without opening a server playback session or starting audio.
+- A valid book actually played on this device remains the preferred resume identity. Only when that identity is
+  absent, inaccessible, or finished may the newest unfinished server-synced progress supply the fallback.
+- An idle resume holder is presentation state only. Explicit Play resolves a fresh playable session and current
+  server position before audio starts.
 
 ### ROUTE-002 Per-device playback policy
 
@@ -510,6 +516,8 @@ Each known output device has one of these policies:
 - A Bluetooth connection policy may override the general startup setting only for that selected device.
 - After reboot, the app does not start a media foreground service from boot.
 - Playback resumption remains available through supported Android media surfaces.
+- On a cold process start, if no local/cached resume candidate exists, BookWave may perform the ordinary
+  authenticated account-progress reconciliation before applying the selected startup mode.
 
 ---
 

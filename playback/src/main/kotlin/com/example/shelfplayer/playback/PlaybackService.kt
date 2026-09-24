@@ -58,6 +58,7 @@ import com.example.shelfplayer.domain.usecase.OpenPlaybackSessionUseCase
 import com.example.shelfplayer.domain.usecase.NextInSeriesUseCase
 import com.example.shelfplayer.domain.usecase.RestoreProfilePlaybackUseCase
 import com.example.shelfplayer.domain.usecase.SwitchProfileUseCase
+import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -148,6 +149,10 @@ class PlaybackService : MediaLibraryService() {
 
     @Inject
     internal lateinit var auto: AutoLibrary
+
+    /** Issue #88 — one cheap authenticated account reconcile when local/cached resume identity is absent. */
+    @Inject
+    internal lateinit var syncAccount: SyncAccountUseCase
 
     /** PD-001 / PRODUCT_SPEC 6.5 — the same switch transaction the phone profile switcher delegates to. */
     @Inject
@@ -247,6 +252,15 @@ class PlaybackService : MediaLibraryService() {
      */
     private var passiveResumptionPlayPending = false
 
+    /**
+     * Issue #88 — invalidates a suspended holder-to-play materialization when a newer controller command wins.
+     *
+     * Volatile because the Media3 callback is initiated on the player thread while the future may suspend on
+     * the application scope during an authenticated /play request.
+     */
+    @Volatile
+    private var controllerCommandGeneration = 0L
+
     /** Reconcile civil wall-clock changes only while this playback service already exists. */
     private val wallClockChanges = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -326,13 +340,18 @@ class PlaybackService : MediaLibraryService() {
         resumeFreshness.attach(exoPlayer)
         val sessionPlayer = ResumeFreshnessPlayer(
             delegate = exoPlayer,
-            preparePlay = { future { handleFreshnessPlay() } },
+            preparePlay = {
+                val generation = controllerCommandGeneration
+                future { handleFreshnessPlay(generation) }
+            },
             consumeFreshStart = resumeFreshness::consumeFreshStart,
             invalidate = { origin ->
+                controllerCommandGeneration += 1
                 resumeFreshness.invalidate(origin)
                 sleepTimer.onResumeInvalidation(origin)
             },
             onPlayWhenReadyRequest = { requestedPlay ->
+                controllerCommandGeneration += 1
                 // This is also the sleep-grace intent boundary. It runs even for duplicate Pause while raw
                 // ExoPlayer is already paused, and before a Play can suspend in freshness reconciliation.
                 sleepTimer.onControllerTransportIntent()
@@ -660,7 +679,10 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun positionSnapshot(): PositionSnapshot? {
         val current = player ?: return null
-        val item = current.currentMediaItem ?: return null
+        val item = current.currentMediaItem
+        // Issue #88 — this position was copied from cached/server progress solely for system presentation.
+        // No audio session owns it, so journalling it would manufacture a local playback write.
+        if (item == null || MediaItems.isResumePlaceholder(item)) return null
         val positionMs = current.currentPosition
         /*
          * Two reasons there is nothing worth writing, in one condition because they are one idea.
@@ -706,10 +728,13 @@ class PlaybackService : MediaLibraryService() {
      * screen. A superseded request does nothing; the newer seek/Pause/book/profile command already owns the
      * player.
      */
-    private suspend fun handleFreshnessPlay() {
+    private suspend fun handleFreshnessPlay(expectedCommandGeneration: Long) {
         val explicit = !passiveResumptionPlayPending
         passiveResumptionPlayPending = false
-        performFreshnessPlay(explicit = explicit)
+        performFreshnessPlay(
+            explicit = explicit,
+            stillAuthorized = { controllerCommandGeneration == expectedCommandGeneration },
+        )
     }
 
     /**
@@ -720,6 +745,9 @@ class PlaybackService : MediaLibraryService() {
      * expiry, teardown, book replacement or newer controller intent can revoke a suspended grace attempt.
      */
     private suspend fun performFreshnessPlay(explicit: Boolean, stillAuthorized: () -> Boolean = { true }): Boolean {
+        // Issue #88 — BookChanges.onBookOpened invalidates sleep Play claims. Materialize the display-only
+        // holder first so the claim below belongs to the real book generation it is authorizing.
+        if (!stillAuthorized() || !materializeHeldResume(stillAuthorized)) return false
         val sleepPlayRequest = sleepTimer.onPlayRequest(explicit)
         if (!stillAuthorized()) {
             sleepTimer.clearPlayRequest(sleepPlayRequest)
@@ -733,6 +761,56 @@ class PlaybackService : MediaLibraryService() {
         if (!requestedPlay) sleepTimer.clearPlayRequest(sleepPlayRequest)
         return requestedPlay
     }
+
+    /**
+     * Issue #88 — replaces an idle metadata holder with a fresh playable /play queue only after Play intent.
+     *
+     * A holder deliberately contains no stream URI. Re-check identity, lock state and controller generation
+     * after the network suspension so a profile switch, Pause, Stop, seek or media replacement always wins.
+     */
+    private suspend fun materializeHeldResume(stillAuthorized: () -> Boolean): Boolean {
+        val target = heldResumeTarget() ?: return true
+        val profileId = target.profileId
+        if (profileId == null || !stillAuthorized() || lock.isActiveProfileLocked()) return false
+        val queue = openQueue(target.bookId, startAt = null)
+
+        return queue != null &&
+            stillAuthorized() &&
+            !lock.isActiveProfileLocked() &&
+            MediaItems.ownerOf(queue.item) == profileId &&
+            installMaterializedResume(target.copy(profileId = profileId), queue, stillAuthorized)
+    }
+
+    private suspend fun heldResumeTarget(): HeldResumeTarget? = withContext(mainDispatcher) {
+        val item = player?.currentMediaItem ?: return@withContext null
+        if (!MediaItems.isResumePlaceholder(item)) return@withContext null
+        HeldResumeTarget(
+            profileId = MediaItems.ownerOf(item),
+            bookId = MediaItems.bookIdOf(item),
+        )
+    }
+
+    private suspend fun installMaterializedResume(
+        target: HeldResumeTarget,
+        queue: MediaItems.Queue,
+        stillAuthorized: () -> Boolean,
+    ): Boolean = withContext(mainDispatcher) {
+        val item = player?.currentMediaItem
+        val sameHolder = item != null &&
+            MediaItems.isResumePlaceholder(item) &&
+            MediaItems.ownerOf(item) == target.profileId &&
+            MediaItems.bookIdOf(item) == target.bookId
+        val current = player
+        if (!stillAuthorized() || !sameHolder || current == null) {
+            false
+        } else {
+            current.setMediaItem(queue.item, queue.startPositionMs)
+            logger.info(LogCategory.Playback, "Materialized the held resume book for explicit Play")
+            true
+        }
+    }
+
+    private data class HeldResumeTarget(val profileId: ProfileId?, val bookId: LibraryItemId)
 
     private suspend fun applyFreshnessPlan(
         plan: ResumeFreshnessPlan,
@@ -1077,7 +1155,7 @@ class PlaybackService : MediaLibraryService() {
             // PRODUCT_SPEC PLAY-006 — the startup stopwatch starts here rather than at `prepare()`, because
             // this fires for every book including one started from a car or by a media button, and the wait
             // to hear a book is the wait for *that* book.
-            if (mediaItem != null) metrics.onItemPrepared()
+            if (mediaItem != null && !MediaItems.isResumePlaceholder(mediaItem)) metrics.onItemPrepared()
             // PRODUCT_SPEC PLAY-002 — route evidence belongs only to this loaded book generation.
             routeOwnership.onBookChanged(mediaItem != null)
             // Issue #36 — all continuity evidence is generation-bound and dies with the loaded book.
@@ -2535,17 +2613,28 @@ class PlaybackService : MediaLibraryService() {
 
         /** The `isForPlayback = true` half: open the book and hand back a queue Media3 immediately plays. */
         private suspend fun resumeForPlayback(): MediaSession.MediaItemsWithStartPosition {
-            // BW-SLEEP-01 — Media3 is restoring playback, not reporting a fresh explicit Play to the
-            // already-loaded player. Mark that origin before the returned item is installed and played.
-            passiveResumptionPlayPending = true
-            val book = auto.lastPlayed()
+            if (lock.isActiveProfileLocked()) {
+                logger.info(LogCategory.Playback, "A playback resume was suppressed while the account was locked")
+                return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
+            }
+            val book = auto.lastPlayedAfter(::refreshResumeAccount)
+            if (lock.isActiveProfileLocked()) {
+                logger.info(LogCategory.Playback, "A playback resume was suppressed after the account locked")
+                return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
+            }
             val queue = book?.let {
                 openQueue(it.id, startAt = null)
+            }
+            if (queue != null && lock.isActiveProfileLocked()) {
+                logger.info(LogCategory.Playback, "A playback resume was withheld after the account locked")
+                return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
             }
             return if (queue == null) {
                 logger.info(LogCategory.Playback, "A resume was requested with nothing to resume")
                 MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
             } else {
+                // BW-SLEEP-01 — only a successful cold playback restore makes the following Media3 Play passive.
+                passiveResumptionPlayPending = true
                 // Issue #138 — fault injection happens after the real `/play` session was staged above, so
                 // ResumeFreshnessCoordinator still owns the real trusted/server position. Only Media3's
                 // initial local install is replaced with zero, and only this playback-resumption callback
@@ -2565,7 +2654,15 @@ class PlaybackService : MediaLibraryService() {
          * controller that hands it straight back.
          */
         private suspend fun describeResumable(): MediaSession.MediaItemsWithStartPosition {
+            if (lock.isActiveProfileLocked()) {
+                logger.info(LogCategory.Playback, "Resumption metadata was withheld while the account was locked")
+                return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
+            }
             val item = auto.resumeItem()
+            if (item != null && lock.isActiveProfileLocked()) {
+                logger.info(LogCategory.Playback, "Resumption metadata was withheld after the account locked")
+                return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
+            }
             if (item == null) {
                 logger.info(LogCategory.Playback, "A resumable book was asked for and there is none")
                 return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
@@ -2654,15 +2751,19 @@ class PlaybackService : MediaLibraryService() {
                         "A car connected while the account was locked; nothing started",
                     )
 
-                    AutoStartAction.None -> Unit
+                    // "Never react" means no audio/session side effect. Issue #88 still publishes the last
+                    // identity so Android Auto is not left in STATE_NONE with an empty playback surface.
+                    AutoStartAction.None -> holdLastBook(current)
                 }
             }
         }
 
         /** Loads the last played book, playing it or leaving it paused. Silent when there is nothing to load. */
         private suspend fun startLastBook(current: ExoPlayer, play: Boolean) {
-            val book = auto.lastPlayed() ?: return
+            val book = auto.lastPlayedAfter(::refreshResumeAccount) ?: return
+            if (lock.isActiveProfileLocked() || current.mediaItemCount > 0) return
             val queue = openQueue(book.id, startAt = null) ?: return
+            if (lock.isActiveProfileLocked() || current.mediaItemCount > 0) return
             logger.info(
                 LogCategory.Playback,
                 if (play) {
@@ -2674,6 +2775,24 @@ class PlaybackService : MediaLibraryService() {
             current.setMediaItem(queue.item, queue.startPositionMs)
             current.prepare()
             if (play) current.play()
+        }
+
+        /**
+         * Issue #88 — gives a Never-policy car a current book without opening /play or preparing audio.
+         *
+         * The second lock/emptiness check is after the possible account reconcile: the driver or phone may
+         * have changed state while that network read was suspended.
+         */
+        private suspend fun holdLastBook(current: ExoPlayer) {
+            if (lock.isActiveProfileLocked()) return
+            val held = auto.heldResumeAfter(::refreshResumeAccount) ?: return
+            if (lock.isActiveProfileLocked() || current.mediaItemCount > 0) return
+            current.setMediaItem(held.item, held.startPositionMs)
+            logger.info(LogCategory.Playback, "A car connected and the last book was held for display")
+        }
+
+        private suspend fun refreshResumeAccount() {
+            syncAccount()
         }
 
         /** Package names identify known car hosts for routing UX only; they are not the library trust anchor. */

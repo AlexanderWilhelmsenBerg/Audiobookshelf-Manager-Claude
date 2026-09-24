@@ -292,7 +292,10 @@ class SessionSyncCoordinator @Inject constructor(
      */
     private fun snapshot(): Snapshot? {
         val media = player ?: return null
-        val item = media.currentMediaItem ?: return null
+        val item = media.currentMediaItem
+        // Issue #88 — the idle Media3 holder has metadata and a remembered position, but it has never
+        // opened a playback session and must never create progress writes merely because a car displayed it.
+        if (item == null || MediaItems.isResumePlaceholder(item)) return null
         val positionMs = media.currentPosition
         if (positionMs <= 0L || MediaItems.isSingleFileFallback(item)) return null
         return Snapshot(

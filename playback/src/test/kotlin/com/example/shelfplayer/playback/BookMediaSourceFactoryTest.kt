@@ -1,7 +1,10 @@
 package com.example.shelfplayer.playback
 
+import android.os.Bundle
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
@@ -156,6 +159,29 @@ class BookMediaSourceFactoryTest {
         // PRODUCT_SPEC 14.5 — a count is safe to log where a track URL, a path on someone's private
         // server, is not.
         assertEquals(listOf("tracks"), event.fields.map { it.key })
+    }
+
+    /**
+     * Issue #88 — the display-only holder still needs a valid MediaSource because ExoPlayer creates one as
+     * soon as an item enters the playlist. The source stays local and the placeholder marker still forces a
+     * fresh /play resolution before actual playback.
+     */
+    @Test
+    fun `the idle resume holder has a valid inert local media source`() {
+        val extras = Bundle().apply { putBoolean(MediaItems.KEY_RESUME_PLACEHOLDER, true) }
+        val held = MediaItem.Builder()
+            .setMediaId("held-book")
+            .setUri("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=")
+            .setMimeType(MimeTypes.AUDIO_WAV)
+            .setMediaMetadata(MediaMetadata.Builder().setTitle("Held book").setExtras(extras).build())
+            .build()
+
+        val source = factory.createMediaSource(held)
+
+        assertEquals("held-book", source.mediaItem.mediaId)
+        assertEquals("Held book", source.mediaItem.mediaMetadata.title?.toString())
+        assertFalse(MediaItems.isReadyToPlay(held), "the inert URI must never bypass fresh /play resolution")
+        assertTrue(logger.events.isEmpty())
     }
 
     /**

@@ -16,3 +16,13 @@ fun rememberedBook(books: List<Book>, rememberedId: LibraryItemId?): Book? {
         book.id == id && book.progress?.isFinished != true
     }
 }
+
+/**
+ * Issue #88 — the book a newly recreated media session may present as resumable.
+ *
+ * A valid device-local remembered identity remains authoritative. Only when that identity is absent,
+ * inaccessible, or finished may server-synced progress choose a fallback, and that fallback is exactly the
+ * existing Continue-listening order: unfinished books by newest progress timestamp.
+ */
+fun resumeCandidate(books: List<Book>, rememberedId: LibraryItemId?): Book? = rememberedBook(books, rememberedId)
+    ?: continueListeningBooks(books, limit = 1).firstOrNull()
