@@ -1655,18 +1655,29 @@ class PlaybackService : MediaLibraryService() {
                 // Physical projection exit is authoritative even when the legacy controller remains stale.
                 carContinuitySessionEstablished = false
                 carConnections.onProjectionDisconnected()
-                completeCarDeparture("projection-disconnect")
+                completeCarDeparture("projection-disconnect", physicalProjection = true)
                 projectionOwnsCarLifecycle = false
             }
         }
     }
 
-    private fun completeCarDeparture(source: String) {
-        val decision = carContinuity.onCarDeparture(
-            departedAt = clock.elapsed(),
-            currentGeneration = routeOwnership.currentGeneration,
-            explicitSelectionSequence = currentExplicitSelectionSequence(),
-        )
+    private fun completeCarDeparture(source: String, physicalProjection: Boolean = false) {
+        val departedAt = clock.elapsed()
+        val generation = routeOwnership.currentGeneration
+        val selectionSequence = currentExplicitSelectionSequence()
+        val decision = if (physicalProjection) {
+            carContinuity.onProjectionDeparture(
+                departedAt = departedAt,
+                currentGeneration = generation,
+                explicitSelectionSequence = selectionSequence,
+            )
+        } else {
+            carContinuity.onCarDeparture(
+                departedAt = departedAt,
+                currentGeneration = generation,
+                explicitSelectionSequence = selectionSequence,
+            )
+        }
         logCarContinuityDecision(source, decision)
         scope.launch {
             audioOutputs.resettle()
