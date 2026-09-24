@@ -236,7 +236,8 @@ object MediaItems {
      * [BookMediaSourceFactory] actually reads — a book whose extras describe its tracks is playable whether or
      * not anything kept the URI.
      */
-    fun isReadyToPlay(item: MediaItem): Boolean = item.localConfiguration != null || tracksOf(item).isNotEmpty()
+    fun isReadyToPlay(item: MediaItem): Boolean =
+        !isResumePlaceholder(item) && (item.localConfiguration != null || tracksOf(item).isNotEmpty())
 
     /**
      * The book's duration, summed from its tracks.
