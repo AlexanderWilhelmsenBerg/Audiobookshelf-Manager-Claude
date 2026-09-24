@@ -101,9 +101,7 @@ jobs:
         env:
           REQUESTED_PR: ${{ inputs.pr_number }}
           EVENT_PR: ${{ forgejo.event.pull_request.number }}
-          SELECTED_BRANCH: ${{ needs.identity.outputs.selected_branch }}
-          STATUS_CONTEXT: ${{ needs.identity.outputs.status_context }}
-          DEPTH: ${{ needs.identity.outputs.depth }}
+          SELECTED_BRANCH: ${{ forgejo.ref_name }}
           EVENT_HEAD_BRANCH: ${{ forgejo.head_ref }}
           REQUESTED_DEPTH: ${{ inputs.depth }}
           REQUESTED_PROFILE: ${{ inputs.compute_profile }}
@@ -227,7 +225,7 @@ jobs:
         env:
           REQUESTED_PR: ${{ needs.identity.outputs.pr_number }}
           EXPECTED_PR_HEAD: ${{ needs.identity.outputs.pr_head }}
-          SELECTED_BRANCH: ${{ forgejo.ref_name }}
+          SELECTED_BRANCH: ${{ needs.identity.outputs.selected_branch }}
           TARGET_LABEL: ${{ needs.identity.outputs.display_label }}
         run: |
           set -euo pipefail
@@ -671,7 +669,7 @@ jobs:
           retention-days: 7
 
       - name: Upload dependency report on dependency failure
-        if: ${{ always() && steps.dependencies.outcome != 'success' }}
+        if: ${{ always() && needs.identity.outputs.depth != 'quick' && steps.dependencies.outcome != 'success' && steps.dependencies.outcome != 'skipped' }}
         continue-on-error: true
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
@@ -681,7 +679,7 @@ jobs:
           retention-days: 7
 
       - name: Upload Room schemas on schema failure
-        if: ${{ always() && steps.schema_check.outcome != 'success' }}
+        if: ${{ always() && needs.identity.outputs.depth != 'quick' && steps.schema_check.outcome != 'success' }}
         continue-on-error: true
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
@@ -825,7 +823,9 @@ jobs:
           PR_HEAD: ${{ needs.identity.outputs.pr_head }}
           PR_BRANCH: ${{ needs.identity.outputs.pr_branch }}
           TARGET_LABEL: ${{ needs.identity.outputs.display_label }}
-          SELECTED_BRANCH: ${{ forgejo.ref_name }}
+          SELECTED_BRANCH: ${{ needs.identity.outputs.selected_branch }}
+          STATUS_CONTEXT: ${{ needs.identity.outputs.status_context }}
+          DEPTH: ${{ needs.identity.outputs.depth }}
           CHECKED_HEAD: ${{ needs.preflight.outputs.checked_head }}
           PREFLIGHT_RESULT: ${{ needs.preflight.result }}
           PREFLIGHT_DESCRIPTION: ${{ needs.preflight.outputs.status_description }}
