@@ -1,7 +1,10 @@
 package com.example.shelfplayer.playback
 
+import android.os.Bundle
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
@@ -165,6 +168,23 @@ class BookMediaSourceFactoryTest {
      * controller that built its own. With no track list there is nothing to concatenate, so the plain
      * factory gets it and plays the item's own URI.
      */
+    @Test
+    fun `the idle resume holder has a valid inert local media source`() {
+        val extras = Bundle().apply { putBoolean(MediaItems.KEY_RESUME_PLACEHOLDER, true) }
+        val held = MediaItem.Builder()
+            .setMediaId("held-book")
+            .setUri("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=")
+            .setMimeType(MimeTypes.AUDIO_WAV)
+            .setMediaMetadata(MediaMetadata.Builder().setTitle("Held book").setExtras(extras).build())
+            .build()
+
+        val source = factory.createMediaSource(held)
+
+        assertEquals("held-book", source.mediaItem.mediaId)
+        assertEquals("Held book", source.mediaItem.mediaMetadata.title?.toString())
+        assertFalse(MediaItems.isReadyToPlay(held), "the inert URI must never bypass fresh /play resolution")
+        assertTrue(logger.events.isEmpty())
+    }
     @Test
     fun `an item with no track list goes to the plain factory`() {
         val foreign = MediaItem.Builder()
