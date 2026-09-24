@@ -18,7 +18,7 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.library.SeriesMembership
 import com.example.shelfplayer.domain.library.HomeShelves
-import com.example.shelfplayer.domain.library.rememberedBook
+import com.example.shelfplayer.domain.library.resumeCandidate as chooseResumeCandidate
 import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -281,10 +281,68 @@ class AutoLibrary @Inject constructor(
         narrators.any { narrator -> narrator.lowercase().contains(needle) } ||
         seriesMemberships.any { membership -> membership.series.name.lowercase().contains(needle) }
 
-    suspend fun lastPlayed(): Book? {
+    /**
+     * Issue #88 — the local/cached resume owner.
+     *
+     * A valid book actually played on this device wins. When there is no valid local owner, the existing
+     * Continue-listening order supplies the newest unfinished server-synced progress instead.
+     */
+    suspend fun lastPlayed(): Book? = resumeCandidate()?.book
+
+    /**
+     * Runs [refreshIfMissing] exactly once only when local/cached state has no resume candidate.
+     *
+     * This is the cold-start seam used by the app and Media3 service. Metadata-only resumption deliberately
+     * keeps calling [lastPlayed] directly so Android boot/system probes never require network access.
+     */
+    suspend fun lastPlayedAfter(refreshIfMissing: suspend () -> Unit): Book? =
+        resumeCandidateAfter(refreshIfMissing)?.book
+
+    /**
+     * Metadata-only current item for an idle Media3 session.
+     *
+     * It carries identity, owner, title, cover and the last known position but intentionally no URI or track
+     * list. Android Auto can therefore render the last book without opening an Audiobookshelf /play session.
+     */
+    suspend fun heldResume(): HeldResume? = resumeCandidate()?.let { candidate -> heldResume(candidate) }
+
+    /** Same as [heldResume], with one server reconciliation allowed only when cached state is empty. */
+    suspend fun heldResumeAfter(refreshIfMissing: suspend () -> Unit): HeldResume? =
+        resumeCandidateAfter(refreshIfMissing)?.let { candidate -> heldResume(candidate) }
+
+    private suspend fun resumeCandidateAfter(refreshIfMissing: suspend () -> Unit): ResumeCandidate? {
+        resumeCandidate()?.let { return it }
+        refreshIfMissing()
+        return resumeCandidate()
+    }
+
+    private suspend fun resumeCandidate(): ResumeCandidate? {
         val profileId = profiles.activeProfileId() ?: return null
-        val rememberedId = rememberedBooks.rememberedBook(profileId) ?: return null
-        return rememberedBook(library.observeAccessibleBooks(profileId).first(), rememberedId)
+        val all = library.observeAccessibleBooks(profileId).first()
+        val rememberedId = rememberedBooks.rememberedBook(profileId)
+        val book = chooseResumeCandidate(all, rememberedId) ?: return null
+        return ResumeCandidate(profileId, book)
+    }
+
+    private suspend fun heldResume(candidate: ResumeCandidate): HeldResume {
+        val book = candidate.book
+        val progress = book.progress
+        val extras = (progress?.let(::completionExtras) ?: Bundle()).apply {
+            putString(MediaItems.KEY_OWNER_PROFILE_ID, candidate.profileId.value)
+            putBoolean(MediaItems.KEY_RESUME_PLACEHOLDER, true)
+        }
+        val sources = artworkSources()
+        val item = playable(
+            id = book.id.value,
+            title = book.title,
+            subtitle = bookSubtitle(book),
+            artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
+            extras = extras,
+        )
+        return HeldResume(
+            item = item,
+            startPositionMs = progress?.position?.inWholeMilliseconds?.coerceAtLeast(0) ?: 0L,
+        )
     }
 
     private suspend fun books(): List<Book> {
@@ -311,10 +369,10 @@ class AutoLibrary @Inject constructor(
     ): Map<String, Int> {
         if (RECENT_ROOT !in parentIds || RECENT_ROOT !in snapshot.deferredProfileCounts) return emptyMap()
         val profileId = snapshot.scope.profileId
-        val rememberedId = profileId
-            ?.let { id -> rememberedBooks.rememberedBook(id) }
-            ?.takeIf(snapshot.accessibleBookIds::contains)
-        return mapOf(RECENT_ROOT to if (rememberedId == null) 0 else 1)
+        val rememberedId = profileId?.let { id -> rememberedBooks.rememberedBook(id) }
+        val hasRemembered = rememberedId != null && rememberedId in snapshot.resumableBookIds
+        val hasSyncedFallback = snapshot.childrenByParent[TAB_CONTINUE].orEmpty().isNotEmpty()
+        return mapOf(RECENT_ROOT to if (hasRemembered || hasSyncedFallback) 1 else 0)
     }
 
     private suspend fun bookItem(book: Book, sources: ArtworkSources): MediaItem {
@@ -421,6 +479,10 @@ class AutoLibrary @Inject constructor(
     ) {
         fun offlineCover(book: Book): String? = offlineCovers[book.serverId to book.id]
     }
+
+    data class HeldResume(val item: MediaItem, val startPositionMs: Long)
+
+    private data class ResumeCandidate(val profileId: ProfileId, val book: Book)
 
     companion object {
         data class Target(val bookId: LibraryItemId, val startAt: Duration?)
