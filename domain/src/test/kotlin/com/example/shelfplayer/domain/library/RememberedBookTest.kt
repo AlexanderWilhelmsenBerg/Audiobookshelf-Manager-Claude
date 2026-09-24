@@ -96,6 +96,7 @@ class RememberedBookTest {
 
         assertNull(resumeCandidate(listOf(untouched, finished), rememberedId = null))
     }
+
     private fun played(id: String, at: String, finished: Boolean = false) = book(id).copy(
         progress = MediaProgress(
             serverId = TEST_SERVER,
