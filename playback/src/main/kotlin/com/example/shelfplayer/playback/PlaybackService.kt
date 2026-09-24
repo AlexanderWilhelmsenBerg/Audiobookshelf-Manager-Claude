@@ -312,6 +312,23 @@ class PlaybackService : MediaLibraryService() {
      */
     private var carContinuitySessionEstablished = false
 
+    /**
+     * Issues #36/#88 — one correlation timeline across focus/projection/controller/browse Media3 events.
+     *
+     * A focus loss can precede Gearhead's first bind, so a trace may start before the controller is known.
+     * A later car bind reuses a recent pending trace rather than starting a second timeline for one ignition.
+     */
+    private var autoTraceSequence = 0L
+    private var activeAutoTrace: AutoTrace? = null
+
+    private data class AutoTrace(
+        val id: Long,
+        val startedAt: Duration,
+        val source: String,
+    ) {
+        val correlationId: String get() = "auto-$id"
+    }
+
     /** PRODUCT_SPEC PLAY-001 — how many times a failing stream may be re-prepared before the user is told. */
     private val recovery = PlaybackRecovery()
 
