@@ -69,8 +69,8 @@ object MediaItems {
     /**
      * Issue #88 — true only for a metadata-only item held so Android system surfaces have a last book.
      *
-     * A held item deliberately carries no URI or track list. It must be replaced by a fresh server-backed
-     * queue before Play and must never be treated as a persistable playback position.
+     * A held item carries only a tiny app-local inert URI and no audiobook track list. It must be replaced by
+     * a fresh server-backed queue before Play and must never be treated as a persistable playback position.
      */
     const val KEY_RESUME_PLACEHOLDER = "com.example.shelfplayer.playback.RESUME_PLACEHOLDER"
 
