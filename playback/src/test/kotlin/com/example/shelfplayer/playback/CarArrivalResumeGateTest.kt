@@ -320,6 +320,58 @@ class CarArrivalResumeGateTest {
     }
 
     @Test
+    fun `projection departure before focus loss can pair the reverse physical ordering`() {
+        val owner = heardOnBuds()
+        val gate = connectedOnBuds(owner)
+
+        val boundary = gate.onProjectionDeparture(
+            departedAt = 20.seconds,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+        )
+        assertEquals(CarArrivalResumeGate.Status.Armed, boundary.status)
+        assertEquals(CarArrivalResumeGate.Reason.BoundaryWaitingForFocusLoss, boundary.reason)
+
+        val focus = gate.onAudioFocusLoss(
+            at = 22.seconds,
+            heardRoute = null,
+            headsetId = null,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+
+        val target = requireNotNull(focus.target)
+        assertEquals(CarArrivalResumeGate.Status.Ready, focus.status)
+        assertEquals(CarArrivalResumeGate.Phase.Departure, focus.phase)
+        assertEquals(buds.id, target.outputId)
+        assertTrue(gate.consumeRecovery(target, owner.currentGeneration, buds.id, 0).accepted)
+    }
+
+    @Test
+    fun `projection departure cannot pair a much later focus loss`() {
+        val owner = heardOnBuds()
+        val gate = connectedOnBuds(owner)
+        gate.onProjectionDeparture(
+            departedAt = 20.seconds,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+        )
+
+        val focus = gate.onAudioFocusLoss(
+            at = 27.seconds,
+            heardRoute = null,
+            headsetId = null,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+
+        assertEquals(CarArrivalResumeGate.Status.Armed, focus.status)
+        assertEquals(CarArrivalResumeGate.Phase.Arrival, focus.phase)
+    }
+
+    @Test
     fun `departure focus loss survives transient headset omission while car is still connected`() {
         val owner = heardOnBuds()
         val gate = connectedOnBuds(owner)
