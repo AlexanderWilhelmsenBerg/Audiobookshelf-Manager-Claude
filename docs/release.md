@@ -198,20 +198,46 @@ verifies v2, and an explicit `enableV1Signing = true` was tried, observed to be 
 
 ## The pipeline today
 
-Forgejo is the active CI path. `.forgejo/workflows/pull-request.yml` is deliberately **manual-only** so
-branch updates do not spend runner time before a change is ready for acceptance. The shared Forgejo runner
-stays at capacity 1: BookWave reduces queue/startup overhead inside its own workflow rather than increasing
-global runner concurrency. One `PR #<number> · Preflight` job performs the current-main/change classification,
-Gradle-wrapper verification, pinned gitleaks scan and committed Room-schema immutability checks as separately
-named steps over one full-history checkout. The expensive Android gate remains a separate
-`PR #<number> · verifyDebug` job and runs exactly once: ordinary changes use `verifyDebug`; build/classpath
-changes use `verifyDebug --rerun-tasks` for R-31. The dependency/licence report is generated in that same
-warmed Android job instead of bootstrapping a second Android job.
-Dispatch it from Forgejo → **Actions** → **Pull request** → *Run workflow*: select the PR branch/ref, enter the required Forgejo **PR number**, and optionally enable **force_rerun** when a reviewer wants the strongest path regardless of the diff. The workflow declares the preferred run name `PR #<number> — <branch>` and prefixes every check/job with `PR #<number>`. Forgejo 16.0.4 currently keeps the top-level Actions run title as `Pull request` even when `run-name` is present, so the check/job prefix is the live-instance fallback until Forgejo surfaces `run-name` as the run title. The workflow rejects a PR number whose Forgejo head ref does not match the selected branch/ref. PR numbers, repository run numbers and Forgejo's internal run IDs remain independent counters.
+Forgejo is the active CI path. `.forgejo/workflows/pull-request.yml` separates **verification depth** from
+**compute profile**:
 
-`.forgejo/workflows/main.yml` runs the release-side checks after a fast-forward merge: release lint, SBOM,
-vulnerability scan and an unsigned release assembly. Scheduled/manual main runs also execute `verifyDebug`
-so they remain standalone health checks. Push-main does not repeat the already-accepted PR debug gate.
+- **Quick** is automatic on pull-request open/update/reopen and proves current-main ancestry, wrapper
+  integrity, branch-introduced secret safety, committed Room-schema immutability, CI script syntax/tests and
+  repository-wide KtLint. It is feedback, not merge acceptance.
+- **Standard** is the normal manually dispatched acceptance depth. Quick must pass first, then the canonical
+  `verifyDebug --continue` graph runs with only `assembleDebug` excluded: full JVM/Robolectric regression,
+  type-resolved Detekt, Android Lint, Kover's existing coverage gates, Room verification and
+  warnings-as-errors remain intact.
+- **Intensive** reruns the same debug evidence without trusting task/build-cache outputs. Release/supply-chain
+  extensions remain staged separately under issue #85.
+
+The independent compute profile changes only Gradle worker pressure: **Quiet = 2**, **Balanced = 4** and
+**Fast = 6** workers. Balanced is the default. Test selection, thresholds and pass/fail semantics do not vary
+with compute profile.
+
+The preflight change classifier distinguishes build/classpath changes from CI-infrastructure changes.
+Gradle/build logic, wrapper, version catalog and dependency-verification inputs may trigger
+`--rerun-tasks`; workflow YAML and CI scripts do not do so merely because they changed. The separate
+`:app:dependencies --configuration debugRuntimeClasspath` report runs when dependency inputs changed or
+when Intensive is selected, rather than duplicating dependency resolution on ordinary source PRs.
+
+Manual dispatch supports an optional **Build APK after checks pass** switch for Standard/Intensive. When
+enabled, CI first completes the full selected verification, then runs `:app:assembleDebug` and uploads the
+APK. This step uses the CI debug signing identity and never receives release/upload signing secrets.
+Packaging is therefore an optional post-success artifact, not part of Standard acceptance evidence.
+
+The shared Forgejo runner stays at capacity 1. BookWave reduces queue/startup overhead inside its own
+workflow rather than increasing global runner concurrency. The Standard status context remains
+`BookWave / PR verification`; Quick and Intensive publish distinct contexts so a cheap Quick run cannot
+overwrite Standard acceptance evidence on the same commit.
+
+Dispatch Standard from Forgejo → **Actions** → **CI · PR verification** → *Run workflow*: select the PR
+branch/ref, optionally enter the Forgejo **PR number**, choose verification depth and compute profile, and
+enable **force_rerun** only when a reviewer deliberately wants a full task rerun regardless of the diff.
+
+`.forgejo/workflows/main.yml` remains the trusted main/release safety path: release lint, SBOM,
+vulnerability scan and unsigned release assembly, with standalone debug verification on scheduled/manual
+runs and cache-seeding cases.
 
 ### Dedicated Forgejo Android CI image
 
@@ -289,7 +315,13 @@ verification is `strict` over 890 pinned components.
 classpath changed, which once let two stale test doubles pass locally and fail in CI. See `docs/risks.md`
 R-31.
 
-## Getting an APK without building one
+## Getting an APK
+
+For a verified PR debug artifact, manually dispatch **CI · PR verification** with Standard or Intensive
+and enable **Build APK after checks pass**. That convenience APK is produced only after the quality gate and
+uses the CI debug signing identity.
+
+For a stable signed debug/release artifact, use the dedicated signing workflow:
 
 Forgejo → **Actions** → **Build APK** → *Run workflow*.
 
