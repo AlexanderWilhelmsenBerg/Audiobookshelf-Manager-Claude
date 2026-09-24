@@ -64,6 +64,18 @@ class CarConnectionsTest {
         assertTrue(connections.isConnected())
     }
 
+    @Test
+    fun `projection disconnect clears every stale controller binding`() {
+        connections.onConnected()
+        connections.onConnected()
+
+        connections.onProjectionDisconnected()
+
+        assertFalse(connections.isConnected())
+        connections.onDisconnected()
+        assertFalse(connections.isConnected())
+    }
+
     /** The diagnostics half is untouched: connecting still records *when*. */
     @Test
     fun `connecting still records the time for the readiness screen`() {
