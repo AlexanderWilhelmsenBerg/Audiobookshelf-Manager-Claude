@@ -745,8 +745,11 @@ class PlaybackService : MediaLibraryService() {
      * expiry, teardown, book replacement or newer controller intent can revoke a suspended grace attempt.
      */
     private suspend fun performFreshnessPlay(explicit: Boolean, stillAuthorized: () -> Boolean = { true }): Boolean {
+        // Issue #88 — BookChanges.onBookOpened invalidates sleep Play claims. Materialize the display-only
+        // holder first so the claim below belongs to the real book generation it is authorizing.
+        if (!stillAuthorized() || !materializeHeldResume(stillAuthorized)) return false
         val sleepPlayRequest = sleepTimer.onPlayRequest(explicit)
-        if (!stillAuthorized() || !materializeHeldResume(stillAuthorized)) {
+        if (!stillAuthorized()) {
             sleepTimer.clearPlayRequest(sleepPlayRequest)
             return false
         }
