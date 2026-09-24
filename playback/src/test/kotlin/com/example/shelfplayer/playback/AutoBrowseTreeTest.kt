@@ -197,6 +197,49 @@ class AutoBrowseTreeTest {
     }
 
     @Test
+    fun `server progress supplies the resume item when this device has no remembered book`() = runTest {
+        books.value = listOf(
+            book("book-1", "Older", progress = progress(20.minutes, false, at = 1_000)),
+            book("book-2", "Newer", progress = progress(30.minutes, false, at = 2_000)),
+        )
+
+        val item = auto(rememberedId = null).resumeItem()
+
+        assertEquals("at/book-2/${30.minutes.inWholeMilliseconds}", item?.mediaId)
+    }
+
+    @Test
+    fun `held resume metadata uses the bare book identity without becoming playable`() = runTest {
+        books.value = listOf(
+            book("book-1", "The Salt Harbour", progress = progress(40.minutes, false)),
+        )
+
+        val held = auto().heldResume()
+
+        assertEquals("book-1", held?.item?.mediaId)
+        assertEquals(40.minutes.inWholeMilliseconds, held?.startPositionMs)
+        assertEquals(PROFILE, held?.item?.let(MediaItems::ownerOf))
+        assertTrue(held?.item?.let(MediaItems::isResumePlaceholder) == true)
+        assertTrue(held?.item?.let(MediaItems::isReadyToPlay) == false)
+    }
+
+    @Test
+    fun `server refresh is requested only when cached resume state is empty`() = runTest {
+        books.value = listOf(book("book-1", "Untouched"))
+        val auto = auto(rememberedId = null)
+        var refreshes = 0
+
+        val result = auto.lastPlayedAfter {
+            refreshes += 1
+            books.value = listOf(
+                book("book-2", "From server", progress = progress(15.minutes, false, at = 3_000)),
+            )
+        }
+
+        assertEquals(1, refreshes)
+        assertEquals(LibraryItemId("book-2"), result?.id)
+    }
+    @Test
     fun `series and author nodes handed to the car are invalidated too`() = runTest {
         books.value = listOf(
             book("book-1", "The Salt Harbour", series = membership("series-1", "Tidewatch", "2")),
@@ -234,17 +277,17 @@ class AutoBrowseTreeTest {
     private fun List<androidx.media3.common.MediaItem>.titles(): List<String> =
         mapNotNull { item -> item.mediaMetadata.title?.toString() }
 
-    private fun auto(profiles: ProfileRepository = StubProfiles()): AutoLibrary {
+    private fun auto(
+        profiles: ProfileRepository = StubProfiles(),
+        rememberedId: LibraryItemId? = books.value.firstOrNull { book -> book.progress?.isFinished == false }?.id,
+    ): AutoLibrary {
         val library = StubLibrary(books)
         return AutoLibrary(
             context = ApplicationProvider.getApplicationContext(),
             profiles = profiles,
             library = library,
             downloads = FakeAutoDownloads,
-            rememberedBooks = FakeRememberedBooks(
-                books.value.firstOrNull { book -> book.progress?.isFinished == false }?.id,
-                PROFILE,
-            ),
+            rememberedBooks = FakeRememberedBooks(rememberedId, PROFILE),
             homeShelves = ObserveHomeShelvesUseCase(profiles, library, UnconfinedTestDispatcher()),
             activation = ProfileActivationGuard { true },
             artwork = AutoArtwork.None,
