@@ -3380,6 +3380,9 @@ class PlaybackService : MediaLibraryService() {
          */
         val ADOPT_TOLERANCE: Duration = 1.seconds
 
+        /** #36/#88 — bind/projection callbacks within this window belong to the same transition trace. */
+        val AUTO_TRACE_REUSE_WINDOW: Duration = 10.seconds
+
         /**
          * How long the seek has to report back before it is treated as lost.
          *
