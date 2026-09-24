@@ -435,6 +435,7 @@
     <string name="event_log_search_clear">Tøm søket</string>
     <string name="event_log_filter_level">Nivå</string>
     <string name="event_log_filter_category">Område</string>
+    <string name="event_log_filter_android_auto">Android Auto</string>
     <string name="event_log_filter_reset">Nullstill</string>
     <string name="event_log_count_filtered">Viser %1$d av %2$d</string>
     <string name="event_log_no_matches">Ingen hendelser samsvarer med søket eller filteret. Nullstill for å se alt.</string>
