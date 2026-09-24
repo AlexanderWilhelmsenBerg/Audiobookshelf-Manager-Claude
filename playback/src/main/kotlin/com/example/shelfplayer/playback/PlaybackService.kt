@@ -3256,7 +3256,23 @@ class PlaybackService : MediaLibraryService() {
         }
 
         private suspend fun refreshResumeAccount() {
+            val trace = activeAutoTrace
+            logAuto(
+                "Android Auto resume candidate cache was empty; refreshing account",
+                trace,
+            )
+            val startedAt = clock.elapsed()
             syncAccount()
+            logAuto(
+                "Android Auto resume account refresh completed",
+                trace,
+                listOf(
+                    LogField.Millis(
+                        "refreshElapsed",
+                        (clock.elapsed() - startedAt).inWholeMilliseconds.coerceAtLeast(0L),
+                    ),
+                ),
+            )
         }
 
         /** Package names identify known car hosts for routing UX only; they are not the library trust anchor. */
