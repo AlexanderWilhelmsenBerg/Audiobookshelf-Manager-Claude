@@ -1,6 +1,8 @@
 package com.example.shelfplayer.playback
 
+import android.os.Bundle
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
@@ -120,6 +122,20 @@ class SessionSyncCoordinatorTest {
     }
 
     @Test
+    fun `held resume metadata is never synced as an active playback position`() = runTest {
+        val repository = RecordingSessionSyncRepository()
+        val coordinator = coordinator(repository)
+        val book = LibraryItemId("book-a")
+
+        coordinator.onSessionOpened(session(book))
+        coordinator.attach(playerFor(book, position = 42.seconds, resumePlaceholder = true))
+
+        val accepted = coordinator.sync(SyncTrigger.Interval)
+
+        assertFalse(accepted)
+        assertEquals(0, repository.syncCalls)
+    }
+    @Test
     fun `shutdown captures final snapshot before immediate player detach`() = runTest {
         val repository = RecordingSessionSyncRepository()
         val coordinator = coordinator(repository)
@@ -160,8 +176,19 @@ class SessionSyncCoordinatorTest {
         chapters = emptyList(),
     )
 
-    private fun playerFor(bookId: LibraryItemId, position: Duration = 10.seconds): Player {
-        val item = MediaItem.Builder().setMediaId(bookId.value).build()
+    private fun playerFor(
+        bookId: LibraryItemId,
+        position: Duration = 10.seconds,
+        resumePlaceholder: Boolean = false,
+    ): Player {
+        val extras = Bundle().apply {
+            putString(MediaItems.KEY_OWNER_PROFILE_ID, "profile-a")
+            putBoolean(MediaItems.KEY_RESUME_PLACEHOLDER, resumePlaceholder)
+        }
+        val item = MediaItem.Builder()
+            .setMediaId(bookId.value)
+            .setMediaMetadata(MediaMetadata.Builder().setExtras(extras).build())
+            .build()
         return Proxy.newProxyInstance(
             Player::class.java.classLoader,
             arrayOf(Player::class.java),
