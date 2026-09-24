@@ -62,7 +62,7 @@ data class SeriesProgress(
  * four of them.
  */
 fun homeShelvesOf(books: List<Book>, limit: Int = SHELF_LIMIT): HomeShelves = HomeShelves(
-    continueListening = continueListening(books, limit),
+    continueListening = continueListeningBooks(books, limit),
     continueSeries = continueSeries(books, limit),
     recentlyAdded = recentlyAdded(books, limit),
     discover = discover(books, limit),
@@ -99,7 +99,7 @@ private fun listenAgain(books: List<Book>, limit: Int): List<Book> = books
     .take(limit)
 
 /** Started and not finished, most recently played first — the same predicate [BookFilter] uses. */
-private fun continueListening(books: List<Book>, limit: Int): List<Book> =
+internal fun continueListeningBooks(books: List<Book>, limit: Int): List<Book> =
     filterBooks(books, BookFilter.ContinueListening)
         .sortedWith(compareByDescending<Book> { it.progress?.updatedAt ?: Instant.MIN }.thenBy { it.id.value })
         .take(limit)
