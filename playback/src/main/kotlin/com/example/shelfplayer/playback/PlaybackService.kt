@@ -288,6 +288,7 @@ class PlaybackService : MediaLibraryService() {
     private val carContinuityRouteRecovery = CarArrivalRouteRecovery()
     private var continuityPlayAwaiting: CarArrivalResumeGate.Target? = null
     private var projectionState = AndroidAutoProjectionMonitor.State.Unknown
+    private var projectionOwnsCarLifecycle = false
 
     /**
      * True only after a car media session has actually become established for continuity classification.
@@ -1605,21 +1606,17 @@ class PlaybackService : MediaLibraryService() {
             return
         }
 
-        // A positive projection reading outranks controller lifetime. Legacy Android Auto controllers can
-        // disappear/reappear independently of the physical projection, so no playback policy follows this.
-        if (projectionState.carConnected) {
+        // Once a positive projection state has been observed for this drive, projection owns the physical
+        // boundary. Legacy controllers may disappear/reappear independently and cannot end that car session.
+        if (projectionOwnsCarLifecycle) {
             scope.launch { republishOutputButtons() }
             return
         }
 
-        // Unknown means the projection provider cannot currently give us a stronger boundary. Preserve the
-        // pre-#36 controller fallback rather than manufacturing a physical disconnect from uncertainty.
-        if (projectionState == AndroidAutoProjectionMonitor.State.Unknown) {
-            carContinuitySessionEstablished = false
-            completeCarDeparture("final-car-disconnect")
-        } else {
-            scope.launch { republishOutputButtons() }
-        }
+        // No usable positive projection signal was observed for this drive. Preserve the pre-#36 controller
+        // fallback for hosts/OEMs that do not expose the Android Auto projection provider.
+        carContinuitySessionEstablished = false
+        completeCarDeparture("final-car-disconnect")
     }
 
     private fun onCarProjectionUpdate(update: AndroidAutoProjectionMonitor.Update) {
@@ -1634,6 +1631,7 @@ class PlaybackService : MediaLibraryService() {
         )
 
         if (update.initial) {
+            projectionOwnsCarLifecycle = update.current.carConnected
             if (update.current.carConnected && carConnections.isConnected()) {
                 carContinuitySessionEstablished = true
             }
@@ -1644,6 +1642,7 @@ class PlaybackService : MediaLibraryService() {
         val isConnected = update.current.carConnected
         when {
             !wasConnected && isConnected -> {
+                projectionOwnsCarLifecycle = true
                 // This stronger car-specific edge may follow focus loss before Gearhead binds. If it leads
                 // focus loss instead, the later first controller bind remains the arrival completion boundary.
                 val arrivedAt = clock.elapsed()
@@ -1657,6 +1656,7 @@ class PlaybackService : MediaLibraryService() {
                 carContinuitySessionEstablished = false
                 carConnections.onProjectionDisconnected()
                 completeCarDeparture("projection-disconnect")
+                projectionOwnsCarLifecycle = false
             }
         }
     }
