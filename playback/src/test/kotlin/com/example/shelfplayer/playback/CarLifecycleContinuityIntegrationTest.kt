@@ -91,6 +91,7 @@ class CarLifecycleContinuityIntegrationTest {
                 headsetId = buds.id,
                 currentGeneration = owner.currentGeneration,
                 explicitSelectionSequence = 0,
+                carConnected = true,
             )
             assertEquals(CarArrivalResumeGate.Phase.Departure, focus.phase)
 
