@@ -219,6 +219,7 @@ class AutoBrowseTreeTest {
         assertEquals("book-1", held?.item?.mediaId)
         assertEquals(40.minutes.inWholeMilliseconds, held?.startPositionMs)
         assertEquals(PROFILE, held?.item?.let(MediaItems::ownerOf))
+        assertTrue(held?.item?.localConfiguration != null, "ExoPlayer needs an inert local media configuration")
         assertTrue(held?.item?.let(MediaItems::isResumePlaceholder) == true)
         assertTrue(held?.item?.let(MediaItems::isReadyToPlay) == false)
     }
