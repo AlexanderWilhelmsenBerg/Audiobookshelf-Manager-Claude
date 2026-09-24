@@ -53,6 +53,16 @@ class EventLogFilterTest {
         assertEquals(listOf("Download"), shown.map { it.tag })
     }
 
+    @Test
+    fun `android auto diagnostics can be isolated as their own category`() {
+        val events = sample() + event(LogLevel.Info, "AndroidAuto", "Android Auto trace started")
+
+        val shown = EventLogFilter.apply(events, EventLogQuery(categories = setOf("AndroidAuto")))
+
+        assertEquals(listOf("AndroidAuto"), shown.map { it.tag })
+        assertEquals(listOf("Android Auto trace started"), shown.map { it.line })
+    }
+
     /**
      * Search matches the **message and the category**, because a person typing `download` might mean either
      * and the app can answer that for itself rather than asking which they meant.
