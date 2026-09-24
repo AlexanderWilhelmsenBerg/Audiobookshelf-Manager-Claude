@@ -721,6 +721,18 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      - name: Upload profiling logs
+        if: ${{ always() && needs.identity.outputs.profiling == 'true' }}
+        continue-on-error: true
+        uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        with:
+          name: ci-profile-logs
+          path: |
+            ci-diagnostics/gradle-quick.log
+            ci-diagnostics/gradle-verify.log
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Final verification gate
         id: verification_gate
         if: ${{ always() }}
