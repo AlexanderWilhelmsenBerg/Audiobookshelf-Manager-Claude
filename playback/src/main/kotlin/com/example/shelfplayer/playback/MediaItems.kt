@@ -235,6 +235,10 @@ object MediaItems {
      * restores the behaviour that worked. The track list is checked as well because it is what
      * [BookMediaSourceFactory] actually reads — a book whose extras describe its tracks is playable whether or
      * not anything kept the URI.
+     *
+     * Issue #88 adds one deliberate exception: the idle resume holder has an inert local URI only so ExoPlayer
+     * can keep it in the playlist. [isResumePlaceholder] must win over Media3's local-configuration test so a
+     * controller can never pass that inert source through as the audiobook.
      */
     fun isReadyToPlay(item: MediaItem): Boolean =
         !isResumePlaceholder(item) && (item.localConfiguration != null || tracksOf(item).isNotEmpty())
