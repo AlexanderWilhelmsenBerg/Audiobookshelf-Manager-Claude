@@ -47,7 +47,9 @@ tasks.register("quickKtlint") {
         java.util.concurrent.Callable {
             allprojects
                 .filter { project -> "ktlintCheck" in project.tasks.names }
-                .map { project -> "${project.path}:ktlintCheck" }
+                .map { project ->
+                    if (project == rootProject) ":ktlintCheck" else "${project.path}:ktlintCheck"
+                }
         },
     )
 }
