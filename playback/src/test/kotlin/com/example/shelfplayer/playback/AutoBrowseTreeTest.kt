@@ -235,6 +235,7 @@ class AutoBrowseTreeTest {
         assertEquals(0, refreshes)
         assertEquals(LibraryItemId("book-1"), result?.id)
     }
+
     @Test
     fun `server refresh is requested only when cached resume state is empty`() = runTest {
         books.value = listOf(book("book-1", "Untouched"))
@@ -251,6 +252,7 @@ class AutoBrowseTreeTest {
         assertEquals(1, refreshes)
         assertEquals(LibraryItemId("book-2"), result?.id)
     }
+
     @Test
     fun `series and author nodes handed to the car are invalidated too`() = runTest {
         books.value = listOf(
