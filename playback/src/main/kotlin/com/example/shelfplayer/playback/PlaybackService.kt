@@ -194,6 +194,10 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     internal lateinit var carConnections: CarConnections
 
+    /** Issue #36 — physical projection lifecycle, independent of stale legacy MediaSession bindings. */
+    @Inject
+    internal lateinit var carProjection: AndroidAutoProjectionMonitor
+
     /** PRODUCT_SPEC 11.1 — "expose custom commands for bookmark". This is what that command writes to. */
     @Inject
     internal lateinit var bookmarks: BookmarkRepository
@@ -283,6 +287,16 @@ class PlaybackService : MediaLibraryService() {
     private val carContinuity = CarArrivalResumeGate()
     private val carContinuityRouteRecovery = CarArrivalRouteRecovery()
     private var continuityPlayAwaiting: CarArrivalResumeGate.Target? = null
+    private var projectionState = AndroidAutoProjectionMonitor.State.Unknown
+    private var projectionOwnsCarLifecycle = false
+
+    /**
+     * True only after a car media session has actually become established for continuity classification.
+     *
+     * Projection may start before the first Gearhead binding; that interval is still Arrival. Physical
+     * projection exit clears this immediately even if a legacy MediaSession controller remains bound.
+     */
+    private var carContinuitySessionEstablished = false
 
     /** PRODUCT_SPEC PLAY-001 — how many times a failing stream may be re-prepared before the user is told. */
     private val recovery = PlaybackRecovery()
@@ -369,6 +383,7 @@ class PlaybackService : MediaLibraryService() {
         observeSleepTimer()
         observeSkipIntervals()
         observeAudioOutputs()
+        carProjection.start(scope, ::onCarProjectionUpdate)
         outputDevices.start(scope, DeviceActions())
         observeBrowseTreeInvalidation()
         logger.info(LogCategory.Playback, "Playback service started")
@@ -498,6 +513,7 @@ class PlaybackService : MediaLibraryService() {
         autoRewind.attach(null)
         sleepTimer.attach(null)
         unregisterReceiver(wallClockChanges)
+        carProjection.stop()
         audioOutputs.detach()
         journal?.cancel()
         sleepTimerWatch?.cancel()
@@ -1033,15 +1049,19 @@ class PlaybackService : MediaLibraryService() {
                     headsetId = routeOwnership.headsetForCar(outputs),
                     currentGeneration = routeOwnership.currentGeneration,
                     explicitSelectionSequence = currentExplicitSelectionSequence(),
-                    carConnected = carConnections.isConnected(),
+                    carConnected = carContinuitySessionEstablished,
                 )
                 logCarContinuityDecision("audio-focus-loss", decision)
                 decision.target
                     ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
                     ?.let { target -> scope.launch { recoverAndResumeCarContinuity(target) } }
+            } else if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY) {
+                // Issue #36 — route/noisy can precede the measured car focus loss. It still cannot authorize
+                // Play, but it is automatic platform evidence rather than newer listener intent, so retain the
+                // last positively heard exact headset for the focus + car-boundary correlation that may follow.
+                continuityPlayAwaiting = null
             } else {
-                // Deliberate pause, becomingNoisy, end-of-item and unknown causes never inherit the measured
-                // focus-loss policy. They also invalidate a stable car-session continuity target.
+                // Deliberate pause, end-of-item and unknown causes invalidate transition evidence.
                 carContinuity.cancelAll()
                 continuityPlayAwaiting = null
             }
@@ -1293,7 +1313,6 @@ class PlaybackService : MediaLibraryService() {
             headsetId = routeOwnership.headsetForCar(outputs),
             currentGeneration = routeOwnership.currentGeneration,
             explicitSelectionSequence = currentExplicitSelectionSequence(),
-            carConnected = carConnections.isConnected(),
         )
     }
 
@@ -1520,6 +1539,7 @@ class PlaybackService : MediaLibraryService() {
         val carWasConnected = carConnections.isConnected()
         val carArrivedAt = if (carWasConnected) null else clock.elapsed()
         carConnections.onConnected()
+        carContinuitySessionEstablished = true
         if (player?.isPlaying == true) {
             // A car can bind without changing isPlaying or emitting a new device list. Seed departure
             // continuity immediately from the route evidence that was already positively heard.
@@ -1530,6 +1550,7 @@ class PlaybackService : MediaLibraryService() {
             "A car connected to the media session",
             LogField.Public("controller", controllerPackage),
             LogField.Public("firstArrival", (!carWasConnected).toString()),
+            LogField.Public("projection", projectionState.name),
         )
         if (carWasConnected) {
             logger.info(
@@ -1538,10 +1559,10 @@ class PlaybackService : MediaLibraryService() {
                 LogField.Public("controller", controllerPackage),
             )
         }
-        scope.launch { handleCarArrival(carArrivedAt) }
+        scope.launch { handleCarArrival(carArrivedAt, source = "first-car-bind") }
     }
 
-    private suspend fun handleCarArrival(carArrivedAt: Duration?) {
+    private suspend fun handleCarArrival(carArrivedAt: Duration?, source: String) {
         audioOutputs.resettle()
         if (carArrivedAt == null) {
             holdHeadsetAgainstCar()
@@ -1554,7 +1575,7 @@ class PlaybackService : MediaLibraryService() {
             currentGeneration = routeOwnership.currentGeneration,
             explicitSelectionSequence = currentExplicitSelectionSequence(),
         )
-        logCarContinuityDecision("first-car-bind", decision)
+        logCarContinuityDecision(source, decision)
         val target = decision.target?.takeIf {
             decision.status == CarArrivalResumeGate.Status.Ready
         }
@@ -1570,26 +1591,94 @@ class PlaybackService : MediaLibraryService() {
         val carWasConnected = carConnections.isConnected()
         carConnections.onDisconnected()
         val carStillConnected = carConnections.isConnected()
-        val finalDeparture = carWasConnected && !carStillConnected
+        val finalControllerDeparture = carWasConnected && !carStillConnected
         logger.info(
             LogCategory.Playback,
             "A car controller disconnected from the media session",
             LogField.Public("controller", controllerPackage),
-            LogField.Public("finalDeparture", finalDeparture.toString()),
+            LogField.Public("finalDeparture", finalControllerDeparture.toString()),
             LogField.Public("carStillConnected", carStillConnected.toString()),
+            LogField.Public("projection", projectionState.name),
         )
 
-        if (!finalDeparture) {
+        if (!finalControllerDeparture) {
             scope.launch { republishOutputButtons() }
             return
         }
 
-        val decision = carContinuity.onCarDeparture(
-            departedAt = clock.elapsed(),
-            currentGeneration = routeOwnership.currentGeneration,
-            explicitSelectionSequence = currentExplicitSelectionSequence(),
+        // Once a positive projection state has been observed for this drive, projection owns the physical
+        // boundary. Legacy controllers may disappear/reappear independently and cannot end that car session.
+        if (projectionOwnsCarLifecycle) {
+            scope.launch { republishOutputButtons() }
+            return
+        }
+
+        // No usable positive projection signal was observed for this drive. Preserve the pre-#36 controller
+        // fallback for hosts/OEMs that do not expose the Android Auto projection provider.
+        carContinuitySessionEstablished = false
+        completeCarDeparture("final-car-disconnect")
+    }
+
+    private fun onCarProjectionUpdate(update: AndroidAutoProjectionMonitor.Update) {
+        val previous = update.previous
+        projectionState = update.current
+        logger.info(
+            LogCategory.Playback,
+            "Android Auto projection state changed",
+            LogField.Public("previous", previous?.name ?: "Initial"),
+            LogField.Public("current", update.current.name),
+            LogField.Public("carBound", carConnections.isConnected().toString()),
         )
-        logCarContinuityDecision("final-car-disconnect", decision)
+
+        if (update.initial) {
+            projectionOwnsCarLifecycle = update.current.carConnected
+            if (update.current.carConnected && carConnections.isConnected()) {
+                carContinuitySessionEstablished = true
+            }
+            return
+        }
+
+        val wasConnected = previous?.carConnected == true
+        val isConnected = update.current.carConnected
+        when {
+            !wasConnected && isConnected -> {
+                projectionOwnsCarLifecycle = true
+                // This stronger car-specific edge may follow focus loss before Gearhead binds. If it leads
+                // focus loss instead, the later first controller bind remains the arrival completion boundary.
+                val arrivedAt = clock.elapsed()
+                scope.launch { handleCarArrival(arrivedAt, source = "projection-connect") }
+            }
+
+            wasConnected &&
+                !isConnected &&
+                update.current == AndroidAutoProjectionMonitor.State.NotConnected -> {
+                // Physical projection exit is authoritative even when the legacy controller remains stale.
+                carContinuitySessionEstablished = false
+                carConnections.onProjectionDisconnected()
+                completeCarDeparture("projection-disconnect", physicalProjection = true)
+                projectionOwnsCarLifecycle = false
+            }
+        }
+    }
+
+    private fun completeCarDeparture(source: String, physicalProjection: Boolean = false) {
+        val departedAt = clock.elapsed()
+        val generation = routeOwnership.currentGeneration
+        val selectionSequence = currentExplicitSelectionSequence()
+        val decision = if (physicalProjection) {
+            carContinuity.onProjectionDeparture(
+                departedAt = departedAt,
+                currentGeneration = generation,
+                explicitSelectionSequence = selectionSequence,
+            )
+        } else {
+            carContinuity.onCarDeparture(
+                departedAt = departedAt,
+                currentGeneration = generation,
+                explicitSelectionSequence = selectionSequence,
+            )
+        }
+        logCarContinuityDecision(source, decision)
         scope.launch {
             audioOutputs.resettle()
             decision.target

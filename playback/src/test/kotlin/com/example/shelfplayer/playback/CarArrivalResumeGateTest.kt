@@ -205,6 +205,66 @@ class CarArrivalResumeGateTest {
     }
 
     @Test
+    fun `arrival focus keeps exact headset when route disappears before focus loss`() {
+        val owner = heardOnBuds()
+        val gate = CarArrivalResumeGate()
+        gate.observePlayingHeadset(
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+        )
+
+        owner.onOutputsChanged(emptyList(), isPlaying = false)
+        assertNull(owner.heardRoute)
+
+        val focus = gate.onAudioFocusLoss(
+            at = 10.seconds,
+            heardRoute = null,
+            headsetId = null,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+
+        assertEquals(CarArrivalResumeGate.Status.Armed, focus.status)
+        assertEquals(CarArrivalResumeGate.Phase.Arrival, focus.phase)
+        assertEquals(buds.id, focus.target?.outputId)
+    }
+
+    @Test
+    fun `positive non-headset playback clears retained headset evidence`() {
+        val owner = heardOnBuds()
+        val gate = CarArrivalResumeGate()
+        gate.observePlayingHeadset(
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+        )
+
+        owner.onPlaybackObserved(listOf(speaker.copy(isActive = true)))
+        gate.observePlayingHeadset(
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(speaker)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+        )
+
+        val focus = gate.onAudioFocusLoss(
+            at = 10.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = null,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+
+        assertEquals(CarArrivalResumeGate.Status.Rejected, focus.status)
+        assertEquals(CarArrivalResumeGate.Reason.NoQualifyingHeadset, focus.reason)
+    }
+
+    @Test
     fun `departure focus loss before last disconnect resumes same playing headset`() {
         val owner = heardOnBuds()
         val gate = connectedOnBuds(owner)
@@ -257,6 +317,58 @@ class CarArrivalResumeGateTest {
 
         assertEquals(CarArrivalResumeGate.Phase.Arrival, focus.phase)
         assertEquals(CarArrivalResumeGate.Status.Armed, focus.status)
+    }
+
+    @Test
+    fun `projection departure before focus loss can pair the reverse physical ordering`() {
+        val owner = heardOnBuds()
+        val gate = connectedOnBuds(owner)
+
+        val boundary = gate.onProjectionDeparture(
+            departedAt = 20.seconds,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+        )
+        assertEquals(CarArrivalResumeGate.Status.Armed, boundary.status)
+        assertEquals(CarArrivalResumeGate.Reason.BoundaryWaitingForFocusLoss, boundary.reason)
+
+        val focus = gate.onAudioFocusLoss(
+            at = 22.seconds,
+            heardRoute = null,
+            headsetId = null,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+
+        val target = requireNotNull(focus.target)
+        assertEquals(CarArrivalResumeGate.Status.Ready, focus.status)
+        assertEquals(CarArrivalResumeGate.Phase.Departure, focus.phase)
+        assertEquals(buds.id, target.outputId)
+        assertTrue(gate.consumeRecovery(target, owner.currentGeneration, buds.id, 0).accepted)
+    }
+
+    @Test
+    fun `projection departure cannot pair a much later focus loss`() {
+        val owner = heardOnBuds()
+        val gate = connectedOnBuds(owner)
+        gate.onProjectionDeparture(
+            departedAt = 20.seconds,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+        )
+
+        val focus = gate.onAudioFocusLoss(
+            at = 27.seconds,
+            heardRoute = null,
+            headsetId = null,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+
+        assertEquals(CarArrivalResumeGate.Status.Armed, focus.status)
+        assertEquals(CarArrivalResumeGate.Phase.Arrival, focus.phase)
     }
 
     @Test
@@ -383,7 +495,6 @@ class CarArrivalResumeGateTest {
                 headsetId = owner.headsetForCar(listOf(buds, car)),
                 currentGeneration = owner.currentGeneration,
                 explicitSelectionSequence = 0,
-                carConnected = true,
             )
         }
 

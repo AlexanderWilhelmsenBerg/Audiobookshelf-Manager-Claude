@@ -142,87 +142,89 @@ Both conclusions were reasoning about the wrong layer. Android Auto is served by
 
 Two properties are asserted rather than reasoned about: the state-dependent ordering is run through Media3's real conversion, and the back slot is occupied in every binding/action-visibility combination. If it is ever vacated, Media3 stops clearing `ACTION_SKIP_TO_PREVIOUS`, nothing in this app intercepts it, and a head unit's *previous* reaches `Player.seekToPrevious` and restarts the book.
 
-### 9. Car lifecycle continuity is tied to measured focus-loss and controller-boundary evidence
+### 9. Car lifecycle continuity uses focus evidence plus a physical projection boundary
 
 Issue #36 is an integration/lifecycle problem, not a general “resume after focus loss” policy.
 
-The 2026-09-19 physical drives established the arrival ordering on the tested projected-Android-Auto setup:
+Physical drives established several different orderings on the same projected-Android-Auto setup:
 
-1. the current-generation book was actively advancing through an owned Bluetooth headset;
-2. Media3 changed `playWhenReady` to false with `PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS`;
-3. the first Android Auto controller bound two to four seconds later;
-4. Android could temporarily remove the same A2DP endpoint from its live device list and clear the preferred
-   route back to Automatic before returning it;
-5. BookWave could safely issue Play only after that exact headset was present and reasserted again.
+- 2026-09-19: Media3 focus loss preceded the first Gearhead controller bind by roughly two to four seconds;
+- 2026-09-22: `AUDIO_BECOMING_NOISY` and a transient headset-route omission occurred before focus loss,
+  which erased the arrival target before the controller boundary;
+- 2026-09-23 07:43: focus loss armed Arrival, the first Gearhead bind matched it four seconds later and
+  BookWave recovered the exact Bluetooth headset automatically;
+- 2026-09-23 12:00: the same path recovered after an audible roughly three-second interruption; and
+- two 2026-09-23 departures armed `Departure / FocusLossWaitingForBoundary`, but no useful final MediaSession
+  controller disconnect followed for at least 108 seconds and 29 seconds respectively.
 
-The 2026-09-20 physical retest adds a second lifecycle fact: leaving/stopping the car can also stop playback.
-Before this change the disconnect callback merely decremented `CarConnections` and republished buttons. A focus
-loss observed while the car was already connected was therefore captured by an arrival-only gate and had no
-matching departure transition.
+The last result changes the ownership model. A legacy MediaSession controller binding is useful control-plane
+evidence but is not a prompt physical projection-lifetime signal. BookWave therefore observes the Android Auto
+car-connection contract separately from MediaSession controllers. The adapter listens for
+`androidx.car.app.connection.action.CAR_CONNECTION_UPDATED` and re-queries the projection host state; unreadable
+or unavailable state is `Unknown`, never silently `NotConnected`. This keeps uncertainty from becoming playback
+authority.
 
-BookWave keeps ExoPlayer/Media3 audio-focus management enabled. Android recommends `setAudioAttributes(...,
-true)` for ExoPlayer focus ownership, and an audiobook is speech content that should yield focus rather than
-continuously fight another owner. The measured first car-specific signal arrives after the focus loss, so the
-implementation does **not** claim it can safely eliminate the whole two-to-four-second pre-bind interruption.
-Doing so from the focus callback alone would recreate the rejected generic-focus-resume design and could resume
-for calls, navigation, another media app, the phone speaker, or a car route. The earliest safe arrival recovery
-is the first matching 0→1 car-controller bind.
+Media3/ExoPlayer still owns audio focus and becoming-noisy safety. The app does not disable
+`setAudioAttributes(..., true)`, does not turn arbitrary focus loss into Play, and does not move playback to a
+speaker or car route to hide a transition.
 
-#### Arrival state machine
+#### Stable exact-headset evidence
+
+While playback is actually active, the continuity owner remembers the last positively heard exact headset,
+loaded-book generation and explicit-output-selection sequence. That evidence is retained across a *missing* live
+route because Android Auto has physically been measured removing the A2DP endpoint before focus loss arrives.
+
+A positive playing observation of a non-headset route clears the retained headset. Newer explicit Play/Pause,
+book/session changes and output selections remain stronger authority and invalidate the transition. Thus
+`AUDIO_BECOMING_NOISY` may preserve evidence but never authorizes Play by itself; an ordinary headset unplug with
+no matching car lifecycle boundary stays paused.
+
+#### Arrival
+
+The arrival path is:
 
 `playing exact headset`
+→ optional route omission / `AUDIO_BECOMING_NOISY`
 → `audioFocusLoss`
-→ `arrival candidate captured`
-→ `first car bind 0→1`
-→ `exact headset route recovery/reassertion`
-→ `final generation + output-intent check`
-→ `Play issued`
+→ Arrival candidate
+→ first matching strong car boundary
+→ exact-headset recovery/reassertion
+→ final generation + output-intent check
+→ Play
 → `isPlaying=true`.
 
-- The ExoPlayer listener captures the immutable headset id, loaded-book generation and explicit-selection
-  sequence while `RouteHeardOwnership` still proves that exact headset was heard.
-- The first 0→1 Media3 car-controller bind may match that focus loss only inside the bounded lifecycle window.
-  Later bindings are not arrivals.
-- Route recovery runs in the service coroutine and may suspend while Android temporarily omits the captured
-  endpoint. It reads live device/selected-route state, but it may write only a policy reassertion of the exact
-  captured id.
-- During every suspension, book generation and explicit-selection sequence remain guards. A newer listener
-  choice is authority; a transient live device omission is not.
-- Standard Play/Pause intent is observed at the session-facing `ResumeFreshnessPlayer` boundary before it is
-  forwarded to ExoPlayer. This matters for a duplicate Pause after focus has already made
-  `playWhenReady=false`: even if ExoPlayer emits no second state-change callback, that newer listener intent
-  still cancels the old continuity candidate. Service-owned automatic recovery uses the raw ExoPlayer and
-  therefore does not invalidate itself through this boundary.
-- The final check requires the same generation/selection sequence and the exact captured headset. Speaker,
-  car, Automatic and another headset cannot substitute.
-- The `Play issued` diagnostic is deliberately separate from the later `isPlaying=true` confirmation.
+A transition to a positive projected-car state is a stronger car-specific boundary than controller lifetime and
+may match an already-armed Arrival candidate before Gearhead binds. The first 0→1 Gearhead binding remains a
+compatibility/secondary arrival boundary. If projection starts *before* focus loss, it does not turn that later
+focus loss into Departure; the car continuity session becomes Established only when the media-session car
+controller actually binds. That preserves the distinction between “projection is starting” and “we were already
+driving when focus was lost.”
 
-#### Departure state machine
+Route recovery can wait only for the immutable captured headset and can reassert only that same id. Another
+headset, the phone speaker, the car route or Automatic cannot substitute.
 
-While a car controller is present and playback is actually active, the same continuity owner retains the last
-**positively proven** exact headset plus generation and explicit-selection sequence. Live A2DP disappearance
-does not erase this lifecycle evidence; a deliberate pause, book/session boundary or newer output choice does.
+#### Departure
 
-The only departure ordering currently eligible for recovery is:
+After the media-session car controller has established the session, focus loss is classified as Departure. When a
+positive projection state has been observed for that drive, the physical projection transition to
+`NotConnected` owns the departure boundary instead of waiting for a legacy controller to disappear.
 
-`playing exact headset + car connected`
-→ `audioFocusLoss while car is still connected`
-→ `departure focus candidate`
-→ `last car disconnect 1→0`
-→ route recovery / final check / Play / `isPlaying=true`.
+Both physical event orders are accepted inside the existing bounded correlation window:
 
-Only the final 1→0 disconnect is a departure; dropping one of two Android Auto controller bindings is not.
-The focus event must already have been observed while the car connection still existed and the final disconnect
-must follow inside the bounded correlation window. A **disconnect-first → later focus-loss** ordering is logged
-but deliberately stays silent: that ordering has not been physically measured, and treating any later focus
-loss as departure could turn a phone call, navigation prompt or another media app into an automatic resume.
-The next physical drive is expected to establish the actual exit ordering. If it is disconnect-first, #36 must
-remain open until a stronger car-specific signal can make that path safe. Arrival and departure targets carry
-an explicit phase and cannot consume each other.
+- `audioFocusLoss → projection disconnect`; and
+- `projection disconnect → audioFocusLoss`.
 
-`AUDIO_BECOMING_NOISY` remains outside this policy. So do generic focus loss without a matching lifecycle
-boundary, phone-speaker playback, car output, an absent exact headset, stale generation/profile/session state,
-a newer Play/Pause decision and a newer explicit Car/Headset/Automatic choice.
+The reverse order is safe only for this strong projection boundary. A legacy final-controller disconnect keeps
+the conservative old rule: focus loss must already have been observed while the car session was established.
+That fallback remains for hosts where the projection provider is unavailable or unreadable.
+
+Physical projection exit also clears every counted legacy car binding. A delayed controller disconnect is then
+floored at zero and cannot issue a second Play or poison the next drive's 0→1 arrival detection.
+
+Every recovery still requires the same book generation, the same explicit-output-selection sequence and the exact
+captured headset. A focus loss while projection remains connected (for example another media owner, call or
+navigation interaction) does not complete Departure and therefore cannot auto-resume from this policy.
+
 
 ## Consequences
 
