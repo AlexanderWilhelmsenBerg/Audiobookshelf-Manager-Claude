@@ -31,9 +31,11 @@ class IdleResumeWiringTest {
             .substringBefore("private suspend fun applyFreshnessPlan")
 
         val materialize = play.indexOf("materializeHeldResume")
+        val sleepClaim = play.indexOf("sleepTimer.onPlayRequest")
         val freshness = play.indexOf("resumeFreshness.preparePlay")
         assertTrue(materialize >= 0, "Play must recognize the metadata-only holder")
-        assertTrue(freshness > materialize, "freshness/prepare must see the fresh playable queue, not the holder")
+        assertTrue(sleepClaim > materialize, "the sleep Play claim must belong to the materialized book generation")
+        assertTrue(freshness > sleepClaim, "freshness/prepare must see the fresh playable queue, not the holder")
     }
 
     @Test
