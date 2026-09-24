@@ -121,6 +121,7 @@ class AutoBrowseInvalidationTest {
                     profileScopedParents = children.keys,
                     deferredProfileCounts = emptySet(),
                     accessibleBookIds = emptySet(),
+                    resumableBookIds = emptySet(),
                 )
             },
         )
@@ -269,6 +270,7 @@ class AutoBrowseInvalidationTest {
         profileScopedParents: Set<String> = ordinaryParents,
         deferredProfileCounts: Set<String> = emptySet(),
         accessibleBookIds: Set<LibraryItemId> = emptySet(),
+        resumableBookIds: Set<LibraryItemId> = emptySet(),
     ): AutoBrowseSnapshot = AutoBrowseSnapshot(
         scope = BrowseProfileScope(profileId?.let(::ProfileId), generation),
         childrenByParent = children,
@@ -276,5 +278,6 @@ class AutoBrowseInvalidationTest {
         profileScopedParents = profileScopedParents,
         deferredProfileCounts = deferredProfileCounts,
         accessibleBookIds = accessibleBookIds,
+        resumableBookIds = resumableBookIds,
     )
 }
