@@ -24,6 +24,5 @@ fun rememberedBook(books: List<Book>, rememberedId: LibraryItemId?): Book? {
  * inaccessible, or finished may server-synced progress choose a fallback, and that fallback is exactly the
  * existing Continue-listening order: unfinished books by newest progress timestamp.
  */
-fun resumeCandidate(books: List<Book>, rememberedId: LibraryItemId?): Book? =
-    rememberedBook(books, rememberedId)
-        ?: continueListeningBooks(books, limit = 1).firstOrNull()
+fun resumeCandidate(books: List<Book>, rememberedId: LibraryItemId?): Book? = rememberedBook(books, rememberedId)
+    ?: continueListeningBooks(books, limit = 1).firstOrNull()
