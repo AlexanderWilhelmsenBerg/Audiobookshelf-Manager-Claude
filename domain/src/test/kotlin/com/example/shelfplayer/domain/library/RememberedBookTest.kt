@@ -59,6 +59,43 @@ class RememberedBookTest {
         assertNull(rememberedBook(listOf(finishedA, remoteB), LibraryItemId("a")))
     }
 
+    @Test
+    fun `resume candidate keeps a valid locally remembered book ahead of newer server progress`() {
+        val localA = played("a", "2026-08-01T00:00:00Z")
+        val remoteB = played("b", "2026-09-12T00:00:00Z")
+
+        val result = resumeCandidate(listOf(localA, remoteB), LibraryItemId("a"))
+
+        assertEquals(LibraryItemId("a"), result?.id)
+    }
+
+    @Test
+    fun `resume candidate uses newest unfinished server progress when no local identity exists`() {
+        val older = played("a", "2026-08-01T00:00:00Z")
+        val newer = played("b", "2026-09-12T00:00:00Z")
+
+        val result = resumeCandidate(listOf(older, newer), rememberedId = null)
+
+        assertEquals(LibraryItemId("b"), result?.id)
+    }
+
+    @Test
+    fun `resume candidate falls through a finished local identity to server progress`() {
+        val finishedA = played("a", "2026-09-12T00:00:00Z", finished = true)
+        val resumableB = played("b", "2026-09-11T00:00:00Z")
+
+        val result = resumeCandidate(listOf(finishedA, resumableB), LibraryItemId("a"))
+
+        assertEquals(LibraryItemId("b"), result?.id)
+    }
+
+    @Test
+    fun `resume candidate stays empty when neither local ownership nor unfinished progress exists`() {
+        val untouched = book("a")
+        val finished = played("b", "2026-09-12T00:00:00Z", finished = true)
+
+        assertNull(resumeCandidate(listOf(untouched, finished), rememberedId = null))
+    }
     private fun played(id: String, at: String, finished: Boolean = false) = book(id).copy(
         progress = MediaProgress(
             serverId = TEST_SERVER,
