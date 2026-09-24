@@ -314,8 +314,14 @@ class PlaybackService : MediaLibraryService() {
             delegate = exoPlayer,
             preparePlay = { future { handleFreshnessPlay() } },
             consumeFreshStart = resumeFreshness::consumeFreshStart,
-            invalidate = resumeFreshness::invalidate,
+            invalidate = { origin ->
+                resumeFreshness.invalidate(origin)
+                sleepTimer.onResumeInvalidation(origin)
+            },
             onPlayWhenReadyRequest = { requestedPlay ->
+                // This is also the sleep-grace intent boundary. It runs even for duplicate Pause while raw
+                // ExoPlayer is already paused, and before a Play can suspend in freshness reconciliation.
+                sleepTimer.onControllerTransportIntent()
                 // A controller's Play/Pause is newer listener intent even when ExoPlayer is already in that
                 // state and therefore emits no onPlayWhenReadyChanged callback. Automatic continuity uses the
                 // raw ExoPlayer and bypasses this forwarding boundary, so it cannot cancel itself here.
@@ -343,7 +349,13 @@ class PlaybackService : MediaLibraryService() {
         liveSession.publish(mediaSession.token)
         // PRODUCT_SPEC PLAY-008 — the timer is given the player it is allowed to stop. It is a
         // singleton in this process, so it is the same object the app's UI drives.
-        sleepTimer.attach(exoPlayer)
+        sleepTimer.attach(
+            exoPlayer,
+            resumeOwner = object : SleepTimerResumeOwner {
+                override suspend fun resume(stillAuthorized: () -> Boolean): Boolean =
+                    performFreshnessPlay(explicit = true, stillAuthorized = stillAuthorized)
+            },
+        )
         // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does. It is given the
         // player rather than owning one, for the same reason the timer is: there is exactly one.
         sessionSync.attach(exoPlayer)
@@ -681,40 +693,73 @@ class PlaybackService : MediaLibraryService() {
     private suspend fun handleFreshnessPlay() {
         val explicit = !passiveResumptionPlayPending
         passiveResumptionPlayPending = false
-        sleepTimer.onPlayRequest(explicit)
+        performFreshnessPlay(explicit = explicit)
+    }
+
+    /**
+     * The one service-owned resume implementation used by both MediaSession Play and sleep-grace Play.
+     *
+     * The sleep timer contributes only an ownership predicate; it does not get a private raw ExoPlayer Play.
+     * The predicate is checked again inside the same main-thread turn as the final raw command, so schedule
+     * expiry, teardown, book replacement or newer controller intent can revoke a suspended grace attempt.
+     */
+    private suspend fun performFreshnessPlay(explicit: Boolean, stillAuthorized: () -> Boolean = { true }): Boolean {
+        val sleepPlayRequest = sleepTimer.onPlayRequest(explicit)
+        if (!stillAuthorized()) {
+            sleepTimer.clearPlayRequest(sleepPlayRequest)
+            return false
+        }
         val requestedPlay = when (val prepared = resumeFreshness.preparePlay()) {
-            ResumePlayPreparation.Bypass -> resumeLoadedCurrent()
+            ResumePlayPreparation.Bypass -> resumeLoadedCurrent(stillAuthorized)
             ResumePlayPreparation.Superseded -> false
-            is ResumePlayPreparation.Ready -> applyFreshnessPlan(prepared.plan)
+            is ResumePlayPreparation.Ready -> applyFreshnessPlan(prepared.plan, stillAuthorized)
         }
-        if (!requestedPlay) sleepTimer.onPlayRequest(explicit = false)
+        if (!requestedPlay) sleepTimer.clearPlayRequest(sleepPlayRequest)
+        return requestedPlay
     }
 
-    private suspend fun applyFreshnessPlan(plan: ResumeFreshnessPlan): Boolean = when (val decision = plan.decision) {
-        is ResumeFreshnessDecision.Current ->
-            resumeFreshness.withCurrentPlan(plan) {
-                recordFreshnessCheck(plan)
-                resumeLoadedCurrent()
-            } ?: false
+    private suspend fun applyFreshnessPlan(
+        plan: ResumeFreshnessPlan,
+        stillAuthorized: () -> Boolean = { true },
+    ): Boolean {
+        return when (val decision = plan.decision) {
+            is ResumeFreshnessDecision.Current ->
+                resumeFreshness.withCurrentPlan(plan) {
+                    if (!stillAuthorized()) {
+                        false
+                    } else {
+                        recordFreshnessCheck(plan)
+                        resumeLoadedCurrent(stillAuthorized)
+                    }
+                } ?: false
 
-        is ResumeFreshnessDecision.Adopt -> {
-            val outcome = resumeFreshness.withCurrentPlan(plan) {
-                recordFreshnessCheck(plan)
-                resumeAt(plan, decision.position)
-            } ?: return false
-            recordRemoteProgress(plan, outcome)
-            outcome == ResumeOutcome.Resumed
+            is ResumeFreshnessDecision.Adopt -> {
+                if (!stillAuthorized()) return false
+                val outcome = resumeFreshness.withCurrentPlan(plan) {
+                    if (!stillAuthorized()) {
+                        null
+                    } else {
+                        recordFreshnessCheck(plan)
+                        resumeAt(plan, decision.position, stillAuthorized)
+                    }
+                } ?: return false
+                recordRemoteProgress(plan, outcome)
+                outcome == ResumeOutcome.Resumed
+            }
         }
     }
 
-    /** The old direct Play behaviour, now used only after the shared freshness decision says to stay local. */
-    private suspend fun resumeLoadedCurrent(): Boolean = withContext(mainDispatcher) {
-        val current = player ?: return@withContext false
-        if (current.mediaItemCount == 0) return@withContext false
-        if (current.playbackState == Player.STATE_IDLE || current.playerError != null) current.prepare()
-        current.play()
-        true
-    }
+    /** The old direct Play behavior, now used only after the shared freshness decision says to stay local. */
+    private suspend fun resumeLoadedCurrent(stillAuthorized: () -> Boolean = { true }): Boolean =
+        withContext(mainDispatcher) {
+            if (!stillAuthorized()) return@withContext false
+            val current = player ?: return@withContext false
+            if (current.mediaItemCount == 0) return@withContext false
+            if (current.playbackState == Player.STATE_IDLE || current.playerError != null) current.prepare()
+            if (!stillAuthorized()) return@withContext false
+            current.play()
+            true
+        }
 
     /** Records the REST check result independently of whether a later adopted seek succeeds. */
     private fun recordFreshnessCheck(plan: ResumeFreshnessPlan) {
@@ -758,30 +803,33 @@ class PlaybackService : MediaLibraryService() {
      *
      * Everything runs on [mainDispatcher] because every `Player` read and write must.
      */
-    private suspend fun resumeAt(plan: ResumeFreshnessPlan, target: Duration): ResumeOutcome =
-        withContext(mainDispatcher) {
-            val current = player ?: return@withContext ResumeOutcome.NotLoaded
-            val outcome = OwnedPlayer(current, plan).seekAndResume(
-                bookId = plan.bookId,
-                target = target,
-                tolerance = ADOPT_TOLERANCE,
-                timeout = SEEK_CONFIRM_TIMEOUT,
-            )
-            // Where the seek landed is logged by `OwnedPlayer.seekAndAwait`, which is the only place that holds
-            // it *before* audio starts. Reading the position again here would report the target plus however
-            // much has played since, which is the kind of confident wrong number R-90 was made of.
-            logger.info(
-                LogCategory.Playback,
-                if (outcome == ResumeOutcome.Resumed) {
-                    "Resumed on a position adopted from another device"
-                } else {
-                    "A position adopted from another device did not take"
-                },
-                LogField.Millis("target", target.inWholeMilliseconds),
-                LogField.Public("outcome", outcome.name),
-            )
-            outcome
-        }
+    private suspend fun resumeAt(
+        plan: ResumeFreshnessPlan,
+        target: Duration,
+        stillAuthorized: () -> Boolean = { true },
+    ): ResumeOutcome = withContext(mainDispatcher) {
+        val current = player ?: return@withContext ResumeOutcome.NotLoaded
+        val outcome = OwnedPlayer(current, plan, stillAuthorized).seekAndResume(
+            bookId = plan.bookId,
+            target = target,
+            tolerance = ADOPT_TOLERANCE,
+            timeout = SEEK_CONFIRM_TIMEOUT,
+        )
+        // Where the seek landed is logged by `OwnedPlayer.seekAndAwait`, which is the only place that holds
+        // it *before* audio starts. Reading the position again here would report the target plus however
+        // much has played since, which is the kind of confident wrong number R-90 was made of.
+        logger.info(
+            LogCategory.Playback,
+            if (outcome == ResumeOutcome.Resumed) {
+                "Resumed on a position adopted from another device"
+            } else {
+                "A position adopted from another device did not take"
+            },
+            LogField.Millis("target", target.inWholeMilliseconds),
+            LogField.Public("outcome", outcome.name),
+        )
+        outcome
+    }
 
     /**
      * [ResumeTarget] over the service's own [ExoPlayer]. Main thread only, like its subject.
@@ -790,8 +838,11 @@ class PlaybackService : MediaLibraryService() {
      * everything here is a single Media3 call so that there is as little as possible that only a device can
      * exercise.
      */
-    private inner class OwnedPlayer(private val media: ExoPlayer, private val plan: ResumeFreshnessPlan) :
-        ResumeTarget {
+    private inner class OwnedPlayer(
+        private val media: ExoPlayer,
+        private val plan: ResumeFreshnessPlan,
+        private val stillAuthorized: () -> Boolean,
+    ) : ResumeTarget {
 
         override fun loadedBookId(): LibraryItemId? =
             media.currentMediaItem?.takeIf { media.mediaItemCount > 0 }?.let(MediaItems::bookIdOf)
@@ -850,8 +901,12 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override suspend fun playIfCurrent(): Boolean = resumeFreshness.withCurrentPlan(plan, requireBaseline = false) {
-            media.play()
-            true
+            if (!stillAuthorized()) {
+                false
+            } else {
+                media.play()
+                true
+            }
         } ?: false
     }
 
@@ -1140,9 +1195,30 @@ class PlaybackService : MediaLibraryService() {
         sleepTimerWatch = scope.launch {
             sleepTimer.state.collect { timer ->
                 sleepTimerState = timer
+                publishSleepTimerMetadata(timer)
                 publishMediaButtons()
             }
         }
+    }
+
+    /**
+     * BW-SLEEP-02 / PRODUCT_SPEC PLAY-008 — make the countdown visible as text in compact/background media
+     * controls as well as in the timer action.
+     *
+     * Android 13+ renders the System UI card from MediaSession metadata, not from an app-owned notification
+     * layout. Replacing only the current item's metadata is Media3's supported no-interruption update path;
+     * [SleepTimerMediaMetadata] preserves and restores the ordinary author/series byline.
+     */
+    private fun publishSleepTimerMetadata(timer: SleepTimerState) {
+        val current = player ?: return
+        val item = current.currentMediaItem ?: return
+        val timerLabel = timer.takeIf { it.isActive }?.let { active ->
+            getString(R.string.player_sleep_remaining, active.remaining.asMinutesLabel())
+        }
+        val replacement = SleepTimerMediaMetadata.project(item, timerLabel) ?: return
+        val index = current.currentMediaItemIndex
+        if (index !in 0 until current.mediaItemCount) return
+        current.replaceMediaItem(index, replacement)
     }
 
     private fun observeSkipIntervals() {
@@ -1424,6 +1500,7 @@ class PlaybackService : MediaLibraryService() {
             LogField.Public("phase", target.phase.name),
             LogField.Public("kind", target.outputId.substringBefore(':')),
         )
+        sleepTimer.onServiceResumeIntent()
         current.play()
     }
 
@@ -2062,6 +2139,7 @@ class PlaybackService : MediaLibraryService() {
         if (current.mediaItemCount == 0) return
         // Issue #91 — this custom notification command bypasses ResumeFreshnessPlayer.handleSeek.
         resumeFreshness.invalidate(ResumeInvalidation.NotificationSkip)
+        sleepTimer.onResumeInvalidation(ResumeInvalidation.NotificationSkip)
         current.seekTo((current.bookPosition() + delta).inWholeMilliseconds.coerceAtLeast(0))
     }
 

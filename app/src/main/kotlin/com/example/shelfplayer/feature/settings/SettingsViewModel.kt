@@ -20,6 +20,7 @@ import com.example.shelfplayer.core.model.playback.PlaybackMetrics
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
+import com.example.shelfplayer.core.model.playback.ShakeSensitivity
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerScheduleSettings
 import com.example.shelfplayer.core.model.playback.SleepTimerSession
@@ -286,6 +287,14 @@ class SettingsViewModel @Inject constructor(
     /** PRODUCT_SPEC PLAY-008 — "requires explicit opt-in". This toggle is that opt-in. */
     fun onShakeToRestartChanged(enabled: Boolean) {
         viewModelScope.launch { sleepTimer.setShakeToRestart(enabled) }
+    }
+
+    val onShakeGraceChanged: (kotlin.time.Duration) -> Unit = { length ->
+        viewModelScope.launch { sleepTimer.setShakeGracePeriod(length) }
+    }
+
+    val onShakeSensitivityChanged: (ShakeSensitivity) -> Unit = { sensitivity ->
+        viewModelScope.launch { sleepTimer.setShakeSensitivity(sensitivity) }
     }
 
     fun onSleepTimerDefaultChanged(length: kotlin.time.Duration) {

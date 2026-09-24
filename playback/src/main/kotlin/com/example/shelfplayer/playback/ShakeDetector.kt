@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.debug
+import com.example.shelfplayer.core.model.playback.ShakeSensitivity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,25 +24,25 @@ import kotlin.math.sqrt
 interface ShakeSource {
     val isSensing: Boolean
 
-    fun start(onShake: () -> Unit): Boolean
+    fun start(sensitivity: ShakeSensitivity, onShake: () -> Unit): Boolean
 
     fun stop()
 }
 
 /**
- * PRODUCT_SPEC PLAY-008 — "optional shake-to-extend ... must not run motion sensing continuously when
- * no timer is active".
+ * PRODUCT_SPEC PLAY-008 / BW-SLEEP-02 — shake-to-restart sensing is bounded to an active timer or its
+ * configured post-expiry grace window.
  *
- * That sentence is the whole design. [start] registers the listener and [stop] unregisters it, and the
- * only owner is `SleepTimerController`, which reconciles those calls from the conjunction of an active
- * timer and the persisted opt-in. There is no "enabled" flag inside this class that could leave a sensor
- * running while the feature is off — an unregistered listener costs nothing, which a flag does not guarantee.
+ * [start] registers the listener and [stop] unregisters it. The only lifecycle owner is
+ * `SleepTimerController`, which reconciles those calls from the active timer/grace state and persisted
+ * opt-in. There is no "enabled" flag here that could leave a sensor running after both owners are gone.
  *
  * ### What counts as a shake
  *
  * The accelerometer reports gravity as well as movement, so a phone at rest reads about `9.81` on
  * whichever axis is down. Subtracting gravity from the magnitude gives movement alone, and
- * [SHAKE_THRESHOLD] is well above what putting a phone down produces and below a deliberate shake.
+ * [ShakeSensitivity.movementThreshold] maps the listener's Low / Normal / High choice to a deterministic
+ * movement threshold. Normal preserves the original 12 m/s²-above-gravity behavior.
  *
  * Two guards stop one shake counting several times: a single shake swings the phone back and forth and
  * crosses the threshold repeatedly, so [QUIET_PERIOD_MS] must pass before another is reported.
@@ -64,13 +65,13 @@ class ShakeDetector @Inject constructor(
     private var lastShakeAt = 0L
 
     /** @return whether motion sensing actually started. `false` on a device with no accelerometer. */
-    override fun start(onShake: () -> Unit): Boolean {
+    override fun start(sensitivity: ShakeSensitivity, onShake: () -> Unit): Boolean {
         stop()
         val manager = sensors ?: return false
         val accelerometer = manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) ?: return false
         val registered = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
-                if (isShake(event)) onShake()
+                if (isShake(event, sensitivity)) onShake()
             }
 
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
@@ -96,14 +97,14 @@ class ShakeDetector @Inject constructor(
     /** Whether sensing is running, so a caller can tell "shook" from "could not sense". */
     override val isSensing: Boolean get() = listener != null
 
-    private fun isShake(event: SensorEvent): Boolean {
+    private fun isShake(event: SensorEvent, sensitivity: ShakeSensitivity): Boolean {
         val values = event.values
         if (values.size < AXES) return false
         val magnitude = sqrt(
             (values[0] * values[0] + values[1] * values[1] + values[2] * values[2]).toDouble(),
         )
         val movement = magnitude - SensorManager.GRAVITY_EARTH
-        if (movement < SHAKE_THRESHOLD) return false
+        if (movement < sensitivity.movementThreshold()) return false
         // The sensor's own timestamp is nanoseconds since boot, which is monotonic — a wall clock here
         // would let a time-zone change or an NTP correction swallow or duplicate a shake.
         val nowMs = event.timestamp / NANOS_PER_MILLI
@@ -121,16 +122,23 @@ class ShakeDetector @Inject constructor(
         const val AXES = 3
         const val NANOS_PER_MILLI = 1_000_000L
 
-        /**
-         * Metres per second squared **above gravity**.
-         *
-         * Roughly `1.5 g` of movement. A phone set down on a table peaks around `3`; a deliberate shake
-         * is comfortably past `12`. Picked to be missed rather than to fire by accident: a timer that
-         * restarts itself when the listener rolls over is worse than one that needs a second shake.
-         */
-        const val SHAKE_THRESHOLD = 12.0
-
         /** One shake swings the phone several times. This is how long before another one counts. */
         const val QUIET_PERIOD_MS = 1_000L
     }
+}
+
+/**
+ * Metres per second squared above gravity required for one shake.
+ *
+ * High is intentionally easier to trigger, Low harder. Normal is the pre-BW-SLEEP-02 threshold and therefore
+ * preserves existing behavior for every listener who never opens the new setting.
+ */
+private const val LOW_SHAKE_THRESHOLD = 16.0
+private const val NORMAL_SHAKE_THRESHOLD = 12.0
+private const val HIGH_SHAKE_THRESHOLD = 8.0
+
+internal fun ShakeSensitivity.movementThreshold(): Double = when (this) {
+    ShakeSensitivity.Low -> LOW_SHAKE_THRESHOLD
+    ShakeSensitivity.Normal -> NORMAL_SHAKE_THRESHOLD
+    ShakeSensitivity.High -> HIGH_SHAKE_THRESHOLD
 }

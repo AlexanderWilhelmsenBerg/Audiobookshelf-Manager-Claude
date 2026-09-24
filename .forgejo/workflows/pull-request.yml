@@ -17,7 +17,8 @@ run-name: "CI · PR #${{ inputs.pr_number }} — ${{ forgejo.ref_name }}"
 # Reliability model:
 # - fail cheap policy/supply-chain/schema checks before Android work;
 # - require manually selected heads to contain current main;
-# - run exactly one expensive verifyDebug pass without debug assembly;
+# - run a focused Kotlin/static pass first so repair mistakes surface early and with a small log;
+# - still run one full verifyDebug --continue pass so every independent gate that can execute reports in the same run;
 # - add --rerun-tasks only when the diff can affect the build/classpath (or when explicitly forced),
 #   matching docs/risks.md R-31 without verifying the same commit twice.
 
@@ -435,6 +436,36 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$FORGEJO_PATH"
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
+      # This is intentionally not a second quality contract. Start from the canonical verifyDebug graph and
+      # remove only its expensive runtime/reporting work. That preserves the exact source sets selected by the
+      # repository quality convention (debug/main plus their unit tests) without accidentally pulling in
+      # Release, Benchmark or AndroidTest Detekt tasks through broad root task-name selectors.
+      #
+      # The following full verifyDebug still runs with --continue even when this focused pass fails, so every
+      # independent acceptance check that can execute remains visible in the same workflow run.
+      - name: Fast Kotlin and static validation
+        id: fast_gate
+        if: ${{ steps.setup.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p ci-diagnostics
+
+          set +e
+          env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
+            ./gradlew verifyDebug --continue \
+              -x lintDebug \
+              -x testDebugUnitTest \
+              -x assembleDebug \
+              -x koverVerify \
+              --max-workers=4 -Pshelfplayer.warningsAsErrors=true 2>&1 \
+            | tee ci-diagnostics/gradle-fast-gate.log
+          status="${PIPESTATUS[0]}"
+          set -e
+
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
       - name: Verify debug once without assembling APKs
         id: verify_debug
         if: ${{ steps.setup.outcome == 'success' }}
@@ -503,6 +534,8 @@ jobs:
           TARGET_LABEL: ${{ needs.identity.outputs.display_label }}
           WORKFLOW_SOURCE: ${{ forgejo.ref_name }}
           SETUP_OUTCOME: ${{ steps.setup.outcome }}
+          FAST_OUTCOME: ${{ steps.fast_gate.outcome }}
+          FAST_EXIT: ${{ steps.fast_gate.outputs.exit_code }}
           VERIFY_OUTCOME: ${{ steps.verify_debug.outcome }}
           VERIFY_EXIT: ${{ steps.verify_debug.outputs.exit_code }}
           SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
@@ -517,8 +550,8 @@ jobs:
             cat ci-diagnostics/summary.md >> "$summary"
           fi
 
-      - name: Package quality reports on verification failure
-        if: ${{ always() && steps.verify_debug.outcome != 'success' }}
+      - name: Package quality reports on validation failure
+        if: ${{ always() && (steps.fast_gate.outcome != 'success' || steps.verify_debug.outcome != 'success') }}
         run: |
           set -euo pipefail
           mkdir -p ci-artifacts
@@ -547,7 +580,7 @@ jobs:
           ls -lh ci-artifacts/quality-reports.tar.gz
 
       - name: Upload CI diagnostics on failure
-        if: ${{ always() && (steps.setup.outcome != 'success' || steps.verify_debug.outcome != 'success' || steps.schema_check.outcome != 'success' || steps.dependencies.outcome != 'success') }}
+        if: ${{ always() && (steps.setup.outcome != 'success' || steps.fast_gate.outcome != 'success' || steps.verify_debug.outcome != 'success' || steps.schema_check.outcome != 'success' || steps.dependencies.outcome != 'success') }}
         continue-on-error: true
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
@@ -576,8 +609,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Upload packaged quality reports on verification failure
-        if: ${{ always() && steps.verify_debug.outcome != 'success' }}
+      - name: Upload packaged quality reports on validation failure
+        if: ${{ always() && (steps.fast_gate.outcome != 'success' || steps.verify_debug.outcome != 'success') }}
         continue-on-error: true
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
@@ -590,6 +623,7 @@ jobs:
         if: ${{ always() }}
         env:
           SETUP_OUTCOME: ${{ steps.setup.outcome }}
+          FAST_OUTCOME: ${{ steps.fast_gate.outcome }}
           VERIFY_OUTCOME: ${{ steps.verify_debug.outcome }}
           SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
           DEPENDENCY_OUTCOME: ${{ steps.dependencies.outcome }}
@@ -598,6 +632,7 @@ jobs:
           failed=0
           for result in \
             "Android environment:$SETUP_OUTCOME" \
+            "Fast Kotlin/static gate:$FAST_OUTCOME" \
             "verifyDebug:$VERIFY_OUTCOME" \
             "Room schema:$SCHEMA_OUTCOME" \
             "Dependency resolution:$DEPENDENCY_OUTCOME"; do

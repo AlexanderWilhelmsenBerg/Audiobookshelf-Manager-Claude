@@ -15,6 +15,7 @@ import com.example.shelfplayer.core.datastore.AppSettingsSerializer
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.playback.ShakeSensitivity
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
@@ -155,6 +156,24 @@ class DefaultSleepTimerRepositoryTest {
         repository.setShakeToRestart(true)
 
         assertTrue(repository.observeSettings().first().shakeToRestart)
+    }
+
+    @Test
+    fun `shake grace off and sensitivity survive storage round trip`() = runTest {
+        repository.setShakeGracePeriod(kotlin.time.Duration.ZERO)
+        repository.setShakeSensitivity(ShakeSensitivity.High)
+
+        val stored = repository.observeSettings().first()
+
+        assertEquals(kotlin.time.Duration.ZERO, stored.shakeGracePeriod)
+        assertEquals(ShakeSensitivity.High, stored.shakeSensitivity)
+    }
+
+    @Test
+    fun `shake grace is clamped to the ten second product maximum`() = runTest {
+        repository.setShakeGracePeriod(30.seconds)
+
+        assertEquals(10.seconds, repository.observeSettings().first().shakeGracePeriod)
     }
 
     /** An unwritten store reads as the product defaults, not as zero minutes and no fade. */

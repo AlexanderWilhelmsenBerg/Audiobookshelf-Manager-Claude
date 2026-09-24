@@ -436,8 +436,12 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Timer survives activity recreation and displays remaining time in the full player and media notification.
 - The full player's ordinary Sleep action is replaced in place by the active remaining time; both states open the same sleep-timer interaction.
 - The active remaining timer is projected from the playback-owned timer into both expanded and compact media-notification layouts.
+- Compact/background Android system media controls must communicate the remaining timer as visible text, not only as a timer icon. On Android 13+ this is session metadata because System UI owns the media card.
 - A notification action extends the same timer by the configured amount.
-- Optional shake-to-extend requires explicit opt-in and must not run motion sensing continuously when no timer is active.
+- Optional shake-to-restart requires explicit opt-in. Motion sensing may run only while a timer is active or during the configured bounded post-expiry grace period.
+- The post-expiry shake grace period defaults to 10 seconds, is configurable from Off through a maximum of 10 seconds, and starts only after natural timer expiry.
+- A valid shake during the grace period restarts the same timer mode and resumes the playback that expiry paused. Outside the grace period it does nothing.
+- Shake sensitivity is configurable as Low, Normal, or High. Normal preserves the pre-setting detection threshold; High requires less movement and Low requires more.
 - An optional local-time schedule defines **eligibility**, not a timer deadline: playback starting inside the window, or already-active playback crossing its start, requests the ordinary configured default timer from the same owner.
 - The schedule end cancels a still-running **automatic** timer without pausing playback. A manual timer is independent of the schedule end.
 - Example: with a 22:00–07:00 schedule and a 15-minute default, playback beginning at 06:46 starts the ordinary 15-minute timer, but the automatic timer is cancelled at 07:00 and playback continues.

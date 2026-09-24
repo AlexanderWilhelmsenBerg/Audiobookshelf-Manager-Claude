@@ -371,6 +371,11 @@
     <string name="sleep_timer_rewind">Spol tilbake når sovetiden stopper avspillingen</string>
     <string name="sleep_timer_fade">Ton ut over</string>
     <string name="sleep_timer_shake">Rist for å starte sovetiden på nytt</string>
+    <string name="sleep_timer_shake_grace">Frist etter at sovetiden utløper</string>
+    <string name="sleep_timer_shake_sensitivity">Ristefølsomhet</string>
+    <string name="sleep_timer_shake_sensitivity_low">Lav</string>
+    <string name="sleep_timer_shake_sensitivity_normal">Normal</string>
+    <string name="sleep_timer_shake_sensitivity_high">Høy</string>
 
     <string name="sleep_timer_history">Nylige sovetider</string>
     <string name="sleep_schedule_title">Automatisk sovetid om natten</string>

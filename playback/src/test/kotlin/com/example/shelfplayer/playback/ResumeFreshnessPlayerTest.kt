@@ -5,6 +5,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.SettableFuture
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -99,6 +100,34 @@ class ResumeFreshnessPlayerTest {
         await(player.handleSetPlayWhenReady(true))
 
         assertEquals(listOf("intent:true", "prepare"), delegate.events)
+    }
+
+    @Test
+    fun `Play revokes grace intent before freshness is allowed to suspend`() {
+        val delegate = RecordingDelegate(mediaItemCount = 1, playWhenReady = false)
+        val preparation = SettableFuture.create<Unit>()
+        var graceAuthorized = true
+        var graceResumeAttempts = 0
+        val player = ResumeFreshnessPlayer(
+            delegate = delegate.player,
+            preparePlay = { preparation },
+            consumeFreshStart = { false },
+            invalidate = {},
+            onPlayWhenReadyRequest = { requested ->
+                if (requested) graceAuthorized = false
+            },
+        )
+
+        val play = player.handleSetPlayWhenReady(true)
+
+        assertFalse(graceAuthorized, "the newer Play must revoke sleep-grace authority before freshness starts")
+        if (graceAuthorized) graceResumeAttempts += 1 // faithful representation of a shake racing this Play
+        assertEquals(0, graceResumeAttempts)
+        assertFalse(play.isDone, "freshness remains suspended while grace is already revoked")
+
+        preparation.set(Unit)
+        await(play)
+        assertTrue(delegate.events.isEmpty(), "ResumeFreshnessPlayer itself still does not issue raw Play here")
     }
 
     @Test

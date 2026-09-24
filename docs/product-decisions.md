@@ -99,3 +99,47 @@ is presented. Existing profile-lock rules still apply; Android Auto does not bec
 For Android Auto browse information architecture, this supersedes the earlier ADR-0029 decision that fixed
 the root as **Continue → Series → Authors → Library** and retained History/Chapters inside Library. ADR-0029
 remains authoritative for the Android Auto playback/routing decisions that PD-001 does not replace.
+
+---
+
+## PD-002 — Sleep timer stays visible and shake restart has a bounded grace window
+
+**Status:** Accepted  
+**Date:** 2026-09-22  
+**Scope:** Sleep-timer system surfaces, shake-to-restart behavior and settings  
+**Tracked by:** Forgejo issue #77
+
+### Decision
+
+When a sleep timer is active, Android system media controls must visibly communicate the authoritative remaining
+time even in the compact/background presentation. A timer glyph alone is not sufficient. The existing
+notification/session action still extends the same playback-owned timer.
+
+On Android 13 and newer, where System UI renders the media card from the MediaSession, BookWave may add the
+localized sleep countdown to the current media byline while the timer is active. It must preserve and restore
+the original byline exactly when the timer becomes idle.
+
+Shake-to-restart remains explicit opt-in. After a timer naturally expires and pauses playback, motion sensing
+may remain active for a configurable grace period of at most ten seconds. The default is ten seconds and the
+listener may turn the grace period off. A qualifying shake inside that window starts a new timer session with
+the same timer mode and resumes playback; a shake after the window has no effect.
+
+Shake sensitivity is configurable as **Low**, **Normal**, or **High**. Normal preserves the behavior that
+predates this setting, High is easier to trigger, and Low requires a more deliberate movement.
+
+### Consequences
+
+- Motion sensing is never an indefinite background listener. It exists only for an active opted-in timer or
+  its bounded post-expiry grace window.
+- Manual cancellation, disabling shake-to-restart, changing books, or playback-service teardown clears stale
+  grace state.
+- Post-expiry grace owns only the pause created by that expiry. A newer Play, Pause, Stop, listener seek/media
+  replacement, or service-owned continuity resume supersedes that authority. A valid grace resume enters the
+  existing resume-freshness owner rather than issuing an independent raw Player Play.
+- A grace shake after an automatically scheduled timer expires is explicit listener intent, but it does not
+  override the schedule end boundary.
+- Natural expiry still records/closes the expired timer and performs its progress sync. A grace restart is a
+  new timer session rather than rewriting the completed history entry.
+- The MediaSession metadata projection is shared with Android system media surfaces; it must not create a
+  second countdown owner or modify the book title/progress identity.
+
