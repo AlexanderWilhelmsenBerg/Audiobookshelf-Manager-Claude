@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.annotation.OptIn
 import androidx.annotation.StringRes
+import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
@@ -19,7 +20,6 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.library.SeriesMembership
 import com.example.shelfplayer.domain.library.HomeShelves
-import com.example.shelfplayer.domain.library.resumeCandidate as chooseResumeCandidate
 import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -35,6 +35,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
+import com.example.shelfplayer.domain.library.resumeCandidate as chooseResumeCandidate
 
 /**
  * PD-001 / PRODUCT_SPEC PLAY-001 — the audiobook-first tree Android Auto sees.
@@ -340,7 +341,7 @@ class AutoLibrary @Inject constructor(
             subtitle = bookSubtitle(book),
             artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
             extras = extras,
-            uri = Uri.parse(RESUME_PLACEHOLDER_URI),
+            uri = RESUME_PLACEHOLDER_URI.toUri(),
             mimeType = MimeTypes.AUDIO_WAV,
         )
         return HeldResume(
