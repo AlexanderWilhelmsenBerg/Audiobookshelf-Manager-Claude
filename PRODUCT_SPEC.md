@@ -1518,6 +1518,11 @@ Provide one command that agents and CI can run:
 
 A release verification command must additionally run instrumentation/managed-device tests and release lint.
 
+The canonical local `verifyDebug` task continues to include debug assembly. Forgejo Standard PR verification may
+exclude `assembleDebug` when it needs quality evidence rather than an installable artifact, provided every other
+`verifyDebug` dependency above still runs. If a PR APK is requested, CI must build it only after the selected
+Standard/Intensive verification has passed; APK packaging is an output step, not acceptance evidence.
+
 ---
 
 # 17. Testing strategy

@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(".")
 DIAG = Path("ci-diagnostics")
-FAST_LOG = DIAG / "gradle-fast-gate.log"
+QUICK_LOG = DIAG / "gradle-quick.log"
 GRADLE_LOG = DIAG / "gradle-verify.log"
 SUMMARY = DIAG / "summary.md"
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
@@ -172,7 +172,7 @@ def write_status_description(description: str) -> None:
 def main() -> int:
     DIAG.mkdir(parents=True, exist_ok=True)
     gradle_log = "\n".join(
-        text for text in (read_text(FAST_LOG), read_text(GRADLE_LOG)) if text
+        text for text in (read_text(QUICK_LOG), read_text(GRADLE_LOG)) if text
     )
 
     failed_tasks = unique(re.findall(r"Execution failed for task '([^']+)'", gradle_log))
@@ -196,9 +196,10 @@ def main() -> int:
     lint_errors, lint_warnings, lint_hints, lint_findings, lint_reports = collect_lint()
     detekt_findings, detekt_reports = collect_detekt()
 
+    depth = os.environ.get("DEPTH", "standard")
     setup = os.environ.get("SETUP_OUTCOME", "")
-    fast = os.environ.get("FAST_OUTCOME", "")
-    fast_exit = os.environ.get("FAST_EXIT", "")
+    quick = os.environ.get("QUICK_OUTCOME", "")
+    quick_exit = os.environ.get("QUICK_EXIT", "")
     verify = os.environ.get("VERIFY_OUTCOME", "")
     verify_exit = os.environ.get("VERIFY_EXIT", "")
     schema = os.environ.get("SCHEMA_OUTCOME", "")
@@ -234,48 +235,67 @@ def main() -> int:
     failed_labels: list[str] = []
     if setup != "success":
         failed_labels.append("environment setup")
-    if fast not in {"success", ""} and not failed_task_text:
-        failed_labels.append("fast Kotlin/static gate")
+    if quick != "success":
+        failed_labels.append("Quick KtLint")
     if ktlint_findings or "ktlint" in failed_task_text:
         failed_labels.append("ktlint")
-    if failed_tests or test_failures or test_errors or re.search(r":test\w*", failed_task_text):
-        failed_labels.append("tests")
-    if detekt_findings or "detekt" in failed_task_text:
-        failed_labels.append("detekt")
-    if lint_errors or "lint" in failed_task_text:
-        failed_labels.append("Android Lint")
-    if compile_failed:
-        failed_labels.append("compile")
-    if verify not in {"success", ""} and not failed_labels:
-        failed_labels.append("verifyDebug")
-    if schema != "success":
-        failed_labels.append("Room schema")
-    if dependencies not in {"success", ""}:
-        failed_labels.append("dependencies")
+
+    if depth != "quick":
+        if failed_tests or test_failures or test_errors or re.search(r":test\w*", failed_task_text):
+            failed_labels.append("tests")
+        if detekt_findings or "detekt" in failed_task_text:
+            failed_labels.append("detekt")
+        if lint_errors or "lint" in failed_task_text:
+            failed_labels.append("Android Lint")
+        if compile_failed:
+            failed_labels.append("compile")
+        if verify != "success" and not any(
+            label in failed_labels for label in ("tests", "detekt", "Android Lint", "compile", "ktlint")
+        ):
+            failed_labels.append("verifyDebug")
+        if schema != "success":
+            failed_labels.append("Room schema")
+        if dependencies not in {"success", "", "skipped"}:
+            failed_labels.append("dependencies")
     failed_labels = unique(failed_labels)
 
     test_details = f"{test_total} tests; {test_failures + test_errors} failed"
     if compile_failed and test_reports:
         test_details += "; partial — compile failure can block downstream test tasks"
 
-    rows = [
-        ("Android environment", setup, "scripts/codex/setup.sh"),
-        ("Fast Kotlin/static gate", fast, "exit " + (fast_exit or "n/a")),
-        ("verifyDebug", verify, "exit " + (verify_exit or "n/a")),
-        (
-            "Unit tests",
-            test_state,
-            test_details,
-        ),
-        ("ktlint", ktlint_state, f"{len(ktlint_findings)} finding(s)"),
-        ("detekt", detekt_state, f"{len(detekt_findings)} finding(s)"),
-        (
+    if depth == "quick":
+        verify_row = ("verifyDebug", "skipped", "not required for Quick")
+        test_row = ("Unit tests", "skipped", "not required for Quick")
+        detekt_row = ("detekt", "skipped", "not required for Quick")
+        lint_row = ("Android Lint", "skipped", "not required for Quick")
+        schema_row = ("Room schema", "skipped", "generated/current check belongs to Standard")
+        dependency_row = ("Dependency resolution", "skipped", "not required for Quick")
+    else:
+        verify_row = ("verifyDebug", verify, "exit " + (verify_exit or "n/a"))
+        test_row = ("Unit tests", test_state, test_details)
+        detekt_row = ("detekt", detekt_state, f"{len(detekt_findings)} finding(s)")
+        lint_row = (
             "Android Lint",
             lint_state,
             f"{lint_errors} error(s), {lint_warnings} warning(s), {lint_hints} hint(s)",
-        ),
-        ("Room schema", schema, "working tree matches committed schemas"),
-        ("Dependency resolution", dependencies, "debugRuntimeClasspath"),
+        )
+        schema_row = ("Room schema", schema, "working tree matches committed schemas")
+        dependency_row = (
+            "Dependency resolution",
+            dependencies if dependencies else "skipped",
+            "debugRuntimeClasspath" if dependencies == "success" else "not required unless dependency inputs changed or depth is Intensive",
+        )
+
+    rows = [
+        ("Android environment", setup, "scripts/codex/setup.sh"),
+        ("Quick KtLint", quick, "exit " + (quick_exit or "n/a")),
+        verify_row,
+        test_row,
+        ("ktlint", ktlint_state, f"{len(ktlint_findings)} finding(s)"),
+        detekt_row,
+        lint_row,
+        schema_row,
+        dependency_row,
     ]
 
     lines = [
@@ -318,7 +338,7 @@ def main() -> int:
                 "",
                 "### Failure diagnostics",
                 "- ci-diagnostics: summary plus full verifyDebug/dependency logs.",
-                "- quality-reports: packaged ktlint, Detekt, Android Lint and test reports when either validation pass fails.",
+                "- quality-reports: packaged ktlint, Detekt, Android Lint and test reports when Quick or deep verification fails.",
                 "- room-schemas: uploaded only when the Room schema check fails.",
                 "- dependency-report: uploaded only when dependency resolution fails.",
             ]
@@ -338,7 +358,7 @@ def main() -> int:
     if failed_labels:
         description = "Failed: " + ", ".join(failed_labels)
     else:
-        description = "BookWave PR verification passed"
+        description = f"BookWave {depth} verification passed"
     write_status_description(description)
     return 0
 

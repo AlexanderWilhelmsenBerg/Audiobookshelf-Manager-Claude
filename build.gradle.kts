@@ -34,6 +34,26 @@ tasks.named("verifyDebug") {
     dependsOn(tasks.named("koverVerify"))
 }
 
+/*
+ * Issue #85 — cheap formatting feedback before the full Android verification graph.
+ *
+ * This task intentionally depends only on ktlintCheck tasks. It is not a merge gate by itself and must not
+ * grow compile/test/lint/coverage dependencies; Standard verification still owns those semantics.
+ */
+tasks.register("quickKtlint") {
+    group = "verification"
+    description = "Runs ktlint across every project without starting tests, Android Lint or coverage."
+    dependsOn(
+        java.util.concurrent.Callable {
+            allprojects
+                .filter { project -> "ktlintCheck" in project.tasks.names }
+                .map { project ->
+                    if (project == rootProject) ":ktlintCheck" else "${project.path}:ktlintCheck"
+                }
+        },
+    )
+}
+
 tasks.named("verifyDebug") {
     // `:core` and `:data` exist only as containers for `:core:*` and `:data:*`; they have no build
     // file and therefore no `verifyDebug`. Resolving the list lazily also means a module added later

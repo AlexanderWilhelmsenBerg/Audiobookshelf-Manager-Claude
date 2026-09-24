@@ -15,16 +15,16 @@ run-name: "CI · PR #${{ inputs.pr_number }} — ${{ forgejo.ref_name }}"
 # - pin reusable actions and downloaded security tooling immutably.
 #
 # Reliability model:
-# - fail cheap policy/supply-chain/schema checks before Android work;
-# - require manually selected heads to contain current main;
-# - run a focused Kotlin/static pass first so repair mistakes surface early and with a small log;
-# - still run one full verifyDebug --continue pass so every independent gate that can execute reports in the same run;
-# - add --rerun-tasks only when the diff can affect the build/classpath (or when explicitly forced),
-#   matching docs/risks.md R-31 without verifying the same commit twice.
+# - automatic pull-request events run Quick only;
+# - Quick fails before the expensive Android regression graph;
+# - Standard keeps the complete verifyDebug evidence without packaging an APK;
+# - compute profiles change worker pressure only, never selected evidence;
+# - --rerun-tasks follows build/classpath changes, not workflow-only edits;
+# - an optional debug APK is built only after Standard/Intensive verification has passed.
 
-# Forgejo PR verification is intentionally manual. Branch updates stay cheap while work is
-# in progress; run this workflow on the PR branch once the change is ready for acceptance.
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -32,6 +32,32 @@ on:
         required: false
         type: string
         default: ''
+      depth:
+        description: 'Verification depth'
+        type: choice
+        required: true
+        default: standard
+        options:
+          - quick
+          - standard
+          - intensive
+      compute_profile:
+        description: 'Compute profile; evidence is identical for the same depth'
+        type: choice
+        required: true
+        default: balanced
+        options:
+          - quiet
+          - balanced
+          - fast
+      profiling:
+        description: 'Retain detailed CI telemetry for this run'
+        type: boolean
+        default: false
+      build_apk:
+        description: 'Build and upload a debug APK only after Standard/Intensive checks pass'
+        type: boolean
+        default: false
       force_rerun:
         description: 'Force --rerun-tasks even when the diff does not affect the build/classpath'
         type: boolean
@@ -46,7 +72,7 @@ concurrency:
 env:
   # Runner-specific limits. Keep the repository's diagnostics/encoding flags while
   # bounding Gradle and Kotlin memory independently on the self-hosted runner.
-  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx3g -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4 -Dorg.gradle.project.kotlin.daemon.jvmargs=-Xmx2g
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx3g -Dorg.gradle.daemon=false -Dorg.gradle.project.kotlin.daemon.jvmargs=-Xmx2g
   JAVA_TOOL_OPTIONS: -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8
   GRADLE_WRAPPER_JAR_SHA256: 7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172
   GITLEAKS_VERSION: 8.30.1
@@ -63,16 +89,52 @@ jobs:
       pr_title: ${{ steps.metadata.outputs.pr_title }}
       pr_head: ${{ steps.metadata.outputs.pr_head }}
       pr_branch: ${{ steps.metadata.outputs.pr_branch }}
+      selected_branch: ${{ steps.metadata.outputs.selected_branch }}
+      depth: ${{ steps.metadata.outputs.depth }}
+      compute_profile: ${{ steps.metadata.outputs.compute_profile }}
+      profiling: ${{ steps.metadata.outputs.profiling }}
+      build_apk: ${{ steps.metadata.outputs.build_apk }}
+      status_context: ${{ steps.metadata.outputs.status_context }}
     steps:
       - name: Resolve PR metadata or branch label
         id: metadata
         env:
           REQUESTED_PR: ${{ inputs.pr_number }}
+          EVENT_PR: ${{ forgejo.event.pull_request.number }}
           SELECTED_BRANCH: ${{ forgejo.ref_name }}
+          EVENT_HEAD_BRANCH: ${{ forgejo.head_ref }}
+          REQUESTED_DEPTH: ${{ inputs.depth }}
+          REQUESTED_PROFILE: ${{ inputs.compute_profile }}
+          REQUESTED_PROFILING: ${{ inputs.profiling }}
+          REQUESTED_BUILD_APK: ${{ inputs.build_apk }}
+          EVENT_NAME: ${{ forgejo.event_name }}
         run: |
           set -euo pipefail
-          requested_pr="$REQUESTED_PR"
-          display_label="$SELECTED_BRANCH"
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            requested_pr="$EVENT_PR"
+            selected_branch="$EVENT_HEAD_BRANCH"
+            depth="quick"
+            compute_profile="balanced"
+            profiling="false"
+            build_apk="false"
+          else
+            requested_pr="$REQUESTED_PR"
+            selected_branch="$SELECTED_BRANCH"
+            depth="${REQUESTED_DEPTH:-standard}"
+            compute_profile="${REQUESTED_PROFILE:-balanced}"
+            profiling="${REQUESTED_PROFILING:-false}"
+            build_apk="${REQUESTED_BUILD_APK:-false}"
+          fi
+
+          case "$depth" in quick|standard|intensive) ;; *) echo "::error::Unsupported verification depth: $depth"; exit 1 ;; esac
+          case "$compute_profile" in quiet|balanced|fast) ;; *) echo "::error::Unsupported compute profile: $compute_profile"; exit 1 ;; esac
+          if [ "$depth" = "quick" ] && [ "$build_apk" = "true" ]; then
+            echo "::error::build_apk requires Standard or Intensive verification."
+            exit 1
+          fi
+
+          display_label="$selected_branch"
           pr_title=""
           pr_head=""
           pr_branch=""
@@ -108,8 +170,8 @@ jobs:
               echo "::error::Forgejo did not return complete metadata for PR #$requested_pr."
               exit 1
             fi
-            if [ "$SELECTED_BRANCH" != "$pr_branch" ]; then
-              echo "::error::PR #$requested_pr belongs to '$pr_branch', but Use workflow from selected '$SELECTED_BRANCH'."
+            if [ "$selected_branch" != "$pr_branch" ]; then
+              echo "::error::PR #$requested_pr belongs to '$pr_branch', but selected source is '$selected_branch'."
               exit 1
             fi
             display_label="PR #$requested_pr · $pr_title"
@@ -119,8 +181,21 @@ jobs:
           echo "pr_number=$requested_pr" >> "$GITHUB_OUTPUT"
           echo "pr_title=$pr_title" >> "$GITHUB_OUTPUT"
           echo "pr_head=$pr_head" >> "$GITHUB_OUTPUT"
+          status_context="BookWave / PR verification"
+          if [ "$depth" = "quick" ]; then
+            status_context="BookWave / PR quick"
+          elif [ "$depth" = "intensive" ]; then
+            status_context="BookWave / PR intensive"
+          fi
+
           echo "pr_branch=$pr_branch" >> "$GITHUB_OUTPUT"
-          echo "Resolved CI target: $display_label"
+          echo "selected_branch=$selected_branch" >> "$GITHUB_OUTPUT"
+          echo "depth=$depth" >> "$GITHUB_OUTPUT"
+          echo "compute_profile=$compute_profile" >> "$GITHUB_OUTPUT"
+          echo "profiling=$profiling" >> "$GITHUB_OUTPUT"
+          echo "build_apk=$build_apk" >> "$GITHUB_OUTPUT"
+          echo "status_context=$status_context" >> "$GITHUB_OUTPUT"
+          echo "Resolved CI target: $display_label · depth=$depth · profile=$compute_profile · build_apk=$build_apk"
 
   preflight:
     name: "CI · ${{ needs.identity.outputs.display_label }} · Preflight · wf:${{ forgejo.ref_name }}"
@@ -128,7 +203,9 @@ jobs:
     runs-on: linux-amd64
     timeout-minutes: 10
     outputs:
-      classpath_changed: ${{ steps.classify.outputs.classpath_changed }}
+      build_changed: ${{ steps.classify.outputs.build_changed }}
+      ci_infra_changed: ${{ steps.classify.outputs.ci_infra_changed }}
+      dependency_inputs_changed: ${{ steps.classify.outputs.dependency_inputs_changed }}
       checked_head: ${{ steps.classify.outputs.checked_head }}
       status_description: ${{ steps.preflight_summary.outputs.status_description }}
     steps:
@@ -138,6 +215,7 @@ jobs:
       - name: Check out BookWave
         uses: https://data.forgejo.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
+          ref: ${{ needs.identity.outputs.selected_branch }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -147,7 +225,7 @@ jobs:
         env:
           REQUESTED_PR: ${{ needs.identity.outputs.pr_number }}
           EXPECTED_PR_HEAD: ${{ needs.identity.outputs.pr_head }}
-          SELECTED_BRANCH: ${{ forgejo.ref_name }}
+          SELECTED_BRANCH: ${{ needs.identity.outputs.selected_branch }}
           TARGET_LABEL: ${{ needs.identity.outputs.display_label }}
         run: |
           set -euo pipefail
@@ -190,38 +268,12 @@ jobs:
             exit 1
           fi
 
-          changed_files="$(git diff --name-only "$base"...HEAD)"
-          printf '%s\n' "$changed_files"
-
-          classpath_changed=false
-          while IFS= read -r path; do
-            [ -n "$path" ] || continue
-            case "$path" in
-              .forgejo/workflows/*|\
-              build.gradle.kts|\
-              settings.gradle.kts|\
-              gradle.properties|\
-              gradle/libs.versions.toml|\
-              gradle/verification-metadata.xml|\
-              gradle/wrapper/*|\
-              build-logic/*|\
-              buildSrc/*|\
-              scripts/codex/*|\
-              */build.gradle.kts|\
-              */gradle.lockfile|\
-              gradle.lockfile)
-                classpath_changed=true
-                ;;
-            esac
-          done <<< "$changed_files"
+          bash scripts/ci/classify-changes.sh "$base" HEAD
 
           if [ "$FORGEJO_EVENT_NAME" = "workflow_dispatch" ] && [ "${{ inputs.force_rerun }}" = "true" ]; then
-            classpath_changed=true
+            echo "build_changed=true" >> "$GITHUB_OUTPUT"
             echo "Full rerun forced by workflow input."
           fi
-
-          echo "classpath_changed=$classpath_changed" >> "$GITHUB_OUTPUT"
-          echo "verification_mode=$([ "$classpath_changed" = true ] && echo rerun || echo normal)"
 
       - name: Gradle wrapper validation
         id: wrapper_check
@@ -267,7 +319,8 @@ jobs:
           tar -xzf "$archive" -C "$tmp" gitleaks
           install -m 0755 "$tmp/gitleaks" /usr/local/bin/gitleaks
           gitleaks version
-          env -u FORGEJO_TOKEN -u GITHUB_TOKEN gitleaks detect --source . --redact --verbose --no-banner
+          base_ref="${FORGEJO_BASE_REF:-main}"
+          env -u FORGEJO_TOKEN -u GITHUB_TOKEN             gitleaks git . --redact --verbose --no-banner --log-opts="origin/$base_ref..HEAD"
 
       - name: Committed Room schemas are immutable
         id: schema_check
@@ -291,6 +344,17 @@ jobs:
           fi
           echo "No committed Room schema was modified."
 
+      - name: Validate CI scripts
+        id: script_check
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' script; do
+            bash -n "$script"
+          done < <(find scripts/ci scripts/codex -type f -name '*.sh' -print0)
+          python3 -m compileall -q scripts/ci
+          python3 -m unittest discover -s scripts/ci/tests -p 'test_*.py'
+
       - name: Summarize preflight
         id: preflight_summary
         if: ${{ always() }}
@@ -301,6 +365,7 @@ jobs:
           WRAPPER_OUTCOME: ${{ steps.wrapper_check.outcome }}
           SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
           SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
+          SCRIPT_OUTCOME: ${{ steps.script_check.outcome }}
         run: |
           set -euo pipefail
           summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
@@ -326,6 +391,7 @@ jobs:
             render "Gradle wrapper integrity" "$WRAPPER_OUTCOME"
             render "Secret scan" "$SECRET_SCAN_OUTCOME"
             render "Committed Room schemas" "$SCHEMA_OUTCOME"
+            render "CI script syntax/tests" "$SCRIPT_OUTCOME"
             echo
           } > /tmp/bookwave-preflight-summary.md
 
@@ -349,6 +415,7 @@ jobs:
           WRAPPER_OUTCOME: ${{ steps.wrapper_check.outcome }}
           SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
           SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
+          SCRIPT_OUTCOME: ${{ steps.script_check.outcome }}
         run: |
           set -euo pipefail
           failed=0
@@ -356,7 +423,8 @@ jobs:
             "PR policy/change classification:$POLICY_OUTCOME" \
             "Gradle wrapper validation:$WRAPPER_OUTCOME" \
             "Secret scan:$SECRET_SCAN_OUTCOME" \
-            "Room schema immutability:$SCHEMA_OUTCOME"; do
+            "Room schema immutability:$SCHEMA_OUTCOME" \
+            "CI script validation:$SCRIPT_OUTCOME"; do
             name="${result%%:*}"
             outcome="${result#*:}"
             if [ "$outcome" != "success" ]; then
@@ -376,8 +444,28 @@ jobs:
       - preflight
     timeout-minutes: 90
     outputs:
-      status_description: ${{ steps.diagnostics.outputs.status_description }}
+      status_description: ${{ steps.final_status.outputs.status_description }}
     steps:
+      - name: Resolve verification depth and compute profile
+        id: mode
+        env:
+          DEPTH: ${{ needs.identity.outputs.depth }}
+          PROFILE: ${{ needs.identity.outputs.compute_profile }}
+        run: |
+          set -euo pipefail
+          case "$PROFILE" in
+            quiet) workers=2 ;;
+            balanced) workers=4 ;;
+            fast) workers=6 ;;
+            *) echo "::error::Unknown compute profile: $PROFILE"; exit 1 ;;
+          esac
+          echo "GRADLE_MAX_WORKERS=$workers" >> "$FORGEJO_ENV"
+          echo "BOOKWAVE_CI_DEPTH=$DEPTH" >> "$FORGEJO_ENV"
+          echo "BOOKWAVE_CI_PROFILE=$PROFILE" >> "$FORGEJO_ENV"
+          echo "workers=$workers" >> "$GITHUB_OUTPUT"
+          echo "depth=$DEPTH" >> "$GITHUB_OUTPUT"
+          echo "profile=$PROFILE" >> "$GITHUB_OUTPUT"
+
       - name: Report runner capacity
         run: |
           set -euo pipefail
@@ -436,15 +524,10 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$FORGEJO_PATH"
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
-      # This is intentionally not a second quality contract. Start from the canonical verifyDebug graph and
-      # remove only its expensive runtime/reporting work. That preserves the exact source sets selected by the
-      # repository quality convention (debug/main plus their unit tests) without accidentally pulling in
-      # Release, Benchmark or AndroidTest Detekt tasks through broad root task-name selectors.
-      #
-      # The following full verifyDebug still runs with --continue even when this focused pass fails, so every
-      # independent acceptance check that can execute remains visible in the same workflow run.
-      - name: Fast Kotlin and static validation
-        id: fast_gate
+      # Quick is deliberately only formatting evidence. A failure here prevents the expensive
+      # compile/test/Lint/Kover graph from starting.
+      - name: Quick KtLint
+        id: quick_gate
         if: ${{ steps.setup.outcome == 'success' }}
         continue-on-error: true
         run: |
@@ -452,14 +535,7 @@ jobs:
           mkdir -p ci-diagnostics
 
           set +e
-          env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
-            ./gradlew verifyDebug --continue \
-              -x lintDebug \
-              -x testDebugUnitTest \
-              -x assembleDebug \
-              -x koverVerify \
-              --max-workers=4 -Pshelfplayer.warningsAsErrors=true 2>&1 \
-            | tee ci-diagnostics/gradle-fast-gate.log
+          env -u FORGEJO_TOKEN -u GITHUB_TOKEN             ./gradlew quickKtlint --max-workers="$GRADLE_MAX_WORKERS"               -Pshelfplayer.warningsAsErrors=true 2>&1             | tee ci-diagnostics/gradle-quick.log
           status="${PIPESTATUS[0]}"
           set -e
 
@@ -468,26 +544,28 @@ jobs:
 
       - name: Verify debug once without assembling APKs
         id: verify_debug
-        if: ${{ steps.setup.outcome == 'success' }}
+        if: ${{ steps.setup.outcome == 'success' && steps.quick_gate.outcome == 'success' && needs.identity.outputs.depth != 'quick' }}
         continue-on-error: true
         env:
-          CLASSPATH_CHANGED: ${{ needs.preflight.outputs.classpath_changed }}
+          BUILD_CHANGED: ${{ needs.preflight.outputs.build_changed }}
+          DEPTH: ${{ needs.identity.outputs.depth }}
         run: |
           set -euo pipefail
           mkdir -p ci-diagnostics
           extra_args=()
-          if [ "$CLASSPATH_CHANGED" = "true" ]; then
+          if [ "$BUILD_CHANGED" = "true" ]; then
             extra_args+=(--rerun-tasks)
-            echo "Verification mode: full rerun (R-31 classpath/build safety)."
+            echo "Verification mode: full rerun (R-31 build/classpath safety)."
           else
             echo "Verification mode: normal."
           fi
+          if [ "$DEPTH" = "intensive" ]; then
+            extra_args+=(--rerun-tasks --no-build-cache)
+            echo "Intensive mode: task outputs and Gradle build cache are not trusted as execution evidence."
+          fi
 
           set +e
-          env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
-            ./gradlew verifyDebug --continue -x assembleDebug "${extra_args[@]}" --max-workers=4 \
-              -Pshelfplayer.warningsAsErrors=true 2>&1 \
-            | tee ci-diagnostics/gradle-verify.log
+          env -u FORGEJO_TOKEN -u GITHUB_TOKEN             ./gradlew verifyDebug --continue -x assembleDebug "${extra_args[@]}" --max-workers="$GRADLE_MAX_WORKERS"               -Pshelfplayer.warningsAsErrors=true 2>&1             | tee ci-diagnostics/gradle-verify.log
           status="${PIPESTATUS[0]}"
           set -e
 
@@ -496,7 +574,7 @@ jobs:
 
       - name: Room schema is committed and current
         id: schema_check
-        if: ${{ always() }}
+        if: ${{ always() && needs.identity.outputs.depth != 'quick' }}
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -511,14 +589,14 @@ jobs:
 
       - name: Resolve dependencies for the debug variant
         id: dependencies
-        if: ${{ always() && steps.setup.outcome == 'success' }}
+        if: ${{ always() && needs.identity.outputs.depth != 'quick' && steps.setup.outcome == 'success' && (needs.preflight.outputs.dependency_inputs_changed == 'true' || needs.identity.outputs.depth == 'intensive') }}
         continue-on-error: true
         run: |
           set -euo pipefail
           mkdir -p ci-diagnostics
           set +e
           env -u FORGEJO_TOKEN -u GITHUB_TOKEN \
-            ./gradlew :app:dependencies --configuration debugRuntimeClasspath --max-workers=4 \
+            ./gradlew :app:dependencies --configuration debugRuntimeClasspath --max-workers="$GRADLE_MAX_WORKERS" \
               > dependency-report.txt 2> ci-diagnostics/dependency-resolution.log
           status="$?"
           set -e
@@ -534,8 +612,9 @@ jobs:
           TARGET_LABEL: ${{ needs.identity.outputs.display_label }}
           WORKFLOW_SOURCE: ${{ forgejo.ref_name }}
           SETUP_OUTCOME: ${{ steps.setup.outcome }}
-          FAST_OUTCOME: ${{ steps.fast_gate.outcome }}
-          FAST_EXIT: ${{ steps.fast_gate.outputs.exit_code }}
+          DEPTH: ${{ needs.identity.outputs.depth }}
+          QUICK_OUTCOME: ${{ steps.quick_gate.outcome }}
+          QUICK_EXIT: ${{ steps.quick_gate.outputs.exit_code }}
           VERIFY_OUTCOME: ${{ steps.verify_debug.outcome }}
           VERIFY_EXIT: ${{ steps.verify_debug.outputs.exit_code }}
           SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
@@ -551,7 +630,7 @@ jobs:
           fi
 
       - name: Package quality reports on validation failure
-        if: ${{ always() && (steps.fast_gate.outcome != 'success' || steps.verify_debug.outcome != 'success') }}
+        if: ${{ always() && (steps.quick_gate.outcome != 'success' || (needs.identity.outputs.depth != 'quick' && steps.verify_debug.outcome != 'success')) }}
         run: |
           set -euo pipefail
           mkdir -p ci-artifacts
@@ -580,7 +659,7 @@ jobs:
           ls -lh ci-artifacts/quality-reports.tar.gz
 
       - name: Upload CI diagnostics on failure
-        if: ${{ always() && (steps.setup.outcome != 'success' || steps.fast_gate.outcome != 'success' || steps.verify_debug.outcome != 'success' || steps.schema_check.outcome != 'success' || steps.dependencies.outcome != 'success') }}
+        if: ${{ always() && (steps.setup.outcome != 'success' || steps.quick_gate.outcome != 'success' || (needs.identity.outputs.depth != 'quick' && steps.verify_debug.outcome != 'success') || (needs.identity.outputs.depth != 'quick' && steps.schema_check.outcome != 'success') || (steps.dependencies.outcome != 'success' && steps.dependencies.outcome != 'skipped')) }}
         continue-on-error: true
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
@@ -590,7 +669,7 @@ jobs:
           retention-days: 7
 
       - name: Upload dependency report on dependency failure
-        if: ${{ always() && steps.dependencies.outcome != 'success' }}
+        if: ${{ always() && needs.identity.outputs.depth != 'quick' && steps.dependencies.outcome != 'success' && steps.dependencies.outcome != 'skipped' }}
         continue-on-error: true
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
@@ -600,7 +679,7 @@ jobs:
           retention-days: 7
 
       - name: Upload Room schemas on schema failure
-        if: ${{ always() && steps.schema_check.outcome != 'success' }}
+        if: ${{ always() && needs.identity.outputs.depth != 'quick' && steps.schema_check.outcome != 'success' }}
         continue-on-error: true
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
@@ -610,7 +689,7 @@ jobs:
           retention-days: 7
 
       - name: Upload packaged quality reports on validation failure
-        if: ${{ always() && (steps.fast_gate.outcome != 'success' || steps.verify_debug.outcome != 'success') }}
+        if: ${{ always() && (steps.quick_gate.outcome != 'success' || (needs.identity.outputs.depth != 'quick' && steps.verify_debug.outcome != 'success')) }}
         continue-on-error: true
         uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
@@ -619,31 +698,126 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Final verification gate
+      - name: Collect CI telemetry
         if: ${{ always() }}
         env:
+          BOOKWAVE_CI_SHA: ${{ needs.preflight.outputs.checked_head }}
+          BOOKWAVE_CI_DEPTH: ${{ needs.identity.outputs.depth }}
+          BOOKWAVE_CI_PROFILE: ${{ needs.identity.outputs.compute_profile }}
+          GRADLE_MAX_WORKERS: ${{ steps.mode.outputs.workers }}
+          BOOKWAVE_CACHE_HIT: ${{ steps.gradle_cache.outputs.cache-hit }}
+          BOOKWAVE_CACHE_KEY: ${{ steps.gradle_cache.outputs.cache-matched-key }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/ci-telemetry.py ci-diagnostics/gradle-quick.log ci-diagnostics/gradle-verify.log
+
+      - name: Upload CI telemetry
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        with:
+          name: ci-telemetry
+          path: ci-telemetry/metrics.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload profiling logs
+        if: ${{ always() && needs.identity.outputs.profiling == 'true' }}
+        continue-on-error: true
+        uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        with:
+          name: ci-profile-logs
+          path: |
+            ci-diagnostics/gradle-quick.log
+            ci-diagnostics/gradle-verify.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Final verification gate
+        id: verification_gate
+        if: ${{ always() }}
+        env:
+          DEPTH: ${{ needs.identity.outputs.depth }}
           SETUP_OUTCOME: ${{ steps.setup.outcome }}
-          FAST_OUTCOME: ${{ steps.fast_gate.outcome }}
+          QUICK_OUTCOME: ${{ steps.quick_gate.outcome }}
           VERIFY_OUTCOME: ${{ steps.verify_debug.outcome }}
           SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
           DEPENDENCY_OUTCOME: ${{ steps.dependencies.outcome }}
         run: |
           set -euo pipefail
           failed=0
-          for result in \
-            "Android environment:$SETUP_OUTCOME" \
-            "Fast Kotlin/static gate:$FAST_OUTCOME" \
-            "verifyDebug:$VERIFY_OUTCOME" \
-            "Room schema:$SCHEMA_OUTCOME" \
-            "Dependency resolution:$DEPENDENCY_OUTCOME"; do
-            name="${result%%:*}"
-            outcome="${result#*:}"
+
+          require_success() {
+            local name="$1"
+            local outcome="$2"
             if [ "$outcome" != "success" ]; then
               echo "::error::$name failed or was skipped ($outcome). See the consolidated diagnostics above."
               failed=1
             fi
-          done
+          }
+
+          require_success "Android environment" "$SETUP_OUTCOME"
+          require_success "Quick KtLint" "$QUICK_OUTCOME"
+
+          if [ "$DEPTH" != "quick" ]; then
+            require_success "verifyDebug" "$VERIFY_OUTCOME"
+            require_success "Room schema" "$SCHEMA_OUTCOME"
+            if [ "$DEPENDENCY_OUTCOME" != "success" ] && [ "$DEPENDENCY_OUTCOME" != "skipped" ]; then
+              require_success "Dependency resolution" "$DEPENDENCY_OUTCOME"
+            fi
+          fi
           exit "$failed"
+
+      # Optional convenience artifact only. It is deliberately after the quality gate so packaging can never
+      # make Standard slower unless the user explicitly asks for an APK.
+      - name: Build optional verified debug APK
+        id: apk_build
+        if: ${{ forgejo.event_name == 'workflow_dispatch' && needs.identity.outputs.build_apk == 'true' && needs.identity.outputs.depth != 'quick' && steps.verification_gate.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          env -u FORGEJO_TOKEN -u GITHUB_TOKEN             ./gradlew :app:assembleDebug --max-workers="$GRADLE_MAX_WORKERS"
+          apk="$(find app/build/outputs/apk/debug -name '*.apk' -type f | head -1)"
+          test -n "$apk" || { echo "::error::assembleDebug completed without an APK."; exit 1; }
+          echo "apk=$apk" >> "$GITHUB_OUTPUT"
+          echo "::notice::PR verification APK uses the CI debug signing identity; release/upload signing secrets are never exposed here."
+
+      - name: Upload optional verified debug APK
+        if: ${{ steps.apk_build.outcome == 'success' }}
+        uses: https://data.forgejo.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        with:
+          name: bookwave-verified-debug-${{ needs.preflight.outputs.checked_head }}
+          path: ${{ steps.apk_build.outputs.apk }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Final status description
+        id: final_status
+        if: ${{ always() }}
+        env:
+          DIAGNOSTIC_DESCRIPTION: ${{ steps.diagnostics.outputs.status_description }}
+          BUILD_APK: ${{ needs.identity.outputs.build_apk }}
+          APK_OUTCOME: ${{ steps.apk_build.outcome }}
+        run: |
+          set -euo pipefail
+          description="${DIAGNOSTIC_DESCRIPTION:-BookWave verification failed}"
+          if [ "$BUILD_APK" = "true" ] && [ "$APK_OUTCOME" != "success" ] && [ "$APK_OUTCOME" != "skipped" ]; then
+            description="Verification passed; optional APK build failed"
+          fi
+          echo "status_description=${description:0:220}" >> "$GITHUB_OUTPUT"
+
+      - name: Require optional APK when requested
+        if: ${{ always() && forgejo.event_name == 'workflow_dispatch' && needs.identity.outputs.build_apk == 'true' && needs.identity.outputs.depth != 'quick' }}
+        env:
+          VERIFICATION_OUTCOME: ${{ steps.verification_gate.outcome }}
+          APK_OUTCOME: ${{ steps.apk_build.outcome }}
+        run: |
+          set -euo pipefail
+          [ "$VERIFICATION_OUTCOME" = "success" ] || exit 1
+          if [ "$APK_OUTCOME" != "success" ]; then
+            echo "::error::Verified APK was requested but the post-verification APK build did not succeed."
+            exit 1
+          fi
 
   pr-status:
     name: "CI · ${{ needs.identity.outputs.display_label }} · publish check · wf:${{ forgejo.ref_name }}"
@@ -661,7 +835,9 @@ jobs:
           PR_HEAD: ${{ needs.identity.outputs.pr_head }}
           PR_BRANCH: ${{ needs.identity.outputs.pr_branch }}
           TARGET_LABEL: ${{ needs.identity.outputs.display_label }}
-          SELECTED_BRANCH: ${{ forgejo.ref_name }}
+          SELECTED_BRANCH: ${{ needs.identity.outputs.selected_branch }}
+          STATUS_CONTEXT: ${{ needs.identity.outputs.status_context }}
+          DEPTH: ${{ needs.identity.outputs.depth }}
           CHECKED_HEAD: ${{ needs.preflight.outputs.checked_head }}
           PREFLIGHT_RESULT: ${{ needs.preflight.result }}
           PREFLIGHT_DESCRIPTION: ${{ needs.preflight.outputs.status_description }}
@@ -688,7 +864,7 @@ jobs:
             else
               status_sha="$CHECKED_HEAD"
               state=success
-              description="BookWave PR verification passed"
+              description="BookWave $DEPTH verification passed"
             fi
           else
             if [ -z "$status_sha" ]; then
@@ -700,7 +876,7 @@ jobs:
               description="${VERIFY_DESCRIPTION:-BookWave verification failed}"
             else
               state=success
-              description="BookWave branch verification passed"
+              description="BookWave $DEPTH branch verification passed"
             fi
           fi
 
@@ -708,7 +884,7 @@ jobs:
           payload="$(STATUS_STATE="$state" STATUS_DESCRIPTION="$description" node -e '
             process.stdout.write(JSON.stringify({
               state: process.env.STATUS_STATE,
-              context: "BookWave / PR verification",
+              context: process.env.STATUS_CONTEXT,
               description: process.env.STATUS_DESCRIPTION
             }));
           ')"
