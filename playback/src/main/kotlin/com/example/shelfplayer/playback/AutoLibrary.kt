@@ -7,6 +7,7 @@ import androidx.annotation.OptIn
 import androidx.annotation.StringRes
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaConstants
 import com.example.shelfplayer.core.model.LibraryItemId
@@ -338,6 +339,8 @@ class AutoLibrary @Inject constructor(
             subtitle = bookSubtitle(book),
             artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
             extras = extras,
+            uri = Uri.parse(RESUME_PLACEHOLDER_URI),
+            mimeType = MimeTypes.AUDIO_WAV,
         )
         return HeldResume(
             item = item,
@@ -434,8 +437,14 @@ class AutoLibrary @Inject constructor(
         subtitle: String? = null,
         artworkUri: Uri? = null,
         extras: Bundle? = null,
+        uri: Uri? = null,
+        mimeType: String? = null,
     ): MediaItem = MediaItem.Builder()
         .setMediaId(id)
+        .apply {
+            uri?.let(::setUri)
+            mimeType?.let(::setMimeType)
+        }
         .setMediaMetadata(
             MediaMetadata.Builder()
                 .setTitle(title)
@@ -485,6 +494,14 @@ class AutoLibrary @Inject constructor(
     private data class ResumeCandidate(val profileId: ProfileId, val book: Book)
 
     companion object {
+        /**
+         * A valid app-local media configuration so ExoPlayer can own the holder without asking the network.
+         * The WAV contains only an empty header. It is never prepared by the normal path: Play first replaces
+         * the placeholder with a fresh Audiobookshelf queue.
+         */
+        private const val RESUME_PLACEHOLDER_URI =
+            "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA="
+
         data class Target(val bookId: LibraryItemId, val startAt: Duration?)
 
         internal fun resumeId(bookId: LibraryItemId, position: Duration?): String =
