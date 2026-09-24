@@ -102,14 +102,16 @@ internal class AndroidAutoProjectionMonitor @Inject constructor(
     }
 
     private fun readState(): State {
-        if (context.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) return State.Native
+        if (context.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
+            return State.Native
+        }
         return try {
             context.contentResolver.query(
-            PROJECTION_HOST_URI,
-            arrayOf(CAR_CONNECTION_STATE),
-            null,
-            null,
-            null,
+                PROJECTION_HOST_URI,
+                arrayOf(CAR_CONNECTION_STATE),
+                null,
+                null,
+                null,
             )?.use { cursor ->
                 val column = cursor.getColumnIndex(CAR_CONNECTION_STATE)
                 if (column < 0 || !cursor.moveToFirst()) State.Unknown else stateOf(cursor.getInt(column))
