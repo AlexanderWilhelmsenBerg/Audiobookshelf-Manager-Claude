@@ -95,7 +95,7 @@ internal class AndroidAutoProjectionMonitor @Inject constructor(
         this.scope = scope
         callback = onUpdate
 
-        val receiverFailure = try {
+        val receiverFailure: Throwable? = try {
             ContextCompat.registerReceiver(
                 context,
                 receiver,
@@ -104,7 +104,9 @@ internal class AndroidAutoProjectionMonitor @Inject constructor(
             )
             registered = true
             null
-        } catch (error: RuntimeException) {
+        } catch (error: SecurityException) {
+            error
+        } catch (error: IllegalArgumentException) {
             error
         }
 
@@ -141,7 +143,7 @@ internal class AndroidAutoProjectionMonitor @Inject constructor(
         if (registered) {
             try {
                 context.unregisterReceiver(receiver)
-            } catch (error: RuntimeException) {
+            } catch (error: IllegalArgumentException) {
                 logger.warn(
                     LogCategory.AndroidAuto,
                     "Android Auto projection receiver unregister failed",
@@ -229,8 +231,6 @@ internal class AndroidAutoProjectionMonitor @Inject constructor(
             ReadResult(State.Unknown, null, "security-exception", visible, error.javaClass.simpleName)
         } catch (error: IllegalArgumentException) {
             ReadResult(State.Unknown, null, "illegal-argument", visible, error.javaClass.simpleName)
-        } catch (error: RuntimeException) {
-            ReadResult(State.Unknown, null, "runtime-exception", visible, error.javaClass.simpleName)
         }
     }
 
