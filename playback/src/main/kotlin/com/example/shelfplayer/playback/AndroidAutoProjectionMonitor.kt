@@ -107,7 +107,7 @@ internal class AndroidAutoProjectionMonitor @Inject constructor(
         }
         return try {
             context.contentResolver.query(
-                PROJECTION_HOST_URI,
+                projectionHostUri(),
                 arrayOf(CAR_CONNECTION_STATE),
                 null,
                 null,
@@ -129,7 +129,8 @@ internal class AndroidAutoProjectionMonitor @Inject constructor(
         const val ACTION_CAR_CONNECTION_UPDATED = "androidx.car.app.connection.action.CAR_CONNECTION_UPDATED"
         const val CAR_CONNECTION_STATE = "CarConnectionState"
         private const val CAR_CONNECTION_AUTHORITY = "androidx.car.app.connection"
-        private val PROJECTION_HOST_URI: Uri =
+
+        private fun projectionHostUri(): Uri =
             Uri.Builder().scheme("content").authority(CAR_CONNECTION_AUTHORITY).build()
 
         fun stateOf(raw: Int): State = when (raw) {
