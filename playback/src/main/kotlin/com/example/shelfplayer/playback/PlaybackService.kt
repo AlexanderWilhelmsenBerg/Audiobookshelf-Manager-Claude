@@ -2823,6 +2823,11 @@ class PlaybackService : MediaLibraryService() {
                         }
             }
             logSelection("onSetMediaItems", mediaItems, selection, trace)
+            traceSetMediaItemsResult(trace, selection)
+            return selection.answer
+        }
+
+        private fun traceSetMediaItemsResult(trace: AutoTrace?, selection: Selection) {
             logAutoItems(
                 trace = trace,
                 callback = "onSetMediaItems",
@@ -2833,7 +2838,6 @@ class PlaybackService : MediaLibraryService() {
                     LogField.Millis("startAt", selection.answer.startPositionMs),
                 ),
             )
-            return selection.answer
         }
 
         private fun actedKind(asked: List<MediaItem>, acted: MediaItem? = null): String =
@@ -3100,49 +3104,47 @@ class PlaybackService : MediaLibraryService() {
                 )
                 return
             }
-            scope.launch {
-                val startedAt = clock.elapsed()
-                val action = CarConnection.decide(devices, lock, clock.now())
-                val actionName = when (action) {
-                    AutoStartAction.ArmAndPlay -> "ArmAndPlay"
-                    AutoStartAction.Arm -> "Arm"
-                    AutoStartAction.Suppressed -> "Suppressed"
-                    AutoStartAction.None -> "None"
-                }
-                logAuto(
-                    "Android Auto post-connect policy selected",
-                    trace,
-                    listOf(LogField.Public("action", actionName)) + AndroidAutoDiagnostics.playerFields(current),
-                )
-                when (action) {
-                    AutoStartAction.ArmAndPlay -> startLastBook(current, play = true, trace = trace)
+            scope.launch { runCarPostConnect(current, trace) }
+        }
 
-                    AutoStartAction.Arm -> startLastBook(current, play = false, trace = trace)
-
-                    AutoStartAction.Suppressed -> logAuto(
-                        "A car connected while the account was locked; nothing started",
-                        trace,
-                    )
-
-                    // "Never react" means no audio/session side effect. Issue #88 still publishes the last
-                    // identity so Android Auto is not left in STATE_NONE with an empty playback surface.
-                    AutoStartAction.None -> holdLastBook(current, trace)
-                }
-                logAuto(
-                    "Android Auto post-connect async work completed",
-                    trace,
-                    buildList {
-                        add(LogField.Public("action", actionName))
-                        add(
-                            LogField.Millis(
-                                "callbackElapsed",
-                                (clock.elapsed() - startedAt).inWholeMilliseconds.coerceAtLeast(0L),
-                            ),
-                        )
-                        addAll(AndroidAutoDiagnostics.playerFields(current))
-                    },
-                )
+        private suspend fun runCarPostConnect(current: ExoPlayer, trace: AutoTrace) {
+            val startedAt = clock.elapsed()
+            val action = CarConnection.decide(devices, lock, clock.now())
+            val actionName = when (action) {
+                AutoStartAction.ArmAndPlay -> "ArmAndPlay"
+                AutoStartAction.Arm -> "Arm"
+                AutoStartAction.Suppressed -> "Suppressed"
+                AutoStartAction.None -> "None"
             }
+            logAuto(
+                "Android Auto post-connect policy selected",
+                trace,
+                listOf(LogField.Public("action", actionName)) + AndroidAutoDiagnostics.playerFields(current),
+            )
+            when (action) {
+                AutoStartAction.ArmAndPlay -> startLastBook(current, play = true, trace = trace)
+                AutoStartAction.Arm -> startLastBook(current, play = false, trace = trace)
+                AutoStartAction.Suppressed ->
+                    logAuto("A car connected while the account was locked; nothing started", trace)
+
+                // "Never react" means no audio/session side effect. Issue #88 still publishes the last
+                // identity so Android Auto is not left in STATE_NONE with an empty playback surface.
+                AutoStartAction.None -> holdLastBook(current, trace)
+            }
+            logAuto(
+                "Android Auto post-connect async work completed",
+                trace,
+                buildList {
+                    add(LogField.Public("action", actionName))
+                    add(
+                        LogField.Millis(
+                            "callbackElapsed",
+                            (clock.elapsed() - startedAt).inWholeMilliseconds.coerceAtLeast(0L),
+                        ),
+                    )
+                    addAll(AndroidAutoDiagnostics.playerFields(current))
+                },
+            )
         }
 
         /** Loads the last played book, playing it or leaving it paused. Silent when there is nothing to load. */
