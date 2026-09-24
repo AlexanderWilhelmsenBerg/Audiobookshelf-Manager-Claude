@@ -1048,11 +1048,12 @@ class PlaybackService : MediaLibraryService() {
                         target.generation == routeOwnership.currentGeneration &&
                             target.explicitSelectionSequence == currentExplicitSelectionSequence()
                     if (sameContext) {
-                        logger.info(
-                            LogCategory.Playback,
+                        logAuto(
                             "Car lifecycle continuity playback became active",
-                            LogField.Public("phase", target.phase.name),
-                            LogField.Public("kind", target.outputId.substringBefore(':')),
+                            fields = listOf(
+                                LogField.Public("phase", target.phase.name),
+                                LogField.Public("kind", target.outputId.substringBefore(':')),
+                            ) + carSnapshotFields(),
                         )
                     }
                     continuityPlayAwaiting = null
@@ -1543,12 +1544,13 @@ class PlaybackService : MediaLibraryService() {
             reassert = audioOutputs::reassert,
         )
         if (held == null) {
-            logger.info(
-                LogCategory.Playback,
+            logAuto(
                 "Car lifecycle continuity did not secure the headset",
-                LogField.Public("phase", target.phase.name),
-                LogField.Public("kind", target.outputId.substringBefore(':')),
-                LogField.Public("reason", currentContinuityInvalidation(target)),
+                fields = listOf(
+                    LogField.Public("phase", target.phase.name),
+                    LogField.Public("kind", target.outputId.substringBefore(':')),
+                    LogField.Public("reason", currentContinuityInvalidation(target)),
+                ) + carSnapshotFields(),
             )
             carContinuity.cancelPending()
             return null
@@ -1558,25 +1560,27 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun logHeldHeadset(hold: String, phase: CarArrivalResumeGate.Phase? = null) {
-        logger.info(
-            LogCategory.Playback,
+        logAuto(
             if (phase == null) {
                 "A car connected and the book was held in the headset"
             } else {
                 "Car lifecycle continuity secured the headset"
             },
-            LogField.Public("phase", phase?.name ?: "route-hold"),
-            LogField.Public("kind", hold.substringBefore(':')),
+            fields = listOf(
+                LogField.Public("phase", phase?.name ?: "route-hold"),
+                LogField.Public("kind", hold.substringBefore(':')),
+            ) + carSnapshotFields(),
         )
     }
 
     private fun logCarContinuityRouteEvent(target: CarArrivalResumeGate.Target, event: CarArrivalRouteRecovery.Event) {
-        logger.info(
-            LogCategory.Playback,
+        logAuto(
             "Car lifecycle route recovery changed",
-            LogField.Public("phase", target.phase.name),
-            LogField.Public("event", event.name),
-            LogField.Public("kind", target.outputId.substringBefore(':')),
+            fields = listOf(
+                LogField.Public("phase", target.phase.name),
+                LogField.Public("event", event.name),
+                LogField.Public("kind", target.outputId.substringBefore(':')),
+            ) + carSnapshotFields(),
         )
     }
 
@@ -1611,10 +1615,9 @@ class PlaybackService : MediaLibraryService() {
         if (current.playWhenReady) {
             carContinuity.cancelPending()
             continuityPlayAwaiting = null
-            logger.info(
-                LogCategory.Playback,
+            logAuto(
                 "Car lifecycle continuity skipped Play because playback intent was already active",
-                LogField.Public("phase", target.phase.name),
+                fields = listOf(LogField.Public("phase", target.phase.name)) + carSnapshotFields(),
             )
             return
         }
@@ -1625,13 +1628,14 @@ class PlaybackService : MediaLibraryService() {
             headsetId = heldHeadset,
             explicitSelectionSequence = currentExplicitSelectionSequence(),
         )
-        logger.info(
-            LogCategory.Playback,
+        logAuto(
             "Car lifecycle continuity final eligibility checked",
-            LogField.Public("phase", target.phase.name),
-            LogField.Public("eligible", result.accepted.toString()),
-            LogField.Public("reason", result.reason.name),
-            LogField.Public("kind", target.outputId.substringBefore(':')),
+            fields = listOf(
+                LogField.Public("phase", target.phase.name),
+                LogField.Public("eligible", result.accepted),
+                LogField.Public("reason", result.reason.name),
+                LogField.Public("kind", target.outputId.substringBefore(':')),
+            ) + carSnapshotFields(),
         )
         if (!result.accepted) {
             continuityPlayAwaiting = null
@@ -1639,11 +1643,12 @@ class PlaybackService : MediaLibraryService() {
         }
 
         continuityPlayAwaiting = target
-        logger.info(
-            LogCategory.Playback,
+        logAuto(
             "Car lifecycle continuity issued Play",
-            LogField.Public("phase", target.phase.name),
-            LogField.Public("kind", target.outputId.substringBefore(':')),
+            fields = listOf(
+                LogField.Public("phase", target.phase.name),
+                LogField.Public("kind", target.outputId.substringBefore(':')),
+            ) + carSnapshotFields(),
         )
         sleepTimer.onServiceResumeIntent()
         current.play()
@@ -1764,6 +1769,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun onCarControllerConnected(controllerPackage: String) {
+        val trace = ensureAutoTrace("controller-connect")
         val carWasConnected = carConnections.isConnected()
         val carArrivedAt = if (carWasConnected) null else clock.elapsed()
         carConnections.onConnected()
@@ -1773,18 +1779,21 @@ class PlaybackService : MediaLibraryService() {
             // continuity immediately from the route evidence that was already positively heard.
             observeCarContinuityHeadset(audioOutputs.outputs.value)
         }
-        logger.info(
-            LogCategory.Playback,
+        logAuto(
             "A car connected to the media session",
-            LogField.Public("controller", controllerPackage),
-            LogField.Public("firstArrival", (!carWasConnected).toString()),
-            LogField.Public("projection", projectionState.name),
+            trace,
+            buildList {
+                add(LogField.Public("controller", controllerPackage))
+                add(LogField.Public("firstArrival", !carWasConnected))
+                addAll(AndroidAutoDiagnostics.playerFields(player))
+                addAll(carSnapshotFields())
+            },
         )
         if (carWasConnected) {
-            logger.info(
-                LogCategory.Playback,
+            logAuto(
                 "A later car controller bind was ignored as a new arrival",
-                LogField.Public("controller", controllerPackage),
+                trace,
+                listOf(LogField.Public("controller", controllerPackage)) + carSnapshotFields(),
             )
         }
         scope.launch { handleCarArrival(carArrivedAt, source = "first-car-bind") }
@@ -1816,17 +1825,21 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun onCarControllerDisconnected(controllerPackage: String) {
+        val trace = ensureAutoTrace("controller-disconnect")
         val carWasConnected = carConnections.isConnected()
         carConnections.onDisconnected()
         val carStillConnected = carConnections.isConnected()
         val finalControllerDeparture = carWasConnected && !carStillConnected
-        logger.info(
-            LogCategory.Playback,
+        logAuto(
             "A car controller disconnected from the media session",
-            LogField.Public("controller", controllerPackage),
-            LogField.Public("finalDeparture", finalControllerDeparture.toString()),
-            LogField.Public("carStillConnected", carStillConnected.toString()),
-            LogField.Public("projection", projectionState.name),
+            trace,
+            buildList {
+                add(LogField.Public("controller", controllerPackage))
+                add(LogField.Public("finalDeparture", finalControllerDeparture))
+                add(LogField.Public("carStillConnected", carStillConnected))
+                addAll(AndroidAutoDiagnostics.playerFields(player))
+                addAll(carSnapshotFields())
+            },
         )
 
         if (!finalControllerDeparture) {
@@ -1849,13 +1862,21 @@ class PlaybackService : MediaLibraryService() {
 
     private fun onCarProjectionUpdate(update: AndroidAutoProjectionMonitor.Update) {
         val previous = update.previous
+        val trace = if (update.current.carConnected || previous?.carConnected == true) {
+            ensureAutoTrace("projection-state")
+        } else {
+            activeAutoTrace
+        }
         projectionState = update.current
-        logger.info(
-            LogCategory.Playback,
+        logAuto(
             "Android Auto projection state changed",
-            LogField.Public("previous", previous?.name ?: "Initial"),
-            LogField.Public("current", update.current.name),
-            LogField.Public("carBound", carConnections.isConnected().toString()),
+            trace,
+            buildList {
+                add(LogField.Public("previous", previous?.name ?: "Initial"))
+                add(LogField.Public("current", update.current.name))
+                addAll(AndroidAutoDiagnostics.playerFields(player))
+                addAll(carSnapshotFields())
+            },
         )
 
         if (update.initial) {
