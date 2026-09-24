@@ -26,4 +26,4 @@ fun rememberedBook(books: List<Book>, rememberedId: LibraryItemId?): Book? {
  */
 fun resumeCandidate(books: List<Book>, rememberedId: LibraryItemId?): Book? =
     rememberedBook(books, rememberedId)
-        ?: homeShelvesOf(books, limit = 1).continueListening.firstOrNull()
+        ?: continueListeningBooks(books, limit = 1).firstOrNull()
