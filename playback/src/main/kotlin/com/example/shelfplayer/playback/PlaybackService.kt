@@ -1136,6 +1136,16 @@ class PlaybackService : MediaLibraryService() {
                 // Issue #36 — physical drives measured audioFocusLoss on both car entry and car departure.
                 // The gate still requires a matching controller lifecycle boundary; focus loss alone can
                 // never resume playback.
+                val trace = ensureAutoTrace("audio-focus-loss")
+                logAuto(
+                    "Android Auto lifecycle input",
+                    trace,
+                    buildList {
+                        add(LogField.Public("event", "audio-focus-loss"))
+                        addAll(AndroidAutoDiagnostics.playerFields(player))
+                        addAll(carSnapshotFields())
+                    },
+                )
                 syncExplicitOutputIntent()
                 val outputs = audioOutputs.outputs.value
                 val decision = carContinuity.onAudioFocusLoss(
@@ -1154,6 +1164,16 @@ class PlaybackService : MediaLibraryService() {
                 // Issue #36 — route/noisy can precede the measured car focus loss. It still cannot authorize
                 // Play, but it is automatic platform evidence rather than newer listener intent, so retain the
                 // last positively heard exact headset for the focus + car-boundary correlation that may follow.
+                val trace = ensureAutoTrace("becoming-noisy")
+                logAuto(
+                    "Android Auto lifecycle input",
+                    trace,
+                    buildList {
+                        add(LogField.Public("event", "becoming-noisy"))
+                        addAll(AndroidAutoDiagnostics.playerFields(player))
+                        addAll(carSnapshotFields())
+                    },
+                )
                 continuityPlayAwaiting = null
             } else {
                 // Deliberate pause, end-of-item and unknown causes invalidate transition evidence.
@@ -1168,6 +1188,17 @@ class PlaybackService : MediaLibraryService() {
          * `MediaItem`'s extras would be tens of kilobytes across the binder to answer one question.
          */
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            activeAutoTrace?.let { trace ->
+                logAuto(
+                    "Media3 current item changed during Android Auto trace",
+                    trace,
+                    buildList {
+                        add(LogField.Public("reason", AndroidAutoDiagnostics.mediaTransitionReason(reason)))
+                        addAll(AndroidAutoDiagnostics.itemFields(mediaItem, prefix = "new"))
+                        addAll(AndroidAutoDiagnostics.playerFields(player))
+                    },
+                )
+            }
             recovery.onBookChanged()
             // PRODUCT_SPEC PLAY-006 — the startup stopwatch starts here rather than at `prepare()`, because
             // this fires for every book including one started from a car or by a media button, and the wait
