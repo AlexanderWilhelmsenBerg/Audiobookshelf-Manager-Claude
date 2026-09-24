@@ -42,10 +42,7 @@ internal class AndroidAutoProjectionMonitor @Inject constructor(
         Projection(true),
     }
 
-    internal data class Update(
-        val previous: State?,
-        val current: State,
-    ) {
+    internal data class Update(val previous: State?, val current: State) {
         val initial: Boolean get() = previous == null
     }
 
