@@ -1482,21 +1482,26 @@ class PlaybackService : MediaLibraryService() {
      * diagnostic (14.5, and priority 7 keeps private self-hosted data out of reports).
      */
     private fun logOutputState(outputs: List<AudioOutput>, state: OutputButtons) {
-        logger.info(
-            LogCategory.Playback,
-            "The car output actions were recomputed",
-            LogField.Public("api", Build.VERSION.SDK_INT.toString()),
-            LogField.Public("carBound", carConnections.isConnected().toString()),
-            LogField.Public("routeKnown", outputs.any(AudioOutput::isActive).toString()),
+        val fields = listOf(
+            LogField.Public("api", Build.VERSION.SDK_INT),
+            LogField.Public("carBound", carConnections.isConnected()),
+            LogField.Public("routeKnown", outputs.any(AudioOutput::isActive)),
             LogField.Public(
                 "outputs",
                 outputs.joinToString("+") { output ->
                     "${output.role}${if (output.isActive) "*" else ""}"
                 },
             ),
-            LogField.Public("onCar", state.onCar.toString()),
-            LogField.Public("onHeadset", state.onHeadset.toString()),
+            LogField.Public("onCar", state.onCar),
+            LogField.Public("onHeadset", state.onHeadset),
         )
+        logger.info(LogCategory.Playback, "The car output actions were recomputed", *fields.toTypedArray())
+        if (activeAutoTrace != null) {
+            logAuto(
+                "The car output actions were recomputed",
+                fields = fields + carSnapshotFields(),
+            )
+        }
     }
 
     /**
