@@ -1618,15 +1618,117 @@ class PlaybackService : MediaLibraryService() {
         current.play()
     }
 
+    private fun ensureAutoTrace(source: String): AutoTrace {
+        val now = clock.elapsed()
+        val existing = activeAutoTrace
+        if (existing != null && now - existing.startedAt <= AUTO_TRACE_REUSE_WINDOW) return existing
+
+        val trace = AutoTrace(
+            id = ++autoTraceSequence,
+            startedAt = now,
+            source = source,
+        )
+        activeAutoTrace = trace
+        logAuto(
+            "Android Auto trace started",
+            trace,
+            buildList {
+                add(LogField.Public("source", source))
+                addAll(AndroidAutoDiagnostics.playerFields(player))
+                addAll(carSnapshotFields())
+            },
+        )
+        return trace
+    }
+
+    private fun autoTraceFor(controllerPackage: String): AutoTrace? =
+        activeAutoTrace?.takeIf { controllerPackage in CAR_PACKAGES }
+
+    private fun logAuto(
+        message: String,
+        trace: AutoTrace? = activeAutoTrace,
+        fields: List<LogField> = emptyList(),
+        level: LogLevel = LogLevel.Info,
+    ) {
+        val timed = if (trace == null) {
+            emptyList()
+        } else {
+            listOf(
+                LogField.Public("traceSource", trace.source),
+                LogField.Millis(
+                    "afterTrace",
+                    (clock.elapsed() - trace.startedAt).inWholeMilliseconds.coerceAtLeast(0L),
+                ),
+            )
+        }
+        logger.log(
+            LogEvent(
+                level = level,
+                category = LogCategory.AndroidAuto,
+                message = message,
+                fields = timed + fields,
+                correlationId = trace?.correlationId,
+            ),
+        )
+    }
+
+    private fun logAutoItems(
+        trace: AutoTrace?,
+        callback: String,
+        direction: String,
+        items: List<MediaItem>,
+        extraFields: List<LogField> = emptyList(),
+    ) {
+        if (trace == null) return
+        val playable = items.filter { item ->
+            item.mediaMetadata.isPlayable == true || MediaItems.isReadyToPlay(item)
+        }
+        logAuto(
+            "Android Auto media item handoff",
+            trace,
+            buildList {
+                add(LogField.Public("callback", callback))
+                add(LogField.Public("direction", direction))
+                add(LogField.Count("items", items.size))
+                add(LogField.Count("playableItems", playable.size))
+                addAll(extraFields)
+            },
+        )
+        playable.forEachIndexed { index, item ->
+            logAuto(
+                "Android Auto playable media item",
+                trace,
+                buildList {
+                    add(LogField.Public("callback", callback))
+                    add(LogField.Public("direction", direction))
+                    add(LogField.Public("index", index))
+                    addAll(AndroidAutoDiagnostics.itemFields(item))
+                },
+            )
+        }
+    }
+
+    private fun carSnapshotFields(): List<LogField> = listOf(
+        LogField.Public("projection", projectionState.name),
+        LogField.Public("projectionOwnsLifecycle", projectionOwnsCarLifecycle),
+        LogField.Public("sessionEstablished", carContinuitySessionEstablished),
+        LogField.Public("carBound", carConnections.isConnected()),
+        LogField.Public("continuityPlayAwaiting", continuityPlayAwaiting != null),
+        LogField.Public("generation", routeOwnership.currentGeneration),
+        LogField.Public("selectionSequence", currentExplicitSelectionSequence()),
+    )
+
     private fun logCarContinuityDecision(source: String, decision: CarArrivalResumeGate.Decision) {
-        logger.info(
-            LogCategory.Playback,
+        logAuto(
             "Car lifecycle continuity decision",
-            LogField.Public("source", source),
-            LogField.Public("phase", decision.phase.name),
-            LogField.Public("status", decision.status.name),
-            LogField.Public("reason", decision.reason.name),
-            LogField.Public("kind", decision.target?.outputId?.substringBefore(':') ?: "none"),
+            fields = buildList {
+                add(LogField.Public("source", source))
+                add(LogField.Public("phase", decision.phase.name))
+                add(LogField.Public("status", decision.status.name))
+                add(LogField.Public("reason", decision.reason.name))
+                add(LogField.Public("kind", decision.target?.outputId?.substringBefore(':') ?: "none"))
+                addAll(carSnapshotFields())
+            },
         )
     }
 
