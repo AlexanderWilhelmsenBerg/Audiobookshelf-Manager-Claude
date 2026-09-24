@@ -1,0 +1,52 @@
+package com.example.shelfplayer.playback
+
+import org.junit.Test
+import java.io.File
+import kotlin.test.assertTrue
+
+/**
+ * Issue #88 — source-level reachability proof for the service callbacks Media3/Android Auto actually invoke.
+ *
+ * The pure candidate tests prove the policy. These assertions prove the policy is wired into the live callback
+ * paths, the same distinction that docs/risks.md R-43 requires after earlier car-policy wiring drift.
+ */
+class IdleResumeWiringTest {
+
+    @Test
+    fun `Never policy reaches the display-only holder path`() {
+        val source = serviceSource()
+        val postConnect = source
+            .substringAfter("override fun onPostConnect")
+            .substringBefore("private suspend fun startLastBook")
+
+        assertTrue("AutoStartAction.None -> holdLastBook(current)" in postConnect)
+        assertTrue("current.setMediaItem(held.item, held.startPositionMs)" in source)
+    }
+
+    @Test
+    fun `held item is materialized before freshness may prepare or play it`() {
+        val source = serviceSource()
+        val play = source
+            .substringAfter("private suspend fun performFreshnessPlay")
+            .substringBefore("private suspend fun applyFreshnessPlan")
+
+        val materialize = play.indexOf("materializeHeldResume")
+        val freshness = play.indexOf("resumeFreshness.preparePlay")
+        assertTrue(materialize >= 0, "Play must recognize the metadata-only holder")
+        assertTrue(freshness > materialize, "freshness/prepare must see the fresh playable queue, not the holder")
+    }
+
+    @Test
+    fun `held item cannot be journaled as local playback`() {
+        val source = serviceSource()
+        val snapshot = source
+            .substringAfter("private fun positionSnapshot")
+            .substringBefore("private data class PositionSnapshot")
+
+        assertTrue("MediaItems.isResumePlaceholder(item)" in snapshot)
+        assertTrue("return null" in snapshot)
+    }
+
+    private fun serviceSource(): String =
+        File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt").readText()
+}
