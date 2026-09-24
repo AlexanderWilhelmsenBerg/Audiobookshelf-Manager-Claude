@@ -14,6 +14,7 @@ import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ApplyStartupModeUseCase
 import com.example.shelfplayer.domain.usecase.CleanUpDownloadsUseCase
+import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
 import com.example.shelfplayer.lock.ProcessLockWatcher
 import com.example.shelfplayer.playback.AutoLibrary
 import com.example.shelfplayer.sync.ProcessRealtimeSyncWatcher
@@ -103,6 +104,10 @@ class ShelfPlayerApplication :
     @Inject
     lateinit var auto: AutoLibrary
 
+    /** Issue #88 — hydrates server progress only when no local/cached startup resume candidate exists. */
+    @Inject
+    lateinit var syncAccount: SyncAccountUseCase
+
     /**
      * AUTH-005 — stamps the lock gate when the app leaves the foreground.
      *
@@ -139,9 +144,13 @@ class ShelfPlayerApplication :
         }
         applicationScope.launch {
             sessionRestorer.restoreActiveSession()
-            // PRODUCT_SPEC ROUTE-003 — after the session is restored, because arming a book needs a signed-in
-            // profile to open a session for. Does nothing at all in the default mode.
-            applyStartupMode(auto.lastPlayed()?.id)
+            // PRODUCT_SPEC ROUTE-003 / Issue #88 — a valid local remembered book stays authoritative. Only a
+            // cache miss pays for the cheap account reconcile that can hydrate another-device/server progress.
+            val lastPlayed = auto.lastPlayedAfter {
+                syncAccount()
+                Unit
+            }
+            applyStartupMode(lastPlayed?.id)
         }
         applicationScope.launch {
             sleepTimers.closeOrphanedSessions()
