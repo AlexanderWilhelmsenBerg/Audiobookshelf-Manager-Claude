@@ -2579,39 +2579,60 @@ class PlaybackService : MediaLibraryService() {
                 val from = (page * pageSize).coerceAtMost(all.size)
                 val to = (from + pageSize).coerceAtMost(all.size)
                 val returned = all.subList(from, to)
-                if (trace != null) {
-                    logAuto(
-                        "Android Auto children returned",
-                        trace,
-                        buildList {
-                            add(LogField.Public("parentKind", AutoLibrary.kindOf(parentId)))
-                            add(LogField.Identifier("parentId", parentId))
-                            add(LogField.Public("page", page))
-                            add(LogField.Public("pageSize", pageSize))
-                            add(LogField.Count("children", all.size))
-                            add(LogField.Count("returned", returned.size))
-                            add(
-                                LogField.Millis(
-                                    "callbackElapsed",
-                                    (clock.elapsed() - startedAt).inWholeMilliseconds.coerceAtLeast(0L),
-                                ),
-                            )
-                            addAll(entryPlayer)
-                        },
-                    )
-                    logAutoItems(
-                        trace = trace,
-                        callback = "onGetChildren",
-                        direction = "returned",
-                        items = returned,
-                        extraFields = listOf(
-                            LogField.Public("parentKind", AutoLibrary.kindOf(parentId)),
-                            LogField.Identifier("parentId", parentId),
-                        ),
-                    )
-                }
+                traceChildrenResult(
+                    trace = trace,
+                    parentId = parentId,
+                    page = page,
+                    pageSize = pageSize,
+                    allCount = all.size,
+                    returned = returned,
+                    entryPlayer = entryPlayer,
+                    startedAt = startedAt,
+                )
                 LibraryResult.ofItemList(ImmutableList.copyOf(returned), params)
             }
+        }
+
+        private fun traceChildrenResult(
+            trace: AutoTrace?,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            allCount: Int,
+            returned: List<MediaItem>,
+            entryPlayer: List<LogField>,
+            startedAt: Duration,
+        ) {
+            if (trace == null) return
+            val parentFields = listOf(
+                LogField.Public("parentKind", AutoLibrary.kindOf(parentId)),
+                LogField.Identifier("parentId", parentId),
+            )
+            logAuto(
+                "Android Auto children returned",
+                trace,
+                buildList {
+                    addAll(parentFields)
+                    add(LogField.Public("page", page))
+                    add(LogField.Public("pageSize", pageSize))
+                    add(LogField.Count("children", allCount))
+                    add(LogField.Count("returned", returned.size))
+                    add(
+                        LogField.Millis(
+                            "callbackElapsed",
+                            (clock.elapsed() - startedAt).inWholeMilliseconds.coerceAtLeast(0L),
+                        ),
+                    )
+                    addAll(entryPlayer)
+                },
+            )
+            logAutoItems(
+                trace = trace,
+                callback = "onGetChildren",
+                direction = "returned",
+                items = returned,
+                extraFields = parentFields,
+            )
         }
 
         override fun onGetItem(
