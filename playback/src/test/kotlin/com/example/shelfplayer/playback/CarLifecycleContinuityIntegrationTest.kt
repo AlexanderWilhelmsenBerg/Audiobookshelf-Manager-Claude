@@ -83,7 +83,6 @@ class CarLifecycleContinuityIntegrationTest {
                 headsetId = owner.headsetForCar(listOf(buds)),
                 currentGeneration = owner.currentGeneration,
                 explicitSelectionSequence = 0,
-                carConnected = true,
             )
 
             val focus = gate.onAudioFocusLoss(
@@ -92,7 +91,6 @@ class CarLifecycleContinuityIntegrationTest {
                 headsetId = buds.id,
                 currentGeneration = owner.currentGeneration,
                 explicitSelectionSequence = 0,
-                carConnected = true,
             )
             assertEquals(CarArrivalResumeGate.Phase.Departure, focus.phase)
 
@@ -125,6 +123,60 @@ class CarLifecycleContinuityIntegrationTest {
             assertEquals(buds.id, held)
             assertTrue(gate.consumeRecovery(target, owner.currentGeneration, held, 0).accepted)
         }
+    }
+
+    @Test
+    fun `projection departure authorizes recovery without a MediaSession disconnect`() = runBlocking {
+        val owner = playingOwner()
+        val gate = CarArrivalResumeGate()
+        gate.observePlayingHeadset(
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+        )
+
+        val focus = gate.onAudioFocusLoss(
+            at = 20.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = buds.id,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = true,
+        )
+        assertEquals(CarArrivalResumeGate.Status.Armed, focus.status)
+
+        // The physical projection edge is the boundary. No MediaSession onDisconnected is involved.
+        val target = requireNotNull(
+            gate.onCarDeparture(
+                departedAt = 22.seconds,
+                currentGeneration = owner.currentGeneration,
+                explicitSelectionSequence = 0,
+            ).target,
+        )
+        val outputs = MutableStateFlow(listOf(buds))
+        val selected = MutableStateFlow<String?>(null)
+        val held = CarArrivalRouteRecovery(200.milliseconds).secure(
+            target = target,
+            outputs = outputs,
+            selectedId = selected,
+            isStillEligible = { gate.isCurrent(target, owner.currentGeneration, 0) },
+        ) { id ->
+            selected.value = id
+            true
+        }
+
+        assertEquals(buds.id, held)
+        assertTrue(gate.consumeRecovery(target, owner.currentGeneration, held, 0).accepted)
+
+        // A much later legacy-controller disconnect cannot consume the already-resolved transition again.
+        val staleDisconnect = gate.onCarDeparture(
+            departedAt = 50.seconds,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+        )
+        assertEquals(CarArrivalResumeGate.Status.Rejected, staleDisconnect.status)
+        assertEquals(CarArrivalResumeGate.Reason.NoPendingFocusLoss, staleDisconnect.reason)
     }
 
     private fun playingOwner(): RouteHeardOwnership = RouteHeardOwnership().apply {
