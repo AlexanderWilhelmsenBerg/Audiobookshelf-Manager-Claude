@@ -2525,6 +2525,17 @@ class PlaybackService : MediaLibraryService() {
                 return Futures.immediateFuture(deniedItem(browser, "onGetLibraryRoot"))
             }
             val root = if (params?.isRecent == true) auto.recentRoot() else auto.root()
+            autoTraceFor(browser.packageName)?.let { trace ->
+                logAuto(
+                    "Android Auto library root returned",
+                    trace,
+                    buildList {
+                        add(LogField.Public("recent", params?.isRecent == true))
+                        addAll(AndroidAutoDiagnostics.playerFields(player))
+                        addAll(AndroidAutoDiagnostics.itemFields(root, prefix = "returned"))
+                    },
+                )
+            }
             return Futures.immediateFuture(LibraryResult.ofItem(root, params))
         }
 
@@ -2553,6 +2564,9 @@ class PlaybackService : MediaLibraryService() {
              * the same thing about the same object. This is the third place it has mattered.
              */
             val now = nowPlaying()
+            val trace = autoTraceFor(browser.packageName)
+            val entryPlayer = if (trace == null) emptyList() else AndroidAutoDiagnostics.playerFields(player)
+            val startedAt = clock.elapsed()
             return future {
                 if (!session.mayBrowse(browser)) return@future deniedList(browser, "onGetChildren")
                 val all = auto.children(parentId, now)
@@ -2564,7 +2578,39 @@ class PlaybackService : MediaLibraryService() {
                 )
                 val from = (page * pageSize).coerceAtMost(all.size)
                 val to = (from + pageSize).coerceAtMost(all.size)
-                LibraryResult.ofItemList(ImmutableList.copyOf(all.subList(from, to)), params)
+                val returned = all.subList(from, to)
+                if (trace != null) {
+                    logAuto(
+                        "Android Auto children returned",
+                        trace,
+                        buildList {
+                            add(LogField.Public("parentKind", AutoLibrary.kindOf(parentId)))
+                            add(LogField.Identifier("parentId", parentId))
+                            add(LogField.Public("page", page))
+                            add(LogField.Public("pageSize", pageSize))
+                            add(LogField.Count("children", all.size))
+                            add(LogField.Count("returned", returned.size))
+                            add(
+                                LogField.Millis(
+                                    "callbackElapsed",
+                                    (clock.elapsed() - startedAt).inWholeMilliseconds.coerceAtLeast(0L),
+                                ),
+                            )
+                            addAll(entryPlayer)
+                        },
+                    )
+                    logAutoItems(
+                        trace = trace,
+                        callback = "onGetChildren",
+                        direction = "returned",
+                        items = returned,
+                        extraFields = listOf(
+                            LogField.Public("parentKind", AutoLibrary.kindOf(parentId)),
+                            LogField.Identifier("parentId", parentId),
+                        ),
+                    )
+                }
+                LibraryResult.ofItemList(ImmutableList.copyOf(returned), params)
             }
         }
 
@@ -2574,9 +2620,32 @@ class PlaybackService : MediaLibraryService() {
             mediaId: String,
         ): ListenableFuture<LibraryResult<MediaItem>> {
             val now = nowPlaying()
+            val trace = autoTraceFor(browser.packageName)
+            val entryPlayer = if (trace == null) emptyList() else AndroidAutoDiagnostics.playerFields(player)
+            val startedAt = clock.elapsed()
             return future {
                 if (!session.mayBrowse(browser)) return@future deniedItem(browser, "onGetItem")
-                auto.item(mediaId, now)
+                val resolved = auto.item(mediaId, now)
+                if (trace != null) {
+                    logAuto(
+                        "Android Auto item lookup returned",
+                        trace,
+                        buildList {
+                            add(LogField.Public("askedKind", AutoLibrary.kindOf(mediaId)))
+                            add(LogField.Identifier("askedId", mediaId))
+                            add(LogField.Public("resolved", resolved != null))
+                            add(
+                                LogField.Millis(
+                                    "callbackElapsed",
+                                    (clock.elapsed() - startedAt).inWholeMilliseconds.coerceAtLeast(0L),
+                                ),
+                            )
+                            addAll(entryPlayer)
+                            addAll(AndroidAutoDiagnostics.itemFields(resolved, prefix = "returned"))
+                        },
+                    )
+                }
+                resolved
                     ?.let { item -> LibraryResult.ofItem(item, null) }
                     ?: LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
             }
