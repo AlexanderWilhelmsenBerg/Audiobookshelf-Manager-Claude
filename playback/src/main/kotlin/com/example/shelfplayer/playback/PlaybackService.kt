@@ -321,11 +321,7 @@ class PlaybackService : MediaLibraryService() {
     private var autoTraceSequence = 0L
     private var activeAutoTrace: AutoTrace? = null
 
-    private data class AutoTrace(
-        val id: Long,
-        val startedAt: Duration,
-        val source: String,
-    ) {
+    private data class AutoTrace(val id: Long, val startedAt: Duration, val source: String) {
         val correlationId: String get() = "auto-$id"
     }
 
@@ -3149,7 +3145,9 @@ class PlaybackService : MediaLibraryService() {
             )
             when (action) {
                 AutoStartAction.ArmAndPlay -> startLastBook(current, play = true, trace = trace)
+
                 AutoStartAction.Arm -> startLastBook(current, play = false, trace = trace)
+
                 AutoStartAction.Suppressed ->
                     logAuto("A car connected while the account was locked; nothing started", trace)
 
