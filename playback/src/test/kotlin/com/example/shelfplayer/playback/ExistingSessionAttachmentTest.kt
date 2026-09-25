@@ -218,8 +218,8 @@ class ExistingSessionAttachmentTest {
         }
 
         val mainLooper = shadowOf(Looper.getMainLooper())
-        val deadline = System.nanoTime() + MEDIA3_CONNECTION_TIMEOUT_NANOS
-        while (!task.isDone && System.nanoTime() < deadline) {
+        var pollsRemaining = MEDIA3_CONNECTION_MAX_POLLS
+        while (!task.isDone && pollsRemaining-- > 0) {
             mainLooper.idle()
             // Give the background connection thread a scheduling opportunity on constrained CI profiles.
             LockSupport.parkNanos(MEDIA3_CONNECTION_POLL_NANOS)
@@ -245,8 +245,8 @@ class ExistingSessionAttachmentTest {
 
     private companion object {
         const val MAX_MAIN_LOOPER_PUMPS = 10_000
+        const val MEDIA3_CONNECTION_MAX_POLLS = 5_000
         const val MEDIA3_CONNECTION_POLL_NANOS = 1_000_000L
-        const val MEDIA3_CONNECTION_TIMEOUT_NANOS = 5_000_000_000L
         val BOOK = LibraryItemId("tidewatch")
     }
 }
