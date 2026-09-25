@@ -11,6 +11,7 @@ ROOT = Path(".")
 DIAG = Path("ci-diagnostics")
 QUICK_LOG = DIAG / "gradle-quick.log"
 GRADLE_LOG = DIAG / "gradle-verify.log"
+SOURCE_DETEKT_LOG = DIAG / "gradle-source-detekt.log"
 SUMMARY = DIAG / "summary.md"
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -172,7 +173,13 @@ def write_status_description(description: str) -> None:
 def main() -> int:
     DIAG.mkdir(parents=True, exist_ok=True)
     gradle_log = "\n".join(
-        text for text in (read_text(QUICK_LOG), read_text(GRADLE_LOG)) if text
+        text
+        for text in (
+            read_text(QUICK_LOG),
+            read_text(GRADLE_LOG),
+            read_text(SOURCE_DETEKT_LOG),
+        )
+        if text
     )
 
     failed_tasks = unique(re.findall(r"Execution failed for task '([^']+)'", gradle_log))
@@ -202,6 +209,8 @@ def main() -> int:
     quick_exit = os.environ.get("QUICK_EXIT", "")
     verify = os.environ.get("VERIFY_OUTCOME", "")
     verify_exit = os.environ.get("VERIFY_EXIT", "")
+    source_detekt = os.environ.get("SOURCE_DETEKT_OUTCOME", "")
+    source_detekt_exit = os.environ.get("SOURCE_DETEKT_EXIT", "")
     schema = os.environ.get("SCHEMA_OUTCOME", "")
     dependencies = os.environ.get("DEPENDENCY_OUTCOME", "")
     target_label = os.environ.get("TARGET_LABEL") or "branch verification"
@@ -267,6 +276,7 @@ def main() -> int:
         verify_row = ("verifyDebug", "skipped", "not required for Quick")
         test_row = ("Unit tests", "skipped", "not required for Quick")
         detekt_row = ("detekt", "skipped", "not required for Quick")
+        source_detekt_row = ("Source-only Detekt fallback", "skipped", "not required for Quick")
         lint_row = ("Android Lint", "skipped", "not required for Quick")
         schema_row = ("Room schema", "skipped", "generated/current check belongs to Standard")
         dependency_row = ("Dependency resolution", "skipped", "not required for Quick")
@@ -274,6 +284,15 @@ def main() -> int:
         verify_row = ("verifyDebug", verify, "exit " + (verify_exit or "n/a"))
         test_row = ("Unit tests", test_state, test_details)
         detekt_row = ("detekt", detekt_state, f"{len(detekt_findings)} finding(s)")
+        source_detekt_row = (
+            "Source-only Detekt fallback",
+            "skipped" if source_detekt in {"", "skipped"} else "reported",
+            (
+                "diagnostic-only; not the merge gate"
+                if source_detekt in {"", "skipped"}
+                else f"diagnostic-only; exit {source_detekt_exit or 'n/a'}; findings are included below"
+            ),
+        )
         lint_row = (
             "Android Lint",
             lint_state,
@@ -293,6 +312,7 @@ def main() -> int:
         test_row,
         ("ktlint", ktlint_state, f"{len(ktlint_findings)} finding(s)"),
         detekt_row,
+        source_detekt_row,
         lint_row,
         schema_row,
         dependency_row,
@@ -328,7 +348,19 @@ def main() -> int:
                 "### Coverage completeness",
                 "- Compilation failed, so Gradle could not execute every downstream task that depends on compiled sources.",
                 "- Test totals above are partial evidence, not proof that the complete unit-test suite ran.",
-                "- Independent ktlint, Detekt, Android Lint, schema, and dependency results are still reported when produced.",
+                "- Type-resolving Detekt also depends on compiled classpaths and can be blocked by compilation.",
+                "- The source-only Detekt fallback is diagnostic-only and is used to surface source rules that do not need type resolution.",
+                "- Independent ktlint, Android Lint, schema, and dependency results are still reported when produced.",
+            ]
+        )
+
+    if depth != "quick" and quick != "success" and verify not in {"", "skipped"}:
+        lines.extend(
+            [
+                "",
+                "### Deep diagnostics after Quick failure",
+                "- Quick KtLint remains a required gate, but Standard/Intensive verification continued deliberately.",
+                "- This lets one failed run report independent compiler, Detekt, Lint and test evidence instead of revealing them one rerun at a time.",
             ]
         )
 
@@ -337,7 +369,7 @@ def main() -> int:
             [
                 "",
                 "### Failure diagnostics",
-                "- ci-diagnostics: summary plus full verifyDebug/dependency logs.",
+                "- ci-diagnostics: summary plus full Quick, verifyDebug, source-only Detekt and dependency logs when produced.",
                 "- quality-reports: packaged ktlint, Detekt, Android Lint and test reports when Quick or deep verification fails.",
                 "- room-schemas: uploaded only when the Room schema check fails.",
                 "- dependency-report: uploaded only when dependency resolution fails.",
