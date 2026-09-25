@@ -544,7 +544,10 @@ jobs:
 
       - name: Verify debug once without assembling APKs
         id: verify_debug
-        if: ${{ steps.setup.outcome == 'success' && steps.quick_gate.outcome == 'success' && needs.identity.outputs.depth != 'quick' }}
+        # Standard/Intensive keep running after a Quick formatting failure so one CI attempt
+        # exposes every independent compiler/static/test failure that Gradle can still reach. Quick
+        # remains a required final-gate result; this only improves failure diagnostics.
+        if: ${{ steps.setup.outcome == 'success' && needs.identity.outputs.depth != 'quick' }}
         continue-on-error: true
         env:
           BUILD_CHANGED: ${{ needs.preflight.outputs.build_changed }}
@@ -566,6 +569,26 @@ jobs:
 
           set +e
           env -u FORGEJO_TOKEN -u GITHUB_TOKEN             ./gradlew verifyDebug --continue -x assembleDebug "${extra_args[@]}" --max-workers="$GRADLE_MAX_WORKERS"               -Pshelfplayer.warningsAsErrors=true 2>&1             | tee ci-diagnostics/gradle-verify.log
+          status="${PIPESTATUS[0]}"
+          set -e
+
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Source-only Detekt fallback after failed deep verification
+        id: source_detekt
+        if: ${{ always() && needs.identity.outputs.depth != 'quick' && steps.setup.outcome == 'success' && steps.verify_debug.outcome != 'success' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p ci-diagnostics
+
+          # The canonical gate uses type-resolving detektDebug/detektMain tasks, which require
+          # successfully compiled classpaths. When compilation fails those tasks can be blocked
+          # before source-level findings (LongParameterList, SpreadOperator, etc.) are reported.
+          # Plain Detekt is diagnostic-only here: it deliberately does NOT replace the type-resolving gate.
+          set +e
+          env -u FORGEJO_TOKEN -u GITHUB_TOKEN             ./gradlew detekt --continue --max-workers="$GRADLE_MAX_WORKERS"               -Pshelfplayer.warningsAsErrors=true 2>&1             | tee ci-diagnostics/gradle-source-detekt.log
           status="${PIPESTATUS[0]}"
           set -e
 
@@ -617,6 +640,8 @@ jobs:
           QUICK_EXIT: ${{ steps.quick_gate.outputs.exit_code }}
           VERIFY_OUTCOME: ${{ steps.verify_debug.outcome }}
           VERIFY_EXIT: ${{ steps.verify_debug.outputs.exit_code }}
+          SOURCE_DETEKT_OUTCOME: ${{ steps.source_detekt.outcome }}
+          SOURCE_DETEKT_EXIT: ${{ steps.source_detekt.outputs.exit_code }}
           SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
           DEPENDENCY_OUTCOME: ${{ steps.dependencies.outcome }}
         run: |
@@ -730,6 +755,7 @@ jobs:
           path: |
             ci-diagnostics/gradle-quick.log
             ci-diagnostics/gradle-verify.log
+            ci-diagnostics/gradle-source-detekt.log
           if-no-files-found: ignore
           retention-days: 14
 
