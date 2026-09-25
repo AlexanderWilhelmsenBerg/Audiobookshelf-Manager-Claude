@@ -10,7 +10,9 @@ import androidx.core.content.ContextCompat
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.common.log.LogCategory
+import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.LogField
+import com.example.shelfplayer.core.common.log.LogLevel
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.debug
 import com.example.shelfplayer.core.common.log.info
@@ -171,18 +173,21 @@ internal class AndroidAutoProjectionMonitor @Inject constructor(
             val startedAt = clock.elapsed()
             val result = withContext(ioDispatcher) { readState() }
             val elapsed = (clock.elapsed() - startedAt).inWholeMilliseconds.coerceAtLeast(0L)
-            logger.info(
-                LogCategory.AndroidAuto,
-                "Android Auto projection state read",
-                *buildList {
-                    add(LogField.Public("trigger", trigger))
-                    add(LogField.Public("state", result.state.name))
-                    result.raw?.let { add(LogField.Public("raw", it)) }
-                    add(LogField.Public("reason", result.reason))
-                    add(LogField.Public("providerVisible", result.providerVisible))
-                    result.failureClass?.let { add(LogField.Public("failure", it)) }
-                    add(LogField.Millis("elapsed", elapsed))
-                }.toTypedArray(),
+            logger.log(
+                LogEvent(
+                    level = LogLevel.Info,
+                    category = LogCategory.AndroidAuto,
+                    message = "Android Auto projection state read",
+                    fields = buildList {
+                        add(LogField.Public("trigger", trigger))
+                        add(LogField.Public("state", result.state.name))
+                        result.raw?.let { add(LogField.Public("raw", it)) }
+                        add(LogField.Public("reason", result.reason))
+                        add(LogField.Public("providerVisible", result.providerVisible))
+                        result.failureClass?.let { add(LogField.Public("failure", it)) }
+                        add(LogField.Millis("elapsed", elapsed))
+                    },
+                ),
             )
 
             val previous = lastState
