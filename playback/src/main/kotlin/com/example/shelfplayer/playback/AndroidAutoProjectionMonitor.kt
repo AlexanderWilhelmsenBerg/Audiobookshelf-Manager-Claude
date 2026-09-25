@@ -215,7 +215,9 @@ internal class AndroidAutoProjectionMonitor @Inject constructor(
                 val column = cursor.getColumnIndex(CAR_CONNECTION_STATE)
                 when {
                     column < 0 -> ReadResult(State.Unknown, null, "missing-column", visible)
+
                     !cursor.moveToFirst() -> ReadResult(State.Unknown, null, "empty-cursor", visible)
+
                     else -> {
                         val raw = cursor.getInt(column)
                         ReadResult(
