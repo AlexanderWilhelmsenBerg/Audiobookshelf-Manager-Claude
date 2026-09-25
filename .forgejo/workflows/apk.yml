@@ -28,14 +28,10 @@ on:
         default: main
         options:
           # BEGIN GENERATED BOOKWAVE BRANCH OPTIONS
-          - main
-          - mcp/issue-77-sleep-timer-grace
-          - mcp/issue-75-mini-player-session-attach
-          - mcp/issue-73-webview-diagnostics
-          - mcp/issue-73-ktlint-probe
-          - mcp/issues-34-35-auto-evidence
-          - mcp/issue-36-car-arrival-route-flap
-          - mcp/issue-33-end-boundary-mutation
+          - "main"
+          - "mcp/issue-36-car-arrival-route-flap"
+          - "mcp/issue-77-sleep-timer-grace-backup-20260923"
+          - "mcp/issues-36-88-android-auto-diagnostics"
           # END GENERATED BOOKWAVE BRANCH OPTIONS
       variant:
         description: 'Which build to produce'
