@@ -2612,11 +2612,7 @@ class PlaybackService : MediaLibraryService() {
             val startedAt: Duration,
         )
 
-        private fun traceChildrenResult(
-            trace: AutoTrace?,
-            context: ChildrenTraceContext,
-            returned: List<MediaItem>,
-        ) {
+        private fun traceChildrenResult(trace: AutoTrace?, context: ChildrenTraceContext, returned: List<MediaItem>) {
             if (trace == null) return
             val parentFields = listOf(
                 LogField.Public("parentKind", AutoLibrary.kindOf(context.parentId)),
