@@ -1491,7 +1491,14 @@ class PlaybackService : MediaLibraryService() {
             LogField.Public("onCar", state.onCar),
             LogField.Public("onHeadset", state.onHeadset),
         )
-        logger.info(LogCategory.Playback, "The car output actions were recomputed", *fields.toTypedArray())
+        logger.log(
+            LogEvent(
+                level = LogLevel.Info,
+                category = LogCategory.Playback,
+                message = "The car output actions were recomputed",
+                fields = fields,
+            ),
+        )
         if (activeAutoTrace != null) {
             logAuto(
                 "The car output actions were recomputed",
@@ -2582,49 +2589,55 @@ class PlaybackService : MediaLibraryService() {
                 val returned = all.subList(from, to)
                 traceChildrenResult(
                     trace = trace,
-                    parentId = parentId,
-                    page = page,
-                    pageSize = pageSize,
-                    allCount = all.size,
+                    context = ChildrenTraceContext(
+                        parentId = parentId,
+                        page = page,
+                        pageSize = pageSize,
+                        allCount = all.size,
+                        entryPlayer = entryPlayer,
+                        startedAt = startedAt,
+                    ),
                     returned = returned,
-                    entryPlayer = entryPlayer,
-                    startedAt = startedAt,
                 )
                 LibraryResult.ofItemList(ImmutableList.copyOf(returned), params)
             }
         }
 
+        private data class ChildrenTraceContext(
+            val parentId: String,
+            val page: Int,
+            val pageSize: Int,
+            val allCount: Int,
+            val entryPlayer: List<LogField>,
+            val startedAt: Duration,
+        )
+
         private fun traceChildrenResult(
             trace: AutoTrace?,
-            parentId: String,
-            page: Int,
-            pageSize: Int,
-            allCount: Int,
+            context: ChildrenTraceContext,
             returned: List<MediaItem>,
-            entryPlayer: List<LogField>,
-            startedAt: Duration,
         ) {
             if (trace == null) return
             val parentFields = listOf(
-                LogField.Public("parentKind", AutoLibrary.kindOf(parentId)),
-                LogField.Identifier("parentId", parentId),
+                LogField.Public("parentKind", AutoLibrary.kindOf(context.parentId)),
+                LogField.Identifier("parentId", context.parentId),
             )
             logAuto(
                 "Android Auto children returned",
                 trace,
                 buildList {
                     addAll(parentFields)
-                    add(LogField.Public("page", page))
-                    add(LogField.Public("pageSize", pageSize))
-                    add(LogField.Count("children", allCount))
+                    add(LogField.Public("page", context.page))
+                    add(LogField.Public("pageSize", context.pageSize))
+                    add(LogField.Count("children", context.allCount))
                     add(LogField.Count("returned", returned.size))
                     add(
                         LogField.Millis(
                             "callbackElapsed",
-                            (clock.elapsed() - startedAt).inWholeMilliseconds.coerceAtLeast(0L),
+                            (clock.elapsed() - context.startedAt).inWholeMilliseconds.coerceAtLeast(0L),
                         ),
                     )
-                    addAll(entryPlayer)
+                    addAll(context.entryPlayer)
                 },
             )
             logAutoItems(
