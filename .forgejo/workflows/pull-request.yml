@@ -53,7 +53,7 @@ on:
       profiling:
         description: 'Retain detailed CI telemetry for this run'
         type: boolean
-        default: false
+        default: true
       build_apk:
         description: 'Build and upload a debug APK only after Standard/Intensive checks pass'
         type: boolean
