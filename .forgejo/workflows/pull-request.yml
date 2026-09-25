@@ -524,8 +524,9 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$FORGEJO_PATH"
           echo "$HOME/.local/bin" >> "$FORGEJO_PATH"
 
-      # Quick is deliberately only formatting evidence. A failure here prevents the expensive
-      # compile/test/Lint/Kover graph from starting.
+      # Quick is deliberately formatting evidence. Quick-only PR events stop here, while a manually
+      # selected Standard/Intensive run continues into deep verification even if Quick fails so the same
+      # run can expose independent compiler/static/test failures instead of serially masking them.
       - name: Quick KtLint
         id: quick_gate
         if: ${{ steps.setup.outcome == 'success' }}
