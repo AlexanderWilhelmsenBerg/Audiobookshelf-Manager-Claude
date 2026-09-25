@@ -1751,7 +1751,7 @@ class PlaybackService : MediaLibraryService() {
         LogField.Public("sessionEstablished", carContinuitySessionEstablished),
         LogField.Public("carBound", carConnections.isConnected()),
         LogField.Public("continuityPlayAwaiting", continuityPlayAwaiting != null),
-        LogField.Public("generation", routeOwnership.currentGeneration),
+        LogField.Public("generation", routeOwnership.currentGeneration?.toString() ?: "none"),
         LogField.Public("selectionSequence", currentExplicitSelectionSequence()),
     )
 
