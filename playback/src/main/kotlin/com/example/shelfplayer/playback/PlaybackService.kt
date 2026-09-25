@@ -325,6 +325,15 @@ class PlaybackService : MediaLibraryService() {
         val correlationId: String get() = "auto-$id"
     }
 
+    private data class ChildrenTraceContext(
+        val parentId: String,
+        val page: Int,
+        val pageSize: Int,
+        val allCount: Int,
+        val entryPlayer: List<LogField>,
+        val startedAt: Duration,
+    )
+
     /** PRODUCT_SPEC PLAY-001 — how many times a failing stream may be re-prepared before the user is told. */
     private val recovery = PlaybackRecovery()
 
@@ -2602,15 +2611,6 @@ class PlaybackService : MediaLibraryService() {
                 LibraryResult.ofItemList(ImmutableList.copyOf(returned), params)
             }
         }
-
-        private data class ChildrenTraceContext(
-            val parentId: String,
-            val page: Int,
-            val pageSize: Int,
-            val allCount: Int,
-            val entryPlayer: List<LogField>,
-            val startedAt: Duration,
-        )
 
         private fun traceChildrenResult(trace: AutoTrace?, context: ChildrenTraceContext, returned: List<MediaItem>) {
             if (trace == null) return
