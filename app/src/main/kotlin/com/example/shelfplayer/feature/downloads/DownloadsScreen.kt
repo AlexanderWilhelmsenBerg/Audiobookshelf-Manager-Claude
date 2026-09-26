@@ -52,6 +52,7 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.layout.centredListPadding
 import com.example.shelfplayer.core.designsystem.layout.windowWidth
+import com.example.shelfplayer.core.model.download.DownloadStorageState
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.ui.glass.playerChromeClearance
 import java.util.Locale
@@ -66,11 +67,13 @@ fun DownloadsRoute(
     val message by viewModel.message.collectAsStateWithLifecycle()
     val volumes by viewModel.volumes.collectAsStateWithLifecycle()
     val selectedVolume by viewModel.selectedVolume.collectAsStateWithLifecycle()
+    val selectedVolumeUnavailable by viewModel.selectedVolumeUnavailable.collectAsStateWithLifecycle()
     DownloadsScreen(
         uiState = uiState,
         message = message,
         volumes = volumes,
         selectedVolume = selectedVolume,
+        selectedVolumeUnavailable = selectedVolumeUnavailable,
         onVolumeChosen = viewModel::onVolumeChosen,
         onMessageShown = viewModel::onMessageShown,
         onRemove = viewModel::onRemove,
@@ -126,6 +129,7 @@ fun DownloadsScreen(
     onMessageShown: () -> Unit = {},
     volumes: List<StorageVolumeOption> = emptyList(),
     selectedVolume: String = StorageVolumeOption.INTERNAL_UUID,
+    selectedVolumeUnavailable: Boolean = false,
     onVolumeChosen: (String) -> Unit = {},
 ) {
     var confirming by rememberSaveable { mutableStateOf<String?>(null) }
@@ -204,8 +208,16 @@ fun DownloadsScreen(
                         selected = selectedVolume,
                         onChosen = onVolumeChosen,
                     )
-                    HorizontalDivider()
                 }
+                if (selectedVolumeUnavailable) {
+                    Text(
+                        text = stringResource(R.string.downloads_location_unavailable_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+                if (volumes.size > 1 || selectedVolumeUnavailable) HorizontalDivider()
             }
             sections.forEach { (sectionTitle, rows) ->
                 if (rows.isNotEmpty()) {
@@ -359,8 +371,13 @@ private fun DownloadRowItem(
                     pluralStringResource(R.plurals.downloads_files, row.fileCount, row.fileCount),
                     // BW-DL-02 / #107 — a visible failed row can finally say why. Title-hidden rows have
                     // this field redacted in the ViewModel and therefore keep the generic incomplete copy.
-                    when (row.recoveryState) {
-                        com.example.shelfplayer.domain.download.DownloadRecoveryState.Complete -> null
+                    when {
+                        row.storageState == DownloadStorageState.Unavailable ->
+                            stringResource(R.string.downloads_storage_unavailable)
+                        row.storageState == DownloadStorageState.Unknown && row.isComplete ->
+                            stringResource(R.string.downloads_storage_unknown)
+                        else -> when (row.recoveryState) {
+                            com.example.shelfplayer.domain.download.DownloadRecoveryState.Complete -> null
                         com.example.shelfplayer.domain.download.DownloadRecoveryState.Paused ->
                             stringResource(R.string.downloads_paused)
                         com.example.shelfplayer.domain.download.DownloadRecoveryState.Queued ->
@@ -371,8 +388,9 @@ private fun DownloadRowItem(
                             stringResource(R.string.downloads_waiting)
                         com.example.shelfplayer.domain.download.DownloadRecoveryState.Retrying ->
                             stringResource(R.string.downloads_retrying)
-                        com.example.shelfplayer.domain.download.DownloadRecoveryState.Failed ->
-                            row.failureSummary ?: stringResource(R.string.downloads_failed)
+                            com.example.shelfplayer.domain.download.DownloadRecoveryState.Failed ->
+                                row.failureSummary ?: stringResource(R.string.downloads_failed)
+                        }
                     },
                 ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
@@ -412,10 +430,12 @@ private fun DownloadRowItem(
                 }
             }
         }
-        DownloadRecoveryActionButton(
-            recoveryState = row.recoveryState,
-            onClick = onRecoveryAction,
-        )
+        if (row.storageState != DownloadStorageState.Unavailable) {
+            DownloadRecoveryActionButton(
+                recoveryState = row.recoveryState,
+                onClick = onRecoveryAction,
+            )
+        }
         IconToggleButton(checked = row.isPinned, onCheckedChange = onPinnedChanged) {
             Icon(
                 imageVector = Icons.Filled.PushPin,
