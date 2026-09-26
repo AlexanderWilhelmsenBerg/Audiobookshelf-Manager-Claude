@@ -98,10 +98,14 @@ sealed interface AppError {
         override val isRetryable: Boolean = false
     }
 
-    /** Local storage failed: no space, unreadable file, or an unwritable directory. */
-    data class Storage(override val summary: String, val freeBytes: Long? = null) : AppError {
+    /** Local storage failed: no space, unreadable file, an unavailable volume, or an unwritable directory. */
+    data class Storage(
+        override val summary: String,
+        val freeBytes: Long? = null,
+        val temporarilyUnavailable: Boolean = false,
+    ) : AppError {
         override val code: String = "storage"
-        override val isRetryable: Boolean = false
+        override val isRetryable: Boolean = temporarilyUnavailable
     }
 
     /** A download job failed (PRODUCT_SPEC DL-001/DL-002). */
