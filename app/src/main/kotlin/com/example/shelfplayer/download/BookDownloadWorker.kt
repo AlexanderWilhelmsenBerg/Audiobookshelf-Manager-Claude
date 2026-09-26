@@ -13,10 +13,10 @@ import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.model.AppResult
-import com.example.shelfplayer.core.model.download.DownloadProgress
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.download.DownloadProgress
 import com.example.shelfplayer.data.downloads.BookDownloader
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -90,11 +90,7 @@ class BookDownloadWorker @AssistedInject constructor(
         setForeground(foregroundInfo(snapshot, serverId, itemId))
     }
 
-    private fun foregroundInfo(
-        snapshot: DownloadProgress,
-        serverId: ServerId,
-        itemId: LibraryItemId,
-    ): ForegroundInfo {
+    private fun foregroundInfo(snapshot: DownloadProgress, serverId: ServerId, itemId: LibraryItemId): ForegroundInfo {
         val notification = notifications.notification(
             serverId = serverId,
             itemId = itemId,
