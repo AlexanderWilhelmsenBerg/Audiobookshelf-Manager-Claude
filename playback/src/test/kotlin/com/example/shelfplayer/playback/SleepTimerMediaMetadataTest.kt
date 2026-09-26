@@ -70,11 +70,8 @@ class SleepTimerMediaMetadataTest {
         assertEquals("0:02", SleepTimerMediaMetadata.countdownLabel(1_001.milliseconds))
     }
 
-    private fun item(
-        title: String?,
-        displayTitle: String? = null,
-        artist: String? = null,
-    ): MediaItem = MediaItem.Builder()
+    private fun item(title: String?, displayTitle: String? = null, artist: String? = null): MediaItem =
+        MediaItem.Builder()
         .setMediaId("book-a")
         .setUri("https://example.invalid/book.m4b")
         .setMediaMetadata(
