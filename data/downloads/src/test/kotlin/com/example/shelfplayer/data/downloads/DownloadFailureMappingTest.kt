@@ -44,6 +44,7 @@ class DownloadFailureMappingTest {
         repository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
             storage = DownloadStorage(context) { listOf(context.filesDir) },
+            copyLocks = DownloadCopyLocks(),
             clock = TestAppClock(),
             ioDispatcher = UnconfinedTestDispatcher(),
         )
