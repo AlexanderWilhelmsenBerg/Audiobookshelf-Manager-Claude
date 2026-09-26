@@ -36,6 +36,20 @@ class DownloadBookUseCase @Inject constructor(
             )
         }
 
+        val existing = downloads.observe(profile.serverId, bookId).first()
+
+        // PD-003 — another profile may already have the complete physical copy. Claim that copy immediately:
+        // no asset lookup, free-space gate or WorkManager job is needed because no bytes have to move.
+        if (existing?.isComplete == true) {
+            if (profile.id in existing.requestedBy) return AppResult.Success(Unit)
+            return when (val claimed = downloads.request(profile.serverId, bookId, profile.id, existing.files)) {
+                is AppResult.Success -> AppResult.Success(Unit)
+                is AppResult.Failure -> AppResult.Failure(claimed.error)
+            }
+        }
+
+        if (isAutomatic && existing?.state == DownloadState.Paused) return AppResult.Success(Unit)
+
         val planned = assets.assetsFor(profile.id, bookId)
         if (planned.isFailure()) return AppResult.Failure(planned.error)
         val book = (planned as AppResult.Success).value
@@ -52,9 +66,6 @@ class DownloadBookUseCase @Inject constructor(
                 AppError.Storage(summary = "There is not enough space for this book.", freeBytes = free),
             )
         }
-
-        val existing = downloads.observe(profile.serverId, bookId).first()
-        if (isAutomatic && existing?.state == DownloadState.Paused) return AppResult.Success(Unit)
 
         val requested = downloads.request(profile.serverId, bookId, profile.id, book.files)
         if (requested.isFailure()) return AppResult.Failure(requested.error)
