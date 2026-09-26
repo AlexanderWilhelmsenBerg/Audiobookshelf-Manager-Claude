@@ -29,6 +29,7 @@ import com.example.shelfplayer.domain.download.BookAssets
 import com.example.shelfplayer.domain.download.DownloadExecutionEvidence
 import com.example.shelfplayer.domain.download.DownloadExecutionKey
 import com.example.shelfplayer.domain.download.DownloadExecutionObserver
+import com.example.shelfplayer.domain.download.DownloadExecutionSnapshot
 import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.download.DownloadRecoveryState
 import com.example.shelfplayer.domain.download.DownloadScheduler
@@ -406,15 +407,17 @@ class DownloadsViewModelTest {
     )
 
     private class FakeExecutionObserver : DownloadExecutionObserver {
-        private val evidence = MutableStateFlow<Map<DownloadExecutionKey, DownloadExecutionEvidence>>(emptyMap())
+        private val evidence = MutableStateFlow<Map<DownloadExecutionKey, DownloadExecutionSnapshot>>(emptyMap())
 
         override fun observe(
             keys: Set<DownloadExecutionKey>,
-        ): Flow<Map<DownloadExecutionKey, DownloadExecutionEvidence>> =
+        ): Flow<Map<DownloadExecutionKey, DownloadExecutionSnapshot>> =
             evidence.map { current -> current.filterKeys(keys::contains) }
 
         fun emit(book: OfflineBook, state: DownloadExecutionEvidence) {
-            evidence.value = mapOf(DownloadExecutionKey(book.serverId, book.itemId) to state)
+            evidence.value = mapOf(
+                DownloadExecutionKey(book.serverId, book.itemId) to DownloadExecutionSnapshot(state),
+            )
         }
     }
 
