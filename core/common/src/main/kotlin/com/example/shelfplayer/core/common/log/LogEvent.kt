@@ -31,6 +31,7 @@ enum class LogCategory {
     Download,
     Network,
     Playback,
+    AndroidAuto,
     Management,
     Settings,
     Sync,

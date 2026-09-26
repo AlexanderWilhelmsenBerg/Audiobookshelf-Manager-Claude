@@ -251,7 +251,15 @@ private fun FilterChipRow(
             FilterChip(
                 selected = option in selected,
                 onClick = { onToggle(option) },
-                label = { Text(text = option) },
+                label = {
+                    Text(
+                        text = if (option == "AndroidAuto") {
+                            stringResource(R.string.event_log_filter_android_auto)
+                        } else {
+                            option
+                        },
+                    )
+                },
             )
         }
     }

@@ -21,6 +21,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 import java.util.concurrent.FutureTask
+import java.util.concurrent.locks.LockSupport
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -217,10 +218,11 @@ class ExistingSessionAttachmentTest {
         }
 
         val mainLooper = shadowOf(Looper.getMainLooper())
-        var pumpsRemaining = MAX_MAIN_LOOPER_PUMPS
-        while (!task.isDone && pumpsRemaining-- > 0) {
+        var pollsRemaining = MEDIA3_CONNECTION_MAX_POLLS
+        while (!task.isDone && pollsRemaining-- > 0) {
             mainLooper.idle()
-            Thread.yield()
+            // Give the background connection thread a scheduling opportunity on constrained CI profiles.
+            LockSupport.parkNanos(MEDIA3_CONNECTION_POLL_NANOS)
         }
         if (!task.isDone) {
             task.cancel(true)
@@ -243,6 +245,8 @@ class ExistingSessionAttachmentTest {
 
     private companion object {
         const val MAX_MAIN_LOOPER_PUMPS = 10_000
+        const val MEDIA3_CONNECTION_MAX_POLLS = 5_000
+        const val MEDIA3_CONNECTION_POLL_NANOS = 1_000_000L
         val BOOK = LibraryItemId("tidewatch")
     }
 }

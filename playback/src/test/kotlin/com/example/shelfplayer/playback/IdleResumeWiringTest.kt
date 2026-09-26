@@ -19,7 +19,7 @@ class IdleResumeWiringTest {
             .substringAfter("override fun onPostConnect")
             .substringBefore("private suspend fun startLastBook")
 
-        assertTrue("AutoStartAction.None -> holdLastBook(current)" in postConnect)
+        assertTrue("AutoStartAction.None -> holdLastBook(current, trace)" in postConnect)
         assertTrue("current.setMediaItem(held.item, held.startPositionMs)" in source)
     }
 
