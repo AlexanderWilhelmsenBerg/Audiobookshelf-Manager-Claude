@@ -41,6 +41,7 @@ import javax.inject.Singleton
 class DefaultDownloadRepository @Inject constructor(
     private val downloadDao: DownloadDao,
     private val storage: DownloadStorage,
+    private val copyLocks: DownloadCopyLocks,
     private val clock: AppClock,
     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) : DownloadRepository {
@@ -65,40 +66,42 @@ class DefaultDownloadRepository @Inject constructor(
         itemId: LibraryItemId,
         profileId: ProfileId,
         files: List<OfflineFile>,
-    ): AppResult<OfflineBook> = io {
-        val key = keyOf(serverId, itemId)
-        val now = clock.now()
-        val existing = downloadDao.find(key)
+    ): AppResult<OfflineBook> = copyLocks.withLock(serverId, itemId) {
+        io {
+            val key = keyOf(serverId, itemId)
+            val now = clock.now()
+            val existing = downloadDao.find(key)
 
-        // A book already here keeps its manifest untouched: this is the shared-copy case, and rewriting the
-        // rows would reset a transfer that may be running. Only the claim is new.
-        if (existing == null) {
-            downloadDao.upsertBook(
-                DownloadedBookEntity(
+            // A book already here keeps its manifest untouched: this is the shared-copy case, and rewriting the
+            // rows would reset a transfer that may be running. Only the claim is new.
+            if (existing == null) {
+                downloadDao.upsertBook(
+                    DownloadedBookEntity(
+                        bookKey = key,
+                        serverId = serverId.value,
+                        remoteItemId = itemId.value,
+                        state = DownloadState.Queued.name,
+                        storageTreeUri = null,
+                        storageVolumeUuid = storage.destinationVolumeUuid(),
+                        coverUri = null,
+                        failureSummary = null,
+                        createdAt = now.toEpochMilli(),
+                        updatedAt = now.toEpochMilli(),
+                    ),
+                )
+                downloadDao.upsertFiles(files.map { file -> DownloadMappers.toEntity(key, file) })
+            }
+
+            downloadDao.addRequest(
+                DownloadRequestEntity(
                     bookKey = key,
-                    serverId = serverId.value,
-                    remoteItemId = itemId.value,
-                    state = DownloadState.Queued.name,
-                    storageTreeUri = null,
-                    storageVolumeUuid = storage.destinationVolumeUuid(),
-                    coverUri = null,
-                    failureSummary = null,
-                    createdAt = now.toEpochMilli(),
-                    updatedAt = now.toEpochMilli(),
+                    profileId = profileId.value,
+                    requestedAt = now.toEpochMilli(),
+                    isPinned = false,
                 ),
             )
-            downloadDao.upsertFiles(files.map { file -> DownloadMappers.toEntity(key, file) })
+            requireStored(key)
         }
-
-        downloadDao.addRequest(
-            DownloadRequestEntity(
-                bookKey = key,
-                profileId = profileId.value,
-                requestedAt = now.toEpochMilli(),
-                isPinned = false,
-            ),
-        )
-        requireStored(key)
     }
 
     override suspend fun updateFile(serverId: ServerId, itemId: LibraryItemId, file: OfflineFile): AppResult<Unit> =
