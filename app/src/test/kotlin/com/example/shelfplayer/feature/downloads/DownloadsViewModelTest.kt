@@ -253,6 +253,38 @@ class DownloadsViewModelTest {
     }
 
     @Test
+    fun `paused row projects filesystem partial bytes for explicit discard`() = runTest {
+        val book = offlineBook("tidewatch", state = DownloadState.Paused)
+        files.partialByBook[book.itemId] = 4_096L
+        downloads.emit(listOf(book))
+        library.emit(listOf(book("tidewatch", "Tidewatch")))
+
+        viewModel().uiState.test {
+            val row = generateSequence { awaitItem() }
+                .mapNotNull { state -> state.books.singleOrNull() }
+                .first { it.partialBytes == 4_096L }
+            assertEquals(4_096L, row.partialBytes)
+            assertTrue(row.canDiscardPartials)
+        }
+    }
+
+    @Test
+    fun `discard partials is separate from retry and reports only actually reclaimed bytes`() = runTest {
+        val book = offlineBook("tidewatch", state = DownloadState.Failed)
+        files.partialByBook[book.itemId] = 4_096L
+        downloads.emit(listOf(book))
+        library.emit(listOf(book("tidewatch", "Tidewatch")))
+        val viewModel = viewModel()
+
+        viewModel.onDiscardPartials(book.itemId, book.serverId)
+        advanceUntilIdle()
+
+        assertEquals(listOf(book.itemId), files.discarded)
+        assertTrue(viewModel.message.value.orEmpty().contains("4.0 KiB"))
+        assertEquals(emptyList(), downloads.scheduled, "discard must not enqueue Retry")
+    }
+
+    @Test
     fun `reports the total the downloads occupy`() = runTest {
         downloads.emit(listOf(offlineBook("tidewatch"), offlineBook("harrow")))
 
@@ -608,6 +640,8 @@ class DownloadsViewModelTest {
 
     private class FakeFiles : OfflineFiles {
         val removed = mutableListOf<LibraryItemId>()
+        val discarded = mutableListOf<LibraryItemId>()
+        val partialByBook = mutableMapOf<LibraryItemId, Long>()
         val refusals = mutableSetOf<LibraryItemId>()
         var failure: AppError? = null
 
@@ -621,8 +655,15 @@ class DownloadsViewModelTest {
             return AppResult.Success(bookId !in refusals)
         }
 
-        override suspend fun discardPartials(serverId: ServerId, bookId: LibraryItemId): AppResult<Long> =
-            AppResult.Success(0)
+        override suspend fun discardPartials(serverId: ServerId, bookId: LibraryItemId): AppResult<Long> {
+            failure?.let { return AppResult.Failure(it) }
+            discarded += bookId
+            val reclaimed = partialByBook.remove(bookId) ?: 0L
+            return AppResult.Success(reclaimed)
+        }
+
+        override suspend fun partialBytes(serverId: ServerId, bookId: LibraryItemId): AppResult<Long> =
+            AppResult.Success(partialByBook[bookId] ?: 0L)
 
         override suspend fun sweepOrphans(): AppResult<Long> = AppResult.Success(0)
     }
