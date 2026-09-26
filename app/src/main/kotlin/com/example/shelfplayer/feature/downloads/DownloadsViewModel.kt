@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.DownloadProgress
 import com.example.shelfplayer.core.model.download.OfflineBook
+import com.example.shelfplayer.core.model.download.durableDownloadProgress
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.core.model.download.VerificationReport
 import com.example.shelfplayer.core.model.library.Book
@@ -279,7 +280,7 @@ class DownloadsViewModel @Inject constructor(
             safeFailureSummary = failureSummary,
             executionEvidence = execution?.evidence,
         )
-        val progress = execution?.progress ?: durableProgress()
+        val progress = execution?.progress ?: durableDownloadProgress()
         return DownloadRow(
             bookId = itemId,
             serverId = serverId,
@@ -298,24 +299,6 @@ class DownloadsViewModel @Inject constructor(
             isSharedWithAnotherProfile = requestedBy.size > 1,
             partialBytes = partialBytes,
             progress = progress.takeUnless { recovery.state == DownloadRecoveryState.Complete },
-        )
-    }
-
-    private fun OfflineBook.durableProgress(): DownloadProgress {
-        val truthfulTotal = files
-            .map { it.expectedBytes }
-            .takeIf { expected -> expected.all { (it ?: 0L) > 0L } }
-            ?.sumOf { it ?: 0L }
-            ?.takeIf { it > 0L }
-        val fraction = when {
-            isComplete -> 1f
-            truthfulTotal != null -> (downloadedBytes.toFloat() / truthfulTotal).coerceIn(0f, 1f)
-            else -> 0f
-        }
-        return DownloadProgress(
-            downloadedBytes = downloadedBytes,
-            totalBytes = truthfulTotal,
-            fraction = fraction,
         )
     }
 
