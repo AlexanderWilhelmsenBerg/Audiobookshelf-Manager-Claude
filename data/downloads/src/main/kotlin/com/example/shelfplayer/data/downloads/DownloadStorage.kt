@@ -9,6 +9,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
+import java.net.URI
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -53,6 +54,13 @@ class DownloadStorage @Inject constructor(
 
     /** A known owner's current root; null means the removable owner is unavailable or legacy ownership unknown. */
     fun rootForVolume(volumeUuid: String?): File? = volumes.rootForVolume(volumeUuid)
+
+    /**
+     * Whether a durable known owner is reachable now. Legacy/unknown ownership cannot prove absence, so it
+     * remains eligible for URI-based handling rather than being misclassified as an unavailable card.
+     */
+    fun isVolumeAvailable(volumeUuid: String?): Boolean =
+        volumeUuid == null || rootForVolume(volumeUuid) != null
 
     /**
      * Every root this app has ever been able to write to, newest choice first.
@@ -151,14 +159,39 @@ class DownloadStorage @Inject constructor(
      * the root: a delete that started higher up would be one path-construction bug away from removing
      * somebody else's book.
      */
-    fun deleteItem(serverId: String, itemId: String): Boolean {
-        // Every root, not just the current one. A book downloaded before the volume was changed is still on
-        // the old one, and a removal that only looked at the new root would report success while leaving
-        // the bytes exactly where they were — the storage screen's total would not move, and nobody would
-        // be able to find out why.
+    fun deleteItem(
+        serverId: String,
+        itemId: String,
+        volumeUuid: String?,
+        committedUris: List<String>,
+    ): Boolean {
+        val deletionRoots = when {
+            volumeUuid != null -> listOf(rootForVolume(volumeUuid) ?: return false)
+            else -> rootsForLegacyUris(committedUris) ?: return false
+        }
         val relative = DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator)
-        return roots().map { root -> File(root, relative) }
+        return deletionRoots
+            .map { root -> File(root, relative) }
             .all { directory -> !directory.exists() || directory.deleteRecursively() }
+    }
+
+    /**
+     * A migrated row has no durable volume owner. We may still delete it safely when every committed file URI
+     * resolves under one root that is reachable now. If any path belongs to an absent volume, return null and
+     * preserve the manifest rather than pretending "directory absent" means "bytes deleted".
+     */
+    private fun rootsForLegacyUris(committedUris: List<String>): List<File>? {
+        val files = committedUris.map { uri ->
+            resultOf { URI(uri).takeIf { it.scheme == "file" }?.let(::File) }.getOrNull() ?: return null
+        }
+        if (files.isEmpty()) return roots()
+
+        val reachable = roots().firstOrNull { root ->
+            files.all { file ->
+                runCatching { file.canonicalPath.startsWith(root.canonicalPath + File.separator) }.getOrDefault(false)
+            }
+        } ?: return null
+        return listOf(reachable)
     }
 
     /** How many bytes of [part] are already on disk, which is where a resume asks the server to continue. */
