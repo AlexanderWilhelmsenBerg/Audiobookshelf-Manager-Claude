@@ -415,10 +415,7 @@ class BookDownloaderTest {
         }
     }
 
-    private class MutableDownloadRoots(
-        private val internalRoot: File,
-        private val cardRoot: File,
-    ) : DownloadRoots {
+    private class MutableDownloadRoots(private val internalRoot: File, private val cardRoot: File) : DownloadRoots {
         var selectedUuid: String = StorageVolumeOption.INTERNAL_UUID
         var cardAvailable: Boolean = true
 
