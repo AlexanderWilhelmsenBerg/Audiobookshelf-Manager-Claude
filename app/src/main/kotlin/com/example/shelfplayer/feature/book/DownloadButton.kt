@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
@@ -77,6 +78,7 @@ internal fun DownloadButton(state: DownloadButtonState, onClick: () -> Unit, mod
             Icon(
                 imageVector = when (state) {
                     is DownloadButtonState.NotDownloaded -> Icons.Filled.Download
+                    is DownloadButtonState.OnDevice -> Icons.Filled.AddCircle
                     is DownloadButtonState.Downloading -> Icons.Filled.Close
                     is DownloadButtonState.Downloaded -> Icons.Filled.DownloadDone
                     is DownloadButtonState.Failed -> Icons.Filled.Refresh
@@ -100,9 +102,18 @@ sealed interface DownloadButtonState {
     val label: Int
     val progress: Float? get() = null
 
-    /** No copy on this device. A tap starts one. */
+    /** No copy on this device for this profile. A tap starts or joins one. */
     data object NotDownloaded : DownloadButtonState {
         override val label: Int = R.string.book_download
+    }
+
+    /**
+     * The complete physical copy already exists for another local profile.
+     *
+     * A tap adds this profile's claim immediately; no bytes are downloaded again.
+     */
+    data object OnDevice : DownloadButtonState {
+        override val label: Int = R.string.book_download_use_device_copy
     }
 
     /**
