@@ -56,7 +56,6 @@ internal object NoDownloads : DownloadRepository {
     override suspend fun setPinned(
         serverId: ServerId,
         itemId: LibraryItemId,
-        profileId: ProfileId,
         isPinned: Boolean,
     ): AppResult<Unit> = unsupported()
 
