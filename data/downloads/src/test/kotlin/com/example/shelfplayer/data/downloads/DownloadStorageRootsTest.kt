@@ -69,8 +69,7 @@ class DownloadStorageRootsTest {
                 "card-uuid" -> newRoot.takeIf { cardAvailable }
                 else -> null
             }
-            override fun availableVolumeUuids(): Set<String> =
-                if (cardAvailable) setOf("", "card-uuid") else setOf("")
+            override fun availableVolumeUuids(): Set<String> = if (cardAvailable) setOf("", "card-uuid") else setOf("")
         }
         val pinned = DownloadStorage(context, roots)
         val first = pinned.partFor(SERVER, ITEM, "file-1", "audio/mpeg", "card-uuid")
