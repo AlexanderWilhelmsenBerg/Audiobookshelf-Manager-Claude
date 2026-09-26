@@ -371,6 +371,8 @@ private fun DownloadRowItem(
                     pluralStringResource(R.plurals.downloads_files, row.fileCount, row.fileCount),
                     // BW-DL-02 / #107 — a visible failed row can finally say why. Title-hidden rows have
                     // this field redacted in the ViewModel and therefore keep the generic incomplete copy.
+                    stringResource(R.string.downloads_other_profile_copy)
+                        .takeIf { row.isOnDeviceForAnotherProfile },
                     when {
                         row.storageState == DownloadStorageState.Unavailable ->
                             stringResource(R.string.downloads_storage_unavailable)
@@ -438,7 +440,7 @@ private fun DownloadRowItem(
                 }
             }
         }
-        if (row.storageState != DownloadStorageState.Unavailable) {
+        if (row.isClaimedByActiveProfile && row.storageState != DownloadStorageState.Unavailable) {
             DownloadRecoveryActionButton(
                 recoveryState = row.recoveryState,
                 onClick = onRecoveryAction,
@@ -453,11 +455,13 @@ private fun DownloadRowItem(
                 tint = if (row.isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
             )
         }
-        IconButton(onClick = onRemove) {
-            Icon(
-                imageVector = Icons.Filled.Delete,
-                contentDescription = stringResource(R.string.downloads_remove),
-            )
+        if (row.isClaimedByActiveProfile) {
+            IconButton(onClick = onRemove) {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = stringResource(R.string.downloads_remove),
+                )
+            }
         }
     }
 }
