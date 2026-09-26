@@ -68,22 +68,13 @@ class DownloadStorage @Inject constructor(
      * committed file URIs or an existing item directory. Ambiguous/no evidence returns null rather than
      * redirecting the next file to today's preferred volume.
      */
-    fun ownerRoot(
-        serverId: String,
-        itemId: String,
-        volumeUuid: String?,
-        committedUris: List<String>,
-    ): File? = when {
+    fun ownerRoot(serverId: String, itemId: String, volumeUuid: String?, committedUris: List<String>): File? = when {
         volumeUuid != null -> rootForVolume(volumeUuid)
         else -> legacyRoot(serverId, itemId, committedUris)
     }
 
-    fun isOwnerAvailable(
-        serverId: String,
-        itemId: String,
-        volumeUuid: String?,
-        committedUris: List<String>,
-    ): Boolean = ownerRoot(serverId, itemId, volumeUuid, committedUris) != null
+    fun isOwnerAvailable(serverId: String, itemId: String, volumeUuid: String?, committedUris: List<String>): Boolean =
+        ownerRoot(serverId, itemId, volumeUuid, committedUris) != null
 
     /**
      * Every root this app has ever been able to write to, newest choice first.
@@ -316,12 +307,7 @@ class DownloadStorage @Inject constructor(
         if (file.delete()) bytes else 0L
     }
 
-    fun deleteParts(
-        serverId: String,
-        itemId: String,
-        volumeUuid: String?,
-        committedUris: List<String>,
-    ): Long? {
+    fun deleteParts(serverId: String, itemId: String, volumeUuid: String?, committedUris: List<String>): Long? {
         val owner = ownerRoot(serverId, itemId, volumeUuid, committedUris) ?: return null
         return partFiles(listOf(owner), serverId, itemId).sumOf { file ->
             val bytes = file.length()
@@ -332,12 +318,7 @@ class DownloadStorage @Inject constructor(
     /** Filesystem truth for the #22 confirmation; no manifest estimate is involved. */
     fun partialBytes(serverId: String, itemId: String): Long = partFiles(roots(), serverId, itemId).sumOf(File::length)
 
-    fun partialBytes(
-        serverId: String,
-        itemId: String,
-        volumeUuid: String?,
-        committedUris: List<String>,
-    ): Long? {
+    fun partialBytes(serverId: String, itemId: String, volumeUuid: String?, committedUris: List<String>): Long? {
         val owner = ownerRoot(serverId, itemId, volumeUuid, committedUris) ?: return null
         return partFiles(listOf(owner), serverId, itemId).sumOf(File::length)
     }
