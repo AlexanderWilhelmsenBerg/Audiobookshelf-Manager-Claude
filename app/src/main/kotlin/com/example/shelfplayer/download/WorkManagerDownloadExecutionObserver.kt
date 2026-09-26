@@ -8,9 +8,11 @@ import androidx.work.WorkQuery
 import androidx.work.getWorkInfosFlow
 import androidx.work.getWorkInfosForUniqueWorkFlow
 import com.example.shelfplayer.core.common.connectivity.NetworkMonitor
+import com.example.shelfplayer.core.model.download.DownloadProgress
 import com.example.shelfplayer.domain.download.DownloadExecutionEvidence
 import com.example.shelfplayer.domain.download.DownloadExecutionKey
 import com.example.shelfplayer.domain.download.DownloadExecutionObserver
+import com.example.shelfplayer.domain.download.DownloadExecutionSnapshot
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -38,7 +40,7 @@ class WorkManagerDownloadExecutionObserver @Inject constructor(
 ) : DownloadExecutionObserver {
     private val workManager = WorkManager.getInstance(context)
 
-    override fun observe(keys: Set<DownloadExecutionKey>): Flow<Map<DownloadExecutionKey, DownloadExecutionEvidence>> {
+    override fun observe(keys: Set<DownloadExecutionKey>): Flow<Map<DownloadExecutionKey, DownloadExecutionSnapshot>> {
         if (keys.isEmpty()) return flowOf(emptyMap())
 
         val byWorkName = keys.associateBy(::workName)
@@ -87,7 +89,7 @@ class WorkManagerDownloadExecutionObserver @Inject constructor(
         legacyInfos: List<WorkInfo>,
         legacyOwners: Map<java.util.UUID, DownloadExecutionKey>,
         network: DownloadNetworkSnapshot,
-    ): Map<DownloadExecutionKey, DownloadExecutionEvidence> {
+    ): Map<DownloadExecutionKey, DownloadExecutionSnapshot> {
         val grouped = keys.associateWith { mutableListOf<WorkInfo>() }.toMutableMap()
 
         taggedInfos.forEach { info ->
@@ -107,7 +109,13 @@ class WorkManagerDownloadExecutionObserver @Inject constructor(
                         .thenBy { it.runAttemptCount }
                         .thenBy { it.id.toString() },
                 ) ?: return@forEach
-                put(key, classifyDownloadWork(selected, network))
+                put(
+                    key,
+                    DownloadExecutionSnapshot(
+                        evidence = classifyDownloadWork(selected, network),
+                        progress = selected.downloadProgress(),
+                    ),
+                )
             }
         }
     }
@@ -171,6 +179,19 @@ private fun DownloadNetworkSnapshot.satisfies(required: NetworkType): Boolean = 
     NetworkType.METERED,
     NetworkType.TEMPORARILY_UNMETERED,
     -> isOnline
+}
+
+private fun WorkInfo.downloadProgress(): DownloadProgress? {
+    val downloaded = progress.getLong(BookDownloadWorker.KEY_PROGRESS_BYTES, -1L)
+    val percent = progress.getInt(BookDownloadWorker.KEY_PROGRESS_PERCENT, -1)
+    if (downloaded < 0L || percent !in 0..100) return null
+
+    val total = progress.getLong(BookDownloadWorker.KEY_PROGRESS_TOTAL_BYTES, -1L).takeIf { it > 0L }
+    return DownloadProgress(
+        downloadedBytes = downloaded,
+        totalBytes = total,
+        fraction = percent / 100f,
+    )
 }
 
 private fun WorkInfo.executionPriority(): Int = when (state) {
