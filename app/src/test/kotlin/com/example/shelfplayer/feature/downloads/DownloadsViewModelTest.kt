@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Rule
 import org.junit.Test
@@ -260,9 +261,10 @@ class DownloadsViewModelTest {
         library.emit(listOf(book("tidewatch", "Tidewatch")))
 
         viewModel().uiState.test {
-            val row = generateSequence { awaitItem() }
-                .mapNotNull { state -> state.books.singleOrNull() }
-                .first { it.partialBytes == 4_096L }
+            var row: DownloadRow? = null
+            while (row?.partialBytes != 4_096L) {
+                row = awaitItem().books.singleOrNull()
+            }
             assertEquals(4_096L, row.partialBytes)
             assertTrue(row.canDiscardPartials)
         }
@@ -274,14 +276,15 @@ class DownloadsViewModelTest {
         files.partialByBook[book.itemId] = 4_096L
         downloads.emit(listOf(book))
         library.emit(listOf(book("tidewatch", "Tidewatch")))
-        val viewModel = viewModel()
+        val scheduler = TrackingScheduler()
+        val viewModel = viewModel(scheduler)
 
         viewModel.onDiscardPartials(book.itemId, book.serverId)
         advanceUntilIdle()
 
         assertEquals(listOf(book.itemId), files.discarded)
         assertTrue(viewModel.message.value.orEmpty().contains("4.0 KiB"))
-        assertEquals(emptyList(), downloads.scheduled, "discard must not enqueue Retry")
+        assertEquals(emptyList(), scheduler.enqueued, "discard must not enqueue Retry")
     }
 
     @Test
