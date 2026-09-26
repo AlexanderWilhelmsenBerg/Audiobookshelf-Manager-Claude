@@ -8,12 +8,16 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.DownloadState
+import com.example.shelfplayer.core.model.download.DownloadStorageState
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlayableTrack
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import kotlinx.coroutines.flow.first
+import java.io.File
+import java.net.URI
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration.Companion.milliseconds
@@ -46,6 +50,7 @@ class OfflineSessionBuilder @Inject constructor(
     private val libraryDao: LibraryDao,
     private val progressDao: ProgressDao,
     private val downloads: DownloadRepository,
+    private val locations: DownloadLocations,
 ) {
 
     /**
@@ -70,6 +75,7 @@ class OfflineSessionBuilder @Inject constructor(
         bookId: LibraryItemId,
         manifest: OfflineBook,
     ): PlaybackSession? {
+        if (!manifestStorageReachable(manifest)) return null
         val bookKey = EntityKey.of(serverId.value, bookId.value)
         val stored = libraryDao.observeBook(profileId.value, bookKey).first() ?: return null
         val local = manifest.files.associateBy { file -> file.remoteFileId }
@@ -127,9 +133,15 @@ class OfflineSessionBuilder @Inject constructor(
      * `https://`.
      */
     fun localise(session: PlaybackSession, manifest: OfflineBook?): PlaybackSession {
-        if (manifest == null) return session
+        if (manifest == null || locations.availability(manifest.storageVolumeUuid) == DownloadStorageState.Unavailable) {
+            return session
+        }
         val local = manifest.files
-            .filter { file -> file.uri.isNotBlank() && file.state == DownloadState.Complete }
+            .filter { file ->
+                file.uri.isNotBlank() &&
+                    file.state == DownloadState.Complete &&
+                    localUriReachable(file.uri)
+            }
             .associate { file -> file.remoteFileId to file.uri }
         if (local.isEmpty()) return session
         return session.copy(
@@ -138,6 +150,18 @@ class OfflineSessionBuilder @Inject constructor(
             },
         )
     }
+
+    private fun manifestStorageReachable(manifest: OfflineBook): Boolean {
+        if (locations.availability(manifest.storageVolumeUuid) == DownloadStorageState.Unavailable) return false
+        return manifest.files
+            .filter { it.state == DownloadState.Complete }
+            .all { file -> localUriReachable(file.uri) }
+    }
+
+    private fun localUriReachable(uri: String): Boolean = runCatching {
+        val parsed = URI(uri)
+        parsed.scheme == "file" && File(parsed).isFile
+    }.getOrDefault(false)
 
     /**
      * The server's file id for a track, recovered from the URL it was given.
