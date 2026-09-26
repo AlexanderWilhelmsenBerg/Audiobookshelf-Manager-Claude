@@ -237,6 +237,19 @@ class BookDownloaderTest {
     }
 
     @Test
+    fun `profile without a claim cannot delete another profiles sole copy`() = runTest {
+        repository.request(SERVER, BOOK, ADA, files())
+        downloader.download(ADA, SERVER, BOOK)
+        val onDisk = itemDirectory()
+
+        assertEquals(false, downloader.remove(GRACE, SERVER, BOOK).getOrNull())
+
+        val stored = assertNotNull(repository.observe(SERVER, BOOK).first())
+        assertTrue(onDisk.exists())
+        assertEquals(setOf(ADA), stored.requestedBy)
+    }
+
+    @Test
     fun `last claim removal preserves card copy manifest and claim while owner is unavailable`() = runTest {
         roots.selectedUuid = MutableDownloadRoots.CARD_UUID
         repository.request(SERVER, BOOK, ADA, files())
