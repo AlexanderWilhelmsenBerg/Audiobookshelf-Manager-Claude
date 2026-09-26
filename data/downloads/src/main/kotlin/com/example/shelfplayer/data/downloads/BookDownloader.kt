@@ -183,9 +183,9 @@ class BookDownloader @Inject constructor(
     /**
      * PRODUCT_SPEC DL-003 — removes one profile's claim, and the files when it was the last.
      *
-     * The two halves are in this order for a reason: the claim goes through the repository, and only if
-     * nothing else references the copy do the bytes go. Reversing it would delete a book another profile on
-     * the same device is halfway through.
+     * Shared copies release only this profile's claim. For the sole claim, the physical bytes are deleted
+     * first while the claim remains durable; only successful deletion releases the claim and forgets the
+     * manifest. A keyed lock prevents a new claim appearing inside that destructive window.
      *
      * @return `true` when the files were actually removed.
      */
