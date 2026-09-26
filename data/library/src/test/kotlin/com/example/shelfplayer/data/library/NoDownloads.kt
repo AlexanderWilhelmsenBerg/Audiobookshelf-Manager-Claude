@@ -70,7 +70,6 @@ internal object NoDownloads : DownloadRepository {
         AppResult.Failure(AppError.ApiCompatibility(summary = "not part of this test"))
 }
 
-
 /** Internal-only storage facts for library tests that are not exercising removable-media behavior. */
 internal object InternalDownloadLocations : DownloadLocations {
     override suspend fun options() = emptyList<StorageVolumeOption>()
