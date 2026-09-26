@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ServerId
@@ -52,6 +53,47 @@ class DownloadsScreenTest {
         assertEquals(DownloadRecoveryState.Failed, observed)
         compose.onNodeWithContentDescription("Pause this download").assertDoesNotExist()
         compose.onNodeWithContentDescription("Resume this download").assertDoesNotExist()
+    }
+
+    @Test
+    fun `execution states render explicit listener-facing status copy`() {
+        val expected = listOf(
+            DownloadRecoveryState.Queued to "Queued",
+            DownloadRecoveryState.Running to "Downloading",
+            DownloadRecoveryState.Waiting to "Waiting for an allowed network",
+            DownloadRecoveryState.Retrying to "Retrying automatically",
+            DownloadRecoveryState.Paused to "Paused",
+        )
+
+        expected.forEach { (state, text) ->
+            render(state)
+            compose.onNodeWithText(text, substring = true).assertExists()
+        }
+    }
+
+    @Test
+    fun `hidden failed row uses generic failure copy instead of media context`() {
+        compose.setContent {
+            DownloadsScreen(
+                uiState = state(DownloadRecoveryState.Failed).copy(
+                    books = listOf(
+                        state(DownloadRecoveryState.Failed).books.single().copy(
+                            title = null,
+                            author = null,
+                            failureSummary = null,
+                        ),
+                    ),
+                ),
+                onRemove = { _, _ -> },
+                onPinnedChanged = { _, _, _ -> },
+                onRecoveryAction = { _, _ -> },
+                onVerify = {},
+                onNavigateUp = {},
+            )
+        }
+
+        compose.onNodeWithText("Download failed", substring = true).assertExists()
+        compose.onNodeWithText("The connection was lost.", substring = true).assertDoesNotExist()
     }
 
     @Test
