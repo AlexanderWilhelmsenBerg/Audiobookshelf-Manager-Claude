@@ -448,6 +448,10 @@
     <string name="downloads_empty_title">Nothing downloaded</string>
     <string name="downloads_empty_body">Books you download appear here, with how much space each one uses. Download one from its own screen.</string>
     <string name="downloads_total">%1$s used by downloads</string>
+    <string name="downloads_active_section">Active / pending</string>
+    <string name="downloads_on_device_section">On device</string>
+    <string name="downloads_progress_percent">%1$d%%</string>
+    <string name="downloads_progress_bytes">%1$s / %2$s</string>
     <!--
       ADR-0018 decision 8. The owner asked for a repair button that compares a checksum with the server.
       The capture says the server sends an ETag — a validator, not a checksum — so this names what it can
