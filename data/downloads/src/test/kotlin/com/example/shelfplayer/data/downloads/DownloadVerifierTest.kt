@@ -16,12 +16,12 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.DownloadStorageState
-import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.core.model.download.OfflineFile
+import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.core.model.getOrNull
 import com.example.shelfplayer.core.testing.RecordingLogSink
-import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.core.testing.TestAppClock
+import com.example.shelfplayer.domain.download.DownloadLocations
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -170,15 +170,21 @@ class DownloadVerifierTest {
         )
         assertEquals(
             DownloadStorageState.Unknown,
-            verifier.classifyStorage(File(directory, "absent.mp3").toURI().toString(), 32, false, DownloadStorageState.Unknown) {
-                true
-            },
+            verifier.classifyStorage(
+                uri = File(directory, "absent.mp3").toURI().toString(),
+                expectedBytes = 32,
+                readContainer = false,
+                ownerAvailability = DownloadStorageState.Unknown,
+            ) { true },
         )
         assertEquals(
             DownloadStorageState.Missing,
-            verifier.classifyStorage(File(directory, "absent.mp3").toURI().toString(), 32, false, DownloadStorageState.Available) {
-                true
-            },
+            verifier.classifyStorage(
+                uri = File(directory, "absent.mp3").toURI().toString(),
+                expectedBytes = 32,
+                readContainer = false,
+                ownerAvailability = DownloadStorageState.Available,
+            ) { true },
         )
         containersReadable = false
         assertEquals(
@@ -340,8 +346,7 @@ class DownloadVerifierTest {
 
         override suspend fun options(): List<StorageVolumeOption> = emptyList()
         override fun observeSelected(): Flow<String> = flowOf(StorageVolumeOption.INTERNAL_UUID)
-        override fun availability(volumeUuid: String?): DownloadStorageState =
-            forced ?: when (volumeUuid) {
+        override fun availability(volumeUuid: String?): DownloadStorageState = forced ?: when (volumeUuid) {
                 null -> DownloadStorageState.Unknown
                 else -> DownloadStorageState.Available
             }
