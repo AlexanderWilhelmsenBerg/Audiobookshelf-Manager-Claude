@@ -480,6 +480,11 @@
     <string name="downloads_pause">Pause this download</string>
     <string name="downloads_resume">Resume this download</string>
     <string name="downloads_retry">Retry this download</string>
+    <string name="downloads_discard_partial">Discard %1$s partial</string>
+    <string name="downloads_discard_partial_title">Discard partial download?</string>
+    <string name="downloads_discard_partial_body">This deletes %1$s of unfinished download data. Completed audio stays on this device, download claims stay intact, and a later Retry starts the discarded portions from zero.</string>
+    <string name="downloads_discard_partial_confirm">Discard partial</string>
+    <string name="downloads_discard_partial_cancel">Keep it</string>
     <string name="downloads_pin">Keep this one, never delete it automatically</string>
     <string name="downloads_unpin">Stop keeping this one</string>
     <string name="downloads_remove">Remove this download</string>
