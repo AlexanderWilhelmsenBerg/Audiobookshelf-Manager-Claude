@@ -190,7 +190,6 @@ sealed interface StorageRoot {
     data class Tree(val treeUri: String) : StorageRoot
 }
 
-
 /** #20 — transient accessibility/integrity projection; never persisted as a second download state machine. */
 enum class DownloadStorageState {
     Available,
