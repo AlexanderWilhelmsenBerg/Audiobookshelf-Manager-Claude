@@ -52,6 +52,7 @@ class BookDownloader @Inject constructor(
     private val downloads: DownloadApi,
     private val fileDownloader: FileDownloader,
     private val storage: DownloadStorage,
+    private val copyLocks: DownloadCopyLocks,
     private val logger: Logger,
 ) : OfflineFiles {
 
@@ -89,6 +90,7 @@ class BookDownloader @Inject constructor(
                 itemId = itemId,
                 file = file,
                 storageVolumeUuid = manifest.storageVolumeUuid,
+                committedUris = manifest.files.map(OfflineFile::uri),
             ) { bytes ->
                 onProgress(weights.progressWith(file, bytes))
             }
@@ -111,7 +113,13 @@ class BookDownloader @Inject constructor(
         val completed = repository.markComplete(
             serverId,
             itemId,
-            coverUri = manifest.coverUri ?: fetchCover(profileId, serverId, itemId, manifest.storageVolumeUuid),
+            coverUri = manifest.coverUri ?: fetchCover(
+                profileId = profileId,
+                serverId = serverId,
+                itemId = itemId,
+                storageVolumeUuid = manifest.storageVolumeUuid,
+                committedUris = manifest.files.map(OfflineFile::uri),
+            ),
         )
         if (completed is AppResult.Success) {
             logger.info(
@@ -146,13 +154,19 @@ class BookDownloader @Inject constructor(
         serverId: ServerId,
         itemId: LibraryItemId,
         storageVolumeUuid: String?,
+        committedUris: List<String>,
     ): String? {
         var destination: File? = null
         val fetched = downloads.fetchCover(profileId, itemId) {
             // The type is not known until the response arrives, and the name depends on it — so the file is
             // named inside the sink, which is the first moment both facts exist.
-            storage.coverFor(serverId.value, itemId.value, mimeType = null, volumeUuid = storageVolumeUuid)
-                ?.also { destination = it }
+            storage.coverFor(
+                serverId = serverId.value,
+                itemId = itemId.value,
+                mimeType = null,
+                volumeUuid = storageVolumeUuid,
+                committedUris = committedUris,
+            )?.also { destination = it }
                 ?.outputStream()
                 ?: throw java.io.IOException("Download storage unavailable")
         }
@@ -175,64 +189,53 @@ class BookDownloader @Inject constructor(
      *
      * @return `true` when the files were actually removed.
      */
-    override suspend fun remove(profileId: ProfileId, serverId: ServerId, bookId: LibraryItemId): AppResult<Boolean> {
-        val itemId = bookId
-        val manifest = repository.observe(serverId, itemId).first()
-            ?: return AppResult.Success(false)
+    override suspend fun remove(
+        profileId: ProfileId,
+        serverId: ServerId,
+        bookId: LibraryItemId,
+    ): AppResult<Boolean> = copyLocks.withLock(serverId, bookId) {
+        val manifest = repository.observe(serverId, bookId).first()
+            ?: return@withLock AppResult.Success(false)
 
-        // If this is the sole claim and its known owner is absent, preserve both claim and manifest without
-        // touching either. "Card absent" is a temporary storage fact, not permission to orphan the bytes.
-        if (
-            manifest.requestedBy == setOf(profileId) &&
-            !storage.isVolumeAvailable(manifest.storageVolumeUuid)
+        // A profile cannot delete another profile's sole physical copy by releasing a claim it never owned.
+        if (profileId !in manifest.requestedBy) return@withLock AppResult.Success(false)
+
+        if (manifest.requestedBy.size > 1) {
+            val released = repository.release(serverId, bookId, profileId)
+            return@withLock when (released) {
+                is AppResult.Failure -> AppResult.Failure(released.error)
+                is AppResult.Success -> AppResult.Success(false)
+            }
+        }
+
+        // Keep the last claim in Room until destructive I/O has genuinely succeeded. The shared keyed lock
+        // prevents a concurrent request from adding a new claim between this decision and deletion.
+        when (
+            storage.deleteItem(
+                serverId = serverId.value,
+                itemId = bookId.value,
+                volumeUuid = manifest.storageVolumeUuid,
+                committedUris = manifest.files.map(OfflineFile::uri),
+            )
         ) {
-            return AppResult.Failure(unavailableStorage())
+            StorageDeleteResult.Unavailable -> return@withLock AppResult.Failure(unavailableStorage())
+            StorageDeleteResult.Failed -> {
+                return@withLock AppResult.Failure(
+                    AppError.Storage(summary = "The downloaded files could not be removed from storage."),
+                )
+            }
+
+            StorageDeleteResult.Deleted -> Unit
         }
 
-        val released = repository.release(serverId, itemId, profileId)
-        if (released.isFailure()) return AppResult.Failure(released.error)
-        if ((released as AppResult.Success).value) {
-            // Somebody else still wants it. Nothing on disk changes.
-            return AppResult.Success(false)
-        }
+        val released = repository.release(serverId, bookId, profileId)
+        if (released.isFailure()) return@withLock AppResult.Failure(released.error)
 
-        // A claim may have appeared after release. Re-read before destructive I/O and preserve the physical
-        // copy if it did; this profile's requested removal has still succeeded.
-        val claimless = repository.observe(serverId, itemId).first() ?: return AppResult.Success(false)
-        if (claimless.requestedBy.isNotEmpty()) return AppResult.Success(false)
-
-        val deleted = storage.deleteItem(
-            serverId = serverId.value,
-            itemId = itemId.value,
-            volumeUuid = manifest.storageVolumeUuid,
-            committedUris = manifest.files.map(OfflineFile::uri),
-        )
-        if (!deleted) {
-            val restored = restoreClaim(manifest, profileId)
-            if (restored.isFailure()) return AppResult.Failure(restored.error)
-            return AppResult.Failure(unavailableStorage())
-        }
-
-        val forgotten = repository.forget(serverId, itemId)
-        if (forgotten.isFailure()) return AppResult.Failure(forgotten.error)
+        val forgotten = repository.forget(serverId, bookId)
+        if (forgotten.isFailure()) return@withLock AppResult.Failure(forgotten.error)
 
         logger.info(LogCategory.Sync, "A downloaded book was removed")
-        return AppResult.Success(true)
-    }
-
-    private suspend fun restoreClaim(manifest: OfflineBook, profileId: ProfileId): AppResult<Unit> {
-        val restored = repository.request(
-            serverId = manifest.serverId,
-            itemId = manifest.itemId,
-            profileId = profileId,
-            files = manifest.files,
-        )
-        if (restored.isFailure()) return AppResult.Failure(restored.error)
-        if (manifest.isPinned) {
-            val pinned = repository.setPinned(manifest.serverId, manifest.itemId, profileId, isPinned = true)
-            if (pinned.isFailure()) return AppResult.Failure(pinned.error)
-        }
-        return AppResult.Success(Unit)
+        AppResult.Success(true)
     }
 
     private fun unavailableStorage(): AppError.Storage = AppError.Storage(
@@ -249,27 +252,40 @@ class BookDownloader @Inject constructor(
      * the book still shows as *not downloaded* rather than disappearing, and a later tap starts it cleanly.
      */
     override suspend fun discardPartials(serverId: ServerId, bookId: LibraryItemId): AppResult<Long> {
-        val itemId = bookId
-        val reclaimed = storage.deleteParts(serverId.value, itemId.value)
-        val manifest = repository.observe(serverId, itemId).first()
-        manifest?.files
-            ?.filter { it.state != DownloadState.Complete }
-            ?.forEach { file ->
+        val manifest = repository.observe(serverId, bookId).first() ?: return AppResult.Success(0L)
+        val committedUris = manifest.files.map(OfflineFile::uri)
+        val reclaimed = storage.deleteParts(
+            serverId = serverId.value,
+            itemId = bookId.value,
+            volumeUuid = manifest.storageVolumeUuid,
+            committedUris = committedUris,
+        ) ?: return AppResult.Failure(unavailableStorage())
+
+        manifest.files
+            .filter { it.state != DownloadState.Complete }
+            .forEach { file ->
                 val stillOnDisk = storage.partialBytesFor(
                     serverId = serverId.value,
-                    itemId = itemId.value,
+                    itemId = bookId.value,
                     fileId = file.remoteFileId,
                     mimeType = file.mimeType,
-                )
+                    volumeUuid = manifest.storageVolumeUuid,
+                    committedUris = committedUris,
+                ) ?: return AppResult.Failure(unavailableStorage())
                 val updated = repository.updateFile(
                     serverId,
-                    itemId,
+                    bookId,
                     file.copy(downloadedBytes = stillOnDisk),
                 )
                 if (updated.isFailure()) return AppResult.Failure(updated.error)
             }
 
-        val remaining = storage.partialBytes(serverId.value, itemId.value)
+        val remaining = storage.partialBytes(
+            serverId = serverId.value,
+            itemId = bookId.value,
+            volumeUuid = manifest.storageVolumeUuid,
+            committedUris = committedUris,
+        ) ?: return AppResult.Failure(unavailableStorage())
         return if (remaining == 0L) {
             AppResult.Success(reclaimed)
         } else {
@@ -281,8 +297,16 @@ class BookDownloader @Inject constructor(
         }
     }
 
-    override suspend fun partialBytes(serverId: ServerId, bookId: LibraryItemId): AppResult<Long> =
-        AppResult.Success(storage.partialBytes(serverId.value, bookId.value))
+    override suspend fun partialBytes(serverId: ServerId, bookId: LibraryItemId): AppResult<Long> {
+        val manifest = repository.observe(serverId, bookId).first() ?: return AppResult.Success(0L)
+        val bytes = storage.partialBytes(
+            serverId = serverId.value,
+            itemId = bookId.value,
+            volumeUuid = manifest.storageVolumeUuid,
+            committedUris = manifest.files.map(OfflineFile::uri),
+        ) ?: return AppResult.Failure(unavailableStorage())
+        return AppResult.Success(bytes)
+    }
 
     /**
      * PRODUCT_SPEC DL-001 — everything under `offline/` that no manifest claims.
