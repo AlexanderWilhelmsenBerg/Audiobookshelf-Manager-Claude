@@ -112,14 +112,10 @@ class WorkManagerDownloadExecutionObserver @Inject constructor(
         }
     }
 
-    private fun workName(key: DownloadExecutionKey): String =
-        BookDownloadWorker.nameFor(key.serverId, key.itemId)
+    private fun workName(key: DownloadExecutionKey): String = BookDownloadWorker.nameFor(key.serverId, key.itemId)
 }
 
-internal data class DownloadNetworkSnapshot(
-    val isOnline: Boolean,
-    val isUnmetered: Boolean,
-)
+internal data class DownloadNetworkSnapshot(val isOnline: Boolean, val isUnmetered: Boolean)
 
 /**
  * Pure #19 mapping. In particular, schedule time does not participate: an ENQUEUED retry can have a future
@@ -131,17 +127,16 @@ internal data class DownloadWorkSnapshot(
     val requiredNetworkType: NetworkType,
 )
 
-internal fun classifyDownloadWork(
-    info: WorkInfo,
-    network: DownloadNetworkSnapshot,
-): DownloadExecutionEvidence = classifyDownloadWork(
-    work = DownloadWorkSnapshot(
-        state = info.state,
-        runAttemptCount = info.runAttemptCount,
-        requiredNetworkType = info.constraints.requiredNetworkType,
-    ),
-    network = network,
-)
+internal fun classifyDownloadWork(info: WorkInfo, network: DownloadNetworkSnapshot): DownloadExecutionEvidence {
+    return classifyDownloadWork(
+        work = DownloadWorkSnapshot(
+            state = info.state,
+            runAttemptCount = info.runAttemptCount,
+            requiredNetworkType = info.constraints.requiredNetworkType,
+        ),
+        network = network,
+    )
+}
 
 internal fun classifyDownloadWork(
     work: DownloadWorkSnapshot,
@@ -168,8 +163,11 @@ internal fun classifyDownloadWork(
 
 private fun DownloadNetworkSnapshot.satisfies(required: NetworkType): Boolean = when (required) {
     NetworkType.NOT_REQUIRED -> true
+
     NetworkType.CONNECTED -> isOnline
+
     NetworkType.UNMETERED -> isOnline && isUnmetered
+
     NetworkType.NOT_ROAMING,
     NetworkType.METERED,
     NetworkType.TEMPORARILY_UNMETERED,
@@ -178,9 +176,11 @@ private fun DownloadNetworkSnapshot.satisfies(required: NetworkType): Boolean = 
 
 private fun WorkInfo.executionPriority(): Int = when (state) {
     WorkInfo.State.RUNNING -> 3
+
     WorkInfo.State.ENQUEUED,
     WorkInfo.State.BLOCKED,
     -> 2
+
     WorkInfo.State.SUCCEEDED,
     WorkInfo.State.FAILED,
     WorkInfo.State.CANCELLED,
