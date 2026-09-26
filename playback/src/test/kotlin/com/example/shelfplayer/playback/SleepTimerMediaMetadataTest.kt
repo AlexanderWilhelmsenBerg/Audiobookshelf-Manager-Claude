@@ -72,14 +72,14 @@ class SleepTimerMediaMetadataTest {
 
     private fun item(title: String?, displayTitle: String? = null, artist: String? = null): MediaItem =
         MediaItem.Builder()
-        .setMediaId("book-a")
-        .setUri("https://example.invalid/book.m4b")
-        .setMediaMetadata(
-            MediaMetadata.Builder()
-                .setTitle(title)
-                .setDisplayTitle(displayTitle)
-                .setArtist(artist)
-                .build(),
-        )
-        .build()
+            .setMediaId("book-a")
+            .setUri("https://example.invalid/book.m4b")
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(title)
+                    .setDisplayTitle(displayTitle)
+                    .setArtist(artist)
+                    .build(),
+            )
+            .build()
 }
