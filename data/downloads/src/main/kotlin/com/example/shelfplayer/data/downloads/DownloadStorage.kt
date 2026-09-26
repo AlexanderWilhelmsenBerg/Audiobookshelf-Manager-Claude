@@ -86,13 +86,7 @@ class DownloadStorage @Inject constructor(
         return File(directory, DownloadPaths.partName(DownloadPaths.fileName(fileId, mimeType)))
     }
 
-    fun partFor(
-        serverId: String,
-        itemId: String,
-        fileId: String,
-        mimeType: String?,
-        volumeUuid: String?,
-    ): File? {
+    fun partFor(serverId: String, itemId: String, fileId: String, mimeType: String?, volumeUuid: String?): File? {
         val directory = itemDirectory(serverId, itemId, volumeUuid) ?: return null
         if (!directory.exists() && !directory.mkdirs()) return null
         return File(directory, DownloadPaths.partName(DownloadPaths.fileName(fileId, mimeType)))
@@ -238,9 +232,9 @@ class DownloadStorage @Inject constructor(
      * resumable part should not survive. [sweepOrphans] cannot cover it, because the manifest is still there.
      */
     fun deleteParts(serverId: String, itemId: String): Long = partFiles(serverId, itemId).sumOf { file ->
-            val bytes = file.length()
-            if (file.delete()) bytes else 0L
-        }
+        val bytes = file.length()
+        if (file.delete()) bytes else 0L
+    }
 
     /** Filesystem truth for the #22 confirmation; no manifest estimate is involved. */
     fun partialBytes(serverId: String, itemId: String): Long = partFiles(serverId, itemId).sumOf(File::length)
