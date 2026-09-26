@@ -127,8 +127,8 @@ internal data class DownloadWorkSnapshot(
     val requiredNetworkType: NetworkType,
 )
 
-internal fun classifyDownloadWork(info: WorkInfo, network: DownloadNetworkSnapshot): DownloadExecutionEvidence {
-    return classifyDownloadWork(
+internal fun classifyDownloadWork(info: WorkInfo, network: DownloadNetworkSnapshot): DownloadExecutionEvidence =
+    classifyDownloadWork(
         work = DownloadWorkSnapshot(
             state = info.state,
             runAttemptCount = info.runAttemptCount,
@@ -136,7 +136,6 @@ internal fun classifyDownloadWork(info: WorkInfo, network: DownloadNetworkSnapsh
         ),
         network = network,
     )
-}
 
 internal fun classifyDownloadWork(
     work: DownloadWorkSnapshot,
