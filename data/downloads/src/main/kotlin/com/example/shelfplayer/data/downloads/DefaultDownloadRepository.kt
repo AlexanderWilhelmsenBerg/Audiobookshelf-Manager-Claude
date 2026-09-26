@@ -80,6 +80,7 @@ class DefaultDownloadRepository @Inject constructor(
                     remoteItemId = itemId.value,
                     state = DownloadState.Queued.name,
                     storageTreeUri = null,
+                    storageVolumeUuid = storage.destinationVolumeUuid(),
                     coverUri = null,
                     failureSummary = null,
                     createdAt = now.toEpochMilli(),
