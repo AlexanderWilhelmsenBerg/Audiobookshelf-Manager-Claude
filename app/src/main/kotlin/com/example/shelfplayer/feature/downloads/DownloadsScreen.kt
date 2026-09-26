@@ -23,6 +23,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -130,6 +131,10 @@ fun DownloadsScreen(
     var confirming by rememberSaveable { mutableStateOf<String?>(null) }
     var discarding by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbars = remember { SnackbarHostState() }
+    val sections = listOf(
+        stringResource(R.string.downloads_active_section) to uiState.activeBooks,
+        stringResource(R.string.downloads_on_device_section) to uiState.onDeviceBooks,
+    )
     LaunchedEffect(message) {
         val text = message ?: return@LaunchedEffect
         snackbars.showSnackbar(text)
@@ -202,36 +207,47 @@ fun DownloadsScreen(
                     HorizontalDivider()
                 }
             }
-            items(uiState.books, key = { row -> "${row.serverId.value}:${row.bookId.value}" }) { row ->
-                val rowKey = "${row.serverId.value}:${row.bookId.value}"
-                DownloadRowItem(
-                    row = row,
-                    onPinnedChanged = { pinned -> onPinnedChanged(row.bookId, row.serverId, pinned) },
-                    onRecoveryAction = { onRecoveryAction(row.bookId, row.recoveryState) },
-                    onDiscardPartials = { discarding = rowKey },
-                    onRemove = { confirming = row.bookId.value },
-                )
-                if (discarding == rowKey && row.canDiscardPartials) {
-                    DiscardPartialDialog(
-                        partialBytes = row.partialBytes,
-                        onConfirm = {
-                            discarding = null
-                            onDiscardPartials(row.bookId, row.serverId)
-                        },
-                        onDismiss = { discarding = null },
-                    )
+            sections.forEach { (sectionTitle, rows) ->
+                if (rows.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = sectionTitle,
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        )
+                    }
+                    items(rows, key = { row -> "${row.serverId.value}:${row.bookId.value}" }) { row ->
+                        val rowKey = "${row.serverId.value}:${row.bookId.value}"
+                        DownloadRowItem(
+                            row = row,
+                            onPinnedChanged = { pinned -> onPinnedChanged(row.bookId, row.serverId, pinned) },
+                            onRecoveryAction = { onRecoveryAction(row.bookId, row.recoveryState) },
+                            onDiscardPartials = { discarding = rowKey },
+                            onRemove = { confirming = row.bookId.value },
+                        )
+                        if (discarding == rowKey && row.canDiscardPartials) {
+                            DiscardPartialDialog(
+                                partialBytes = row.partialBytes,
+                                onConfirm = {
+                                    discarding = null
+                                    onDiscardPartials(row.bookId, row.serverId)
+                                },
+                                onDismiss = { discarding = null },
+                            )
+                        }
+                        if (confirming == row.bookId.value) {
+                            RemoveDialog(
+                                isShared = row.isSharedWithAnotherProfile,
+                                onConfirm = {
+                                    confirming = null
+                                    onRemove(row.bookId, row.serverId)
+                                },
+                                onDismiss = { confirming = null },
+                            )
+                        }
+                        HorizontalDivider()
+                    }
                 }
-                if (confirming == row.bookId.value) {
-                    RemoveDialog(
-                        isShared = row.isSharedWithAnotherProfile,
-                        onConfirm = {
-                            confirming = null
-                            onRemove(row.bookId, row.serverId)
-                        },
-                        onDismiss = { confirming = null },
-                    )
-                }
-                HorizontalDivider()
             }
         }
     }
@@ -368,6 +384,23 @@ private fun DownloadRowItem(
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
             )
+            row.progress?.let { progress ->
+                LinearProgressIndicator(
+                    progress = { progress.fraction.coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                )
+                Text(
+                    text = progress.totalBytes?.let { total ->
+                        stringResource(
+                            R.string.downloads_progress_bytes,
+                            formatBytes(progress.downloadedBytes),
+                            formatBytes(total),
+                        )
+                    } ?: stringResource(R.string.downloads_progress_percent, progress.percent),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (row.canDiscardPartials) {
                 TextButton(onClick = onDiscardPartials) {
                     Text(
