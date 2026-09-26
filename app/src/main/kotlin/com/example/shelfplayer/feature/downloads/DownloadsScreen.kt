@@ -374,20 +374,28 @@ private fun DownloadRowItem(
                     when {
                         row.storageState == DownloadStorageState.Unavailable ->
                             stringResource(R.string.downloads_storage_unavailable)
+
                         row.storageState == DownloadStorageState.Unknown && row.isComplete ->
                             stringResource(R.string.downloads_storage_unknown)
+
                         else -> when (row.recoveryState) {
                             com.example.shelfplayer.domain.download.DownloadRecoveryState.Complete -> null
-                        com.example.shelfplayer.domain.download.DownloadRecoveryState.Paused ->
-                            stringResource(R.string.downloads_paused)
-                        com.example.shelfplayer.domain.download.DownloadRecoveryState.Queued ->
-                            stringResource(R.string.downloads_queued)
-                        com.example.shelfplayer.domain.download.DownloadRecoveryState.Running ->
-                            stringResource(R.string.downloads_downloading)
-                        com.example.shelfplayer.domain.download.DownloadRecoveryState.Waiting ->
-                            stringResource(R.string.downloads_waiting)
-                        com.example.shelfplayer.domain.download.DownloadRecoveryState.Retrying ->
-                            stringResource(R.string.downloads_retrying)
+
+                            com.example.shelfplayer.domain.download.DownloadRecoveryState.Paused ->
+                                stringResource(R.string.downloads_paused)
+
+                            com.example.shelfplayer.domain.download.DownloadRecoveryState.Queued ->
+                                stringResource(R.string.downloads_queued)
+
+                            com.example.shelfplayer.domain.download.DownloadRecoveryState.Running ->
+                                stringResource(R.string.downloads_downloading)
+
+                            com.example.shelfplayer.domain.download.DownloadRecoveryState.Waiting ->
+                                stringResource(R.string.downloads_waiting)
+
+                            com.example.shelfplayer.domain.download.DownloadRecoveryState.Retrying ->
+                                stringResource(R.string.downloads_retrying)
+
                             com.example.shelfplayer.domain.download.DownloadRecoveryState.Failed ->
                                 row.failureSummary ?: stringResource(R.string.downloads_failed)
                         }
