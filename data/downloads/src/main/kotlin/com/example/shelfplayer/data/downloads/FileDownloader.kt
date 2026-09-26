@@ -82,6 +82,7 @@ class FileDownloader @Inject constructor(
         itemId: LibraryItemId,
         file: OfflineFile,
         storageVolumeUuid: String? = null,
+        committedUris: List<String> = emptyList(),
         onProgress: (Long) -> Unit = {},
     ): AppResult<OfflineFile> {
         val part = storage.partFor(
@@ -90,7 +91,14 @@ class FileDownloader @Inject constructor(
             fileId = file.remoteFileId,
             mimeType = file.mimeType,
             volumeUuid = storageVolumeUuid,
+            committedUris = committedUris,
         ) ?: return AppResult.Failure(unavailableStorage())
+        fun ownerAvailable(): Boolean = storage.isOwnerAvailable(
+            serverId = serverId.value,
+            itemId = itemId.value,
+            volumeUuid = storageVolumeUuid,
+            committedUris = committedUris,
+        )
         val onDisk = storage.bytesOnDisk(part)
 
         // Two conditions for even attempting a resume: bytes on disk, and a validator to guard them with.
@@ -107,7 +115,7 @@ class FileDownloader @Inject constructor(
 
         var transfer = fetch(profileId, itemId, file, part, resumeFrom, onProgress)
         if (transfer.isFailure()) {
-            if (!storage.isVolumeAvailable(storageVolumeUuid)) return AppResult.Failure(unavailableStorage())
+            if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
             record(
                 serverId,
                 itemId,
@@ -115,6 +123,7 @@ class FileDownloader @Inject constructor(
             )
             return AppResult.Failure(transfer.error)
         }
+        if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
         var outcome = (transfer as AppResult.Success).value
         observe(serverId, askedForRange = resumeFrom > 0, outcome = outcome)
 
@@ -126,7 +135,7 @@ class FileDownloader @Inject constructor(
                 lastModified = null,
             )
             if (!storage.delete(part)) {
-                if (!storage.isVolumeAvailable(storageVolumeUuid)) {
+                if (!ownerAvailable()) {
                     return AppResult.Failure(unavailableStorage())
                 }
                 val error = AppError.Storage(summary = "The stale partial download could not be cleared.")
@@ -151,7 +160,7 @@ class FileDownloader @Inject constructor(
                 onProgress = onProgress,
             )
             if (transfer.isFailure()) {
-                if (!storage.isVolumeAvailable(storageVolumeUuid)) return AppResult.Failure(unavailableStorage())
+                if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
                 record(
                     serverId,
                     itemId,
@@ -162,6 +171,7 @@ class FileDownloader @Inject constructor(
                 )
                 return AppResult.Failure(transfer.error)
             }
+            if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
             outcome = (transfer as AppResult.Success).value
             if (outcome.rangeNotSatisfiable) {
                 val error = AppError.ApiCompatibility(
@@ -181,7 +191,7 @@ class FileDownloader @Inject constructor(
         }
 
         verify(part, outcome)?.let { problem ->
-            if (!storage.isVolumeAvailable(storageVolumeUuid)) return AppResult.Failure(unavailableStorage())
+            if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
             // The part is left where it is. A short file resumes; a corrupt one is replaced by the next
             // attempt, which cannot resume because the validator will not match.
             record(
@@ -194,7 +204,7 @@ class FileDownloader @Inject constructor(
 
         val committed = storage.commit(part)
             ?: return AppResult.Failure(
-                if (storage.isVolumeAvailable(storageVolumeUuid)) {
+                if (ownerAvailable()) {
                     AppError.Unknown(summary = "The downloaded file could not be moved into place.")
                 } else {
                     unavailableStorage()
