@@ -9,6 +9,9 @@ import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.core.model.download.VerificationReport
 import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.domain.download.DownloadExecutionEvidence
+import com.example.shelfplayer.domain.download.DownloadExecutionKey
+import com.example.shelfplayer.domain.download.DownloadExecutionObserver
 import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.download.DownloadRecoveryPolicy
 import com.example.shelfplayer.domain.download.DownloadRecoveryState
@@ -26,8 +29,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -53,6 +58,7 @@ class DownloadsViewModel @Inject constructor(
     private val verification: OfflineVerification,
     private val profiles: ProfileRepository,
     private val locations: DownloadLocations,
+    private val execution: DownloadExecutionObserver,
     /** PRODUCT_SPEC DL-001 — stop a transfer without discarding what it fetched. */
     private val pauseDownload: PauseDownloadUseCase,
     /** The resume half. It re-checks the grant and the free space, which a bare re-enqueue would not. */
@@ -101,14 +107,35 @@ class DownloadsViewModel @Inject constructor(
         if (profile == null) flowOf(emptyList()) else library.observeAccessibleBooks(profile.id)
     }
 
+    /**
+     * Durable physical-copy truth is shared once; transient execution observation is derived from its keys.
+     * WorkManager is deliberately not copied into Room merely so this screen can render it.
+     */
+    private val storedDownloads = downloads.observeAll().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+        initialValue = emptyList(),
+    )
+
+    private val executionEvidence = storedDownloads
+        .map { stored -> stored.mapTo(linkedSetOf()) { DownloadExecutionKey(it.serverId, it.itemId) } }
+        .distinctUntilChanged()
+        .flatMapLatest(execution::observe)
+
     val uiState: StateFlow<DownloadsUiState> = combine(
-        downloads.observeAll(),
+        storedDownloads,
         downloads.observeTotalBytes(),
         visibleBooks,
-    ) { stored, totalBytes, books ->
+        executionEvidence,
+    ) { stored, totalBytes, books, executions ->
         val byId = books.associateBy(Book::id)
         DownloadsUiState(
-            books = stored.map { copy -> copy.toRow(byId[copy.itemId]) },
+            books = stored.map { copy ->
+                copy.toRow(
+                    book = byId[copy.itemId],
+                    executionEvidence = executions[DownloadExecutionKey(copy.serverId, copy.itemId)],
+                )
+            },
             totalBytes = totalBytes,
             isLoaded = true,
         )
@@ -201,11 +228,12 @@ class DownloadsViewModel @Inject constructor(
         "$booksBroken book(s) are missing files and now offer a retry. Nothing was deleted."
     }
 
-    private fun OfflineBook.toRow(book: Book?): DownloadRow {
+    private fun OfflineBook.toRow(book: Book?, executionEvidence: DownloadExecutionEvidence?): DownloadRow {
         val recovery = DownloadRecoveryPolicy.resolve(
             durableState = state,
             manifestFilesComplete = isComplete,
             safeFailureSummary = failureSummary,
+            executionEvidence = executionEvidence,
         )
         return DownloadRow(
             bookId = itemId,
