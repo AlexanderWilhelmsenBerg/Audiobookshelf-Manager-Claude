@@ -72,6 +72,7 @@ class FileDownloaderTest {
         repository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
             storage = storage,
+            copyLocks = DownloadCopyLocks(),
             clock = TestAppClock(),
             ioDispatcher = UnconfinedTestDispatcher(),
         )
