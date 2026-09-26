@@ -25,11 +25,11 @@ internal object SleepTimerMediaMetadata {
         val seconds = totalSeconds % SECONDS_PER_MINUTE
         val totalMinutes = totalSeconds / SECONDS_PER_MINUTE
         if (totalMinutes < MINUTES_PER_HOUR) {
-            return "$" + "{totalMinutes}:" + "$" + "{seconds.twoDigits()}"
+            return totalMinutes.toString() + ":" + seconds.twoDigits()
         }
         val hours = totalMinutes / MINUTES_PER_HOUR
         val minutes = totalMinutes % MINUTES_PER_HOUR
-        return "$" + "{hours}:" + "$" + "{minutes.twoDigits()}:" + "$" + "{seconds.twoDigits()}"
+        return hours.toString() + ":" + minutes.twoDigits() + ":" + seconds.twoDigits()
     }
 
     /** Returns a replacement item only when the public media metadata actually needs to change. */
