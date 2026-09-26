@@ -110,7 +110,11 @@ class DefaultDownloadRepositoryTest {
         )
         val shared = assertNotNull(internalRepository.request(SERVER, BOOK, GRACE, files()).getOrNull())
 
-        assertEquals("card-uuid", shared.storageVolumeUuid, "another profile/preference must not move the physical copy")
+        assertEquals(
+            "card-uuid",
+            shared.storageVolumeUuid,
+            "another profile/preference must not move the physical copy",
+        )
         assertEquals(setOf(ADA, GRACE), shared.requestedBy)
     }
 
