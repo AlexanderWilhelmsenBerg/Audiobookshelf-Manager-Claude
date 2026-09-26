@@ -1,22 +1,13 @@
 package com.example.shelfplayer.download
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
-import android.text.format.Formatter
 import android.content.pm.ServiceInfo
 import android.os.Build
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import com.example.shelfplayer.MainActivity
-import com.example.shelfplayer.R
 import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
@@ -45,6 +36,7 @@ class BookDownloadWorker @AssistedInject constructor(
     @Assisted private val appContext: Context,
     @Assisted params: WorkerParameters,
     private val downloader: BookDownloader,
+    private val notifications: DownloadNotificationFactory,
     private val logger: Logger,
 ) : CoroutineWorker(appContext, params) {
 
@@ -103,54 +95,19 @@ class BookDownloadWorker @AssistedInject constructor(
         serverId: ServerId,
         itemId: LibraryItemId,
     ): ForegroundInfo {
-        ensureChannel()
-        val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
-            .setContentTitle(appContext.getString(R.string.download_notification_title))
-            .setContentText(progressText(snapshot))
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentIntent(downloadsPendingIntent(serverId, itemId))
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setProgress(PERCENT, snapshot.percent, false)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setGroup(NOTIFICATION_GROUP)
-            .build()
-        val notificationId = notificationIdFor(serverId, itemId)
+        val notification = notifications.notification(
+            serverId = serverId,
+            itemId = itemId,
+            state = com.example.shelfplayer.domain.download.DownloadRecoveryState.Running,
+            progress = snapshot,
+        )
+        val notificationId = notifications.notificationId(serverId, itemId)
 
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ForegroundInfo(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             ForegroundInfo(notificationId, notification)
         }
-    }
-
-    private fun progressText(snapshot: DownloadProgress): String {
-        val percentage = appContext.getString(R.string.download_notification_progress, snapshot.percent)
-        val total = snapshot.totalBytes ?: return percentage
-        val downloaded = Formatter.formatShortFileSize(appContext, snapshot.downloadedBytes)
-        val totalText = Formatter.formatShortFileSize(appContext, total)
-        return appContext.getString(R.string.download_notification_progress_bytes, percentage, downloaded, totalText)
-    }
-
-    private fun downloadsPendingIntent(serverId: ServerId, itemId: LibraryItemId): PendingIntent {
-        val intent = Intent(appContext, MainActivity::class.java)
-            .putExtra(MainActivity.EXTRA_OPEN_DOWNLOADS, true)
-            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        return PendingIntent.getActivity(
-            appContext,
-            notificationIdFor(serverId, itemId),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-    }
-
-    private fun ensureChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            appContext.getString(R.string.download_notification_channel),
-            NotificationManager.IMPORTANCE_LOW,
-        ).apply { setShowBadge(false) }
-        NotificationManagerCompat.from(appContext).createNotificationChannel(channel)
     }
 
     companion object {
@@ -167,14 +124,7 @@ class BookDownloadWorker @AssistedInject constructor(
         /** One physical job per shared downloaded copy. */
         fun nameFor(serverId: ServerId, itemId: LibraryItemId): String = "download:${serverId.value}:${itemId.value}"
 
-        private const val CHANNEL_ID = "shelfplayer.downloads"
-        private const val NOTIFICATION_GROUP = "bookwave.downloads"
-        private const val NOTIFICATION_ID_BASE = 4_200
-        private const val PERCENT = 100
         private const val PUBLISH_INTERVAL_MILLIS = 1_000L
-
-        internal fun notificationIdFor(serverId: ServerId, itemId: LibraryItemId): Int =
-            NOTIFICATION_ID_BASE + (nameFor(serverId, itemId).hashCode() and 0x3fff_ffff)
 
         internal fun progressData(progress: DownloadProgress) = workDataOf(
             KEY_PROGRESS_BYTES to progress.downloadedBytes,
