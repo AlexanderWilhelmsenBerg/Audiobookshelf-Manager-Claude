@@ -253,11 +253,28 @@ class DefaultDownloadRepositoryTest {
     @Test
     fun `a pin survives a second request`() = runTest {
         completeDownload()
-        repository.setPinned(SERVER, BOOK, ADA, isPinned = true)
+        repository.setPinned(SERVER, BOOK, isPinned = true)
 
         repository.request(SERVER, BOOK, ADA, files())
 
         assertTrue(database.downloadDao().isPinned(key()))
+    }
+
+    @Test
+    fun `device pin is shared by every profile claim and survives removing one claim`() = runTest {
+        completeDownload()
+        repository.request(SERVER, BOOK, GRACE, files())
+
+        repository.setPinned(SERVER, BOOK, isPinned = true)
+        assertTrue(assertNotNull(stored()).isPinned)
+
+        assertTrue(repository.release(SERVER, BOOK, ADA).getOrNull() == true)
+        val remaining = assertNotNull(stored())
+        assertEquals(setOf(GRACE), remaining.requestedBy)
+        assertTrue(remaining.isPinned, "removing one profile claim must not unpin the physical copy")
+
+        repository.setPinned(SERVER, BOOK, isPinned = false)
+        assertFalse(assertNotNull(stored()).isPinned)
     }
 
     /**
