@@ -10,6 +10,7 @@ import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.data.auth.SessionRestorer
 import com.example.shelfplayer.diagnostics.CrashReporter
 import com.example.shelfplayer.download.DownloadNotificationCoordinator
+import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
@@ -21,6 +22,7 @@ import com.example.shelfplayer.playback.AutoLibrary
 import com.example.shelfplayer.sync.ProcessRealtimeSyncWatcher
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -87,6 +89,9 @@ class ShelfPlayerApplication :
      */
     @Inject
     lateinit var verification: OfflineVerification
+
+    @Inject
+    lateinit var downloadLocations: DownloadLocations
 
     @Inject
     lateinit var cleanUpDownloads: CleanUpDownloadsUseCase
@@ -166,6 +171,14 @@ class ShelfPlayerApplication :
             // No book id: nothing is playing at process start, so the "never the playing book" rule has
             // nothing to exclude. A cleanup that ran mid-session would need one.
             cleanUpDownloads()
+        }
+        applicationScope.launch {
+            // #20: mount/unmount changes are transient storage facts. Re-run the cheap manifest verifier
+            // after each change; unavailable known owners are skipped, while a reinserted card becomes
+            // eligible for verification immediately without changing the durable manifest first.
+            downloadLocations.observeAvailableVolumeUuids().drop(1).collect {
+                verification.verifyManifests()
+            }
         }
     }
 }
