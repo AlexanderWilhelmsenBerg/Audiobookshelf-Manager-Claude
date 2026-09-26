@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.download.DownloadProgress
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.core.model.download.VerificationReport
@@ -12,6 +13,7 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.download.DownloadExecutionEvidence
 import com.example.shelfplayer.domain.download.DownloadExecutionKey
 import com.example.shelfplayer.domain.download.DownloadExecutionObserver
+import com.example.shelfplayer.domain.download.DownloadExecutionSnapshot
 import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.download.DownloadRecoveryPolicy
 import com.example.shelfplayer.domain.download.DownloadRecoveryState
@@ -159,7 +161,7 @@ class DownloadsViewModel @Inject constructor(
             books = stored.map { copy ->
                 copy.toRow(
                     book = byId[copy.itemId],
-                    executionEvidence = transient.executions[DownloadExecutionKey(copy.serverId, copy.itemId)],
+                    execution = transient.executions[DownloadExecutionKey(copy.serverId, copy.itemId)],
                     partialBytes = transient.partialBytes[DownloadExecutionKey(copy.serverId, copy.itemId)] ?: 0L,
                 )
             },
@@ -268,15 +270,16 @@ class DownloadsViewModel @Inject constructor(
 
     private fun OfflineBook.toRow(
         book: Book?,
-        executionEvidence: DownloadExecutionEvidence?,
+        execution: DownloadExecutionSnapshot?,
         partialBytes: Long,
     ): DownloadRow {
         val recovery = DownloadRecoveryPolicy.resolve(
             durableState = state,
             manifestFilesComplete = isComplete,
             safeFailureSummary = failureSummary,
-            executionEvidence = executionEvidence,
+            executionEvidence = execution?.evidence,
         )
+        val progress = execution?.progress ?: durableProgress()
         return DownloadRow(
             bookId = itemId,
             serverId = serverId,
@@ -294,6 +297,25 @@ class DownloadsViewModel @Inject constructor(
             isPinned = isPinned,
             isSharedWithAnotherProfile = requestedBy.size > 1,
             partialBytes = partialBytes,
+            progress = progress.takeUnless { recovery.state == DownloadRecoveryState.Complete },
+        )
+    }
+
+    private fun OfflineBook.durableProgress(): DownloadProgress {
+        val truthfulTotal = files
+            .map { it.expectedBytes }
+            .takeIf { expected -> expected.all { (it ?: 0L) > 0L } }
+            ?.sumOf { it ?: 0L }
+            ?.takeIf { it > 0L }
+        val fraction = when {
+            isComplete -> 1f
+            truthfulTotal != null -> (downloadedBytes.toFloat() / truthfulTotal).coerceIn(0f, 1f)
+            else -> 0f
+        }
+        return DownloadProgress(
+            downloadedBytes = downloadedBytes,
+            totalBytes = truthfulTotal,
+            fraction = fraction,
         )
     }
 
@@ -346,7 +368,7 @@ internal fun DownloadRecoveryState.rowAction(): DownloadRecoveryAction? = when (
  * @property totalBytes what every download occupies, which is the number somebody came to this screen for.
  */
 private data class DownloadTransientPresentation(
-    val executions: Map<DownloadExecutionKey, DownloadExecutionEvidence>,
+    val executions: Map<DownloadExecutionKey, DownloadExecutionSnapshot>,
     val partialBytes: Map<DownloadExecutionKey, Long>,
 )
 
@@ -380,6 +402,7 @@ data class DownloadRow(
     val isPinned: Boolean,
     val isSharedWithAnotherProfile: Boolean,
     val partialBytes: Long = 0L,
+    val progress: DownloadProgress? = null,
 ) {
     val isFailed: Boolean get() = recoveryState == DownloadRecoveryState.Failed
 
