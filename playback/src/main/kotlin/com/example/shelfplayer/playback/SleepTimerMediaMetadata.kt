@@ -11,10 +11,10 @@ import kotlin.time.Duration
  * artist/byline on every compact media surface. Physical acceptance proved that projecting only into those
  * fields leaves BookWave's countdown invisible on a supported phone.
  *
- * The countdown is therefore projected at the start of the primary title and display title while active.
- * Those are the metadata fields the compact and expanded system media surfaces are built around. The original
- * values travel in BookWave-owned extras so every one-second tick rebuilds from truth rather than compounding
- * prefixes, and idle state restores the exact book metadata.
+ * While the timer is active, the countdown therefore becomes the complete primary title and display title.
+ * Keeping that text to only the short clock avoids a long book-title marquee restarting on every one-second
+ * metadata update in compact System UI. The original values travel in BookWave-owned extras so every tick
+ * rebuilds from truth, and idle state restores the exact book metadata.
  */
 internal object SleepTimerMediaMetadata {
 
@@ -54,12 +54,10 @@ internal object SleepTimerMediaMetadata {
             return item.buildUpon().setMediaMetadata(restored).build()
         }
 
-        val visibleBookTitle = baseDisplayTitle?.takeIf { it.isNotBlank() } ?: baseTitle?.takeIf { it.isNotBlank() }
-        val projectedTitle = listOfNotNull(timerLabel, visibleBookTitle).joinToString(SEPARATOR)
         if (
             wasProjected &&
-            metadata.title?.toString() == projectedTitle &&
-            metadata.displayTitle?.toString() == projectedTitle
+            metadata.title?.toString() == timerLabel &&
+            metadata.displayTitle?.toString() == timerLabel
         ) {
             return null
         }
@@ -70,8 +68,8 @@ internal object SleepTimerMediaMetadata {
             baseDisplayTitle?.let { extras.putCharSequence(KEY_BASE_DISPLAY_TITLE, it) }
         }
         val projected = metadata.buildUpon()
-            .setTitle(projectedTitle)
-            .setDisplayTitle(projectedTitle)
+            .setTitle(timerLabel)
+            .setDisplayTitle(timerLabel)
             .setExtras(extras)
             .build()
         return item.buildUpon().setMediaMetadata(projected).build()
@@ -79,7 +77,6 @@ internal object SleepTimerMediaMetadata {
 
     private fun Long.twoDigits(): String = toString().padStart(2, '0')
 
-    private const val SEPARATOR = " · "
     private const val MILLIS_PER_SECOND = 1_000L
     private const val SECONDS_PER_MINUTE = 60L
     private const val MINUTES_PER_HOUR = 60L
