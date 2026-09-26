@@ -289,6 +289,28 @@ class DownloadsViewModelTest {
     }
 
     @Test
+    fun `row storage state follows aggregate volume availability`() = runTest {
+        val stored = offlineBook("tidewatch", storageVolumeUuid = "card-1")
+        downloads.emit(listOf(stored))
+        library.emit(listOf(book("tidewatch", "Tidewatch")))
+        val viewModel = viewModel()
+
+        viewModel.uiState.test {
+            var row: DownloadRow? = null
+            while (row?.storageState != DownloadStorageState.Unavailable) {
+                row = awaitItem().books.singleOrNull()
+            }
+            assertEquals(DownloadStorageState.Unavailable, row.storageState)
+
+            locations.available.value = setOf(StorageVolumeOption.INTERNAL_UUID, "card-1")
+            do {
+                row = awaitItem().books.singleOrNull()
+            } while (row?.storageState != DownloadStorageState.Available)
+            assertEquals(DownloadStorageState.Available, row.storageState)
+        }
+    }
+
+    @Test
     fun `reports the total the downloads occupy`() = runTest {
         downloads.emit(listOf(offlineBook("tidewatch"), offlineBook("harrow")))
 
@@ -535,11 +557,13 @@ class DownloadsViewModelTest {
         requestedBy: Set<ProfileId> = setOf(ADA),
         state: DownloadState = DownloadState.Complete,
         failureSummary: String? = null,
+        storageVolumeUuid: String? = null,
     ) = OfflineBook(
         serverId = SERVER,
         itemId = LibraryItemId(id),
         state = state,
         failureSummary = failureSummary,
+        storageVolumeUuid = storageVolumeUuid,
         files = listOf(
             OfflineFile(
                 remoteFileId = "$id-1",
@@ -685,6 +709,7 @@ class DownloadsViewModelTest {
     /** PRODUCT_SPEC DL-003 / ADR-0020 — a device with internal storage and one card in it. */
     private class FakeLocations : DownloadLocations {
         val selected = MutableStateFlow(StorageVolumeOption.INTERNAL_UUID)
+        val available = MutableStateFlow(setOf(StorageVolumeOption.INTERNAL_UUID))
         var failure: AppError? = null
 
         override suspend fun options(): List<StorageVolumeOption> = listOf(
@@ -693,6 +718,8 @@ class DownloadsViewModelTest {
         )
 
         override fun observeSelected(): Flow<String> = selected
+
+        override fun observeAvailableVolumeUuids(): Flow<Set<String>> = available
 
         override suspend fun select(uuid: String): AppResult<Unit> {
             failure?.let { return AppResult.Failure(it) }
