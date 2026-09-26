@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.DownloadProgress
 import com.example.shelfplayer.core.model.download.DownloadStorageState
@@ -129,7 +130,11 @@ class DownloadsViewModel @Inject constructor(
     }
 
     private val visibleBooks = profiles.observeActiveProfile().flatMapLatest { profile ->
-        if (profile == null) flowOf(emptyList()) else library.observeAccessibleBooks(profile.id)
+        if (profile == null) {
+            flowOf(VisibleBooks(profileId = null, books = emptyList()))
+        } else {
+            library.observeAccessibleBooks(profile.id).map { books -> VisibleBooks(profile.id, books) }
+        }
     }
 
     /**
@@ -185,12 +190,13 @@ class DownloadsViewModel @Inject constructor(
         downloads.observeTotalBytes(),
         visibleBooks,
         transientPresentation,
-    ) { stored, totalBytes, books, transient ->
-        val byId = books.associateBy(Book::id)
+    ) { stored, totalBytes, visible, transient ->
+        val byId = visible.books.associateBy(Book::id)
         DownloadsUiState(
             books = stored.map { copy ->
                 copy.toRow(
                     book = byId[copy.itemId],
+                    activeProfileId = visible.profileId,
                     execution = transient.executions[DownloadExecutionKey(copy.serverId, copy.itemId)],
                     partialBytes = transient.partialBytes[DownloadExecutionKey(copy.serverId, copy.itemId)] ?: 0L,
                     storageState = storageState(copy.storageVolumeUuid, transient.availableVolumeUuids),
@@ -250,7 +256,7 @@ class DownloadsViewModel @Inject constructor(
         }
     }
 
-    /* PRODUCT_SPEC DL-006 — protects one copy from the automatic cleanup, or stops protecting it. */
+    /* PD-003 / PRODUCT_SPEC DL-006 — one device-level pin protects the shared physical copy. */
 
     /**
      * BW-DL-03 / #18 — execute only the recovery action owned by the row's presentation state.
@@ -290,8 +296,7 @@ class DownloadsViewModel @Inject constructor(
 
     fun onPinnedChanged(bookId: LibraryItemId, serverId: ServerId, isPinned: Boolean) {
         viewModelScope.launch {
-            val profileId = profiles.activeProfileId() ?: return@launch
-            downloads.setPinned(serverId, bookId, profileId, isPinned)
+            downloads.setPinned(serverId, bookId, isPinned)
         }
     }
 
@@ -303,6 +308,7 @@ class DownloadsViewModel @Inject constructor(
 
     private fun OfflineBook.toRow(
         book: Book?,
+        activeProfileId: ProfileId?,
         execution: DownloadExecutionSnapshot?,
         partialBytes: Long,
         storageState: DownloadStorageState,
@@ -314,6 +320,7 @@ class DownloadsViewModel @Inject constructor(
             executionEvidence = execution?.evidence,
         )
         val progress = execution?.progress ?: durableDownloadProgress()
+        val claimedByActiveProfile = activeProfileId != null && activeProfileId in requestedBy
         return DownloadRow(
             bookId = itemId,
             serverId = serverId,
@@ -329,7 +336,11 @@ class DownloadsViewModel @Inject constructor(
             // Even sanitized infrastructure text is not permission to reveal another profile's media context.
             failureSummary = recovery.failureSummary.takeIf { book != null },
             isPinned = isPinned,
-            isSharedWithAnotherProfile = requestedBy.size > 1,
+            isClaimedByActiveProfile = claimedByActiveProfile,
+            isSharedWithAnotherProfile =
+                claimedByActiveProfile && requestedBy.any { profileId -> profileId != activeProfileId },
+            isOnDeviceForAnotherProfile =
+                activeProfileId != null && !claimedByActiveProfile && requestedBy.isNotEmpty(),
             partialBytes = partialBytes,
             progress = progress.takeUnless { recovery.state == DownloadRecoveryState.Complete },
             storageState = storageState,
@@ -405,6 +416,11 @@ internal fun DownloadRecoveryState.rowAction(): DownloadRecoveryAction? = when (
 /**
  * @property totalBytes what every download occupies, which is the number somebody came to this screen for.
  */
+private data class VisibleBooks(
+    val profileId: ProfileId?,
+    val books: List<Book>,
+)
+
 private data class DownloadTransientPresentation(
     val executions: Map<DownloadExecutionKey, DownloadExecutionSnapshot>,
     val partialBytes: Map<DownloadExecutionKey, Long>,
@@ -426,8 +442,8 @@ data class DownloadsUiState(
 /**
  * One downloaded book.
  *
- * @property title `null` when the active profile may not see this book (PRODUCT_SPEC 5.2). The row is still
- *   shown and still deletable — that is the point of decision 6.
+ * @property title `null` when the active profile may not see this book (PRODUCT_SPEC 5.2). The physical row
+ *   is still shown, but profile-scoped Remove is available only when the active profile owns a claim.
  * @property recoveryState the pure BW-DL-02 presentation result. BW-DL-04 may later refine it with transient
  *   execution evidence without persisting WorkManager state.
  * @property failureSummary safe failure copy for a visible failed row; always `null` for title-hidden rows.
@@ -445,7 +461,9 @@ data class DownloadRow(
     val recoveryState: DownloadRecoveryState,
     val failureSummary: String?,
     val isPinned: Boolean,
+    val isClaimedByActiveProfile: Boolean,
     val isSharedWithAnotherProfile: Boolean,
+    val isOnDeviceForAnotherProfile: Boolean,
     val partialBytes: Long = 0L,
     val progress: DownloadProgress? = null,
     val storageState: DownloadStorageState = DownloadStorageState.Unknown,
