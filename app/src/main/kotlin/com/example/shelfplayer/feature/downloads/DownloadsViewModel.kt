@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -122,18 +123,44 @@ class DownloadsViewModel @Inject constructor(
         .distinctUntilChanged()
         .flatMapLatest(execution::observe)
 
+    /**
+     * #22 filesystem projection. It is intentionally transient: reclaimable .part bytes belong to disk,
+     * not Room. A fresh projection is rebuilt whenever a durable row changes, including pause/failure,
+     * discard bookkeeping updates and process reconstruction.
+     */
+    private val partialBytes = storedDownloads.mapLatest { stored ->
+        buildMap {
+            stored
+                .filter { book ->
+                    book.state == com.example.shelfplayer.core.model.download.DownloadState.Paused ||
+                        book.state == com.example.shelfplayer.core.model.download.DownloadState.Failed
+                }
+                .forEach { book ->
+                    when (val result = files.partialBytes(book.serverId, book.itemId)) {
+                        is AppResult.Success -> put(DownloadExecutionKey(book.serverId, book.itemId), result.value)
+                        is AppResult.Failure -> Unit
+                    }
+                }
+        }
+    }
+
+    private val transientPresentation = combine(executionEvidence, partialBytes) { executions, partials ->
+        DownloadTransientPresentation(executions = executions, partialBytes = partials)
+    }
+
     val uiState: StateFlow<DownloadsUiState> = combine(
         storedDownloads,
         downloads.observeTotalBytes(),
         visibleBooks,
-        executionEvidence,
-    ) { stored, totalBytes, books, executions ->
+        transientPresentation,
+    ) { stored, totalBytes, books, transient ->
         val byId = books.associateBy(Book::id)
         DownloadsUiState(
             books = stored.map { copy ->
                 copy.toRow(
                     book = byId[copy.itemId],
-                    executionEvidence = executions[DownloadExecutionKey(copy.serverId, copy.itemId)],
+                    executionEvidence = transient.executions[DownloadExecutionKey(copy.serverId, copy.itemId)],
+                    partialBytes = transient.partialBytes[DownloadExecutionKey(copy.serverId, copy.itemId)] ?: 0L,
                 )
             },
             totalBytes = totalBytes,
@@ -215,6 +242,17 @@ class DownloadsViewModel @Inject constructor(
         }
     }
 
+    /** #22 — explicit destructive recovery. Normal Retry/Resume never calls this path. */
+    fun onDiscardPartials(bookId: LibraryItemId, serverId: ServerId) {
+        viewModelScope.launch {
+            when (val discarded = files.discardPartials(serverId, bookId)) {
+                is AppResult.Failure -> _message.value = discarded.error.summary
+                is AppResult.Success -> _message.value =
+                    "Discarded ${formatByteCount(discarded.value)} of partial download data."
+            }
+        }
+    }
+
     fun onPinnedChanged(bookId: LibraryItemId, serverId: ServerId, isPinned: Boolean) {
         viewModelScope.launch {
             val profileId = profiles.activeProfileId() ?: return@launch
@@ -228,7 +266,11 @@ class DownloadsViewModel @Inject constructor(
         "$booksBroken book(s) are missing files and now offer a retry. Nothing was deleted."
     }
 
-    private fun OfflineBook.toRow(book: Book?, executionEvidence: DownloadExecutionEvidence?): DownloadRow {
+    private fun OfflineBook.toRow(
+        book: Book?,
+        executionEvidence: DownloadExecutionEvidence?,
+        partialBytes: Long,
+    ): DownloadRow {
         val recovery = DownloadRecoveryPolicy.resolve(
             durableState = state,
             manifestFilesComplete = isComplete,
@@ -251,10 +293,21 @@ class DownloadsViewModel @Inject constructor(
             failureSummary = recovery.failureSummary.takeIf { book != null },
             isPinned = isPinned,
             isSharedWithAnotherProfile = requestedBy.size > 1,
+            partialBytes = partialBytes,
         )
     }
 
+    private fun formatByteCount(bytes: Long): String = when {
+        bytes >= BYTES_PER_GIBIBYTE -> String.format(java.util.Locale.US, "%.1f GiB", bytes / BYTES_PER_GIBIBYTE.toDouble())
+        bytes >= BYTES_PER_MEBIBYTE -> String.format(java.util.Locale.US, "%.1f MiB", bytes / BYTES_PER_MEBIBYTE.toDouble())
+        bytes >= BYTES_PER_KIBIBYTE -> String.format(java.util.Locale.US, "%.1f KiB", bytes / BYTES_PER_KIBIBYTE.toDouble())
+        else -> "$bytes B"
+    }
+
     private companion object {
+        const val BYTES_PER_KIBIBYTE = 1_024L
+        const val BYTES_PER_MEBIBYTE = BYTES_PER_KIBIBYTE * 1_024L
+        const val BYTES_PER_GIBIBYTE = BYTES_PER_MEBIBYTE * 1_024L
         const val STOP_TIMEOUT_MILLIS = 5_000L
         const val SHARED_COPY_KEPT =
             "Removed from your downloads. The files stayed, because another profile on this device also " +
@@ -292,6 +345,11 @@ internal fun DownloadRecoveryState.rowAction(): DownloadRecoveryAction? = when (
 /**
  * @property totalBytes what every download occupies, which is the number somebody came to this screen for.
  */
+private data class DownloadTransientPresentation(
+    val executions: Map<DownloadExecutionKey, DownloadExecutionEvidence>,
+    val partialBytes: Map<DownloadExecutionKey, Long>,
+)
+
 data class DownloadsUiState(
     val books: List<DownloadRow> = emptyList(),
     val totalBytes: Long = 0,
@@ -321,9 +379,14 @@ data class DownloadRow(
     val failureSummary: String?,
     val isPinned: Boolean,
     val isSharedWithAnotherProfile: Boolean,
+    val partialBytes: Long = 0L,
 ) {
     val isFailed: Boolean get() = recoveryState == DownloadRecoveryState.Failed
 
     /** PRODUCT_SPEC DL-001 — stopped by the listener, not by a failure. The row must not conflate them. */
     val isPaused: Boolean get() = recoveryState == DownloadRecoveryState.Paused
+
+    val canDiscardPartials: Boolean
+        get() = partialBytes > 0L &&
+            (recoveryState == DownloadRecoveryState.Paused || recoveryState == DownloadRecoveryState.Failed)
 }
