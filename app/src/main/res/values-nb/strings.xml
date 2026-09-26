@@ -342,7 +342,10 @@
     <string name="downloads_location_internal">Denne enheten</string>
     <string name="downloads_location_free">%1$s ledig</string>
     <string name="downloads_location_removable">Uttakbar</string>
-    <string name="downloads_location_hint">Dette gjelder neste nedlasting. Bøker som allerede er på enheten blir liggende der de er og spilles av som før. Bøker på et kort du tar ut vil tilby å lastes ned på nytt — ingenting slettes.</string>
+    <string name="downloads_location_hint">Dette gjelder neste nedlasting. Bøker som allerede er lagret beholder sin fysiske lagringsplass; denne innstillingen flytter dem ikke.</string>
+    <string name="downloads_location_unavailable_hint">Den valgte uttakbare lagringen er utilgjengelig. Nye nedlastinger bruker denne enheten midlertidig; valget av uttakbar lagring beholdes.</string>
+    <string name="downloads_storage_unavailable">Lagring utilgjengelig</string>
+    <string name="downloads_storage_unknown">Lagringsplass ukjent</string>
     <string name="downloads_verify_hint">Kontrollerer at hver nedlastede fil fortsatt finnes, har riktig størrelse og kan åpnes som lyd. Den sammenligner ikke lyden med serveren din — Audiobookshelf sender ingen sjekksum å sammenligne med.</string>
     <string name="downloads_verify">Kontroller nedlastede filer</string>
     <string name="downloads_hidden_title">En bok i et bibliotek denne profilen ikke ser</string>
