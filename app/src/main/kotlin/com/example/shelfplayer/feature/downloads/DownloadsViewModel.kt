@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.DownloadProgress
+import com.example.shelfplayer.core.model.download.DownloadStorageState
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.durableDownloadProgress
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
@@ -86,8 +87,29 @@ class DownloadsViewModel @Inject constructor(
         initialValue = StorageVolumeOption.INTERNAL_UUID,
     )
 
+    private val availableVolumeUuids = locations.observeAvailableVolumeUuids().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+        initialValue = setOf(StorageVolumeOption.INTERNAL_UUID),
+    )
+
+    val selectedVolumeUnavailable: StateFlow<Boolean> = combine(
+        selectedVolume,
+        availableVolumeUuids,
+    ) { selected, available ->
+        selected.isNotEmpty() && selected !in available
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+        initialValue = false,
+    )
+
     init {
-        viewModelScope.launch { _volumes.value = locations.options() }
+        viewModelScope.launch {
+            availableVolumeUuids.collect {
+                _volumes.value = locations.options()
+            }
+        }
     }
 
     /**
@@ -147,8 +169,16 @@ class DownloadsViewModel @Inject constructor(
         }
     }
 
-    private val transientPresentation = combine(executionEvidence, partialBytes) { executions, partials ->
-        DownloadTransientPresentation(executions = executions, partialBytes = partials)
+    private val transientPresentation = combine(
+        executionEvidence,
+        partialBytes,
+        availableVolumeUuids,
+    ) { executions, partials, available ->
+        DownloadTransientPresentation(
+            executions = executions,
+            partialBytes = partials,
+            availableVolumeUuids = available,
+        )
     }
 
     val uiState: StateFlow<DownloadsUiState> = combine(
@@ -164,6 +194,7 @@ class DownloadsViewModel @Inject constructor(
                     book = byId[copy.itemId],
                     execution = transient.executions[DownloadExecutionKey(copy.serverId, copy.itemId)],
                     partialBytes = transient.partialBytes[DownloadExecutionKey(copy.serverId, copy.itemId)] ?: 0L,
+                    storageState = storageState(copy.storageVolumeUuid, transient.availableVolumeUuids),
                 )
             },
             totalBytes = totalBytes,
@@ -302,6 +333,12 @@ class DownloadsViewModel @Inject constructor(
         )
     }
 
+    private fun storageState(volumeUuid: String?, available: Set<String>): DownloadStorageState = when {
+        volumeUuid == null -> DownloadStorageState.Unknown
+        volumeUuid in available -> DownloadStorageState.Available
+        else -> DownloadStorageState.Unavailable
+    }
+
     private fun formatByteCount(bytes: Long): String = when {
         bytes >= BYTES_PER_GIBIBYTE -> String.format(java.util.Locale.US, "%.1f GiB", bytes / BYTES_PER_GIBIBYTE.toDouble())
         bytes >= BYTES_PER_MEBIBYTE -> String.format(java.util.Locale.US, "%.1f MiB", bytes / BYTES_PER_MEBIBYTE.toDouble())
@@ -353,6 +390,7 @@ internal fun DownloadRecoveryState.rowAction(): DownloadRecoveryAction? = when (
 private data class DownloadTransientPresentation(
     val executions: Map<DownloadExecutionKey, DownloadExecutionSnapshot>,
     val partialBytes: Map<DownloadExecutionKey, Long>,
+    val availableVolumeUuids: Set<String>,
 )
 
 data class DownloadsUiState(
@@ -392,6 +430,7 @@ data class DownloadRow(
     val isSharedWithAnotherProfile: Boolean,
     val partialBytes: Long = 0L,
     val progress: DownloadProgress? = null,
+    val storageState: DownloadStorageState = DownloadStorageState.Unknown,
 ) {
     val isFailed: Boolean get() = recoveryState == DownloadRecoveryState.Failed
 
