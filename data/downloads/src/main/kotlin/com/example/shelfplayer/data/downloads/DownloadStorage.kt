@@ -159,6 +159,9 @@ class DownloadStorage @Inject constructor(
      * the root: a delete that started higher up would be one path-construction bug away from removing
      * somebody else's book.
      */
+    fun deleteItem(serverId: String, itemId: String): Boolean =
+        deleteItem(serverId, itemId, volumeUuid = null, committedUris = emptyList())
+
     fun deleteItem(
         serverId: String,
         itemId: String,
