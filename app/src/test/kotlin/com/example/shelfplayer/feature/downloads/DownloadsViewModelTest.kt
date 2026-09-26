@@ -236,6 +236,19 @@ class DownloadsViewModelTest {
     }
 
     @Test
+    fun `a complete copy owned by another profile is claimed without scheduling another transfer`() = runTest {
+        val scheduler = TrackingScheduler()
+        val bookId = LibraryItemId("tidewatch")
+        downloads.emit(listOf(offlineBook("tidewatch", requestedBy = setOf(GRACE))))
+        val useCase = DownloadBookUseCase(FakeProfiles(), ActionAssets, downloads, scheduler)
+
+        assertTrue(useCase(bookId) is AppResult.Success)
+
+        assertEquals(listOf(bookId), downloads.requested)
+        assertEquals(emptyList(), scheduler.enqueued, "the existing complete physical copy must not be downloaded again")
+    }
+
+    @Test
     fun `states without a manual recovery action call neither use case`() = runTest {
         val scheduler = TrackingScheduler()
         val viewModel = viewModel(scheduler)
@@ -393,7 +406,7 @@ class DownloadsViewModelTest {
     }
 
     @Test
-    fun `pinning writes the pin for the active profile`() = runTest {
+    fun `pinning writes the device-level physical-copy pin`() = runTest {
         downloads.emit(listOf(offlineBook("tidewatch")))
         val viewModel = viewModel()
 
@@ -646,7 +659,6 @@ class DownloadsViewModelTest {
         override suspend fun setPinned(
             serverId: ServerId,
             itemId: LibraryItemId,
-            profileId: ProfileId,
             isPinned: Boolean,
         ): AppResult<Unit> {
             pinned += itemId to isPinned
