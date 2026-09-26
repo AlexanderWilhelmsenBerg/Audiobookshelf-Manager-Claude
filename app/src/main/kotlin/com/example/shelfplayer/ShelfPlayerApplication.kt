@@ -9,7 +9,6 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.data.auth.SessionRestorer
 import com.example.shelfplayer.diagnostics.CrashReporter
-import com.example.shelfplayer.download.DownloadNotificationCoordinator
 import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.download.OfflineVerification
@@ -17,6 +16,7 @@ import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ApplyStartupModeUseCase
 import com.example.shelfplayer.domain.usecase.CleanUpDownloadsUseCase
 import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
+import com.example.shelfplayer.download.DownloadNotificationCoordinator
 import com.example.shelfplayer.lock.ProcessLockWatcher
 import com.example.shelfplayer.playback.AutoLibrary
 import com.example.shelfplayer.sync.ProcessRealtimeSyncWatcher
