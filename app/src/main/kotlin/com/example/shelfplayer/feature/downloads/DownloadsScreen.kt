@@ -75,6 +75,7 @@ fun DownloadsRoute(
         onRemove = viewModel::onRemove,
         onPinnedChanged = viewModel::onPinnedChanged,
         onRecoveryAction = viewModel::onRecoveryAction,
+        onDiscardPartials = viewModel::onDiscardPartials,
         onVerify = viewModel::onVerify,
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -113,6 +114,10 @@ fun DownloadsScreen(
         com.example.shelfplayer.core.model.LibraryItemId,
         com.example.shelfplayer.domain.download.DownloadRecoveryState,
     ) -> Unit,
+    onDiscardPartials: (
+        com.example.shelfplayer.core.model.LibraryItemId,
+        com.example.shelfplayer.core.model.ServerId,
+    ) -> Unit = { _, _ -> },
     onVerify: () -> Unit,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
@@ -123,6 +128,7 @@ fun DownloadsScreen(
     onVolumeChosen: (String) -> Unit = {},
 ) {
     var confirming by rememberSaveable { mutableStateOf<String?>(null) }
+    var discarding by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbars = remember { SnackbarHostState() }
     LaunchedEffect(message) {
         val text = message ?: return@LaunchedEffect
@@ -197,12 +203,24 @@ fun DownloadsScreen(
                 }
             }
             items(uiState.books, key = { row -> "${row.serverId.value}:${row.bookId.value}" }) { row ->
+                val rowKey = "${row.serverId.value}:${row.bookId.value}"
                 DownloadRowItem(
                     row = row,
                     onPinnedChanged = { pinned -> onPinnedChanged(row.bookId, row.serverId, pinned) },
                     onRecoveryAction = { onRecoveryAction(row.bookId, row.recoveryState) },
+                    onDiscardPartials = { discarding = rowKey },
                     onRemove = { confirming = row.bookId.value },
                 )
+                if (discarding == rowKey && row.canDiscardPartials) {
+                    DiscardPartialDialog(
+                        partialBytes = row.partialBytes,
+                        onConfirm = {
+                            discarding = null
+                            onDiscardPartials(row.bookId, row.serverId)
+                        },
+                        onDismiss = { discarding = null },
+                    )
+                }
                 if (confirming == row.bookId.value) {
                     RemoveDialog(
                         isShared = row.isSharedWithAnotherProfile,
@@ -295,6 +313,7 @@ private fun DownloadRowItem(
     row: DownloadRow,
     onPinnedChanged: (Boolean) -> Unit,
     onRecoveryAction: () -> Unit,
+    onDiscardPartials: () -> Unit,
     onRemove: () -> Unit,
 ) {
     Row(
@@ -349,6 +368,16 @@ private fun DownloadRowItem(
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
             )
+            if (row.canDiscardPartials) {
+                TextButton(onClick = onDiscardPartials) {
+                    Text(
+                        text = stringResource(
+                            R.string.downloads_discard_partial,
+                            formatBytes(row.partialBytes),
+                        ),
+                    )
+                }
+            }
         }
         DownloadRecoveryActionButton(
             recoveryState = row.recoveryState,
@@ -394,6 +423,32 @@ private fun DownloadRecoveryActionButton(
             contentDescription = stringResource(description),
         )
     }
+}
+
+@Composable
+private fun DiscardPartialDialog(partialBytes: Long, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.downloads_discard_partial_title)) },
+        text = {
+            Text(
+                text = stringResource(
+                    R.string.downloads_discard_partial_body,
+                    formatBytes(partialBytes),
+                ),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(text = stringResource(R.string.downloads_discard_partial_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.downloads_discard_partial_cancel))
+            }
+        },
+    )
 }
 
 /**
