@@ -7,10 +7,12 @@ import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.download.DownloadState
+import com.example.shelfplayer.core.model.download.DownloadStorageState
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.VerificationReport
 import com.example.shelfplayer.core.model.getOrNull
 import com.example.shelfplayer.core.model.resultOf
+import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import kotlinx.coroutines.flow.first
@@ -50,6 +52,7 @@ import javax.inject.Singleton
 class DownloadVerifier @Inject constructor(
     private val repository: DownloadRepository,
     private val verifier: MediaContainerVerifier,
+    private val locations: DownloadLocations,
     private val logger: Logger,
 ) : OfflineVerification {
 
@@ -63,28 +66,46 @@ class DownloadVerifier @Inject constructor(
         var repaired = 0
 
         books.forEach { book ->
-            val broken = book.files.filter { file ->
+            val ownerAvailability = locations.availability(book.storageVolumeUuid)
+            if (ownerAvailability == DownloadStorageState.Unavailable) {
+                // #20: the physical copy is preserved exactly as-is while its known removable volume is absent.
+                return@forEach
+            }
+
+            val classified = book.files.map { file ->
                 checked++
-                !isIntact(file.uri, file.downloadedBytes, readContainers)
+                file to classifyStorage(
+                    uri = file.uri,
+                    expectedBytes = file.downloadedBytes,
+                    readContainer = readContainers,
+                    ownerAvailability = ownerAvailability,
+                    verifier = verifier,
+                )
+            }
+
+            // Unknown + unreachable is not evidence of corruption. A legacy row whose card is absent has no
+            // durable owner to distinguish that from a missing internal file, so the conservative answer is
+            // to preserve it until runtime evidence becomes available.
+            if (classified.any { (_, state) -> state == DownloadStorageState.Unknown }) return@forEach
+
+            val broken = classified.filter { (_, state) ->
+                state == DownloadStorageState.Missing || state == DownloadStorageState.Corrupt
             }
             if (broken.isEmpty()) return@forEach
 
-            // PLAY-003's deferred criterion: "a missing local part prevents a false downloaded state". The
-            // file is marked failed, which makes `isComplete` false, which turns the button back into a
-            // retry. Nothing is deleted — the user is not asked to lose a book because one part went.
-            broken.forEach { file ->
+            broken.forEach { (file, _) ->
                 repository.updateFile(book.serverId, book.itemId, file.copy(state = DownloadState.Failed))
             }
             repository.markFailed(
                 book.serverId,
                 book.itemId,
-                summary = "${broken.size} of ${book.files.size} files are missing or the wrong size.",
+                summary = "${broken.size} of ${book.files.size} files are missing or unreadable.",
             )
             repaired++
             logger.warn(
                 LogCategory.Sync,
                 "A downloaded book is no longer intact",
-                LogField.Count("missingFiles", broken.size),
+                LogField.Count("brokenFiles", broken.size),
             )
         }
 
@@ -107,17 +128,32 @@ class DownloadVerifier @Inject constructor(
      * replaced by a filesystem that lost it, has the wrong length; a file that is simply gone fails the
      * first test. The container read is the expensive claim and is only made when asked for.
      */
-    private fun isIntact(uri: String, expectedBytes: Long, readContainer: Boolean): Boolean {
-        // A `content://` location — decision 4's user-chosen folder — cannot be checked with `File`, and is
-        // reported intact rather than broken. A verifier that failed a book because it could not read its
-        // storage would be destroying exactly what it exists to protect. SAF checking arrives with SAF
-        // writing; until then no manifest carries one of these.
-        if (uri.startsWith(CONTENT_SCHEME)) return true
+    internal fun classifyStorage(
+        uri: String,
+        expectedBytes: Long,
+        readContainer: Boolean,
+        ownerAvailability: DownloadStorageState,
+        verifier: MediaContainerVerifier,
+    ): DownloadStorageState {
+        if (ownerAvailability == DownloadStorageState.Unavailable) return DownloadStorageState.Unavailable
+        if (uri.startsWith(CONTENT_SCHEME)) return DownloadStorageState.Unknown
 
-        val file = fileOf(uri) ?: return false
-        return file.isFile &&
-            (expectedBytes <= 0 || file.length() == expectedBytes) &&
-            (!readContainer || verifier.isReadable(file))
+        val file = fileOf(uri)
+        if (file == null || !file.isFile) {
+            return if (ownerAvailability == DownloadStorageState.Unknown) {
+                DownloadStorageState.Unknown
+            } else {
+                DownloadStorageState.Missing
+            }
+        }
+        if (expectedBytes > 0 && file.length() != expectedBytes) return DownloadStorageState.Missing
+        if (readContainer && !verifier.isReadable(file)) return DownloadStorageState.Corrupt
+        return if (ownerAvailability == DownloadStorageState.Unknown) {
+            // The durable owner remains unknown, but the file itself is currently reachable and intact.
+            DownloadStorageState.Available
+        } else {
+            DownloadStorageState.Available
+        }
     }
 
     /** The `file://` URI as a path, or `null` when it is not one or cannot be parsed. */
