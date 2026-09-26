@@ -48,6 +48,12 @@ class DownloadStorage @Inject constructor(
      */
     private fun root(): File = volumes.roots().first()
 
+    /** #20 actual owner a brand-new physical copy will receive now, after selected-volume fallback. */
+    fun destinationVolumeUuid(): String = volumes.destinationVolumeUuid()
+
+    /** A known owner's current root; null means the removable owner is unavailable or legacy ownership unknown. */
+    fun rootForVolume(volumeUuid: String?): File? = volumes.rootForVolume(volumeUuid)
+
     /**
      * Every root this app has ever been able to write to, newest choice first.
      *
@@ -59,6 +65,14 @@ class DownloadStorage @Inject constructor(
     /** One item's directory under the *current* root. */
     fun itemDirectory(serverId: String, itemId: String): File =
         File(root(), DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator))
+
+    fun itemDirectory(serverId: String, itemId: String, volumeUuid: String?): File? {
+        val base = when {
+            volumeUuid == null -> root()
+            else -> rootForVolume(volumeUuid) ?: return null
+        }
+        return File(base, DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator))
+    }
 
     /**
      * The `.part` file for one audio file, with its directory created.
@@ -72,6 +86,18 @@ class DownloadStorage @Inject constructor(
         return File(directory, DownloadPaths.partName(DownloadPaths.fileName(fileId, mimeType)))
     }
 
+    fun partFor(
+        serverId: String,
+        itemId: String,
+        fileId: String,
+        mimeType: String?,
+        volumeUuid: String?,
+    ): File? {
+        val directory = itemDirectory(serverId, itemId, volumeUuid) ?: return null
+        if (!directory.exists() && !directory.mkdirs()) return null
+        return File(directory, DownloadPaths.partName(DownloadPaths.fileName(fileId, mimeType)))
+    }
+
     /**
      * Where an item's cover goes.
      *
@@ -81,6 +107,12 @@ class DownloadStorage @Inject constructor(
     fun coverFor(serverId: String, itemId: String, mimeType: String?): File {
         val directory = itemDirectory(serverId, itemId)
         directory.mkdirs()
+        return File(directory, DownloadPaths.coverName(mimeType))
+    }
+
+    fun coverFor(serverId: String, itemId: String, mimeType: String?, volumeUuid: String?): File? {
+        val directory = itemDirectory(serverId, itemId, volumeUuid) ?: return null
+        if (!directory.exists() && !directory.mkdirs()) return null
         return File(directory, DownloadPaths.coverName(mimeType))
     }
 
