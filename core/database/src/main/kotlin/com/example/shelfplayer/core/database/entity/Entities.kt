@@ -770,8 +770,10 @@ data class DownloadedBookEntity(
     val remoteItemId: String,
     /** A `DownloadState` name; an unrecognized value reads back as `Failed`, which is the safe direction. */
     val state: String,
-    /** `StorageRoot`: the empty string for app-private, a tree URI for a folder the user picked. */
+    /** `StorageRoot`: retained for future SAF support; current app-specific-volume downloads leave it null. */
     val storageTreeUri: String?,
+    /** #20 physical volume owner. null means legacy/unknown, empty means internal, non-empty removable UUID. */
+    val storageVolumeUuid: String? = null,
     /** Where the cover was written, or `null`. An absent cover does not make a download incomplete. */
     val coverUri: String?,
     /** Why the last attempt stopped, for the storage screen. Never a URL and never a token. */
