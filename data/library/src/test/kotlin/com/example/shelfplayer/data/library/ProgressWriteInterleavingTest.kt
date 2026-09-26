@@ -143,6 +143,7 @@ class ProgressWriteInterleavingTest {
                     libraryDao = database.libraryDao(),
                     progressDao = database.progressDao(),
                     downloads = NoDownloads,
+                    locations = InternalDownloadLocations,
                 ),
                 smartDownload = SmartDownload { _, _, _, _ -> },
             ),
