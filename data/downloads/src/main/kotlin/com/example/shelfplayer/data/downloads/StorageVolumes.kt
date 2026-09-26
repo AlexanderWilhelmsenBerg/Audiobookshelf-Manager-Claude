@@ -22,9 +22,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -91,7 +91,9 @@ class StorageVolumes @Inject constructor(
 
     override fun rootForVolume(uuid: String?): File? = when {
         uuid == null -> null
+
         uuid == StorageVolumeOption.INTERNAL_UUID -> context.filesDir
+
         else -> {
             val manager = context.getSystemService(StorageManager::class.java) ?: return null
             context.getExternalFilesDirs(null)
@@ -195,5 +197,4 @@ class StorageVolumes @Inject constructor(
         // `getExternalFilesDirs` can contain nulls for volumes that are present but not mounted.
         context.getExternalFilesDirs(null).filterNotNull().forEach(::add)
     }
-
 }
