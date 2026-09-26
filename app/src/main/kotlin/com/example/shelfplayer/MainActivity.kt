@@ -2,6 +2,7 @@ package com.example.shelfplayer
 
 import android.Manifest
 import android.os.Build
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -74,6 +75,7 @@ import com.example.shelfplayer.ui.glass.toColorScheme
 import dagger.hilt.android.AndroidEntryPoint
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -86,6 +88,8 @@ import javax.inject.Inject
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    private val openDownloadsRequest = MutableStateFlow(0)
 
     @Inject
     lateinit var playbackController: PlaybackController
@@ -105,6 +109,7 @@ class MainActivity : ComponentActivity() {
             setRecentsScreenshotEnabled(false)
         }
         super.onCreate(savedInstanceState)
+        consumeDownloadsNavigation(intent)
         /*
          * Issue #75 — observe direct live-session availability only while this UI is STARTED.
          *
@@ -120,6 +125,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val viewModel: AppViewModel = hiltViewModel()
             val appState by viewModel.state.collectAsStateWithLifecycle()
+            val downloadsRequest by openDownloadsRequest.collectAsStateWithLifecycle()
             // PRODUCT_SPEC SET-002 — outside the theme, because it decides what every string below says
             // and the theme only decides what colour it is drawn in.
             AppLocale(language = appState.language) {
@@ -168,12 +174,30 @@ class MainActivity : ComponentActivity() {
                                 ),
                                 flatBackdrop = theme.prefersFlatBackdrop,
                                 backgroundTheme = background,
+                                openDownloadsRequest = downloadsRequest,
                             )
                         }
                     }
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        consumeDownloadsNavigation(intent)
+    }
+
+    private fun consumeDownloadsNavigation(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false) == true) {
+            openDownloadsRequest.value += 1
+            intent.removeExtra(EXTRA_OPEN_DOWNLOADS)
+        }
+    }
+
+    companion object {
+        const val EXTRA_OPEN_DOWNLOADS = "bookwave.open_downloads"
     }
 }
 
@@ -193,6 +217,7 @@ private fun ShelfPlayerContent(
     flatBackdrop: Boolean,
     /** PRODUCT_SPEC SET-002 — the chosen bundled pack, whose artwork becomes the backdrop. */
     backgroundTheme: BackgroundTheme?,
+    openDownloadsRequest: Int,
     playerViewModel: PlayerViewModel = hiltViewModel(),
     lockViewModel: LockViewModel = hiltViewModel(),
 ) {
@@ -300,6 +325,7 @@ private fun ShelfPlayerContent(
                 onBookPlaySelected = playerViewModel::onPlayFromShelf,
                 playbackMessage = playbackMessage,
                 onPlaybackMessageShown = playerViewModel::onMessageShown,
+                openDownloadsRequest = openDownloadsRequest,
                 modifier = Modifier
                     .fillMaxSize()
                     .hazeSource(state = hazeState),
