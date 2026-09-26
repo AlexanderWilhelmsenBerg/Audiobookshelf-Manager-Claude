@@ -980,6 +980,21 @@ class MigrationTest {
         }
     }
 
+    @Test
+    fun `version 21 preserves legacy download rows with unknown volume ownership`() = runTest {
+        createVersion(VERSION_20)
+
+        val migrated = openWithMigrations()
+        val key = "$SERVER_IDlegacy-download"
+        val stored = assertNotNull(migrated.downloadDao().find(key))
+
+        assertNull(stored.book.storageVolumeUuid, "migration must not invent a physical volume owner")
+        assertEquals(1, stored.files.size, "the physical file manifest must survive")
+        assertEquals(1, stored.requests.size, "the profile claim must survive")
+        assertEquals("file-1", stored.files.single().remoteFileId)
+        assertEquals(PROFILE_ID, stored.requests.single().profileId)
+    }
+
     private fun openWithMigrations(): ShelfPlayerDatabase =
         Room.databaseBuilder(context, ShelfPlayerDatabase::class.java, databaseFile.path)
             .addMigrations(*Migrations.ALL.toTypedArray())
@@ -1052,6 +1067,7 @@ class MigrationTest {
         VERSION_8 -> seedVersion8(db)
         VERSION_9 -> seedVersion9(db)
         VERSION_14 -> seedVersion14(db)
+        VERSION_20 -> seedVersion20(db)
         else -> error("no seed data defined for schema version $version")
     }
 
@@ -1179,6 +1195,30 @@ class MigrationTest {
      */
     private fun seedVersion14(db: SupportSQLiteDatabase) = seedVersion9(db)
 
+    private fun seedVersion20(db: SupportSQLiteDatabase) {
+        seedVersion14(db)
+        val key = "$SERVER_IDlegacy-download"
+        db.execSQL(
+            "INSERT INTO downloaded_books " +
+                "(bookKey, serverId, remoteItemId, state, storageTreeUri, coverUri, failureSummary, createdAt, updatedAt) " +
+                "VALUES (?, ?, 'legacy-download', 'Complete', NULL, NULL, NULL, 1, 1)",
+            arrayOf(key, SERVER_ID),
+        )
+        db.execSQL(
+            "INSERT INTO downloaded_files " +
+                "(bookKey, remoteFileId, fileIndex, uri, state, expectedBytes, downloadedBytes, " +
+                "mimeType, durationMillis, eTag, lastModified) " +
+                "VALUES (?, 'file-1', 0, 'file:///legacy/file-1.mp3', 'Complete', 128, 128, " +
+                "'audio/mpeg', 1000, NULL, NULL)",
+            arrayOf(key),
+        )
+        db.execSQL(
+            "INSERT INTO download_requests (bookKey, profileId, requestedAt, isPinned) VALUES (?, ?, 1, 0)",
+            arrayOf(key, PROFILE_ID),
+        )
+    }
+
+
     /** Identical from version 2 onwards, so the per-version functions stay about what changed. */
     private fun seedServerWithCapabilities(db: SupportSQLiteDatabase) {
         db.execSQL(
@@ -1226,6 +1266,7 @@ class MigrationTest {
 
         /** The version build 0.9.2 shipped, and the one the 14 → 15 rebuild starts from. */
         const val VERSION_14 = 14
+        const val VERSION_20 = 20
         const val PROFILE_ID = "prf_test"
         const val LIBRARY_KEY = "srv_test:library-1"
 
