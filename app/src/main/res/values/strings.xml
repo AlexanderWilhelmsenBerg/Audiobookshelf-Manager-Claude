@@ -562,6 +562,7 @@
     <string name="download_notification_channel">Downloads</string>
     <string name="download_notification_title">Downloading a book</string>
     <string name="download_notification_progress">%1$d%%</string>
+    <string name="download_notification_progress_bytes">%1$s · %2$s / %3$s</string>
     <string name="navigate_back">Back</string>
 
     <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings screen. -->
