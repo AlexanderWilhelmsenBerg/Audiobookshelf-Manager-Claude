@@ -26,6 +26,9 @@ import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.domain.download.BookAssetSource
 import com.example.shelfplayer.domain.download.BookAssets
+import com.example.shelfplayer.domain.download.DownloadExecutionEvidence
+import com.example.shelfplayer.domain.download.DownloadExecutionKey
+import com.example.shelfplayer.domain.download.DownloadExecutionObserver
 import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.download.DownloadRecoveryState
 import com.example.shelfplayer.domain.download.DownloadScheduler
@@ -65,6 +68,7 @@ class DownloadsViewModelTest {
     private val files = FakeFiles()
     private val verification = FakeVerification()
     private val library = FakeLibraries()
+    private val execution = FakeExecutionObserver()
 
     @Test
     fun `lists a download this profile can see, with its title`() = runTest {
@@ -138,6 +142,38 @@ class DownloadsViewModelTest {
             assertNull(row.title)
             assertNull(row.author)
             assertNull(row.failureSummary, "a title-hidden row must not forward even allegedly safe failure copy")
+        }
+    }
+
+    @Test
+    fun `automatic retry overrides durable failed state without exposing failure copy`() = runTest {
+        val stored = offlineBook("tidewatch", state = DownloadState.Failed, failureSummary = SAFE_FAILURE)
+        downloads.emit(listOf(stored))
+        library.emit(listOf(book("tidewatch", "Tidewatch")))
+        execution.emit(stored, DownloadExecutionEvidence.Retrying)
+
+        viewModel().uiState.test {
+            val state = awaitItem().takeIf { it.isLoaded } ?: awaitItem()
+            val row = state.books.single()
+            assertEquals(DownloadRecoveryState.Retrying, row.recoveryState)
+            assertNull(row.failureSummary)
+        }
+    }
+
+    @Test
+    fun `execution state survives metadata redaction for a hidden physical row`() = runTest {
+        val stored = offlineBook("someone-elses", state = DownloadState.Failed, failureSummary = SAFE_FAILURE)
+        downloads.emit(listOf(stored))
+        library.emit(emptyList())
+        execution.emit(stored, DownloadExecutionEvidence.Waiting)
+
+        viewModel().uiState.test {
+            val state = awaitItem().takeIf { it.isLoaded } ?: awaitItem()
+            val row = state.books.single()
+            assertEquals(DownloadRecoveryState.Waiting, row.recoveryState)
+            assertNull(row.title)
+            assertNull(row.author)
+            assertNull(row.failureSummary)
         }
     }
 
@@ -326,12 +362,24 @@ class DownloadsViewModelTest {
         verification = verification,
         profiles = FakeProfiles(),
         locations = locations,
+        execution = execution,
         // The real use cases are intentionally kept in this ViewModel test: #18 is about routing the row's
         // presentation state to exactly one of them, not about replacing that seam with a mock.
         pauseDownload = PauseDownloadUseCase(FakeProfiles(), downloads, scheduler),
         downloadBook = DownloadBookUseCase(FakeProfiles(), ActionAssets, downloads, scheduler),
         library = library,
     )
+
+    private class FakeExecutionObserver : DownloadExecutionObserver {
+        private val evidence = MutableStateFlow<Map<DownloadExecutionKey, DownloadExecutionEvidence>>(emptyMap())
+
+        override fun observe(keys: Set<DownloadExecutionKey>): Flow<Map<DownloadExecutionKey, DownloadExecutionEvidence>> =
+            evidence.map { current -> current.filterKeys(keys::contains) }
+
+        fun emit(book: OfflineBook, state: DownloadExecutionEvidence) {
+            evidence.value = mapOf(DownloadExecutionKey(book.serverId, book.itemId) to state)
+        }
+    }
 
     private class TrackingScheduler : DownloadScheduler {
         val enqueued = mutableListOf<LibraryItemId>()
