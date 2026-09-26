@@ -83,6 +83,37 @@ class DefaultDownloadRepositoryTest {
         assertEquals(0L, stored.downloadedBytes)
     }
 
+    @Test
+    fun `new physical copy records actual destination and later claims do not change its owner`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val cardRoots = object : DownloadRoots {
+            override fun roots() = listOf(context.filesDir)
+            override fun destinationVolumeUuid(): String = "card-uuid"
+            override fun rootForVolume(uuid: String?) = context.filesDir.takeIf { uuid == "card-uuid" }
+            override fun availableVolumeUuids(): Set<String> = setOf("", "card-uuid")
+        }
+        val cardRepository = DefaultDownloadRepository(
+            downloadDao = database.downloadDao(),
+            storage = DownloadStorage(context, cardRoots),
+            clock = TestAppClock(),
+            ioDispatcher = UnconfinedTestDispatcher(),
+        )
+
+        val first = assertNotNull(cardRepository.request(SERVER, BOOK, ADA, files()).getOrNull())
+        assertEquals("card-uuid", first.storageVolumeUuid)
+
+        val internalRepository = DefaultDownloadRepository(
+            downloadDao = database.downloadDao(),
+            storage = storage,
+            clock = TestAppClock(),
+            ioDispatcher = UnconfinedTestDispatcher(),
+        )
+        val shared = assertNotNull(internalRepository.request(SERVER, BOOK, GRACE, files()).getOrNull())
+
+        assertEquals("card-uuid", shared.storageVolumeUuid, "another profile/preference must not move the physical copy")
+        assertEquals(setOf(ADA, GRACE), shared.requestedBy)
+    }
+
     /**
      * Files come back in the server's order, not the filesystem's.
      *
