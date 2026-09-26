@@ -468,7 +468,10 @@
     <string name="downloads_location_internal">This device</string>
     <string name="downloads_location_free">%1$s free</string>
     <string name="downloads_location_removable">Removable</string>
-    <string name="downloads_location_hint">This applies to the next download. Books already on this device stay where they are and keep playing. Books on a card you take out will offer to download again — nothing is deleted.</string>
+    <string name="downloads_location_hint">This applies to the next download. Books already stored keep their physical volume owner; changing this setting does not move them.</string>
+    <string name="downloads_location_unavailable_hint">The selected removable storage is unavailable. New downloads use this device temporarily; your removable-storage selection is preserved.</string>
+    <string name="downloads_storage_unavailable">Storage unavailable</string>
+    <string name="downloads_storage_unknown">Storage location unknown</string>
     <string name="downloads_verify_hint">Checks that every downloaded file is still present, the right size, and openable as audio. It does not compare the audio with your server — Audiobookshelf does not send a checksum to compare against.</string>
     <string name="downloads_verify">Check downloaded files</string>
     <!-- PRODUCT_SPEC 5.2 — a book the signed-in profile may not see is listed, and not named. -->
