@@ -1,6 +1,7 @@
 package com.example.shelfplayer.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -35,9 +36,16 @@ fun ShelfPlayerNavHost(
     onBookPlaySelected: (LibraryItemId) -> Unit,
     playbackMessage: String?,
     onPlaybackMessageShown: () -> Unit,
+    openDownloadsRequest: Int = 0,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
 ) {
+    LaunchedEffect(openDownloadsRequest, startDestination) {
+        if (openDownloadsRequest > 0 && startDestination == ShelfDestinations.HOME) {
+            navController.navigate(ShelfDestinations.DOWNLOADS) { launchSingleTop = true }
+        }
+    }
+
     NavHost(navController = navController, startDestination = startDestination, modifier = modifier) {
         composable(
             route = ShelfDestinations.SIGN_IN,
