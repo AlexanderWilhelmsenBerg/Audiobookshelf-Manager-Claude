@@ -15,6 +15,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.DownloadPaths
+import com.example.shelfplayer.core.model.download.DownloadProgress
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineFile
 import com.example.shelfplayer.core.model.getOrNull
@@ -123,14 +124,19 @@ class BookDownloaderTest {
     @Test
     fun `progress is weighted by size rather than by file count`() = runTest {
         repository.request(SERVER, BOOK, ADA, files(sizes = listOf(100, 1_000, 100)))
-        val seen = mutableListOf<Float>()
+        val seen = mutableListOf<DownloadProgress>()
 
         downloader.download(ADA, SERVER, BOOK) { seen += it }
 
         assertTrue(seen.isNotEmpty())
-        val afterFirst = seen.first { it > 0f }
-        assertTrue(afterFirst < 0.2f, "the first of three files is a twelfth of the bytes, not a third: $afterFirst")
-        assertEquals(1f, seen.last())
+        val afterFirst = seen.first { it.fraction > 0f }
+        assertTrue(
+            afterFirst.fraction < 0.2f,
+            "the first of three files is a twelfth of the bytes, not a third: ${afterFirst.fraction}",
+        )
+        assertEquals(1_200L, seen.last().totalBytes)
+        assertEquals(1_200L, seen.last().downloadedBytes)
+        assertEquals(1f, seen.last().fraction)
     }
 
     /**
