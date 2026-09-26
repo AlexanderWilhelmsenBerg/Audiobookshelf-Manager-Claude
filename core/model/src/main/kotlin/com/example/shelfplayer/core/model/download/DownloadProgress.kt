@@ -22,3 +22,26 @@ data class DownloadProgress(
         private const val PERCENT = 100
     }
 }
+
+
+/**
+ * Reconstructs the best truthful transfer progress available from the durable manifest after process death
+ * or WorkManager progress pruning. Exact total bytes are withheld unless every file length is known.
+ */
+fun OfflineBook.durableDownloadProgress(): DownloadProgress {
+    val truthfulTotal = files
+        .map { it.expectedBytes }
+        .takeIf { expected -> expected.all { (it ?: 0L) > 0L } }
+        ?.sumOf { it ?: 0L }
+        ?.takeIf { it > 0L }
+    val fraction = when {
+        isComplete -> 1f
+        truthfulTotal != null -> (downloadedBytes.toFloat() / truthfulTotal).coerceIn(0f, 1f)
+        else -> 0f
+    }
+    return DownloadProgress(
+        downloadedBytes = downloadedBytes,
+        totalBytes = truthfulTotal,
+        fraction = fraction,
+    )
+}
