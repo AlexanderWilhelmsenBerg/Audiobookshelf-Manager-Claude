@@ -205,15 +205,13 @@ class DownloadStorage @Inject constructor(
      * Used when a download is cancelled *and* the user asked to discard it, which is the one case where a
      * resumable part should not survive. [sweepOrphans] cannot cover it, because the manifest is still there.
      */
-    fun deleteParts(serverId: String, itemId: String): Long =
-        partFiles(serverId, itemId).sumOf { file ->
+    fun deleteParts(serverId: String, itemId: String): Long = partFiles(serverId, itemId).sumOf { file ->
             val bytes = file.length()
             if (file.delete()) bytes else 0L
         }
 
     /** Filesystem truth for the #22 confirmation; no manifest estimate is involved. */
-    fun partialBytes(serverId: String, itemId: String): Long =
-        partFiles(serverId, itemId).sumOf(File::length)
+    fun partialBytes(serverId: String, itemId: String): Long = partFiles(serverId, itemId).sumOf(File::length)
 
     /** Remaining bytes for one manifest file after a discard attempt, across every currently reachable root. */
     fun partialBytesFor(serverId: String, itemId: String, fileId: String, mimeType: String?): Long {
