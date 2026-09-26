@@ -1201,7 +1201,7 @@ class MigrationTest {
         db.execSQL(
             "INSERT INTO downloaded_books " +
                 "(bookKey, serverId, remoteItemId, state, storageTreeUri, coverUri, failureSummary, " +
-                    "createdAt, updatedAt) " +
+                "createdAt, updatedAt) " +
                 "VALUES (?, ?, 'legacy-download', 'Complete', NULL, NULL, NULL, 1, 1)",
             arrayOf(key, SERVER_ID),
         )
