@@ -76,8 +76,15 @@ interface DownloadDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun addRequest(request: DownloadRequestEntity)
 
-    @Query("UPDATE download_requests SET isPinned = :isPinned WHERE bookKey = :bookKey AND profileId = :profileId")
-    suspend fun setPinned(bookKey: String, profileId: String, isPinned: Boolean)
+    /**
+     * PD-003 / PRODUCT_SPEC DL-006 — pinning belongs to the one physical copy, not to one profile claim.
+     *
+     * Version 20 stores the bit on request rows, so the physical-copy value is represented redundantly across
+     * all claims for the book. Keeping those rows in sync gives the domain one device-level flag without a
+     * schema-only migration in this repair PR.
+     */
+    @Query("UPDATE download_requests SET isPinned = :isPinned WHERE bookKey = :bookKey")
+    suspend fun setPinned(bookKey: String, isPinned: Boolean)
 
     /**
      * PRODUCT_SPEC DL-003 criterion 5 — one profile stops wanting a copy.
@@ -108,10 +115,10 @@ interface DownloadDao {
     suspend fun unreferencedBookKeys(): List<String>
 
     /**
-     * PRODUCT_SPEC DL-006 — a book a profile has protected from automatic cleanup.
+     * PD-003 / PRODUCT_SPEC DL-006 — whether the shared physical copy is protected from automatic cleanup.
      *
-     * Any pin protects the copy, not only the current profile's: one shared blob, and one person's decision
-     * to keep it is enough to keep it.
+     * New writes keep every claim row in sync. EXISTS also preserves the safe direction for legacy rows from
+     * builds where profiles could disagree: if any old row was pinned, the physical copy is still protected.
      */
     @Query("SELECT EXISTS(SELECT 1 FROM download_requests WHERE bookKey = :bookKey AND isPinned = 1)")
     suspend fun isPinned(bookKey: String): Boolean
