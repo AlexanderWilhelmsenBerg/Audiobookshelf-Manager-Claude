@@ -1200,7 +1200,8 @@ class MigrationTest {
         val key = "$SERVER_IDlegacy-download"
         db.execSQL(
             "INSERT INTO downloaded_books " +
-                "(bookKey, serverId, remoteItemId, state, storageTreeUri, coverUri, failureSummary, createdAt, updatedAt) " +
+                "(bookKey, serverId, remoteItemId, state, storageTreeUri, coverUri, failureSummary, " +
+                    "createdAt, updatedAt) " +
                 "VALUES (?, ?, 'legacy-download', 'Complete', NULL, NULL, NULL, 1, 1)",
             arrayOf(key, SERVER_ID),
         )
@@ -1217,7 +1218,6 @@ class MigrationTest {
             arrayOf(key, PROFILE_ID),
         )
     }
-
 
     /** Identical from version 2 onwards, so the per-version functions stay about what changed. */
     private fun seedServerWithCapabilities(db: SupportSQLiteDatabase) {
