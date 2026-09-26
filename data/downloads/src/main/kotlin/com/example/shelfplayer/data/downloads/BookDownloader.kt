@@ -240,8 +240,7 @@ class BookDownloader @Inject constructor(
         temporarilyUnavailable = true,
     )
 
-    private fun AppError.isTemporaryStorageUnavailable(): Boolean =
-        this is AppError.Storage && temporarilyUnavailable
+    private fun AppError.isTemporaryStorageUnavailable(): Boolean = this is AppError.Storage && temporarilyUnavailable
 
     /**
      * PRODUCT_SPEC DL-001 — removes the temporary parts of a download the user gave up on.
