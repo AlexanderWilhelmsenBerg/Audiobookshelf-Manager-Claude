@@ -12,6 +12,7 @@ import org.robolectric.annotation.Config
 import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -81,6 +82,38 @@ class DownloadStorageRootsTest {
             null,
             pinned.partFor(SERVER, ITEM, "file-2", "audio/mpeg", "card-uuid"),
             "missing removable owner must stop the transfer, not redirect the next file to internal",
+        )
+    }
+
+    @Test
+    fun `migrated unknown owner follows existing local evidence instead of current preference`() {
+        val existing = itemDirectory(oldRoot).apply { mkdirs() }
+        val committed = File(existing, "file-1.mp3").apply { writeText("already here") }
+
+        val nextPart = storage.partFor(
+            serverId = SERVER,
+            itemId = ITEM,
+            fileId = "file-2",
+            mimeType = "audio/mpeg",
+            volumeUuid = null,
+            committedUris = listOf(committed.toURI().toString(), ""),
+        )
+
+        assertTrue(nextPart?.absolutePath?.startsWith(oldRoot.absolutePath) == true)
+        assertFalse(nextPart?.absolutePath?.startsWith(newRoot.absolutePath) == true)
+    }
+
+    @Test
+    fun `migrated unknown owner without filesystem evidence refuses to guess a write root`() {
+        assertNull(
+            storage.partFor(
+                serverId = SERVER,
+                itemId = ITEM,
+                fileId = "file-1",
+                mimeType = "audio/mpeg",
+                volumeUuid = null,
+                committedUris = emptyList(),
+            ),
         )
     }
 
