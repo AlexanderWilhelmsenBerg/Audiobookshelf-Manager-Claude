@@ -10,6 +10,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.download.DownloadProgress
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.OfflineFile
@@ -65,7 +66,7 @@ class BookDownloader @Inject constructor(
         profileId: ProfileId,
         serverId: ServerId,
         itemId: LibraryItemId,
-        onProgress: (Float) -> Unit = {},
+        onProgress: (DownloadProgress) -> Unit = {},
     ): AppResult<OfflineBook> {
         val manifest = repository.observe(serverId, itemId).first()
             ?: return AppResult.Failure(
@@ -79,11 +80,11 @@ class BookDownloader @Inject constructor(
         }
 
         val weights = Weights(manifest.files)
-        onProgress(weights.fractionOf(manifest.files))
+        onProgress(weights.progressOf(manifest.files))
 
         manifest.files.filter { it.state != DownloadState.Complete }.forEach { file ->
             val fetched = fileDownloader.download(profileId, serverId, itemId, file) { bytes ->
-                onProgress(weights.fractionWith(file, bytes))
+                onProgress(weights.progressWith(file, bytes))
             }
             if (fetched.isFailure()) {
                 logger.warn(
@@ -94,8 +95,9 @@ class BookDownloader @Inject constructor(
                 repository.markFailed(serverId, itemId, summary = fetched.error.summary)
                 return AppResult.Failure(fetched.error)
             }
-            weights.complete(file)
-            onProgress(weights.fraction())
+            val storedFile = (fetched as AppResult.Success).value
+            weights.complete(storedFile)
+            onProgress(weights.progress())
         }
 
         val completed = repository.markComplete(
@@ -109,7 +111,14 @@ class BookDownloader @Inject constructor(
                 "A book is available offline",
                 LogField.Count("files", completed.value.files.size),
             )
-            onProgress(1f)
+            onProgress(
+                DownloadProgress(
+                    downloadedBytes = completed.value.downloadedBytes,
+                    totalBytes = completed.value.files.mapNotNull { it.expectedBytes }.sum()
+                        .takeIf { total -> completed.value.files.all { (it.expectedBytes ?: 0L) > 0L } && total > 0L },
+                    fraction = 1f,
+                ),
+            )
         }
         return completed
     }
@@ -246,6 +255,8 @@ class BookDownloader @Inject constructor(
     private class Weights(files: List<OfflineFile>) {
         private val sizes: Map<String, Long>
         private val total: Long
+        private val truthfulTotal: Long?
+        private val actualBytes = files.associate { it.remoteFileId to it.downloadedBytes }.toMutableMap()
         private val done = mutableSetOf<String>()
         private var partial: Pair<String, Long>? = null
 
@@ -256,26 +267,40 @@ class BookDownloader @Inject constructor(
                 file.remoteFileId to (file.expectedBytes?.takeIf { it > 0 } ?: fallback)
             }
             total = sizes.values.sum().coerceAtLeast(1)
+            truthfulTotal = files
+                .map { it.expectedBytes }
+                .takeIf { expected -> expected.all { (it ?: 0L) > 0L } }
+                ?.sumOf { it ?: 0L }
+                ?.takeIf { it > 0L }
             files.filter { it.state == DownloadState.Complete }.forEach { done += it.remoteFileId }
         }
 
         fun complete(file: OfflineFile) {
             done += file.remoteFileId
+            actualBytes[file.remoteFileId] = file.downloadedBytes
             partial = null
         }
 
-        fun fractionOf(files: List<OfflineFile>): Float {
+        fun progressOf(files: List<OfflineFile>): DownloadProgress {
+            files.forEach { file -> actualBytes[file.remoteFileId] = file.downloadedBytes }
             files.filter { it.state == DownloadState.Complete }.forEach { done += it.remoteFileId }
-            return fraction()
+            return progress()
         }
 
-        /** The running fraction while [file] is being written, with [bytes] of it on disk. */
-        fun fractionWith(file: OfflineFile, bytes: Long): Float {
+        /** The running snapshot while [file] is being written, with [bytes] of it physically on disk. */
+        fun progressWith(file: OfflineFile, bytes: Long): DownloadProgress {
+            actualBytes[file.remoteFileId] = bytes.coerceAtLeast(0L)
             partial = file.remoteFileId to bytes.coerceAtMost(sizes[file.remoteFileId] ?: bytes)
-            return fraction()
+            return progress()
         }
 
-        fun fraction(): Float {
+        fun progress(): DownloadProgress = DownloadProgress(
+            downloadedBytes = actualBytes.values.sum(),
+            totalBytes = truthfulTotal,
+            fraction = fraction(),
+        )
+
+        private fun fraction(): Float {
             val finished = done.sumOf { id -> sizes[id] ?: 0 }
             val inFlight = partial?.takeIf { it.first !in done }?.second ?: 0
             return ((finished + inFlight).toFloat() / total).coerceIn(0f, 1f)
