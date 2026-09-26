@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.download.DownloadStorageState
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /**
  * PRODUCT_SPEC DL-003 / ADR-0020 / BW-DL-05 — selected future destination and current volume reachability.
@@ -20,7 +21,8 @@ interface DownloadLocations {
     fun observeSelected(): Flow<String>
 
     /** Aggregate mounted/reachable UUID set; used to react to card removal/reinsertion without per-row listeners. */
-    fun observeAvailableVolumeUuids(): Flow<Set<String>>
+    fun observeAvailableVolumeUuids(): Flow<Set<String>> =
+        flowOf(setOf(StorageVolumeOption.INTERNAL_UUID))
 
     /**
      * Current accessibility of one physical copy's durable owner.
@@ -28,7 +30,10 @@ interface DownloadLocations {
      * null is legacy Unknown, empty is internal/Available, and an absent known removable UUID is Unavailable.
      * Raw UUIDs remain inside the storage layer and must never be surfaced to UI/log copy.
      */
-    fun availability(volumeUuid: String?): DownloadStorageState
+    fun availability(volumeUuid: String?): DownloadStorageState = when (volumeUuid) {
+        null -> DownloadStorageState.Unknown
+        else -> DownloadStorageState.Available
+    }
 
     /** Chooses where future new physical copies prefer to go; it does not move existing bytes. */
     suspend fun select(uuid: String): AppResult<Unit>
