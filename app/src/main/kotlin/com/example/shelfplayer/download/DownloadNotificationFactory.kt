@@ -24,9 +24,7 @@ import javax.inject.Singleton
  * accidentally reveal a title, author, profile, path, server ID or item ID in visible copy.
  */
 @Singleton
-class DownloadNotificationFactory @Inject constructor(
-    @param:ApplicationContext private val context: Context,
-) {
+class DownloadNotificationFactory @Inject constructor(@param:ApplicationContext private val context: Context) {
     fun notification(
         serverId: ServerId,
         itemId: LibraryItemId,
@@ -59,12 +57,7 @@ class DownloadNotificationFactory @Inject constructor(
         NotificationManagerCompat.from(context).cancel(notificationId(serverId, itemId))
     }
 
-    fun post(
-        serverId: ServerId,
-        itemId: LibraryItemId,
-        state: DownloadRecoveryState,
-        progress: DownloadProgress?,
-    ) {
+    fun post(serverId: ServerId, itemId: LibraryItemId, state: DownloadRecoveryState, progress: DownloadProgress?) {
         NotificationManagerCompat.from(context).notify(
             notificationId(serverId, itemId),
             notification(serverId, itemId, state, progress),
