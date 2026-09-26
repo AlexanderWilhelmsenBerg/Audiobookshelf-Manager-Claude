@@ -189,11 +189,8 @@ class BookDownloader @Inject constructor(
      *
      * @return `true` when the files were actually removed.
      */
-    override suspend fun remove(
-        profileId: ProfileId,
-        serverId: ServerId,
-        bookId: LibraryItemId,
-    ): AppResult<Boolean> = copyLocks.withLock(serverId, bookId) {
+    override suspend fun remove(profileId: ProfileId, serverId: ServerId, bookId: LibraryItemId): AppResult<Boolean> =
+        copyLocks.withLock(serverId, bookId) {
         val manifest = repository.observe(serverId, bookId).first()
             ?: return@withLock AppResult.Success(false)
 
@@ -219,6 +216,7 @@ class BookDownloader @Inject constructor(
             )
         ) {
             StorageDeleteResult.Unavailable -> return@withLock AppResult.Failure(unavailableStorage())
+
             StorageDeleteResult.Failed -> {
                 return@withLock AppResult.Failure(
                     AppError.Storage(summary = "The downloaded files could not be removed from storage."),
