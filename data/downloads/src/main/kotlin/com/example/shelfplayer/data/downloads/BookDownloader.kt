@@ -98,7 +98,9 @@ class BookDownloader @Inject constructor(
                     "A book download stopped at one of its files",
                     LogField.Count("remaining", manifest.files.count { it.state != DownloadState.Complete }),
                 )
-                repository.markFailed(serverId, itemId, summary = fetched.error.summary)
+                if (!fetched.error.isTemporaryStorageUnavailable()) {
+                    repository.markFailed(serverId, itemId, summary = fetched.error.summary)
+                }
                 return AppResult.Failure(fetched.error)
             }
             val storedFile = (fetched as AppResult.Success).value
@@ -175,6 +177,18 @@ class BookDownloader @Inject constructor(
      */
     override suspend fun remove(profileId: ProfileId, serverId: ServerId, bookId: LibraryItemId): AppResult<Boolean> {
         val itemId = bookId
+        val manifest = repository.observe(serverId, itemId).first()
+            ?: return AppResult.Success(false)
+
+        // If this is the sole claim and its known owner is absent, preserve both claim and manifest without
+        // touching either. "Card absent" is a temporary storage fact, not permission to orphan the bytes.
+        if (
+            manifest.requestedBy == setOf(profileId) &&
+            !storage.isVolumeAvailable(manifest.storageVolumeUuid)
+        ) {
+            return AppResult.Failure(unavailableStorage())
+        }
+
         val released = repository.release(serverId, itemId, profileId)
         if (released.isFailure()) return AppResult.Failure(released.error)
         if ((released as AppResult.Success).value) {
@@ -182,13 +196,52 @@ class BookDownloader @Inject constructor(
             return AppResult.Success(false)
         }
 
-        storage.deleteItem(serverId.value, itemId.value)
+        // A claim may have appeared after release. Re-read before destructive I/O and preserve the physical
+        // copy if it did; this profile's requested removal has still succeeded.
+        val claimless = repository.observe(serverId, itemId).first() ?: return AppResult.Success(false)
+        if (claimless.requestedBy.isNotEmpty()) return AppResult.Success(false)
+
+        val deleted = storage.deleteItem(
+            serverId = serverId.value,
+            itemId = itemId.value,
+            volumeUuid = manifest.storageVolumeUuid,
+            committedUris = manifest.files.map(OfflineFile::uri),
+        )
+        if (!deleted) {
+            val restored = restoreClaim(manifest, profileId)
+            if (restored.isFailure()) return AppResult.Failure(restored.error)
+            return AppResult.Failure(unavailableStorage())
+        }
+
         val forgotten = repository.forget(serverId, itemId)
         if (forgotten.isFailure()) return AppResult.Failure(forgotten.error)
 
         logger.info(LogCategory.Sync, "A downloaded book was removed")
         return AppResult.Success(true)
     }
+
+    private suspend fun restoreClaim(manifest: OfflineBook, profileId: ProfileId): AppResult<Unit> {
+        val restored = repository.request(
+            serverId = manifest.serverId,
+            itemId = manifest.itemId,
+            profileId = profileId,
+            files = manifest.files,
+        )
+        if (restored.isFailure()) return AppResult.Failure(restored.error)
+        if (manifest.isPinned) {
+            val pinned = repository.setPinned(manifest.serverId, manifest.itemId, profileId, isPinned = true)
+            if (pinned.isFailure()) return AppResult.Failure(pinned.error)
+        }
+        return AppResult.Success(Unit)
+    }
+
+    private fun unavailableStorage(): AppError.Storage = AppError.Storage(
+        summary = "The downloaded files are on storage that is currently unavailable.",
+        temporarilyUnavailable = true,
+    )
+
+    private fun AppError.isTemporaryStorageUnavailable(): Boolean =
+        this is AppError.Storage && temporarilyUnavailable
 
     /**
      * PRODUCT_SPEC DL-001 — removes the temporary parts of a download the user gave up on.
