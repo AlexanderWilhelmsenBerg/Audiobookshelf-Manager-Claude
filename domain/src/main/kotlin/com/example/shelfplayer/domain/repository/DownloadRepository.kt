@@ -118,17 +118,12 @@ interface DownloadRepository {
     suspend fun markQueued(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit>
 
     /**
-     * PRODUCT_SPEC DL-006 — protects a copy from automatic cleanup, or stops protecting it.
+     * PD-003 / PRODUCT_SPEC DL-006 — protects the shared physical copy from automatic cleanup.
      *
-     * Any profile's pin protects the shared copy. One person deciding to keep a book is enough, and asking
-     * everyone to agree before something is kept would make the pin useless on exactly the device it is for.
+     * The pin belongs to the device copy, not to a profile claim. Every authorized profile looking at this
+     * copy therefore sees and changes the same pin state.
      */
-    suspend fun setPinned(
-        serverId: ServerId,
-        itemId: LibraryItemId,
-        profileId: ProfileId,
-        isPinned: Boolean,
-    ): AppResult<Unit>
+    suspend fun setPinned(serverId: ServerId, itemId: LibraryItemId, isPinned: Boolean): AppResult<Unit>
 
     /**
      * PRODUCT_SPEC DL-003 criterion 5 — one profile stops claiming a copy.
