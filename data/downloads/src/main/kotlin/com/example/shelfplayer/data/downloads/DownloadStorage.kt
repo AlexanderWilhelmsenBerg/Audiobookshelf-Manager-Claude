@@ -59,8 +59,7 @@ class DownloadStorage @Inject constructor(
      * Whether a durable known owner is reachable now. Legacy/unknown ownership cannot prove absence, so it
      * remains eligible for URI-based handling rather than being misclassified as an unavailable card.
      */
-    fun isVolumeAvailable(volumeUuid: String?): Boolean =
-        volumeUuid == null || rootForVolume(volumeUuid) != null
+    fun isVolumeAvailable(volumeUuid: String?): Boolean = volumeUuid == null || rootForVolume(volumeUuid) != null
 
     /**
      * Every root this app has ever been able to write to, newest choice first.
@@ -162,12 +161,7 @@ class DownloadStorage @Inject constructor(
     fun deleteItem(serverId: String, itemId: String): Boolean =
         deleteItem(serverId, itemId, volumeUuid = null, committedUris = emptyList())
 
-    fun deleteItem(
-        serverId: String,
-        itemId: String,
-        volumeUuid: String?,
-        committedUris: List<String>,
-    ): Boolean {
+    fun deleteItem(serverId: String, itemId: String, volumeUuid: String?, committedUris: List<String>): Boolean {
         val deletionRoots = when {
             volumeUuid != null -> listOf(rootForVolume(volumeUuid) ?: return false)
             else -> rootsForLegacyUris(committedUris) ?: return false
