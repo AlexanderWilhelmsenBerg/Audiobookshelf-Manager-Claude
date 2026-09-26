@@ -2,6 +2,7 @@ package com.example.shelfplayer.domain.download
 
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.download.DownloadProgress
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -11,6 +12,11 @@ import kotlinx.coroutines.flow.Flow
  * Profile identity authorizes a queued worker but never creates a second physical copy.
  */
 data class DownloadExecutionKey(val serverId: ServerId, val itemId: LibraryItemId)
+
+data class DownloadExecutionSnapshot(
+    val evidence: DownloadExecutionEvidence,
+    val progress: DownloadProgress? = null,
+)
 
 /**
  * Read-only transient execution evidence for the device's physical download rows.
@@ -25,5 +31,5 @@ fun interface DownloadExecutionObserver {
      * A missing key is first-class evidence that no current execution information can be reconstructed;
      * presentation must then fall back to the durable manifest rather than persisting or inventing state.
      */
-    fun observe(keys: Set<DownloadExecutionKey>): Flow<Map<DownloadExecutionKey, DownloadExecutionEvidence>>
+    fun observe(keys: Set<DownloadExecutionKey>): Flow<Map<DownloadExecutionKey, DownloadExecutionSnapshot>>
 }
