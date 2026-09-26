@@ -81,9 +81,18 @@ class FileDownloader @Inject constructor(
         serverId: ServerId,
         itemId: LibraryItemId,
         file: OfflineFile,
+        storageVolumeUuid: String? = null,
         onProgress: (Long) -> Unit = {},
     ): AppResult<OfflineFile> {
-        val part = storage.partFor(serverId.value, itemId.value, file.remoteFileId, file.mimeType)
+        val part = storage.partFor(
+            serverId = serverId.value,
+            itemId = itemId.value,
+            fileId = file.remoteFileId,
+            mimeType = file.mimeType,
+            volumeUuid = storageVolumeUuid,
+        ) ?: return AppResult.Failure(
+            AppError.Storage(summary = "The download storage is currently unavailable."),
+        )
         val onDisk = storage.bytesOnDisk(part)
 
         // Two conditions for even attempting a resume: bytes on disk, and a validator to guard them with.
