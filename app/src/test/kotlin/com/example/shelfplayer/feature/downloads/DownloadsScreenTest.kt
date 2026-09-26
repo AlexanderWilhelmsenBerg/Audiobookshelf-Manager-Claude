@@ -97,6 +97,40 @@ class DownloadsScreenTest {
     }
 
     @Test
+    fun `paused row with real partial bytes exposes confirmed discard action`() {
+        var discarded = false
+        compose.setContent {
+            DownloadsScreen(
+                uiState = state(DownloadRecoveryState.Paused).copy(
+                    books = listOf(
+                        state(DownloadRecoveryState.Paused).books.single().copy(partialBytes = 4_096L),
+                    ),
+                ),
+                onRemove = { _, _ -> },
+                onPinnedChanged = { _, _, _ -> },
+                onRecoveryAction = { _, _ -> },
+                onDiscardPartials = { _, _ -> discarded = true },
+                onVerify = {},
+                onNavigateUp = {},
+            )
+        }
+
+        compose.onNodeWithText("Discard 4.0 kB partial").performClick()
+        compose.onNodeWithText("Discard partial download?").assertExists()
+        compose.onNodeWithText("Completed audio stays on this device", substring = true).assertExists()
+        compose.onNodeWithText("Discard partial").performClick()
+
+        assertEquals(true, discarded)
+    }
+
+    @Test
+    fun `discard action is absent without reclaimable partial bytes`() {
+        render(DownloadRecoveryState.Paused)
+
+        compose.onNodeWithText("Discard", substring = true).assertDoesNotExist()
+    }
+
+    @Test
     fun `queued waiting retrying and complete rows expose no recovery action`() {
         var recoveryState by mutableStateOf(DownloadRecoveryState.Queued)
         compose.setContent {
