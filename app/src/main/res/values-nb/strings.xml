@@ -418,6 +418,7 @@
     <string name="download_notification_channel">Nedlastinger</string>
     <string name="download_notification_title">Laster ned en bok</string>
     <string name="download_notification_progress">%1$d %%</string>
+    <string name="download_notification_progress_bytes">%1$s · %2$s / %3$s</string>
     <string name="navigate_back">Tilbake</string>
 
     <string name="settings_tab_server">Server</string>
