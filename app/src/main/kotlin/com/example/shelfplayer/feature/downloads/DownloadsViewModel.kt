@@ -376,7 +376,13 @@ data class DownloadsUiState(
     val books: List<DownloadRow> = emptyList(),
     val totalBytes: Long = 0,
     val isLoaded: Boolean = false,
-)
+) {
+    val activeBooks: List<DownloadRow>
+        get() = books.filter { it.recoveryState != DownloadRecoveryState.Complete }
+
+    val onDeviceBooks: List<DownloadRow>
+        get() = books.filter { it.recoveryState == DownloadRecoveryState.Complete }
+}
 
 /**
  * One downloaded book.
