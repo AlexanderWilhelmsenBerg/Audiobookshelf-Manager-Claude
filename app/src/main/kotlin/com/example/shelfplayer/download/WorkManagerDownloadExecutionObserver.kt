@@ -125,15 +125,33 @@ internal data class DownloadNetworkSnapshot(
  * Pure #19 mapping. In particular, schedule time does not participate: an ENQUEUED retry can have a future
  * backoff timestamp, but run-attempt history plus the currently-required network is the truthful distinction.
  */
+internal data class DownloadWorkSnapshot(
+    val state: WorkInfo.State,
+    val runAttemptCount: Int,
+    val requiredNetworkType: NetworkType,
+)
+
 internal fun classifyDownloadWork(
     info: WorkInfo,
     network: DownloadNetworkSnapshot,
-): DownloadExecutionEvidence = when (info.state) {
+): DownloadExecutionEvidence = classifyDownloadWork(
+    work = DownloadWorkSnapshot(
+        state = info.state,
+        runAttemptCount = info.runAttemptCount,
+        requiredNetworkType = info.constraints.requiredNetworkType,
+    ),
+    network = network,
+)
+
+internal fun classifyDownloadWork(
+    work: DownloadWorkSnapshot,
+    network: DownloadNetworkSnapshot,
+): DownloadExecutionEvidence = when (work.state) {
     WorkInfo.State.RUNNING -> DownloadExecutionEvidence.Running
 
     WorkInfo.State.ENQUEUED -> when {
-        !network.satisfies(info.constraints.requiredNetworkType) -> DownloadExecutionEvidence.Waiting
-        info.runAttemptCount > 0 -> DownloadExecutionEvidence.Retrying
+        !network.satisfies(work.requiredNetworkType) -> DownloadExecutionEvidence.Waiting
+        work.runAttemptCount > 0 -> DownloadExecutionEvidence.Retrying
         else -> DownloadExecutionEvidence.Queued
     }
 
