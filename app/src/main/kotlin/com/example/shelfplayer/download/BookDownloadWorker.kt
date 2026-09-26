@@ -121,6 +121,9 @@ class BookDownloadWorker @AssistedInject constructor(
         const val KEY_SERVER_ID: String = "serverId"
         const val KEY_ITEM_ID: String = "itemId"
 
+        /** Aggregate observation tag. It carries no profile, server or item identity. */
+        const val DOWNLOAD_TAG: String = "bookwave:download"
+
         /** One physical job per shared downloaded copy. */
         fun nameFor(serverId: ServerId, itemId: LibraryItemId): String = "download:${serverId.value}:${itemId.value}"
 
