@@ -58,6 +58,33 @@ class DownloadStorageRootsTest {
         assertTrue(part.absolutePath.startsWith(newRoot.absolutePath), part.absolutePath)
     }
 
+    @Test
+    fun `known physical owner never falls across to the current root when its volume is absent`() {
+        val roots = object : DownloadRoots {
+            var cardAvailable = true
+            override fun roots(): List<File> = listOf(oldRoot, newRoot)
+            override fun destinationVolumeUuid(): String = if (cardAvailable) "card-uuid" else ""
+            override fun rootForVolume(uuid: String?): File? = when (uuid) {
+                "" -> oldRoot
+                "card-uuid" -> newRoot.takeIf { cardAvailable }
+                else -> null
+            }
+            override fun availableVolumeUuids(): Set<String> =
+                if (cardAvailable) setOf("", "card-uuid") else setOf("")
+        }
+        val pinned = DownloadStorage(context, roots)
+        val first = pinned.partFor(SERVER, ITEM, "file-1", "audio/mpeg", "card-uuid")
+        assertTrue(first?.absolutePath?.startsWith(newRoot.absolutePath) == true)
+
+        roots.cardAvailable = false
+
+        assertEquals(
+            null,
+            pinned.partFor(SERVER, ITEM, "file-2", "audio/mpeg", "card-uuid"),
+            "missing removable owner must stop the transfer, not redirect the next file to internal",
+        )
+    }
+
     /**
      * The removal that would otherwise silently free nothing.
      *
