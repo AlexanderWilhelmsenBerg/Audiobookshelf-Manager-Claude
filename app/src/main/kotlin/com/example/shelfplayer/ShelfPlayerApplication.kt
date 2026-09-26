@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.data.auth.SessionRestorer
 import com.example.shelfplayer.diagnostics.CrashReporter
+import com.example.shelfplayer.download.DownloadNotificationCoordinator
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
@@ -90,6 +91,9 @@ class ShelfPlayerApplication :
     @Inject
     lateinit var cleanUpDownloads: CleanUpDownloadsUseCase
 
+    @Inject
+    lateinit var downloadNotifications: DownloadNotificationCoordinator
+
     /**
      * PRODUCT_SPEC ROUTE-003 — what opening the app does to the player.
      *
@@ -137,6 +141,7 @@ class ShelfPlayerApplication :
         logger.info(LogCategory.App, "Application started")
         lockWatcher.attach(this)
         realtimeSyncWatcher.attach(this)
+        downloadNotifications.start(applicationScope)
         // ApplicationExitInfo is a system-service read, so it does not belong on Application.onCreate's
         // main thread. The uncaught-exception handler above is already active while this runs.
         applicationScope.launch {
