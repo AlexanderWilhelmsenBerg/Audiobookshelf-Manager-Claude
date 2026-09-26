@@ -13,6 +13,12 @@ import java.net.URI
 import javax.inject.Inject
 import javax.inject.Singleton
 
+internal enum class StorageDeleteResult {
+    Deleted,
+    Unavailable,
+    Failed,
+}
+
 /**
  * PRODUCT_SPEC DL-003 — where a downloaded file actually goes, on the app-private root.
  *
@@ -56,10 +62,28 @@ class DownloadStorage @Inject constructor(
     fun rootForVolume(volumeUuid: String?): File? = volumes.rootForVolume(volumeUuid)
 
     /**
-     * Whether a durable known owner is reachable now. Legacy/unknown ownership cannot prove absence, so it
-     * remains eligible for URI-based handling rather than being misclassified as an unavailable card.
+     * Resolves the root that owns an existing physical copy.
+     *
+     * Known owners are direct. A migrated null owner is resolved only from trustworthy filesystem evidence:
+     * committed file URIs or an existing item directory. Ambiguous/no evidence returns null rather than
+     * redirecting the next file to today's preferred volume.
      */
-    fun isVolumeAvailable(volumeUuid: String?): Boolean = volumeUuid == null || rootForVolume(volumeUuid) != null
+    fun ownerRoot(
+        serverId: String,
+        itemId: String,
+        volumeUuid: String?,
+        committedUris: List<String>,
+    ): File? = when {
+        volumeUuid != null -> rootForVolume(volumeUuid)
+        else -> legacyRoot(serverId, itemId, committedUris)
+    }
+
+    fun isOwnerAvailable(
+        serverId: String,
+        itemId: String,
+        volumeUuid: String?,
+        committedUris: List<String>,
+    ): Boolean = ownerRoot(serverId, itemId, volumeUuid, committedUris) != null
 
     /**
      * Every root this app has ever been able to write to, newest choice first.
@@ -73,11 +97,13 @@ class DownloadStorage @Inject constructor(
     fun itemDirectory(serverId: String, itemId: String): File =
         File(root(), DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator))
 
-    fun itemDirectory(serverId: String, itemId: String, volumeUuid: String?): File? {
-        val base = when {
-            volumeUuid == null -> root()
-            else -> rootForVolume(volumeUuid) ?: return null
-        }
+    fun itemDirectory(
+        serverId: String,
+        itemId: String,
+        volumeUuid: String?,
+        committedUris: List<String> = emptyList(),
+    ): File? {
+        val base = ownerRoot(serverId, itemId, volumeUuid, committedUris) ?: return null
         return File(base, DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator))
     }
 
@@ -93,8 +119,15 @@ class DownloadStorage @Inject constructor(
         return File(directory, DownloadPaths.partName(DownloadPaths.fileName(fileId, mimeType)))
     }
 
-    fun partFor(serverId: String, itemId: String, fileId: String, mimeType: String?, volumeUuid: String?): File? {
-        val directory = itemDirectory(serverId, itemId, volumeUuid) ?: return null
+    fun partFor(
+        serverId: String,
+        itemId: String,
+        fileId: String,
+        mimeType: String?,
+        volumeUuid: String?,
+        committedUris: List<String> = emptyList(),
+    ): File? {
+        val directory = itemDirectory(serverId, itemId, volumeUuid, committedUris) ?: return null
         if (!directory.exists() && !directory.mkdirs()) return null
         return File(directory, DownloadPaths.partName(DownloadPaths.fileName(fileId, mimeType)))
     }
@@ -111,8 +144,14 @@ class DownloadStorage @Inject constructor(
         return File(directory, DownloadPaths.coverName(mimeType))
     }
 
-    fun coverFor(serverId: String, itemId: String, mimeType: String?, volumeUuid: String?): File? {
-        val directory = itemDirectory(serverId, itemId, volumeUuid) ?: return null
+    fun coverFor(
+        serverId: String,
+        itemId: String,
+        mimeType: String?,
+        volumeUuid: String?,
+        committedUris: List<String> = emptyList(),
+    ): File? {
+        val directory = itemDirectory(serverId, itemId, volumeUuid, committedUris) ?: return null
         if (!directory.exists() && !directory.mkdirs()) return null
         return File(directory, DownloadPaths.coverName(mimeType))
     }
@@ -158,38 +197,49 @@ class DownloadStorage @Inject constructor(
      * the root: a delete that started higher up would be one path-construction bug away from removing
      * somebody else's book.
      */
-    fun deleteItem(serverId: String, itemId: String): Boolean =
-        deleteItem(serverId, itemId, volumeUuid = null, committedUris = emptyList())
-
-    fun deleteItem(serverId: String, itemId: String, volumeUuid: String?, committedUris: List<String>): Boolean {
-        val deletionRoots = when {
-            volumeUuid != null -> listOf(rootForVolume(volumeUuid) ?: return false)
-            else -> rootsForLegacyUris(committedUris) ?: return false
-        }
+    fun deleteItem(serverId: String, itemId: String): Boolean {
         val relative = DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator)
-        return deletionRoots
+        return roots()
             .map { root -> File(root, relative) }
             .all { directory -> !directory.exists() || directory.deleteRecursively() }
     }
 
-    /**
-     * A migrated row has no durable volume owner. We may still delete it safely when every committed file URI
-     * resolves under one root that is reachable now. If any path belongs to an absent volume, return null and
-     * preserve the manifest rather than pretending "directory absent" means "bytes deleted".
-     */
-    private fun rootsForLegacyUris(committedUris: List<String>): List<File>? {
-        val files = committedUris.map { uri ->
-            resultOf { URI(uri).takeIf { it.scheme == "file" }?.let(::File) }.getOrNull() ?: return null
-        }
-        if (files.isEmpty()) return roots()
-
-        val reachable = roots().firstOrNull { root ->
-            files.all { file ->
-                runCatching { file.canonicalPath.startsWith(root.canonicalPath + File.separator) }.getOrDefault(false)
-            }
-        } ?: return null
-        return listOf(reachable)
+    fun deleteItem(
+        serverId: String,
+        itemId: String,
+        volumeUuid: String?,
+        committedUris: List<String>,
+    ): StorageDeleteResult {
+        val owner = ownerRoot(serverId, itemId, volumeUuid, committedUris)
+            ?: return StorageDeleteResult.Unavailable
+        val relative = DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator)
+        val directory = File(owner, relative)
+        if (!directory.exists()) return StorageDeleteResult.Deleted
+        return if (directory.deleteRecursively()) StorageDeleteResult.Deleted else StorageDeleteResult.Failed
     }
+
+    private fun legacyRoot(serverId: String, itemId: String, committedUris: List<String>): File? {
+        val reachable = roots()
+        val localUris = committedUris.asSequence()
+            .filter(String::isNotBlank)
+            .mapNotNull { uri ->
+                resultOf { URI(uri).takeIf { it.scheme == "file" }?.let(::File) }.getOrNull()
+            }
+            .toList()
+
+        if (localUris.isNotEmpty()) {
+            return reachable.filter { root -> localUris.all { file -> file.isUnder(root) } }.singleOrNull()
+        }
+
+        val relative = DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator)
+        return reachable.filter { root -> File(root, relative).exists() }.singleOrNull()
+    }
+
+    private fun File.isUnder(root: File): Boolean = runCatching {
+        val rootPath = root.canonicalPath
+        val filePath = canonicalPath
+        filePath == rootPath || filePath.startsWith(rootPath + File.separator)
+    }.getOrDefault(false)
 
     /** How many bytes of [part] are already on disk, which is where a resume asks the server to continue. */
     fun bytesOnDisk(part: File): Long = if (part.exists()) part.length() else 0
@@ -261,26 +311,55 @@ class DownloadStorage @Inject constructor(
      * Used when a download is cancelled *and* the user asked to discard it, which is the one case where a
      * resumable part should not survive. [sweepOrphans] cannot cover it, because the manifest is still there.
      */
-    fun deleteParts(serverId: String, itemId: String): Long = partFiles(serverId, itemId).sumOf { file ->
+    fun deleteParts(serverId: String, itemId: String): Long = partFiles(roots(), serverId, itemId).sumOf { file ->
         val bytes = file.length()
         if (file.delete()) bytes else 0L
     }
 
-    /** Filesystem truth for the #22 confirmation; no manifest estimate is involved. */
-    fun partialBytes(serverId: String, itemId: String): Long = partFiles(serverId, itemId).sumOf(File::length)
-
-    /** Remaining bytes for one manifest file after a discard attempt, across every currently reachable root. */
-    fun partialBytesFor(serverId: String, itemId: String, fileId: String, mimeType: String?): Long {
-        val relative = DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator)
-        val name = DownloadPaths.partName(DownloadPaths.fileName(fileId, mimeType))
-        return roots().sumOf { base ->
-            File(File(base, relative), name).takeIf(File::isFile)?.length() ?: 0L
+    fun deleteParts(
+        serverId: String,
+        itemId: String,
+        volumeUuid: String?,
+        committedUris: List<String>,
+    ): Long? {
+        val owner = ownerRoot(serverId, itemId, volumeUuid, committedUris) ?: return null
+        return partFiles(listOf(owner), serverId, itemId).sumOf { file ->
+            val bytes = file.length()
+            if (file.delete()) bytes else 0L
         }
     }
 
-    private fun partFiles(serverId: String, itemId: String): Sequence<File> {
+    /** Filesystem truth for the #22 confirmation; no manifest estimate is involved. */
+    fun partialBytes(serverId: String, itemId: String): Long = partFiles(roots(), serverId, itemId).sumOf(File::length)
+
+    fun partialBytes(
+        serverId: String,
+        itemId: String,
+        volumeUuid: String?,
+        committedUris: List<String>,
+    ): Long? {
+        val owner = ownerRoot(serverId, itemId, volumeUuid, committedUris) ?: return null
+        return partFiles(listOf(owner), serverId, itemId).sumOf(File::length)
+    }
+
+    /** Remaining bytes for one manifest file after a discard attempt. */
+    fun partialBytesFor(
+        serverId: String,
+        itemId: String,
+        fileId: String,
+        mimeType: String?,
+        volumeUuid: String?,
+        committedUris: List<String>,
+    ): Long? {
+        val owner = ownerRoot(serverId, itemId, volumeUuid, committedUris) ?: return null
         val relative = DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator)
-        return roots().asSequence()
+        val name = DownloadPaths.partName(DownloadPaths.fileName(fileId, mimeType))
+        return File(File(owner, relative), name).takeIf(File::isFile)?.length() ?: 0L
+    }
+
+    private fun partFiles(baseRoots: List<File>, serverId: String, itemId: String): Sequence<File> {
+        val relative = DownloadPaths.itemDirectory(serverId, itemId).joinToString(File.separator)
+        return baseRoots.asSequence()
             .flatMap { base -> File(base, relative).listFiles().orEmpty().asSequence() }
             .filter { file -> file.isFile && DownloadPaths.isPart(file.name) }
     }
