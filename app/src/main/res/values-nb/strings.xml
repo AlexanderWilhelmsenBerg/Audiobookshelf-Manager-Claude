@@ -333,6 +333,10 @@
     <string name="downloads_empty_title">Ingenting er lastet ned</string>
     <string name="downloads_empty_body">Bøker du laster ned vises her, med hvor mye plass hver av dem bruker. Last ned en fra bokens egen side.</string>
     <string name="downloads_total">%1$s brukt av nedlastinger</string>
+    <string name="downloads_active_section">Aktive / ventende</string>
+    <string name="downloads_on_device_section">På enheten</string>
+    <string name="downloads_progress_percent">%1$d %%</string>
+    <string name="downloads_progress_bytes">%1$s / %2$s</string>
     <!-- PRODUCT_SPEC DL-003 / ADR-0020 — nedlastingsplassering. -->
     <string name="downloads_location">Hvor nye nedlastinger havner</string>
     <string name="downloads_location_internal">Denne enheten</string>
