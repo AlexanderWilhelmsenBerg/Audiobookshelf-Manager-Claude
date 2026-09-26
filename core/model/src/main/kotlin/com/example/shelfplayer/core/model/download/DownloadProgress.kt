@@ -10,11 +10,7 @@ import kotlin.math.roundToInt
  * trustworthy expected length. [fraction] may still be available when [totalBytes] is unknown because the
  * downloader has a bounded per-file weighting fallback; callers must not present estimated bytes as exact.
  */
-data class DownloadProgress(
-    val downloadedBytes: Long,
-    val totalBytes: Long?,
-    val fraction: Float,
-) {
+data class DownloadProgress(val downloadedBytes: Long, val totalBytes: Long?, val fraction: Float) {
     val percent: Int
         get() = (fraction.coerceIn(0f, 1f) * PERCENT).roundToInt().coerceIn(0, PERCENT)
 
@@ -22,7 +18,6 @@ data class DownloadProgress(
         private const val PERCENT = 100
     }
 }
-
 
 /**
  * Reconstructs the best truthful transfer progress available from the durable manifest after process death
