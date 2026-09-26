@@ -304,6 +304,7 @@ class DownloadsViewModel @Inject constructor(
         book: Book?,
         execution: DownloadExecutionSnapshot?,
         partialBytes: Long,
+        storageState: DownloadStorageState,
     ): DownloadRow {
         val recovery = DownloadRecoveryPolicy.resolve(
             durableState = state,
@@ -330,6 +331,7 @@ class DownloadsViewModel @Inject constructor(
             isSharedWithAnotherProfile = requestedBy.size > 1,
             partialBytes = partialBytes,
             progress = progress.takeUnless { recovery.state == DownloadRecoveryState.Complete },
+            storageState = storageState,
         )
     }
 
