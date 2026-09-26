@@ -373,7 +373,9 @@ class DownloadsViewModelTest {
     private class FakeExecutionObserver : DownloadExecutionObserver {
         private val evidence = MutableStateFlow<Map<DownloadExecutionKey, DownloadExecutionEvidence>>(emptyMap())
 
-        override fun observe(keys: Set<DownloadExecutionKey>): Flow<Map<DownloadExecutionKey, DownloadExecutionEvidence>> =
+        override fun observe(
+            keys: Set<DownloadExecutionKey>,
+        ): Flow<Map<DownloadExecutionKey, DownloadExecutionEvidence>> =
             evidence.map { current -> current.filterKeys(keys::contains) }
 
         fun emit(book: OfflineBook, state: DownloadExecutionEvidence) {
