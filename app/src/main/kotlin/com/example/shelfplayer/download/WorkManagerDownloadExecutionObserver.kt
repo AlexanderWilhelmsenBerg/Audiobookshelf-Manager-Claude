@@ -14,6 +14,7 @@ import com.example.shelfplayer.domain.download.DownloadExecutionObserver
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import javax.inject.Inject
