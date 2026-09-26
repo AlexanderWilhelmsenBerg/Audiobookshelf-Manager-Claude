@@ -347,9 +347,9 @@ class DownloadVerifierTest {
         override suspend fun options(): List<StorageVolumeOption> = emptyList()
         override fun observeSelected(): Flow<String> = flowOf(StorageVolumeOption.INTERNAL_UUID)
         override fun availability(volumeUuid: String?): DownloadStorageState = forced ?: when (volumeUuid) {
-                null -> DownloadStorageState.Unknown
-                else -> DownloadStorageState.Available
-            }
+            null -> DownloadStorageState.Unknown
+            else -> DownloadStorageState.Available
+        }
 
         override suspend fun select(uuid: String): AppResult<Unit> = AppResult.Success(Unit)
     }
