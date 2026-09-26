@@ -22,7 +22,7 @@ class DownloadCopyLocks @Inject constructor() {
 
     suspend fun <T> withLock(serverId: ServerId, itemId: LibraryItemId, block: suspend () -> T): T {
         val key = serverId.value + KEY_SEPARATOR + itemId.value
-        return locks.getOrPut(key, ::Mutex).withLock { block() }
+        return locks.computeIfAbsent(key) { Mutex() }.withLock { block() }
     }
 
     private companion object {
