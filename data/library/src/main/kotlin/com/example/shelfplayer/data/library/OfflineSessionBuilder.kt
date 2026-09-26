@@ -75,7 +75,7 @@ class OfflineSessionBuilder @Inject constructor(
         bookId: LibraryItemId,
         manifest: OfflineBook,
     ): PlaybackSession? {
-        if (!manifestStorageReachable(manifest)) return null
+        if (!manifest.isLocalStorageReachable(locations)) return null
         val bookKey = EntityKey.of(serverId.value, bookId.value)
         val stored = libraryDao.observeBook(profileId.value, bookKey).first() ?: return null
         val local = manifest.files.associateBy { file -> file.remoteFileId }
@@ -140,7 +140,7 @@ class OfflineSessionBuilder @Inject constructor(
             .filter { file ->
                 file.uri.isNotBlank() &&
                     file.state == DownloadState.Complete &&
-                    localUriReachable(file.uri)
+                    localDownloadUriReachable(file.uri)
             }
             .associate { file -> file.remoteFileId to file.uri }
         if (local.isEmpty()) return session
@@ -150,18 +150,6 @@ class OfflineSessionBuilder @Inject constructor(
             },
         )
     }
-
-    private fun manifestStorageReachable(manifest: OfflineBook): Boolean {
-        if (locations.availability(manifest.storageVolumeUuid) == DownloadStorageState.Unavailable) return false
-        return manifest.files
-            .filter { it.state == DownloadState.Complete }
-            .all { file -> localUriReachable(file.uri) }
-    }
-
-    private fun localUriReachable(uri: String): Boolean = runCatching {
-        val parsed = URI(uri)
-        parsed.scheme == "file" && File(parsed).isFile
-    }.getOrDefault(false)
 
     /**
      * The server's file id for a track, recovered from the URL it was given.
@@ -184,3 +172,17 @@ class OfflineSessionBuilder @Inject constructor(
         isExcluded = isExcluded,
     )
 }
+
+
+/** #20 pure local-media gate, shared by tests and both playback paths. */
+internal fun OfflineBook.isLocalStorageReachable(locations: DownloadLocations): Boolean {
+    if (locations.availability(storageVolumeUuid) == DownloadStorageState.Unavailable) return false
+    return files
+        .filter { it.state == DownloadState.Complete }
+        .all { file -> localDownloadUriReachable(file.uri) }
+}
+
+internal fun localDownloadUriReachable(uri: String): Boolean = runCatching {
+    val parsed = URI(uri)
+    parsed.scheme == "file" && File(parsed).isFile
+}.getOrDefault(false)
