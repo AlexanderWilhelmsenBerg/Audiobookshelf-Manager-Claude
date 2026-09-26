@@ -581,7 +581,7 @@ private fun ActionPane(
 
     // Length, tracks and availability as one quiet strip, not three sentences. Facts of the same
     // kind belong on the same line, and a reader scans a strip faster than they read a list.
-    FactStrip(book = book)
+    FactStrip(book = book, downloadState = download.state)
 
     ProgressSummary(book = book, modifier = Modifier.padding(horizontal = 16.dp))
 }
@@ -693,11 +693,17 @@ private fun Section(titleRes: Int, modifier: Modifier = Modifier, content: @Comp
  * state joins them because "is it on this device" is the same kind of fact as "how long is it".
  */
 @Composable
-private fun FactStrip(book: Book, modifier: Modifier = Modifier) {
+private fun FactStrip(book: Book, downloadState: DownloadButtonState, modifier: Modifier = Modifier) {
+    val availability = when (downloadState) {
+        DownloadButtonState.NotDownloaded -> R.string.book_not_downloaded
+        DownloadButtonState.OnDevice -> R.string.book_downloaded_on_device
+        is DownloadButtonState.Downloading, DownloadButtonState.Failed -> R.string.book_download_partial
+        DownloadButtonState.Downloaded -> R.string.book_downloaded
+    }
     val facts = buildList {
         add(stringResource(R.string.book_duration, book.duration.formatted()))
         add(pluralStringResource(R.plurals.book_tracks, book.trackCount, book.trackCount))
-        add(stringResource(book.localAvailability.labelRes()))
+        add(stringResource(availability))
     }
     Text(
         text = facts.joinToString(FACT_SEPARATOR),
