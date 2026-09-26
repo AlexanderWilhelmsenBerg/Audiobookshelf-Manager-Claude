@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.common.log.DefaultRedactor
 import com.example.shelfplayer.core.common.log.RedactingLogger
 import com.example.shelfplayer.core.common.log.RedactionPolicy
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
+import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
 import com.example.shelfplayer.core.model.AppResult
@@ -121,6 +122,73 @@ class DownloadVerifierTest {
         assertEquals(DownloadState.Failed, after.files.single().state)
     }
 
+    @Test
+    fun `absent known removable volume preserves complete manifest instead of calling it corrupt`() = runTest {
+        val stored = completeBook(bytes = 32)
+        setVolumeOwner("card-uuid")
+        File(java.net.URI(stored.files.single().uri)).delete()
+        locations.forced = DownloadStorageState.Unavailable
+
+        val report = assertNotNull(verifier.verifyManifests().getOrNull())
+        val after = assertNotNull(repository.observe(SERVER, BOOK).first())
+
+        assertTrue(report.isIntact, "unavailable storage is not an integrity failure")
+        assertTrue(after.isComplete, "durable Complete survives temporary volume absence")
+        assertEquals(DownloadState.Complete, after.state)
+        assertEquals(DownloadState.Complete, after.files.single().state)
+    }
+
+    @Test
+    fun `unknown legacy owner with unreachable path stays unknown rather than failed`() = runTest {
+        val stored = completeBook(bytes = 32)
+        setVolumeOwner(null)
+        File(java.net.URI(stored.files.single().uri)).delete()
+        locations.forced = DownloadStorageState.Unknown
+
+        verifier.verifyManifests()
+        val after = assertNotNull(repository.observe(SERVER, BOOK).first())
+
+        assertTrue(after.isComplete)
+        assertEquals(DownloadState.Complete, after.state)
+    }
+
+    @Test
+    fun `storage classifier keeps available unavailable unknown missing and corrupt distinct`() {
+        val good = File(directory, "classify.mp3").apply { writeBytes(ByteArray(32)) }
+        containersReadable = true
+        assertEquals(
+            DownloadStorageState.Available,
+            verifier.classifyStorage(good.toURI().toString(), 32, true, DownloadStorageState.Available) {
+                containersReadable
+            },
+        )
+        assertEquals(
+            DownloadStorageState.Unavailable,
+            verifier.classifyStorage(good.toURI().toString(), 32, true, DownloadStorageState.Unavailable) {
+                containersReadable
+            },
+        )
+        assertEquals(
+            DownloadStorageState.Unknown,
+            verifier.classifyStorage(File(directory, "absent.mp3").toURI().toString(), 32, false, DownloadStorageState.Unknown) {
+                true
+            },
+        )
+        assertEquals(
+            DownloadStorageState.Missing,
+            verifier.classifyStorage(File(directory, "absent.mp3").toURI().toString(), 32, false, DownloadStorageState.Available) {
+                true
+            },
+        )
+        containersReadable = false
+        assertEquals(
+            DownloadStorageState.Corrupt,
+            verifier.classifyStorage(good.toURI().toString(), 32, true, DownloadStorageState.Available) {
+                containersReadable
+            },
+        )
+    }
+
     /** A file truncated by a full disk opens perfectly well and is still not the book. */
     @Test
     fun `a file of the wrong length breaks its book`() = runTest {
@@ -209,6 +277,12 @@ class DownloadVerifierTest {
             planned.copy(state = DownloadState.Complete, downloadedBytes = bytes.toLong()),
         )
         assertNotNull(repository.observe(SERVER, BOOK).first())
+    }
+
+    private suspend fun setVolumeOwner(uuid: String?) {
+        val key = EntityKey.of(SERVER.value, BOOK.value)
+        val row = assertNotNull(database.downloadDao().find(key))
+        database.downloadDao().upsertBook(row.book.copy(storageVolumeUuid = uuid))
     }
 
     private fun file(
