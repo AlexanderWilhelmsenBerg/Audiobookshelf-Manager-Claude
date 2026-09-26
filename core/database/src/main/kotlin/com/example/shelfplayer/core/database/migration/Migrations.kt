@@ -580,6 +580,20 @@ object Migrations {
         }
     }
 
+    /**
+     * BW-DL-05 / #20 — the physical download's owning Android storage volume.
+     *
+     * Nullable is intentional. Version-20 rows have absolute file URIs but no durable proof of which volume
+     * owns the complete physical copy, especially while a card is absent. Guessing from a path during
+     * migration would manufacture identity and turn "unknown" into false certainty. Existing rows therefore
+     * migrate to null/Unknown and no filesystem operation occurs here.
+     */
+    private val MIGRATION_20_21 = object : Migration(20, 21) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `downloaded_books` ADD COLUMN `storageVolumeUuid` TEXT DEFAULT NULL")
+        }
+    }
+
     private fun createDownloadedBooks(db: SupportSQLiteDatabase) {
         db.execSQL(
             """
@@ -667,5 +681,6 @@ object Migrations {
         MIGRATION_17_18,
         MIGRATION_18_19,
         MIGRATION_19_20,
+        MIGRATION_20_21,
     )
 }
