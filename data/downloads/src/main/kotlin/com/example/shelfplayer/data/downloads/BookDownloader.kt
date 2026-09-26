@@ -83,7 +83,13 @@ class BookDownloader @Inject constructor(
         onProgress(weights.progressOf(manifest.files))
 
         manifest.files.filter { it.state != DownloadState.Complete }.forEach { file ->
-            val fetched = fileDownloader.download(profileId, serverId, itemId, file) { bytes ->
+            val fetched = fileDownloader.download(
+                profileId = profileId,
+                serverId = serverId,
+                itemId = itemId,
+                file = file,
+                storageVolumeUuid = manifest.storageVolumeUuid,
+            ) { bytes ->
                 onProgress(weights.progressWith(file, bytes))
             }
             if (fetched.isFailure()) {
@@ -103,7 +109,7 @@ class BookDownloader @Inject constructor(
         val completed = repository.markComplete(
             serverId,
             itemId,
-            coverUri = manifest.coverUri ?: fetchCover(profileId, serverId, itemId),
+            coverUri = manifest.coverUri ?: fetchCover(profileId, serverId, itemId, manifest.storageVolumeUuid),
         )
         if (completed is AppResult.Success) {
             logger.info(
@@ -133,14 +139,20 @@ class BookDownloader @Inject constructor(
      * Fetched only when the manifest has none, so a retry of a book whose audio failed does not re-fetch
      * artwork it already has.
      */
-    private suspend fun fetchCover(profileId: ProfileId, serverId: ServerId, itemId: LibraryItemId): String? {
+    private suspend fun fetchCover(
+        profileId: ProfileId,
+        serverId: ServerId,
+        itemId: LibraryItemId,
+        storageVolumeUuid: String?,
+    ): String? {
         var destination: File? = null
         val fetched = downloads.fetchCover(profileId, itemId) {
             // The type is not known until the response arrives, and the name depends on it — so the file is
             // named inside the sink, which is the first moment both facts exist.
-            storage.coverFor(serverId.value, itemId.value, mimeType = null)
-                .also { destination = it }
-                .outputStream()
+            storage.coverFor(serverId.value, itemId.value, mimeType = null, volumeUuid = storageVolumeUuid)
+                ?.also { destination = it }
+                ?.outputStream()
+                ?: throw java.io.IOException("Download storage unavailable")
         }
         return when (fetched) {
             is AppResult.Success -> destination?.toURI()?.toString()
