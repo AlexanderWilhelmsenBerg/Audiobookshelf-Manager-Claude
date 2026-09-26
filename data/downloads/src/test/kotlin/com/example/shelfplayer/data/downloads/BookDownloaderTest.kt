@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.common.log.DefaultRedactor
 import com.example.shelfplayer.core.common.log.RedactingLogger
 import com.example.shelfplayer.core.common.log.RedactionPolicy
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
+import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
 import com.example.shelfplayer.core.model.AppError
@@ -162,6 +163,24 @@ class BookDownloaderTest {
         assertEquals(listOf("file-1", "file-2"), api.fetched)
     }
 
+    @Test
+    fun `unavailable owner during transfer stays queued and retryable instead of durable failed`() = runTest {
+        repository.request(SERVER, BOOK, ADA, files())
+        setVolumeOwner("missing-card")
+
+        val failure = assertIs<AppResult.Failure>(downloader.download(ADA, SERVER, BOOK))
+        val stored = assertNotNull(repository.observe(SERVER, BOOK).first())
+
+        assertIs<AppError.Storage>(failure.error)
+        assertTrue(failure.error.isRetryable)
+        assertEquals(DownloadState.Queued, stored.state)
+        assertEquals(
+            listOf(DownloadState.Queued, DownloadState.Queued, DownloadState.Queued),
+            stored.files.map { it.state },
+        )
+        assertEquals(setOf(ADA), stored.requestedBy)
+    }
+
     /** And a retry picks up where it stopped rather than re-fetching what is already committed. */
     @Test
     fun `a retry only fetches what is missing`() = runTest {
@@ -197,6 +216,22 @@ class BookDownloaderTest {
         assertEquals(true, downloader.remove(GRACE, SERVER, BOOK).getOrNull())
         assertFalse(onDisk.exists(), "the files are gone")
         assertNull(repository.observe(SERVER, BOOK).first(), "and so is the manifest")
+    }
+
+    @Test
+    fun `last claim removal preserves manifest claim and bytes while known owner is unavailable`() = runTest {
+        repository.request(SERVER, BOOK, ADA, files())
+        downloader.download(ADA, SERVER, BOOK)
+        val onDisk = itemDirectory()
+        setVolumeOwner("missing-card")
+
+        val failure = assertIs<AppResult.Failure>(downloader.remove(ADA, SERVER, BOOK))
+        val stored = assertNotNull(repository.observe(SERVER, BOOK).first())
+
+        assertIs<AppError.Storage>(failure.error)
+        assertTrue(onDisk.exists(), "unreachable owner must not be treated as already deleted")
+        assertEquals(setOf(ADA), stored.requestedBy, "the last claim must survive a failed physical delete")
+        assertTrue(stored.isComplete, "temporary storage absence must not corrupt durable completion")
     }
 
     /**
@@ -236,6 +271,12 @@ class BookDownloaderTest {
 
         assertTrue(partsIn(itemDirectory()).isEmpty())
         assertNotNull(repository.observe(SERVER, BOOK).first(), "the book is still known, just not downloaded")
+    }
+
+    private suspend fun setVolumeOwner(uuid: String?) {
+        val key = EntityKey.of(SERVER.value, BOOK.value)
+        val row = assertNotNull(database.downloadDao().find(key))
+        database.downloadDao().upsertBook(row.book.copy(storageVolumeUuid = uuid))
     }
 
     private fun itemDirectory() = File(
