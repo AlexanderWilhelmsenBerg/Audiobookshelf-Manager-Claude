@@ -11,12 +11,14 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.network.di.RemoteGateway
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.http.UserAgent
+import com.example.shelfplayer.domain.download.DownloadExecutionObserver
 import com.example.shelfplayer.domain.download.DownloadScheduler
 import com.example.shelfplayer.domain.download.SmartDownload
 import com.example.shelfplayer.domain.playback.PlaybackHandover
 import com.example.shelfplayer.domain.playback.StartupPlayer
 import com.example.shelfplayer.domain.sync.BackgroundSync
 import com.example.shelfplayer.domain.usecase.SmartDownloadUseCase
+import com.example.shelfplayer.download.WorkManagerDownloadExecutionObserver
 import com.example.shelfplayer.download.WorkManagerDownloadScheduler
 import com.example.shelfplayer.feature.lock.BiometricGateway
 import com.example.shelfplayer.feature.lock.PlatformBiometricGateway
@@ -63,6 +65,11 @@ interface AppModule {
     @Binds
     @Singleton
     fun bindsDownloadScheduler(impl: WorkManagerDownloadScheduler): DownloadScheduler
+
+    /** BW-DL-04 / #19 — WorkManager is transient execution evidence, never durable manifest state. */
+    @Binds
+    @Singleton
+    fun bindsDownloadExecutionObserver(impl: WorkManagerDownloadExecutionObserver): DownloadExecutionObserver
 
     /**
      * AUTH-005 — the platform's biometric prompt, and the only binding for it.
