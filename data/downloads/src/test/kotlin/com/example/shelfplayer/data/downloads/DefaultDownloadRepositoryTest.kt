@@ -49,6 +49,7 @@ class DefaultDownloadRepositoryTest {
     private lateinit var database: ShelfPlayerDatabase
     private lateinit var repository: DefaultDownloadRepository
     private lateinit var storage: DownloadStorage
+    private lateinit var copyLocks: DownloadCopyLocks
 
     @Before
     fun setUp() = runTest {
@@ -57,9 +58,11 @@ class DefaultDownloadRepositoryTest {
             .allowMainThreadQueries()
             .build()
         storage = DownloadStorage(context) { listOf(context.filesDir) }
+        copyLocks = DownloadCopyLocks()
         repository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
             storage = storage,
+            copyLocks = copyLocks,
             clock = TestAppClock(),
             ioDispatcher = UnconfinedTestDispatcher(),
         )
@@ -95,6 +98,7 @@ class DefaultDownloadRepositoryTest {
         val cardRepository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
             storage = DownloadStorage(context, cardRoots),
+            copyLocks = copyLocks,
             clock = TestAppClock(),
             ioDispatcher = UnconfinedTestDispatcher(),
         )
@@ -105,6 +109,7 @@ class DefaultDownloadRepositoryTest {
         val internalRepository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
             storage = storage,
+            copyLocks = copyLocks,
             clock = TestAppClock(),
             ioDispatcher = UnconfinedTestDispatcher(),
         )
