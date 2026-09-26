@@ -133,7 +133,10 @@ class OfflineSessionBuilder @Inject constructor(
      * `https://`.
      */
     fun localise(session: PlaybackSession, manifest: OfflineBook?): PlaybackSession {
-        if (manifest == null || locations.availability(manifest.storageVolumeUuid) == DownloadStorageState.Unavailable) {
+        if (
+            manifest == null ||
+            locations.availability(manifest.storageVolumeUuid) == DownloadStorageState.Unavailable
+        ) {
             return session
         }
         val local = manifest.files
@@ -172,7 +175,6 @@ class OfflineSessionBuilder @Inject constructor(
         isExcluded = isExcluded,
     )
 }
-
 
 /** #20 pure local-media gate, shared by tests and both playback paths. */
 internal fun OfflineBook.isLocalStorageReachable(locations: DownloadLocations): Boolean {
