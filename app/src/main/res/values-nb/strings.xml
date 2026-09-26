@@ -352,6 +352,11 @@
     <string name="downloads_pause">Sett nedlastingen på pause</string>
     <string name="downloads_resume">Fortsett nedlastingen</string>
     <string name="downloads_retry">Prøv nedlastingen på nytt</string>
+    <string name="downloads_discard_partial">Forkast %1$s deldata</string>
+    <string name="downloads_discard_partial_title">Forkaste delvis nedlasting?</string>
+    <string name="downloads_discard_partial_body">Dette sletter %1$s med uferdige nedlastingsdata. Ferdig lyd blir liggende på enheten, nedlastingskrav beholdes, og et senere nytt forsøk starter de forkastede delene fra null.</string>
+    <string name="downloads_discard_partial_confirm">Forkast deldata</string>
+    <string name="downloads_discard_partial_cancel">Behold</string>
     <string name="downloads_pin">Behold denne, aldri slett den automatisk</string>
     <string name="downloads_unpin">Slutt å beholde denne</string>
     <string name="downloads_remove">Fjern denne nedlastingen</string>
