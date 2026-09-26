@@ -16,17 +16,21 @@ import kotlin.time.Duration.Companion.seconds
 class SleepTimerMediaMetadataTest {
 
     @Test
-    fun `active timer prefixes primary titles without changing the book byline`() {
-        val original = item(title = "A book", artist = "Ursula K. Le Guin")
+    fun `active timer replaces primary titles with only the short countdown`() {
+        val original = item(
+            title = "Canonical title",
+            displayTitle = "Display title",
+            artist = "Ursula K. Le Guin",
+        )
 
         val twelve = assertNotNull(SleepTimerMediaMetadata.project(original, "12:34"))
-        assertEquals("12:34 · A book", twelve.mediaMetadata.title?.toString())
-        assertEquals("12:34 · A book", twelve.mediaMetadata.displayTitle?.toString())
+        assertEquals("12:34", twelve.mediaMetadata.title?.toString())
+        assertEquals("12:34", twelve.mediaMetadata.displayTitle?.toString())
         assertEquals("Ursula K. Le Guin", twelve.mediaMetadata.artist?.toString())
 
         val eleven = assertNotNull(SleepTimerMediaMetadata.project(twelve, "11:59"))
-        assertEquals("11:59 · A book", eleven.mediaMetadata.title?.toString())
-        assertEquals("11:59 · A book", eleven.mediaMetadata.displayTitle?.toString())
+        assertEquals("11:59", eleven.mediaMetadata.title?.toString())
+        assertEquals("11:59", eleven.mediaMetadata.displayTitle?.toString())
         assertEquals("Ursula K. Le Guin", eleven.mediaMetadata.artist?.toString())
     }
 
