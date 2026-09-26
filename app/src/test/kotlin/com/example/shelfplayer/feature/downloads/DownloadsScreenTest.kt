@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.download.DownloadProgress
 import com.example.shelfplayer.domain.download.DownloadRecoveryState
 import org.junit.Rule
 import org.junit.Test
@@ -128,6 +129,43 @@ class DownloadsScreenTest {
         render(DownloadRecoveryState.Paused)
 
         compose.onNodeWithText("Discard", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `active and on-device rows are separated and simultaneous progress stays independent`() {
+        val first = state(DownloadRecoveryState.Running).books.single().copy(
+            bookId = LibraryItemId("first"),
+            title = "First",
+            progress = DownloadProgress(downloadedBytes = 256L, totalBytes = 1_024L, fraction = 0.25f),
+        )
+        val second = state(DownloadRecoveryState.Running).books.single().copy(
+            bookId = LibraryItemId("second"),
+            title = "Second",
+            progress = DownloadProgress(downloadedBytes = 768L, totalBytes = 1_024L, fraction = 0.75f),
+        )
+        val stored = state(DownloadRecoveryState.Complete).books.single().copy(
+            bookId = LibraryItemId("stored"),
+            title = "Stored",
+        )
+        compose.setContent {
+            DownloadsScreen(
+                uiState = DownloadsUiState(
+                    books = listOf(first, second, stored),
+                    totalBytes = 2_048L,
+                    isLoaded = true,
+                ),
+                onRemove = { _, _ -> },
+                onPinnedChanged = { _, _, _ -> },
+                onRecoveryAction = { _, _ -> },
+                onVerify = {},
+                onNavigateUp = {},
+            )
+        }
+
+        compose.onNodeWithText("Active / pending").assertExists()
+        compose.onNodeWithText("On device").assertExists()
+        compose.onNodeWithText("256 B / 1.0 kB").assertExists()
+        compose.onNodeWithText("768 B / 1.0 kB").assertExists()
     }
 
     @Test
