@@ -8,11 +8,10 @@ import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.DownloadProgress
 import com.example.shelfplayer.core.model.download.DownloadStorageState
 import com.example.shelfplayer.core.model.download.OfflineBook
-import com.example.shelfplayer.core.model.download.durableDownloadProgress
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.core.model.download.VerificationReport
+import com.example.shelfplayer.core.model.download.durableDownloadProgress
 import com.example.shelfplayer.core.model.library.Book
-import com.example.shelfplayer.domain.download.DownloadExecutionEvidence
 import com.example.shelfplayer.domain.download.DownloadExecutionKey
 import com.example.shelfplayer.domain.download.DownloadExecutionObserver
 import com.example.shelfplayer.domain.download.DownloadExecutionSnapshot
@@ -281,8 +280,10 @@ class DownloadsViewModel @Inject constructor(
         viewModelScope.launch {
             when (val discarded = files.discardPartials(serverId, bookId)) {
                 is AppResult.Failure -> _message.value = discarded.error.summary
-                is AppResult.Success -> _message.value =
-                    "Discarded ${formatByteCount(discarded.value)} of partial download data."
+
+                is AppResult.Success -> {
+                    _message.value = "Discarded ${formatByteCount(discarded.value)} of partial download data."
+                }
             }
         }
     }
@@ -342,9 +343,24 @@ class DownloadsViewModel @Inject constructor(
     }
 
     private fun formatByteCount(bytes: Long): String = when {
-        bytes >= BYTES_PER_GIBIBYTE -> String.format(java.util.Locale.US, "%.1f GiB", bytes / BYTES_PER_GIBIBYTE.toDouble())
-        bytes >= BYTES_PER_MEBIBYTE -> String.format(java.util.Locale.US, "%.1f MiB", bytes / BYTES_PER_MEBIBYTE.toDouble())
-        bytes >= BYTES_PER_KIBIBYTE -> String.format(java.util.Locale.US, "%.1f KiB", bytes / BYTES_PER_KIBIBYTE.toDouble())
+        bytes >= BYTES_PER_GIBIBYTE -> String.format(
+            java.util.Locale.US,
+            "%.1f GiB",
+            bytes / BYTES_PER_GIBIBYTE.toDouble(),
+        )
+
+        bytes >= BYTES_PER_MEBIBYTE -> String.format(
+            java.util.Locale.US,
+            "%.1f MiB",
+            bytes / BYTES_PER_MEBIBYTE.toDouble(),
+        )
+
+        bytes >= BYTES_PER_KIBIBYTE -> String.format(
+            java.util.Locale.US,
+            "%.1f KiB",
+            bytes / BYTES_PER_KIBIBYTE.toDouble(),
+        )
+
         else -> "$bytes B"
     }
 
