@@ -10,10 +10,7 @@ import kotlinx.coroutines.flow.Flow
  * Physical media is shared by profiles, so execution identity deliberately remains (server, item).
  * Profile identity authorizes a queued worker but never creates a second physical copy.
  */
-data class DownloadExecutionKey(
-    val serverId: ServerId,
-    val itemId: LibraryItemId,
-)
+data class DownloadExecutionKey(val serverId: ServerId, val itemId: LibraryItemId)
 
 /**
  * Read-only transient execution evidence for the device's physical download rows.
