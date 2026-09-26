@@ -1354,18 +1354,18 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * BW-SLEEP-02 / PRODUCT_SPEC PLAY-008 — make the countdown visible as text in compact/background media
-     * controls as well as in the timer action.
+     * BW-SLEEP-02 / PRODUCT_SPEC PLAY-008 — make the countdown visible in the primary text of compact and
+     * expanded system media controls, not merely in a custom action label or secondary byline.
      *
-     * Android 13+ renders the System UI card from MediaSession metadata, not from an app-owned notification
-     * layout. Replacing only the current item's metadata is Media3's supported no-interruption update path;
-     * [SleepTimerMediaMetadata] preserves and restores the ordinary author/series byline.
+     * Physical acceptance showed that those secondary surfaces can be icon-only or hidden by System UI.
+     * The timer therefore uses a compact clock label and [SleepTimerMediaMetadata] puts it first in the
+     * current item's primary title while preserving the exact ordinary book metadata for restoration.
      */
     private fun publishSleepTimerMetadata(timer: SleepTimerState) {
         val current = player ?: return
         val item = current.currentMediaItem ?: return
         val timerLabel = timer.takeIf { it.isActive }?.let { active ->
-            getString(R.string.player_sleep_remaining, active.remaining.asMinutesLabel())
+            SleepTimerMediaMetadata.countdownLabel(active.remaining)
         }
         val replacement = SleepTimerMediaMetadata.project(item, timerLabel) ?: return
         val index = current.currentMediaItemIndex

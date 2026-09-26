@@ -2,57 +2,85 @@ package com.example.shelfplayer.playback
 
 import android.os.Bundle
 import androidx.media3.common.MediaItem
+import kotlin.time.Duration
 
 /**
  * BW-SLEEP-02 / PRODUCT_SPEC PLAY-008 — project the playback-owned countdown into MediaSession metadata.
  *
- * Android 13+ builds its media card from session metadata rather than an app-owned notification layout.
- * The active timer therefore joins the existing artist/byline while it is running. The original artist is
- * carried in BookWave-owned extras so each one-second timer tick can rebuild from truth instead of appending
- * another "Sleep …" fragment, and so idle state restores the exact byline.
+ * Android System UI is host-owned and does not promise to render a custom action's display name or the
+ * artist/byline on every compact media surface. Physical acceptance proved that projecting only into those
+ * fields leaves BookWave's countdown invisible on a supported phone.
+ *
+ * While the timer is active, the countdown therefore becomes the complete primary title and display title.
+ * Keeping that text to only the short clock avoids a long book-title marquee restarting on every one-second
+ * metadata update in compact System UI. The original values travel in BookWave-owned extras so every tick
+ * rebuilds from truth, and idle state restores the exact book metadata.
  */
 internal object SleepTimerMediaMetadata {
+
+    /** Clock text that stays useful even when System UI gives us only one short line. */
+    fun countdownLabel(remaining: Duration): String {
+        val millis = remaining.inWholeMilliseconds.coerceAtLeast(0L)
+        val totalSeconds = if (millis == 0L) 0L else (millis + MILLIS_PER_SECOND - 1L) / MILLIS_PER_SECOND
+        val seconds = totalSeconds % SECONDS_PER_MINUTE
+        val totalMinutes = totalSeconds / SECONDS_PER_MINUTE
+        if (totalMinutes < MINUTES_PER_HOUR) {
+            return totalMinutes.toString() + ":" + seconds.twoDigits()
+        }
+        val hours = totalMinutes / MINUTES_PER_HOUR
+        val minutes = totalMinutes % MINUTES_PER_HOUR
+        return hours.toString() + ":" + minutes.twoDigits() + ":" + seconds.twoDigits()
+    }
 
     /** Returns a replacement item only when the public media metadata actually needs to change. */
     fun project(item: MediaItem, timerLabel: String?): MediaItem? {
         val metadata = item.mediaMetadata
         val extras = Bundle(metadata.extras ?: Bundle.EMPTY)
         val wasProjected = extras.getBoolean(KEY_PROJECTED, false)
-        val baseArtist = if (wasProjected) {
-            extras.getString(KEY_BASE_ARTIST)
-        } else {
-            metadata.artist?.toString()
-        }
+        val baseTitle = if (wasProjected) extras.getCharSequence(KEY_BASE_TITLE) else metadata.title
+        val baseDisplayTitle =
+            if (wasProjected) extras.getCharSequence(KEY_BASE_DISPLAY_TITLE) else metadata.displayTitle
 
         if (timerLabel == null) {
             if (!wasProjected) return null
             extras.remove(KEY_PROJECTED)
-            extras.remove(KEY_BASE_ARTIST)
+            extras.remove(KEY_BASE_TITLE)
+            extras.remove(KEY_BASE_DISPLAY_TITLE)
             val restored = metadata.buildUpon()
-                .setArtist(baseArtist)
+                .setTitle(baseTitle)
+                .setDisplayTitle(baseDisplayTitle)
                 .setExtras(extras)
                 .build()
             return item.buildUpon().setMediaMetadata(restored).build()
         }
 
-        val projectedArtist = listOfNotNull(
-            baseArtist?.takeIf(String::isNotBlank),
-            timerLabel,
-        ).joinToString(SEPARATOR)
-        if (wasProjected && metadata.artist?.toString() == projectedArtist) return null
+        if (
+            wasProjected &&
+            metadata.title?.toString() == timerLabel &&
+            metadata.displayTitle?.toString() == timerLabel
+        ) {
+            return null
+        }
 
         if (!wasProjected) {
             extras.putBoolean(KEY_PROJECTED, true)
-            baseArtist?.let { extras.putString(KEY_BASE_ARTIST, it) }
+            baseTitle?.let { extras.putCharSequence(KEY_BASE_TITLE, it) }
+            baseDisplayTitle?.let { extras.putCharSequence(KEY_BASE_DISPLAY_TITLE, it) }
         }
         val projected = metadata.buildUpon()
-            .setArtist(projectedArtist)
+            .setTitle(timerLabel)
+            .setDisplayTitle(timerLabel)
             .setExtras(extras)
             .build()
         return item.buildUpon().setMediaMetadata(projected).build()
     }
 
-    private const val SEPARATOR = " · "
+    private fun Long.twoDigits(): String = toString().padStart(2, '0')
+
+    private const val MILLIS_PER_SECOND = 1_000L
+    private const val SECONDS_PER_MINUTE = 60L
+    private const val MINUTES_PER_HOUR = 60L
     private const val KEY_PROJECTED = "com.example.shelfplayer.sleep_timer_projected"
-    private const val KEY_BASE_ARTIST = "com.example.shelfplayer.sleep_timer_base_artist"
+    private const val KEY_BASE_TITLE = "com.example.shelfplayer.sleep_timer_base_title"
+    private const val KEY_BASE_DISPLAY_TITLE = "com.example.shelfplayer.sleep_timer_base_display_title"
 }
