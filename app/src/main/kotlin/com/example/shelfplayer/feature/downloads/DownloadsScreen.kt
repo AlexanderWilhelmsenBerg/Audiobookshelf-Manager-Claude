@@ -324,11 +324,20 @@ private fun DownloadRowItem(
                     pluralStringResource(R.plurals.downloads_files, row.fileCount, row.fileCount),
                     // BW-DL-02 / #107 — a visible failed row can finally say why. Title-hidden rows have
                     // this field redacted in the ViewModel and therefore keep the generic incomplete copy.
-                    when {
-                        row.isFailed && row.failureSummary != null -> row.failureSummary
-                        row.isPaused -> stringResource(R.string.downloads_paused)
-                        !row.isComplete -> stringResource(R.string.downloads_incomplete)
-                        else -> null
+                    when (row.recoveryState) {
+                        com.example.shelfplayer.domain.download.DownloadRecoveryState.Complete -> null
+                        com.example.shelfplayer.domain.download.DownloadRecoveryState.Paused ->
+                            stringResource(R.string.downloads_paused)
+                        com.example.shelfplayer.domain.download.DownloadRecoveryState.Queued ->
+                            stringResource(R.string.downloads_queued)
+                        com.example.shelfplayer.domain.download.DownloadRecoveryState.Running ->
+                            stringResource(R.string.downloads_downloading)
+                        com.example.shelfplayer.domain.download.DownloadRecoveryState.Waiting ->
+                            stringResource(R.string.downloads_waiting)
+                        com.example.shelfplayer.domain.download.DownloadRecoveryState.Retrying ->
+                            stringResource(R.string.downloads_retrying)
+                        com.example.shelfplayer.domain.download.DownloadRecoveryState.Failed ->
+                            row.failureSummary ?: stringResource(R.string.downloads_failed)
                     },
                 ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
