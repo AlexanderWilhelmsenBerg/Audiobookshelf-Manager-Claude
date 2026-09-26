@@ -181,9 +181,35 @@ class BookDownloader @Inject constructor(
         val manifest = repository.observe(serverId, itemId).first()
         manifest?.files
             ?.filter { it.state != DownloadState.Complete }
-            ?.forEach { file -> repository.updateFile(serverId, itemId, file.copy(downloadedBytes = 0)) }
-        return AppResult.Success(reclaimed)
+            ?.forEach { file ->
+                val stillOnDisk = storage.partialBytesFor(
+                    serverId = serverId.value,
+                    itemId = itemId.value,
+                    fileId = file.remoteFileId,
+                    mimeType = file.mimeType,
+                )
+                val updated = repository.updateFile(
+                    serverId,
+                    itemId,
+                    file.copy(downloadedBytes = stillOnDisk),
+                )
+                if (updated.isFailure()) return AppResult.Failure(updated.error)
+            }
+
+        val remaining = storage.partialBytes(serverId.value, itemId.value)
+        return if (remaining == 0L) {
+            AppResult.Success(reclaimed)
+        } else {
+            AppResult.Failure(
+                AppError.Storage(
+                    summary = "Some partial download data could not be removed. Nothing complete was deleted.",
+                ),
+            )
+        }
     }
+
+    override suspend fun partialBytes(serverId: ServerId, bookId: LibraryItemId): AppResult<Long> =
+        AppResult.Success(storage.partialBytes(serverId.value, bookId.value))
 
     /**
      * PRODUCT_SPEC DL-001 — everything under `offline/` that no manifest claims.
