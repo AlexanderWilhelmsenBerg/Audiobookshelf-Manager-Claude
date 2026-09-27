@@ -770,8 +770,10 @@ data class DownloadedBookEntity(
     val remoteItemId: String,
     /** A `DownloadState` name; an unrecognized value reads back as `Failed`, which is the safe direction. */
     val state: String,
-    /** `StorageRoot`: the empty string for app-private, a tree URI for a folder the user picked. */
+    /** `StorageRoot`: retained for future SAF support; current app-specific-volume downloads leave it null. */
     val storageTreeUri: String?,
+    /** #20 physical volume owner. null means legacy/unknown, empty means internal, non-empty removable UUID. */
+    val storageVolumeUuid: String? = null,
     /** Where the cover was written, or `null`. An absent cover does not make a download incomplete. */
     val coverUri: String?,
     /** Why the last attempt stopped, for the storage screen. Never a URL and never a token. */
@@ -852,11 +854,11 @@ data class DownloadRequestEntity(
     val profileId: String,
     val requestedAt: Long,
     /**
-     * PRODUCT_SPEC DL-006 — a download the automatic cleanup may not remove.
+     * PD-003 / PRODUCT_SPEC DL-006 — the device-level pin for the one shared physical copy.
      *
-     * Decision 7 turns cleanup on as an option ("delete finished books after N days", "delete the previous
-     * book when the next arrives"), and a pin is how a listener says *not this one*. Per profile rather than
-     * per book, because it is one person's decision about their own copy.
+     * This column predates PD-003 and lives on the claim row. Repository/DAO writes therefore mirror the same
+     * value to every claim for a book; callers never treat it as profile-owned state. Keeping the existing
+     * storage shape avoids a migration whose only purpose would be moving an already-unambiguous boolean.
      */
     val isPinned: Boolean,
 )

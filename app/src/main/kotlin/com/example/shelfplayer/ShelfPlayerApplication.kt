@@ -9,17 +9,20 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.data.auth.SessionRestorer
 import com.example.shelfplayer.diagnostics.CrashReporter
+import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ApplyStartupModeUseCase
 import com.example.shelfplayer.domain.usecase.CleanUpDownloadsUseCase
 import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
+import com.example.shelfplayer.download.DownloadNotificationCoordinator
 import com.example.shelfplayer.lock.ProcessLockWatcher
 import com.example.shelfplayer.playback.AutoLibrary
 import com.example.shelfplayer.sync.ProcessRealtimeSyncWatcher
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -88,7 +91,13 @@ class ShelfPlayerApplication :
     lateinit var verification: OfflineVerification
 
     @Inject
+    lateinit var downloadLocations: DownloadLocations
+
+    @Inject
     lateinit var cleanUpDownloads: CleanUpDownloadsUseCase
+
+    @Inject
+    lateinit var downloadNotifications: DownloadNotificationCoordinator
 
     /**
      * PRODUCT_SPEC ROUTE-003 — what opening the app does to the player.
@@ -137,6 +146,7 @@ class ShelfPlayerApplication :
         logger.info(LogCategory.App, "Application started")
         lockWatcher.attach(this)
         realtimeSyncWatcher.attach(this)
+        downloadNotifications.start(applicationScope)
         // ApplicationExitInfo is a system-service read, so it does not belong on Application.onCreate's
         // main thread. The uncaught-exception handler above is already active while this runs.
         applicationScope.launch {
@@ -161,6 +171,14 @@ class ShelfPlayerApplication :
             // No book id: nothing is playing at process start, so the "never the playing book" rule has
             // nothing to exclude. A cleanup that ran mid-session would need one.
             cleanUpDownloads()
+        }
+        applicationScope.launch {
+            // #20: mount/unmount changes are transient storage facts. Re-run the cheap manifest verifier
+            // after each change; unavailable known owners are skipped, while a reinserted card becomes
+            // eligible for verification immediately without changing the durable manifest first.
+            downloadLocations.observeAvailableVolumeUuids().drop(1).collect {
+                verification.verifyManifests()
+            }
         }
     }
 }

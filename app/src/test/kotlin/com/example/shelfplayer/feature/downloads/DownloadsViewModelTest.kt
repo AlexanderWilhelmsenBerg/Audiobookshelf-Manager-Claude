@@ -14,6 +14,7 @@ import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.download.DownloadState
+import com.example.shelfplayer.core.model.download.DownloadStorageState
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.OfflineFile
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
@@ -26,6 +27,10 @@ import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.testing.MainDispatcherRule
 import com.example.shelfplayer.domain.download.BookAssetSource
 import com.example.shelfplayer.domain.download.BookAssets
+import com.example.shelfplayer.domain.download.DownloadExecutionEvidence
+import com.example.shelfplayer.domain.download.DownloadExecutionKey
+import com.example.shelfplayer.domain.download.DownloadExecutionObserver
+import com.example.shelfplayer.domain.download.DownloadExecutionSnapshot
 import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.download.DownloadRecoveryState
 import com.example.shelfplayer.domain.download.DownloadScheduler
@@ -36,10 +41,12 @@ import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.DownloadBookUseCase
 import com.example.shelfplayer.domain.usecase.PauseDownloadUseCase
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Rule
 import org.junit.Test
@@ -65,6 +72,7 @@ class DownloadsViewModelTest {
     private val files = FakeFiles()
     private val verification = FakeVerification()
     private val library = FakeLibraries()
+    private val execution = FakeExecutionObserver()
 
     @Test
     fun `lists a download this profile can see, with its title`() = runTest {
@@ -142,6 +150,38 @@ class DownloadsViewModelTest {
     }
 
     @Test
+    fun `automatic retry overrides durable failed state without exposing failure copy`() = runTest {
+        val stored = offlineBook("tidewatch", state = DownloadState.Failed, failureSummary = SAFE_FAILURE)
+        downloads.emit(listOf(stored))
+        library.emit(listOf(book("tidewatch", "Tidewatch")))
+        execution.emit(stored, DownloadExecutionEvidence.Retrying)
+
+        viewModel().uiState.test {
+            val state = awaitItem().takeIf { it.isLoaded } ?: awaitItem()
+            val row = state.books.single()
+            assertEquals(DownloadRecoveryState.Retrying, row.recoveryState)
+            assertNull(row.failureSummary)
+        }
+    }
+
+    @Test
+    fun `execution state survives metadata redaction for a hidden physical row`() = runTest {
+        val stored = offlineBook("someone-elses", state = DownloadState.Failed, failureSummary = SAFE_FAILURE)
+        downloads.emit(listOf(stored))
+        library.emit(emptyList())
+        execution.emit(stored, DownloadExecutionEvidence.Waiting)
+
+        viewModel().uiState.test {
+            val state = awaitItem().takeIf { it.isLoaded } ?: awaitItem()
+            val row = state.books.single()
+            assertEquals(DownloadRecoveryState.Waiting, row.recoveryState)
+            assertNull(row.title)
+            assertNull(row.author)
+            assertNull(row.failureSummary)
+        }
+    }
+
+    @Test
     fun `running recovery action pauses and does not enqueue`() = runTest {
         val scheduler = TrackingScheduler()
         val viewModel = viewModel(scheduler)
@@ -198,6 +238,40 @@ class DownloadsViewModelTest {
     }
 
     @Test
+    fun `a complete copy owned by another profile is claimed without scheduling another transfer`() = runTest {
+        val scheduler = TrackingScheduler()
+        val bookId = LibraryItemId("tidewatch")
+        downloads.emit(listOf(offlineBook("tidewatch", requestedBy = setOf(GRACE))))
+        val useCase = DownloadBookUseCase(FakeProfiles(), ActionAssets, downloads, scheduler)
+
+        assertTrue(useCase(bookId) is AppResult.Success)
+
+        assertEquals(listOf(bookId), downloads.requested)
+        assertEquals(
+            emptyList(),
+            scheduler.enqueued,
+            "the existing complete physical copy must not be downloaded again",
+        )
+    }
+
+    @Test
+    fun `another profiles complete copy still requires active profile entitlement`() = runTest {
+        val scheduler = TrackingScheduler()
+        val bookId = LibraryItemId("tidewatch")
+        downloads.emit(listOf(offlineBook("tidewatch", requestedBy = setOf(GRACE))))
+        val deniedAssets = object : BookAssetSource {
+            override suspend fun assetsFor(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookAssets> =
+                AppResult.Failure(AppError.Authorization(summary = "This book is not in your library."))
+        }
+        val useCase = DownloadBookUseCase(FakeProfiles(), deniedAssets, downloads, scheduler)
+
+        assertTrue(useCase(bookId) is AppResult.Failure)
+
+        assertEquals(emptyList(), downloads.requested)
+        assertEquals(emptyList(), scheduler.enqueued)
+    }
+
+    @Test
     fun `states without a manual recovery action call neither use case`() = runTest {
         val scheduler = TrackingScheduler()
         val viewModel = viewModel(scheduler)
@@ -214,6 +288,63 @@ class DownloadsViewModelTest {
         assertEquals(emptyList(), downloads.requested)
         assertEquals(emptyList(), scheduler.cancelled)
         assertEquals(emptyList(), scheduler.enqueued)
+    }
+
+    @Test
+    fun `paused row projects filesystem partial bytes for explicit discard`() = runTest {
+        val book = offlineBook("tidewatch", state = DownloadState.Paused)
+        files.partialByBook[book.itemId] = 4_096L
+        downloads.emit(listOf(book))
+        library.emit(listOf(book("tidewatch", "Tidewatch")))
+
+        viewModel().uiState.test {
+            var row: DownloadRow? = null
+            while (row?.partialBytes != 4_096L) {
+                row = awaitItem().books.singleOrNull()
+            }
+            assertEquals(4_096L, row.partialBytes)
+            assertTrue(row.canDiscardPartials)
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `discard partials is separate from retry and reports only actually reclaimed bytes`() = runTest {
+        val book = offlineBook("tidewatch", state = DownloadState.Failed)
+        files.partialByBook[book.itemId] = 4_096L
+        downloads.emit(listOf(book))
+        library.emit(listOf(book("tidewatch", "Tidewatch")))
+        val scheduler = TrackingScheduler()
+        val viewModel = viewModel(scheduler)
+
+        viewModel.onDiscardPartials(book.itemId, book.serverId)
+        advanceUntilIdle()
+
+        assertEquals(listOf(book.itemId), files.discarded)
+        assertTrue(viewModel.message.value.orEmpty().contains("4.0 KiB"))
+        assertEquals(emptyList(), scheduler.enqueued, "discard must not enqueue Retry")
+    }
+
+    @Test
+    fun `row storage state follows aggregate volume availability`() = runTest {
+        val stored = offlineBook("tidewatch", storageVolumeUuid = "card-1")
+        downloads.emit(listOf(stored))
+        library.emit(listOf(book("tidewatch", "Tidewatch")))
+        val viewModel = viewModel()
+
+        viewModel.uiState.test {
+            var row: DownloadRow? = null
+            while (row?.storageState != DownloadStorageState.Unavailable) {
+                row = awaitItem().books.singleOrNull()
+            }
+            assertEquals(DownloadStorageState.Unavailable, row.storageState)
+
+            locations.available.value = setOf(StorageVolumeOption.INTERNAL_UUID, "card-1")
+            do {
+                row = awaitItem().books.singleOrNull()
+            } while (row?.storageState != DownloadStorageState.Available)
+            assertEquals(DownloadStorageState.Available, row.storageState)
+        }
     }
 
     @Test
@@ -299,7 +430,7 @@ class DownloadsViewModelTest {
     }
 
     @Test
-    fun `pinning writes the pin for the active profile`() = runTest {
+    fun `pinning writes the device-level physical-copy pin`() = runTest {
         downloads.emit(listOf(offlineBook("tidewatch")))
         val viewModel = viewModel()
 
@@ -326,12 +457,28 @@ class DownloadsViewModelTest {
         verification = verification,
         profiles = FakeProfiles(),
         locations = locations,
+        execution = execution,
         // The real use cases are intentionally kept in this ViewModel test: #18 is about routing the row's
         // presentation state to exactly one of them, not about replacing that seam with a mock.
         pauseDownload = PauseDownloadUseCase(FakeProfiles(), downloads, scheduler),
         downloadBook = DownloadBookUseCase(FakeProfiles(), ActionAssets, downloads, scheduler),
         library = library,
     )
+
+    private class FakeExecutionObserver : DownloadExecutionObserver {
+        private val evidence = MutableStateFlow<Map<DownloadExecutionKey, DownloadExecutionSnapshot>>(emptyMap())
+
+        override fun observe(
+            keys: Set<DownloadExecutionKey>,
+        ): Flow<Map<DownloadExecutionKey, DownloadExecutionSnapshot>> =
+            evidence.map { current -> current.filterKeys(keys::contains) }
+
+        fun emit(book: OfflineBook, state: DownloadExecutionEvidence) {
+            evidence.value = mapOf(
+                DownloadExecutionKey(book.serverId, book.itemId) to DownloadExecutionSnapshot(state),
+            )
+        }
+    }
 
     private class TrackingScheduler : DownloadScheduler {
         val enqueued = mutableListOf<LibraryItemId>()
@@ -447,11 +594,13 @@ class DownloadsViewModelTest {
         requestedBy: Set<ProfileId> = setOf(ADA),
         state: DownloadState = DownloadState.Complete,
         failureSummary: String? = null,
+        storageVolumeUuid: String? = null,
     ) = OfflineBook(
         serverId = SERVER,
         itemId = LibraryItemId(id),
         state = state,
         failureSummary = failureSummary,
+        storageVolumeUuid = storageVolumeUuid,
         files = listOf(
             OfflineFile(
                 remoteFileId = "$id-1",
@@ -531,12 +680,7 @@ class DownloadsViewModelTest {
             return AppResult.Success(Unit)
         }
 
-        override suspend fun setPinned(
-            serverId: ServerId,
-            itemId: LibraryItemId,
-            profileId: ProfileId,
-            isPinned: Boolean,
-        ): AppResult<Unit> {
+        override suspend fun setPinned(serverId: ServerId, itemId: LibraryItemId, isPinned: Boolean): AppResult<Unit> {
             pinned += itemId to isPinned
             return AppResult.Success(Unit)
         }
@@ -558,6 +702,8 @@ class DownloadsViewModelTest {
 
     private class FakeFiles : OfflineFiles {
         val removed = mutableListOf<LibraryItemId>()
+        val discarded = mutableListOf<LibraryItemId>()
+        val partialByBook = mutableMapOf<LibraryItemId, Long>()
         val refusals = mutableSetOf<LibraryItemId>()
         var failure: AppError? = null
 
@@ -571,8 +717,15 @@ class DownloadsViewModelTest {
             return AppResult.Success(bookId !in refusals)
         }
 
-        override suspend fun discardPartials(serverId: ServerId, bookId: LibraryItemId): AppResult<Long> =
-            AppResult.Success(0)
+        override suspend fun discardPartials(serverId: ServerId, bookId: LibraryItemId): AppResult<Long> {
+            failure?.let { return AppResult.Failure(it) }
+            discarded += bookId
+            val reclaimed = partialByBook.remove(bookId) ?: 0L
+            return AppResult.Success(reclaimed)
+        }
+
+        override suspend fun partialBytes(serverId: ServerId, bookId: LibraryItemId): AppResult<Long> =
+            AppResult.Success(partialByBook[bookId] ?: 0L)
 
         override suspend fun sweepOrphans(): AppResult<Long> = AppResult.Success(0)
     }
@@ -588,6 +741,7 @@ class DownloadsViewModelTest {
     /** PRODUCT_SPEC DL-003 / ADR-0020 — a device with internal storage and one card in it. */
     private class FakeLocations : DownloadLocations {
         val selected = MutableStateFlow(StorageVolumeOption.INTERNAL_UUID)
+        val available = MutableStateFlow(setOf(StorageVolumeOption.INTERNAL_UUID))
         var failure: AppError? = null
 
         override suspend fun options(): List<StorageVolumeOption> = listOf(
@@ -596,6 +750,8 @@ class DownloadsViewModelTest {
         )
 
         override fun observeSelected(): Flow<String> = selected
+
+        override fun observeAvailableVolumeUuids(): Flow<Set<String>> = available
 
         override suspend fun select(uuid: String): AppResult<Unit> {
             failure?.let { return AppResult.Failure(it) }

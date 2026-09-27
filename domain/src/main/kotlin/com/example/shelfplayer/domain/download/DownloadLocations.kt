@@ -1,44 +1,39 @@
 package com.example.shelfplayer.domain.download
 
 import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.download.DownloadStorageState
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /**
- * PRODUCT_SPEC DL-003 / ADR-0018 decision 4 / ADR-0020 — where downloads are written, and where they could be.
+ * PRODUCT_SPEC DL-003 / ADR-0020 / BW-DL-05 — selected future destination and current volume reachability.
  *
- * ### Changing it moves nothing
- *
- * The manifest records each file's **absolute** location, so a book already downloaded stays exactly where
- * it is and keeps playing. The choice applies to the next download. That is not a limitation worked around
- * — it is what makes the setting safe to change: nothing is copied, nothing is deleted, and a card pulled
- * out afterwards costs the books on it and nothing else.
- *
- * ### Removing the card is a handled case, not an error
- *
- * A volume that is gone resolves to internal storage for new downloads, and the books that were on it fail
- * the start-up check and offer a retry — the same handling PLAY-003 already requires for any unreadable
- * local file. Nothing is deleted on the strength of a missing card.
+ * Selection and availability are deliberately separate. Removing a selected card never rewrites the user's
+ * preference; a new copy may fall back internally while existing physical copies keep their own owner.
  */
 interface DownloadLocations {
 
-    /**
-     * The volumes this app can actually write to, internal first.
-     *
-     * A device fact, read fresh: a card inserted while the screen is open should appear the next time
-     * somebody looks, and one removed should stop being offered.
-     */
+    /** Volumes this app can write to right now, internal first. */
     suspend fun options(): List<StorageVolumeOption>
 
-    /** The chosen volume's UUID. Empty is internal storage, which is the default. */
+    /** The chosen future-volume UUID. Empty is internal. This survives temporary volume absence. */
     fun observeSelected(): Flow<String>
 
+    /** Aggregate mounted/reachable UUID set; used to react to card removal/reinsertion without per-row listeners. */
+    fun observeAvailableVolumeUuids(): Flow<Set<String>> = flowOf(setOf(StorageVolumeOption.INTERNAL_UUID))
+
     /**
-     * Chooses where the *next* download goes.
+     * Current accessibility of one physical copy's durable owner.
      *
-     * @return failure only when the setting could not be written. Choosing a volume that has since been
-     *   removed is not a failure here — it is stored, and resolves to internal storage until the volume
-     *   comes back.
+     * null is legacy Unknown, empty is internal/Available, and an absent known removable UUID is Unavailable.
+     * Raw UUIDs remain inside the storage layer and must never be surfaced to UI/log copy.
      */
+    fun availability(volumeUuid: String?): DownloadStorageState = when (volumeUuid) {
+        null -> DownloadStorageState.Unknown
+        else -> DownloadStorageState.Available
+    }
+
+    /** Chooses where future new physical copies prefer to go; it does not move existing bytes. */
     suspend fun select(uuid: String): AppResult<Unit>
 }

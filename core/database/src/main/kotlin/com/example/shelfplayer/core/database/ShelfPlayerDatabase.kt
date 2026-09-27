@@ -123,4 +123,4 @@ abstract class ShelfPlayerDatabase : RoomDatabase() {
     }
 }
 
-internal const val DATABASE_VERSION = 20
+internal const val DATABASE_VERSION = 21

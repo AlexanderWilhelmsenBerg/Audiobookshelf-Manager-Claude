@@ -278,6 +278,7 @@
     <string name="book_not_downloaded">Not downloaded</string>
     <string name="book_download_partial">Download incomplete</string>
     <string name="book_downloaded">Downloaded</string>
+    <string name="book_downloaded_on_device">Downloaded on this device for another profile</string>
     <string name="book_series_position">%1$s, book %2$s</string>
 
     <!-- PRODUCT_SPEC LIB-004 — the detail fields the sync has always stored. -->
@@ -448,6 +449,10 @@
     <string name="downloads_empty_title">Nothing downloaded</string>
     <string name="downloads_empty_body">Books you download appear here, with how much space each one uses. Download one from its own screen.</string>
     <string name="downloads_total">%1$s used by downloads</string>
+    <string name="downloads_active_section">Active / pending</string>
+    <string name="downloads_on_device_section">On device</string>
+    <string name="downloads_progress_percent">%1$d%%</string>
+    <string name="downloads_progress_bytes">%1$s / %2$s</string>
     <!--
       ADR-0018 decision 8. The owner asked for a repair button that compares a checksum with the server.
       The capture says the server sends an ETag — a validator, not a checksum — so this names what it can
@@ -464,17 +469,30 @@
     <string name="downloads_location_internal">This device</string>
     <string name="downloads_location_free">%1$s free</string>
     <string name="downloads_location_removable">Removable</string>
-    <string name="downloads_location_hint">This applies to the next download. Books already on this device stay where they are and keep playing. Books on a card you take out will offer to download again — nothing is deleted.</string>
+    <string name="downloads_location_hint">This applies to the next download. Books already stored keep their physical volume owner; changing this setting does not move them.</string>
+    <string name="downloads_location_unavailable_hint">The selected removable storage is unavailable. New downloads use this device temporarily; your removable-storage selection is preserved.</string>
+    <string name="downloads_storage_unavailable">Storage unavailable</string>
+    <string name="downloads_storage_unknown">Storage location unknown</string>
     <string name="downloads_verify_hint">Checks that every downloaded file is still present, the right size, and openable as audio. It does not compare the audio with your server — Audiobookshelf does not send a checksum to compare against.</string>
     <string name="downloads_verify">Check downloaded files</string>
     <!-- PRODUCT_SPEC 5.2 — a book the signed-in profile may not see is listed, and not named. -->
     <string name="downloads_hidden_title">A book in a library this profile cannot see</string>
-    <string name="downloads_incomplete">incomplete</string>
+    <string name="downloads_other_profile_copy">Downloaded on this device for another profile</string>
+    <string name="downloads_queued">Queued</string>
+    <string name="downloads_downloading">Downloading</string>
+    <string name="downloads_waiting">Waiting for an allowed network</string>
+    <string name="downloads_retrying">Retrying automatically</string>
+    <string name="downloads_failed">Download failed</string>
     <!-- PRODUCT_SPEC DL-001 — stopped by the listener. Deliberately not worded as a failure. -->
     <string name="downloads_paused">Paused</string>
     <string name="downloads_pause">Pause this download</string>
     <string name="downloads_resume">Resume this download</string>
     <string name="downloads_retry">Retry this download</string>
+    <string name="downloads_discard_partial">Discard %1$s partial</string>
+    <string name="downloads_discard_partial_title">Discard partial download?</string>
+    <string name="downloads_discard_partial_body">This deletes %1$s of unfinished download data. Completed audio stays on this device, download claims stay intact, and a later Retry starts the discarded portions from zero.</string>
+    <string name="downloads_discard_partial_confirm">Discard partial</string>
+    <string name="downloads_discard_partial_cancel">Keep it</string>
     <string name="downloads_pin">Keep this one, never delete it automatically</string>
     <string name="downloads_unpin">Stop keeping this one</string>
     <string name="downloads_remove">Remove this download</string>
@@ -534,16 +552,17 @@
     <string name="book_synopsis_less">Show less</string>
     <string name="book_section_about">About this book</string>
     <!--
-      PRODUCT_SPEC DL-001 — one control, four states. The label is the content description, and it names
+      PRODUCT_SPEC DL-001 / PD-003 — one control, five states. The label is the content description, and it names
       what a tap *does* rather than what the book is: "Cancel" and "Remove" are the difference between
       keeping and losing a partial download, and for somebody using TalkBack the label is the only clue.
     -->
     <string name="book_download">Download</string>
+    <string name="book_download_use_device_copy">Use the downloaded copy</string>
     <string name="book_download_cancel">Cancel the download</string>
     <string name="book_download_remove">Remove the download</string>
     <string name="book_download_retry">Retry the download</string>
     <string name="book_download_remove_title">Remove this download?</string>
-    <string name="book_download_remove_body">The audio files come off this device and the space is freed. Nothing is deleted on your server, your position is kept, and you can download it again whenever you like. If another profile on this phone downloaded the same book, their copy stays.</string>
+    <string name="book_download_remove_body">This removes the book from this profile’s downloads. If no other profile uses the copy, its audio files are removed and the space is freed. If another profile still uses it, the files stay on this device. Nothing is deleted on your server, your position is kept, and you can add the download again whenever you like.</string>
     <string name="book_download_remove_confirm">Remove</string>
     <string name="book_download_remove_cancel">Keep it</string>
     <!--
@@ -552,6 +571,7 @@
     <string name="download_notification_channel">Downloads</string>
     <string name="download_notification_title">Downloading a book</string>
     <string name="download_notification_progress">%1$d%%</string>
+    <string name="download_notification_progress_bytes">%1$s · %2$s / %3$s</string>
     <string name="navigate_back">Back</string>
 
     <!-- PRODUCT_SPEC SET-001 / SET-002 — the settings screen. -->

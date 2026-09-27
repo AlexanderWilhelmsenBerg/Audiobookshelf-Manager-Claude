@@ -231,6 +231,7 @@
     <string name="book_not_downloaded">Ikke nedlastet</string>
     <string name="book_download_partial">Nedlastingen er ufullstendig</string>
     <string name="book_downloaded">Nedlastet</string>
+    <string name="book_downloaded_on_device">Nedlastet på denne enheten for en annen profil</string>
     <string name="book_series_position">%1$s, bok %2$s</string>
 
     <string name="book_last_checked">Sist sjekket %1$s</string>
@@ -333,20 +334,37 @@
     <string name="downloads_empty_title">Ingenting er lastet ned</string>
     <string name="downloads_empty_body">Bøker du laster ned vises her, med hvor mye plass hver av dem bruker. Last ned en fra bokens egen side.</string>
     <string name="downloads_total">%1$s brukt av nedlastinger</string>
+    <string name="downloads_active_section">Aktive / ventende</string>
+    <string name="downloads_on_device_section">På enheten</string>
+    <string name="downloads_progress_percent">%1$d %%</string>
+    <string name="downloads_progress_bytes">%1$s / %2$s</string>
     <!-- PRODUCT_SPEC DL-003 / ADR-0020 — nedlastingsplassering. -->
     <string name="downloads_location">Hvor nye nedlastinger havner</string>
     <string name="downloads_location_internal">Denne enheten</string>
     <string name="downloads_location_free">%1$s ledig</string>
     <string name="downloads_location_removable">Uttakbar</string>
-    <string name="downloads_location_hint">Dette gjelder neste nedlasting. Bøker som allerede er på enheten blir liggende der de er og spilles av som før. Bøker på et kort du tar ut vil tilby å lastes ned på nytt — ingenting slettes.</string>
+    <string name="downloads_location_hint">Dette gjelder neste nedlasting. Bøker som allerede er lagret beholder sin fysiske lagringsplass; denne innstillingen flytter dem ikke.</string>
+    <string name="downloads_location_unavailable_hint">Den valgte uttakbare lagringen er utilgjengelig. Nye nedlastinger bruker denne enheten midlertidig; valget av uttakbar lagring beholdes.</string>
+    <string name="downloads_storage_unavailable">Lagring utilgjengelig</string>
+    <string name="downloads_storage_unknown">Lagringsplass ukjent</string>
     <string name="downloads_verify_hint">Kontrollerer at hver nedlastede fil fortsatt finnes, har riktig størrelse og kan åpnes som lyd. Den sammenligner ikke lyden med serveren din — Audiobookshelf sender ingen sjekksum å sammenligne med.</string>
     <string name="downloads_verify">Kontroller nedlastede filer</string>
     <string name="downloads_hidden_title">En bok i et bibliotek denne profilen ikke ser</string>
-    <string name="downloads_incomplete">ufullstendig</string>
+    <string name="downloads_other_profile_copy">Nedlastet på denne enheten for en annen profil</string>
+    <string name="downloads_queued">I kø</string>
+    <string name="downloads_downloading">Laster ned</string>
+    <string name="downloads_waiting">Venter på et tillatt nettverk</string>
+    <string name="downloads_retrying">Prøver automatisk på nytt</string>
+    <string name="downloads_failed">Nedlastingen mislyktes</string>
     <string name="downloads_paused">Satt på pause</string>
     <string name="downloads_pause">Sett nedlastingen på pause</string>
     <string name="downloads_resume">Fortsett nedlastingen</string>
     <string name="downloads_retry">Prøv nedlastingen på nytt</string>
+    <string name="downloads_discard_partial">Forkast %1$s deldata</string>
+    <string name="downloads_discard_partial_title">Forkaste delvis nedlasting?</string>
+    <string name="downloads_discard_partial_body">Dette sletter %1$s med uferdige nedlastingsdata. Ferdig lyd blir liggende på enheten, nedlastingskrav beholdes, og et senere nytt forsøk starter de forkastede delene fra null.</string>
+    <string name="downloads_discard_partial_confirm">Forkast deldata</string>
+    <string name="downloads_discard_partial_cancel">Behold</string>
     <string name="downloads_pin">Behold denne, aldri slett den automatisk</string>
     <string name="downloads_unpin">Slutt å beholde denne</string>
     <string name="downloads_remove">Fjern denne nedlastingen</string>
@@ -398,16 +416,18 @@
     <string name="book_synopsis_less">Vis mindre</string>
     <string name="book_section_about">Om boken</string>
     <string name="book_download">Last ned</string>
+    <string name="book_download_use_device_copy">Bruk den nedlastede kopien</string>
     <string name="book_download_cancel">Avbryt nedlastingen</string>
     <string name="book_download_remove">Fjern nedlastingen</string>
     <string name="book_download_retry">Prøv nedlastingen på nytt</string>
     <string name="book_download_remove_title">Vil du fjerne denne nedlastingen?</string>
-    <string name="book_download_remove_body">Lydfilene fjernes fra denne enheten og plassen frigjøres. Ingenting slettes på serveren din, posisjonen din beholdes, og du kan laste ned boken igjen når du vil. Hvis en annen profil på denne telefonen har lastet ned den samme boken, beholdes deres kopi.</string>
+    <string name="book_download_remove_body">Dette fjerner boken fra nedlastingene til denne profilen. Hvis ingen andre profiler bruker kopien, fjernes lydfilene og plassen frigjøres. Hvis en annen profil fortsatt bruker den, blir filene liggende på denne enheten. Ingenting slettes på serveren din, posisjonen din beholdes, og du kan legge til nedlastingen igjen når du vil.</string>
     <string name="book_download_remove_confirm">Fjern</string>
     <string name="book_download_remove_cancel">Behold den</string>
     <string name="download_notification_channel">Nedlastinger</string>
     <string name="download_notification_title">Laster ned en bok</string>
     <string name="download_notification_progress">%1$d %%</string>
+    <string name="download_notification_progress_bytes">%1$s · %2$s / %3$s</string>
     <string name="navigate_back">Tilbake</string>
 
     <string name="settings_tab_server">Server</string>

@@ -41,6 +41,7 @@ import javax.inject.Singleton
 class DefaultDownloadRepository @Inject constructor(
     private val downloadDao: DownloadDao,
     private val storage: DownloadStorage,
+    private val copyLocks: DownloadCopyLocks,
     private val clock: AppClock,
     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) : DownloadRepository {
@@ -65,39 +66,44 @@ class DefaultDownloadRepository @Inject constructor(
         itemId: LibraryItemId,
         profileId: ProfileId,
         files: List<OfflineFile>,
-    ): AppResult<OfflineBook> = io {
-        val key = keyOf(serverId, itemId)
-        val now = clock.now()
-        val existing = downloadDao.find(key)
+    ): AppResult<OfflineBook> = copyLocks.withLock(serverId, itemId) {
+        io {
+            val key = keyOf(serverId, itemId)
+            val now = clock.now()
+            val existing = downloadDao.find(key)
+            val inheritedPin = existing?.requests?.any { request -> request.isPinned } == true
 
-        // A book already here keeps its manifest untouched: this is the shared-copy case, and rewriting the
-        // rows would reset a transfer that may be running. Only the claim is new.
-        if (existing == null) {
-            downloadDao.upsertBook(
-                DownloadedBookEntity(
+            // A book already here keeps its manifest untouched: this is the shared-copy case, and rewriting the
+            // rows would reset a transfer that may be running. Only the claim is new.
+            if (existing == null) {
+                downloadDao.upsertBook(
+                    DownloadedBookEntity(
+                        bookKey = key,
+                        serverId = serverId.value,
+                        remoteItemId = itemId.value,
+                        state = DownloadState.Queued.name,
+                        storageTreeUri = null,
+                        storageVolumeUuid = storage.destinationVolumeUuid(),
+                        coverUri = null,
+                        failureSummary = null,
+                        createdAt = now.toEpochMilli(),
+                        updatedAt = now.toEpochMilli(),
+                    ),
+                )
+                downloadDao.upsertFiles(files.map { file -> DownloadMappers.toEntity(key, file) })
+            }
+
+            downloadDao.addRequest(
+                DownloadRequestEntity(
                     bookKey = key,
-                    serverId = serverId.value,
-                    remoteItemId = itemId.value,
-                    state = DownloadState.Queued.name,
-                    storageTreeUri = null,
-                    coverUri = null,
-                    failureSummary = null,
-                    createdAt = now.toEpochMilli(),
-                    updatedAt = now.toEpochMilli(),
+                    profileId = profileId.value,
+                    requestedAt = now.toEpochMilli(),
+                    // PD-003 — a new profile claim inherits the one physical copy's pin state.
+                    isPinned = inheritedPin,
                 ),
             )
-            downloadDao.upsertFiles(files.map { file -> DownloadMappers.toEntity(key, file) })
+            requireStored(key)
         }
-
-        downloadDao.addRequest(
-            DownloadRequestEntity(
-                bookKey = key,
-                profileId = profileId.value,
-                requestedAt = now.toEpochMilli(),
-                isPinned = false,
-            ),
-        )
-        requireStored(key)
     }
 
     override suspend fun updateFile(serverId: ServerId, itemId: LibraryItemId, file: OfflineFile): AppResult<Unit> =
@@ -153,20 +159,20 @@ class DefaultDownloadRepository @Inject constructor(
         if (current?.state == DownloadState.Paused.name) touch(key, state = DownloadState.Queued)
     }
 
-    override suspend fun setPinned(
-        serverId: ServerId,
-        itemId: LibraryItemId,
-        profileId: ProfileId,
-        isPinned: Boolean,
-    ): AppResult<Unit> = io {
-        downloadDao.setPinned(keyOf(serverId, itemId), profileId.value, isPinned)
+    override suspend fun setPinned(serverId: ServerId, itemId: LibraryItemId, isPinned: Boolean): AppResult<Unit> = io {
+        downloadDao.setPinned(keyOf(serverId, itemId), isPinned)
     }
 
     override suspend fun release(serverId: ServerId, itemId: LibraryItemId, profileId: ProfileId): AppResult<Boolean> =
         io {
             val key = keyOf(serverId, itemId)
+            // PD-003 compatibility: older builds could pin only one claim. Capture the aggregate before
+            // removing one row so deleting that legacy row cannot accidentally unpin a still-shared copy.
+            val wasPinned = downloadDao.isPinned(key)
             downloadDao.removeRequest(key, profileId.value)
-            downloadDao.referenceCount(key) > 0
+            val hasReferences = downloadDao.referenceCount(key) > 0
+            if (hasReferences && wasPinned) downloadDao.setPinned(key, isPinned = true)
+            hasReferences
         }
 
     override suspend fun unreferenced(): AppResult<List<OfflineBook>> = io {

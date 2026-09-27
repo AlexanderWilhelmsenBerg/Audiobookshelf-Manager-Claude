@@ -75,15 +75,30 @@ class FileDownloader @Inject constructor(
      * verify, atomically commit, then publish the completed manifest. Keeping those transitions together
      * makes the crash boundary visible; extracting them would hide the order behind parameter-heavy helpers.
      */
-    @Suppress("LongMethod", "ReturnCount")
+    @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod")
     suspend fun download(
         profileId: ProfileId,
         serverId: ServerId,
         itemId: LibraryItemId,
         file: OfflineFile,
+        storageVolumeUuid: String? = null,
+        committedUris: List<String> = emptyList(),
         onProgress: (Long) -> Unit = {},
     ): AppResult<OfflineFile> {
-        val part = storage.partFor(serverId.value, itemId.value, file.remoteFileId, file.mimeType)
+        val part = storage.partFor(
+            serverId = serverId.value,
+            itemId = itemId.value,
+            fileId = file.remoteFileId,
+            mimeType = file.mimeType,
+            volumeUuid = storageVolumeUuid,
+            committedUris = committedUris,
+        ) ?: return AppResult.Failure(unavailableStorage())
+        fun ownerAvailable(): Boolean = storage.isOwnerAvailable(
+            serverId = serverId.value,
+            itemId = itemId.value,
+            volumeUuid = storageVolumeUuid,
+            committedUris = committedUris,
+        )
         val onDisk = storage.bytesOnDisk(part)
 
         // Two conditions for even attempting a resume: bytes on disk, and a validator to guard them with.
@@ -100,6 +115,7 @@ class FileDownloader @Inject constructor(
 
         var transfer = fetch(profileId, itemId, file, part, resumeFrom, onProgress)
         if (transfer.isFailure()) {
+            if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
             record(
                 serverId,
                 itemId,
@@ -107,6 +123,7 @@ class FileDownloader @Inject constructor(
             )
             return AppResult.Failure(transfer.error)
         }
+        if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
         var outcome = (transfer as AppResult.Success).value
         observe(serverId, askedForRange = resumeFrom > 0, outcome = outcome)
 
@@ -118,6 +135,9 @@ class FileDownloader @Inject constructor(
                 lastModified = null,
             )
             if (!storage.delete(part)) {
+                if (!ownerAvailable()) {
+                    return AppResult.Failure(unavailableStorage())
+                }
                 val error = AppError.Storage(summary = "The stale partial download could not be cleared.")
                 record(
                     serverId,
@@ -140,6 +160,7 @@ class FileDownloader @Inject constructor(
                 onProgress = onProgress,
             )
             if (transfer.isFailure()) {
+                if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
                 record(
                     serverId,
                     itemId,
@@ -150,6 +171,7 @@ class FileDownloader @Inject constructor(
                 )
                 return AppResult.Failure(transfer.error)
             }
+            if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
             outcome = (transfer as AppResult.Success).value
             if (outcome.rangeNotSatisfiable) {
                 val error = AppError.ApiCompatibility(
@@ -169,6 +191,7 @@ class FileDownloader @Inject constructor(
         }
 
         verify(part, outcome)?.let { problem ->
+            if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
             // The part is left where it is. A short file resumes; a corrupt one is replaced by the next
             // attempt, which cannot resume because the validator will not match.
             record(
@@ -181,7 +204,11 @@ class FileDownloader @Inject constructor(
 
         val committed = storage.commit(part)
             ?: return AppResult.Failure(
-                AppError.Unknown(summary = "The downloaded file could not be moved into place."),
+                if (ownerAvailable()) {
+                    AppError.Unknown(summary = "The downloaded file could not be moved into place.")
+                } else {
+                    unavailableStorage()
+                },
             )
 
         val stored = manifestFile.copy(
@@ -303,6 +330,11 @@ class FileDownloader @Inject constructor(
      * recording — and a user who notices a download restarting from zero deserves an explanation that
      * exists somewhere.
      */
+    private fun unavailableStorage(): AppError.Storage = AppError.Storage(
+        summary = "The download storage is currently unavailable.",
+        temporarilyUnavailable = true,
+    )
+
     private fun logDeclinedRange() {
         logger.info(
             LogCategory.Sync,

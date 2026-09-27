@@ -143,3 +143,49 @@ predates this setting, High is easier to trigger, and Low requires a more delibe
 - The MediaSession metadata projection is shared with Android system media surfaces; it must not create a
   second countdown owner or modify the book title/progress identity.
 
+---
+
+## PD-003 — Downloads use one device copy, profile claims, and a device-level pin
+
+**Status:** Accepted  
+**Date:** 2026-09-27  
+**Scope:** Shared offline media, profile download state, removal, pinning and cross-profile presentation  
+**Tracked by:** Forgejo issue #21 and PR #94
+
+### Decision
+
+BookWave stores at most one physical downloaded copy for a server item on a device. Profiles do not own
+separate media files; each entitled profile records its own claim on that shared copy.
+
+When an entitled profile that does not yet claim a book selects **Download** and another local profile already
+has a complete physical copy, BookWave adds the new profile claim immediately and does not download the media
+again.
+
+Removing a download is profile-scoped:
+
+- the active profile's claim is removed;
+- if another profile still claims the book, the physical media stays;
+- physical media is removed only after the final claim is removed.
+
+Pinning is device-level. The pin belongs to the one physical copy and protects it from automatic cleanup.
+Every authorized profile that can see the copy sees and changes the same pin state.
+
+### Presentation and privacy
+
+A profile that is entitled to a book but does not claim it may be told that the book is **downloaded on this
+device for another profile**. The UI must not reveal which other profile owns a claim. Selecting Download from
+that state attaches the current profile to the existing copy.
+
+A profile-scoped Remove, Pause, Resume or Retry action must not be offered merely because another profile has
+a claim on the physical copy. Device-level storage management may still show the physical row subject to the
+existing metadata-redaction rules.
+
+### Consequences
+
+- Download progress and listening progress remain profile-specific where they already are; media bytes are not.
+- A shared-copy attach still performs the active profile's entitlement check. Knowing a server item ID is not
+  sufficient to gain offline access to another profile's media.
+- Existing database storage may represent the device pin redundantly on claim rows, but repository behavior
+  must expose one logical physical-copy pin and keep those stored bits coherent.
+- Losing or deleting one profile must never silently delete a physical copy that another profile still claims.
+

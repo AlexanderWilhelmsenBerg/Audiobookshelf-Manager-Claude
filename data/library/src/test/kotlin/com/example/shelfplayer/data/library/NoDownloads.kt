@@ -7,6 +7,8 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.OfflineFile
+import com.example.shelfplayer.core.model.download.StorageVolumeOption
+import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -51,12 +53,8 @@ internal object NoDownloads : DownloadRepository {
 
     override suspend fun markQueued(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> = unsupported()
 
-    override suspend fun setPinned(
-        serverId: ServerId,
-        itemId: LibraryItemId,
-        profileId: ProfileId,
-        isPinned: Boolean,
-    ): AppResult<Unit> = unsupported()
+    override suspend fun setPinned(serverId: ServerId, itemId: LibraryItemId, isPinned: Boolean): AppResult<Unit> =
+        unsupported()
 
     override suspend fun release(serverId: ServerId, itemId: LibraryItemId, profileId: ProfileId): AppResult<Boolean> =
         unsupported()
@@ -66,4 +64,11 @@ internal object NoDownloads : DownloadRepository {
 
     private fun <T> unsupported(): AppResult<T> =
         AppResult.Failure(AppError.ApiCompatibility(summary = "not part of this test"))
+}
+
+/** Internal-only storage facts for library tests that are not exercising removable-media behavior. */
+internal object InternalDownloadLocations : DownloadLocations {
+    override suspend fun options() = emptyList<StorageVolumeOption>()
+    override fun observeSelected(): Flow<String> = flowOf(StorageVolumeOption.INTERNAL_UUID)
+    override suspend fun select(uuid: String): AppResult<Unit> = AppResult.Success(Unit)
 }

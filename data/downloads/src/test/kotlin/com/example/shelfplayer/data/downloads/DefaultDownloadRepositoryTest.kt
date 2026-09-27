@@ -28,6 +28,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -49,6 +50,7 @@ class DefaultDownloadRepositoryTest {
     private lateinit var database: ShelfPlayerDatabase
     private lateinit var repository: DefaultDownloadRepository
     private lateinit var storage: DownloadStorage
+    private lateinit var copyLocks: DownloadCopyLocks
 
     @Before
     fun setUp() = runTest {
@@ -57,9 +59,11 @@ class DefaultDownloadRepositoryTest {
             .allowMainThreadQueries()
             .build()
         storage = DownloadStorage(context) { listOf(context.filesDir) }
+        copyLocks = DownloadCopyLocks()
         repository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
             storage = storage,
+            copyLocks = copyLocks,
             clock = TestAppClock(),
             ioDispatcher = UnconfinedTestDispatcher(),
         )
@@ -81,6 +85,43 @@ class DefaultDownloadRepositoryTest {
         assertEquals(setOf(ADA), stored.requestedBy)
         assertEquals(3_000L, stored.totalBytes, "the expected sizes, not the downloaded ones")
         assertEquals(0L, stored.downloadedBytes)
+    }
+
+    @Test
+    fun `new physical copy records actual destination and later claims do not change its owner`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val cardRoots = object : DownloadRoots {
+            override fun roots() = listOf(context.filesDir)
+            override fun destinationVolumeUuid(): String = "card-uuid"
+            override fun rootForVolume(uuid: String?) = context.filesDir.takeIf { uuid == "card-uuid" }
+            override fun availableVolumeUuids(): Set<String> = setOf("", "card-uuid")
+        }
+        val cardRepository = DefaultDownloadRepository(
+            downloadDao = database.downloadDao(),
+            storage = DownloadStorage(context, cardRoots),
+            copyLocks = copyLocks,
+            clock = TestAppClock(),
+            ioDispatcher = UnconfinedTestDispatcher(),
+        )
+
+        val first = assertNotNull(cardRepository.request(SERVER, BOOK, ADA, files()).getOrNull())
+        assertEquals("card-uuid", first.storageVolumeUuid)
+
+        val internalRepository = DefaultDownloadRepository(
+            downloadDao = database.downloadDao(),
+            storage = storage,
+            copyLocks = copyLocks,
+            clock = TestAppClock(),
+            ioDispatcher = UnconfinedTestDispatcher(),
+        )
+        val shared = assertNotNull(internalRepository.request(SERVER, BOOK, GRACE, files()).getOrNull())
+
+        assertEquals(
+            "card-uuid",
+            shared.storageVolumeUuid,
+            "another profile/preference must not move the physical copy",
+        )
+        assertEquals(setOf(ADA, GRACE), shared.requestedBy)
     }
 
     /**
@@ -213,11 +254,28 @@ class DefaultDownloadRepositoryTest {
     @Test
     fun `a pin survives a second request`() = runTest {
         completeDownload()
-        repository.setPinned(SERVER, BOOK, ADA, isPinned = true)
+        repository.setPinned(SERVER, BOOK, isPinned = true)
 
         repository.request(SERVER, BOOK, ADA, files())
 
         assertTrue(database.downloadDao().isPinned(key()))
+    }
+
+    @Test
+    fun `device pin is shared by every profile claim and survives removing one claim`() = runTest {
+        completeDownload()
+        repository.request(SERVER, BOOK, GRACE, files())
+
+        repository.setPinned(SERVER, BOOK, isPinned = true)
+        assertTrue(assertNotNull(stored()).isPinned)
+
+        assertTrue(repository.release(SERVER, BOOK, ADA).getOrNull() == true)
+        val remaining = assertNotNull(stored())
+        assertEquals(setOf(GRACE), remaining.requestedBy)
+        assertTrue(remaining.isPinned, "removing one profile claim must not unpin the physical copy")
+
+        repository.setPinned(SERVER, BOOK, isPinned = false)
+        assertFalse(assertNotNull(stored()).isPinned)
     }
 
     /**

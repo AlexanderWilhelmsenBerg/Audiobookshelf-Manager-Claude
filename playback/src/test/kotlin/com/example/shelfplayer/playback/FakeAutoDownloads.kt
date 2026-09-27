@@ -47,12 +47,8 @@ internal object FakeAutoDownloads : DownloadRepository {
     override suspend fun markQueued(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> =
         error("Not used by Android Auto browse tests")
 
-    override suspend fun setPinned(
-        serverId: ServerId,
-        itemId: LibraryItemId,
-        profileId: ProfileId,
-        isPinned: Boolean,
-    ): AppResult<Unit> = error("Not used by Android Auto browse tests")
+    override suspend fun setPinned(serverId: ServerId, itemId: LibraryItemId, isPinned: Boolean): AppResult<Unit> =
+        error("Not used by Android Auto browse tests")
 
     override suspend fun release(serverId: ServerId, itemId: LibraryItemId, profileId: ProfileId): AppResult<Boolean> =
         error("Not used by Android Auto browse tests")

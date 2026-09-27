@@ -15,8 +15,10 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.DownloadPaths
+import com.example.shelfplayer.core.model.download.DownloadProgress
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineFile
+import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.core.model.getOrNull
 import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
@@ -57,6 +59,10 @@ class BookDownloaderTest {
     private lateinit var repository: DefaultDownloadRepository
     private lateinit var storage: DownloadStorage
     private lateinit var downloader: BookDownloader
+    private lateinit var copyLocks: DownloadCopyLocks
+    private lateinit var roots: MutableDownloadRoots
+    private lateinit var internalRoot: File
+    private lateinit var cardRoot: File
     private val api = ScriptedDownloadApi()
 
     @Before
@@ -65,11 +71,19 @@ class BookDownloaderTest {
         database = Room.inMemoryDatabaseBuilder(context, ShelfPlayerDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        storage = DownloadStorage(context) { listOf(context.filesDir) }
+        internalRoot = context.filesDir
+        cardRoot = File(context.cacheDir, "book-downloader-card").apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        roots = MutableDownloadRoots(internalRoot, cardRoot)
+        storage = DownloadStorage(context, roots)
+        copyLocks = DownloadCopyLocks()
         val logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default))
         repository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
             storage = storage,
+            copyLocks = copyLocks,
             clock = TestAppClock(),
             ioDispatcher = UnconfinedTestDispatcher(),
         )
@@ -87,6 +101,7 @@ class BookDownloaderTest {
                 logger = logger,
             ),
             storage = storage,
+            copyLocks = copyLocks,
             logger = logger,
         )
         seedAccounts()
@@ -95,8 +110,9 @@ class BookDownloaderTest {
     @After
     fun tearDown() {
         database.close()
-        File(ApplicationProvider.getApplicationContext<Context>().filesDir, DownloadPaths.ROOT_DIRECTORY)
-            .deleteRecursively()
+        File(internalRoot, DownloadPaths.ROOT_DIRECTORY).deleteRecursively()
+        cardRoot.deleteRecursively()
+        api.reset()
     }
 
     /** Every file, then the commit that makes the book playable offline. */
@@ -123,14 +139,24 @@ class BookDownloaderTest {
     @Test
     fun `progress is weighted by size rather than by file count`() = runTest {
         repository.request(SERVER, BOOK, ADA, files(sizes = listOf(100, 1_000, 100)))
-        val seen = mutableListOf<Float>()
+        val seen = mutableListOf<DownloadProgress>()
+        api.bodyBytesByFile = mapOf(
+            "file-1" to 100,
+            "file-2" to 1_000,
+            "file-3" to 100,
+        )
 
         downloader.download(ADA, SERVER, BOOK) { seen += it }
 
         assertTrue(seen.isNotEmpty())
-        val afterFirst = seen.first { it > 0f }
-        assertTrue(afterFirst < 0.2f, "the first of three files is a twelfth of the bytes, not a third: $afterFirst")
-        assertEquals(1f, seen.last())
+        val afterFirst = seen.first { it.fraction > 0f }
+        assertTrue(
+            afterFirst.fraction < 0.2f,
+            "the first of three files is a twelfth of the bytes, not a third: ${afterFirst.fraction}",
+        )
+        assertEquals(1_200L, seen.last().totalBytes)
+        assertEquals(1_200L, seen.last().downloadedBytes)
+        assertEquals(1f, seen.last().fraction)
     }
 
     /**
@@ -154,6 +180,28 @@ class BookDownloaderTest {
             "the third was never attempted",
         )
         assertEquals(listOf("file-1", "file-2"), api.fetched)
+    }
+
+    @Test
+    fun `removing owner during transfer stays queued and retryable without falling back internally`() = runTest {
+        roots.selectedUuid = MutableDownloadRoots.CARD_UUID
+        val requested = assertNotNull(repository.request(SERVER, BOOK, ADA, files()).getOrNull())
+        assertEquals(MutableDownloadRoots.CARD_UUID, requested.storageVolumeUuid)
+        api.afterWrite = { roots.cardAvailable = false }
+
+        val failure = assertIs<AppResult.Failure>(downloader.download(ADA, SERVER, BOOK))
+        val stored = assertNotNull(repository.observe(SERVER, BOOK).first())
+
+        assertIs<AppError.Storage>(failure.error)
+        assertTrue(failure.error.isRetryable)
+        assertEquals(DownloadState.Queued, stored.state)
+        assertEquals(
+            listOf(DownloadState.Queued, DownloadState.Queued, DownloadState.Queued),
+            stored.files.map { it.state },
+        )
+        assertEquals(setOf(ADA), stored.requestedBy)
+        assertTrue(partsIn(itemDirectory(cardRoot)).isNotEmpty(), "the interrupted bytes stay with their owner")
+        assertFalse(itemDirectory(internalRoot).exists(), "the next write must not fall back to internal storage")
     }
 
     /** And a retry picks up where it stopped rather than re-fetching what is already committed. */
@@ -191,6 +239,41 @@ class BookDownloaderTest {
         assertEquals(true, downloader.remove(GRACE, SERVER, BOOK).getOrNull())
         assertFalse(onDisk.exists(), "the files are gone")
         assertNull(repository.observe(SERVER, BOOK).first(), "and so is the manifest")
+    }
+
+    @Test
+    fun `profile without a claim cannot delete another profiles sole copy`() = runTest {
+        repository.request(SERVER, BOOK, ADA, files())
+        downloader.download(ADA, SERVER, BOOK)
+        val onDisk = itemDirectory()
+
+        assertEquals(false, downloader.remove(GRACE, SERVER, BOOK).getOrNull())
+
+        val stored = assertNotNull(repository.observe(SERVER, BOOK).first())
+        assertTrue(onDisk.exists())
+        assertEquals(setOf(ADA), stored.requestedBy)
+    }
+
+    @Test
+    fun `last claim removal preserves card copy manifest and claim while owner is unavailable`() = runTest {
+        roots.selectedUuid = MutableDownloadRoots.CARD_UUID
+        repository.request(SERVER, BOOK, ADA, files())
+        downloader.download(ADA, SERVER, BOOK)
+        val onDisk = itemDirectory(cardRoot)
+        assertTrue(onDisk.exists())
+        roots.cardAvailable = false
+
+        val failure = assertIs<AppResult.Failure>(downloader.remove(ADA, SERVER, BOOK))
+        val stored = assertNotNull(repository.observe(SERVER, BOOK).first())
+
+        assertIs<AppError.Storage>(failure.error)
+        assertTrue(failure.error.isRetryable)
+        assertTrue(onDisk.exists(), "unreachable owner must not be treated as already deleted")
+        assertEquals(setOf(ADA), stored.requestedBy, "the last claim must survive a failed physical delete")
+        assertTrue(stored.isComplete, "temporary storage absence must not corrupt durable completion")
+
+        roots.cardAvailable = true
+        assertTrue(stored.files.all { file -> File(java.net.URI(file.uri)).exists() })
     }
 
     /**
@@ -232,8 +315,27 @@ class BookDownloaderTest {
         assertNotNull(repository.observe(SERVER, BOOK).first(), "the book is still known, just not downloaded")
     }
 
-    private fun itemDirectory() = File(
-        ApplicationProvider.getApplicationContext<Context>().filesDir,
+    @Test
+    fun `partial inspection and discard fail safely while removable owner is absent`() = runTest {
+        roots.selectedUuid = MutableDownloadRoots.CARD_UUID
+        repository.request(SERVER, BOOK, ADA, files())
+        api.truncateOn = "file-1"
+        downloader.download(ADA, SERVER, BOOK)
+        val cardItem = itemDirectory(cardRoot)
+        assertTrue(partsIn(cardItem).isNotEmpty())
+
+        roots.cardAvailable = false
+
+        val measured = assertIs<AppResult.Failure>(downloader.partialBytes(SERVER, BOOK))
+        val discarded = assertIs<AppResult.Failure>(downloader.discardPartials(SERVER, BOOK))
+
+        assertTrue(measured.error.isRetryable)
+        assertTrue(discarded.error.isRetryable)
+        assertTrue(partsIn(cardItem).isNotEmpty(), "absent storage must not be reported as zero reclaimed bytes")
+    }
+
+    private fun itemDirectory(root: File = internalRoot) = File(
+        root,
         DownloadPaths.itemDirectory(SERVER.value, BOOK.value).joinToString(File.separator),
     )
 
@@ -258,6 +360,8 @@ class BookDownloaderTest {
     private class ScriptedDownloadApi : DownloadApi {
         val fetched = mutableListOf<String>()
         var failOn: String? = null
+        var afterWrite: (() -> Unit)? = null
+        var bodyBytesByFile: Map<String, Int> = emptyMap()
 
         /** Writes bytes and *then* fails, which is how a real dropped connection leaves a `.part` behind. */
         var truncateOn: String? = null
@@ -277,9 +381,11 @@ class BookDownloaderTest {
                 sink(false).use { stream -> stream.write(ByteArray(BODY_BYTES / 2)) }
                 return AppResult.Failure(AppError.Network())
             }
-            val body = ByteArray(BODY_BYTES) { 'a'.code.toByte() }
+            val body = ByteArray(bodyBytesByFile[fileId] ?: BODY_BYTES) { 'a'.code.toByte() }
             sink(false).use { stream -> stream.write(body) }
             onProgress(body.size.toLong())
+            afterWrite?.invoke()
+            afterWrite = null
             return AppResult.Success(
                 FileTransfer(
                     bytesWritten = body.size.toLong(),
@@ -301,10 +407,46 @@ class BookDownloaderTest {
             return AppResult.Success("image/webp")
         }
 
+        fun reset() {
+            fetched.clear()
+            failOn = null
+            truncateOn = null
+            afterWrite = null
+            bodyBytesByFile = emptyMap()
+        }
+
         private companion object {
             /** Small and constant. What is asserted is the *weighting*, which comes from the manifest. */
             const val BODY_BYTES = 8
             const val COVER_BYTES = 4
+        }
+    }
+
+    private class MutableDownloadRoots(private val internalRoot: File, private val cardRoot: File) : DownloadRoots {
+        var selectedUuid: String = StorageVolumeOption.INTERNAL_UUID
+        var cardAvailable: Boolean = true
+
+        override fun roots(): List<File> = buildList {
+            add(internalRoot)
+            if (cardAvailable) add(cardRoot)
+        }
+
+        override fun destinationVolumeUuid(): String =
+            selectedUuid.takeIf { it == CARD_UUID && cardAvailable } ?: StorageVolumeOption.INTERNAL_UUID
+
+        override fun rootForVolume(uuid: String?): File? = when (uuid) {
+            StorageVolumeOption.INTERNAL_UUID -> internalRoot
+            CARD_UUID -> cardRoot.takeIf { cardAvailable }
+            else -> null
+        }
+
+        override fun availableVolumeUuids(): Set<String> = buildSet {
+            add(StorageVolumeOption.INTERNAL_UUID)
+            if (cardAvailable) add(CARD_UUID)
+        }
+
+        companion object {
+            const val CARD_UUID = "card-uuid"
         }
     }
 

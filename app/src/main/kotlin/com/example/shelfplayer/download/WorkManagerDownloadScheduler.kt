@@ -63,6 +63,10 @@ class WorkManagerDownloadScheduler @Inject constructor(
             )
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, BACKOFF_SECONDS, TimeUnit.SECONDS)
+            // #19: one generic tag supports aggregate observation; the exact unique-work name is also a
+            // physical (server,item) identity tag so a process can reconstruct row ownership without profile.
+            .addTag(BookDownloadWorker.DOWNLOAD_TAG)
+            .addTag(BookDownloadWorker.nameFor(serverId, itemId))
             .build()
 
         WorkManager.getInstance(context).enqueueUniqueWork(

@@ -23,6 +23,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -51,6 +52,7 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.layout.centredListPadding
 import com.example.shelfplayer.core.designsystem.layout.windowWidth
+import com.example.shelfplayer.core.model.download.DownloadStorageState
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.ui.glass.playerChromeClearance
 import java.util.Locale
@@ -65,16 +67,19 @@ fun DownloadsRoute(
     val message by viewModel.message.collectAsStateWithLifecycle()
     val volumes by viewModel.volumes.collectAsStateWithLifecycle()
     val selectedVolume by viewModel.selectedVolume.collectAsStateWithLifecycle()
+    val selectedVolumeUnavailable by viewModel.selectedVolumeUnavailable.collectAsStateWithLifecycle()
     DownloadsScreen(
         uiState = uiState,
         message = message,
         volumes = volumes,
         selectedVolume = selectedVolume,
+        selectedVolumeUnavailable = selectedVolumeUnavailable,
         onVolumeChosen = viewModel::onVolumeChosen,
         onMessageShown = viewModel::onMessageShown,
         onRemove = viewModel::onRemove,
         onPinnedChanged = viewModel::onPinnedChanged,
         onRecoveryAction = viewModel::onRecoveryAction,
+        onDiscardPartials = viewModel::onDiscardPartials,
         onVerify = viewModel::onVerify,
         onNavigateUp = onNavigateUp,
         modifier = modifier,
@@ -116,14 +121,24 @@ fun DownloadsScreen(
     onVerify: () -> Unit,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
+    onDiscardPartials: (
+        com.example.shelfplayer.core.model.LibraryItemId,
+        com.example.shelfplayer.core.model.ServerId,
+    ) -> Unit = { _, _ -> },
     message: String? = null,
     onMessageShown: () -> Unit = {},
     volumes: List<StorageVolumeOption> = emptyList(),
     selectedVolume: String = StorageVolumeOption.INTERNAL_UUID,
+    selectedVolumeUnavailable: Boolean = false,
     onVolumeChosen: (String) -> Unit = {},
 ) {
     var confirming by rememberSaveable { mutableStateOf<String?>(null) }
+    var discarding by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbars = remember { SnackbarHostState() }
+    val sections = listOf(
+        stringResource(R.string.downloads_active_section) to uiState.activeBooks,
+        stringResource(R.string.downloads_on_device_section) to uiState.onDeviceBooks,
+    )
     LaunchedEffect(message) {
         val text = message ?: return@LaunchedEffect
         snackbars.showSnackbar(text)
@@ -193,27 +208,58 @@ fun DownloadsScreen(
                         selected = selectedVolume,
                         onChosen = onVolumeChosen,
                     )
-                    HorizontalDivider()
                 }
-            }
-            items(uiState.books, key = { row -> "${row.serverId.value}:${row.bookId.value}" }) { row ->
-                DownloadRowItem(
-                    row = row,
-                    onPinnedChanged = { pinned -> onPinnedChanged(row.bookId, row.serverId, pinned) },
-                    onRecoveryAction = { onRecoveryAction(row.bookId, row.recoveryState) },
-                    onRemove = { confirming = row.bookId.value },
-                )
-                if (confirming == row.bookId.value) {
-                    RemoveDialog(
-                        isShared = row.isSharedWithAnotherProfile,
-                        onConfirm = {
-                            confirming = null
-                            onRemove(row.bookId, row.serverId)
-                        },
-                        onDismiss = { confirming = null },
+                if (selectedVolumeUnavailable) {
+                    Text(
+                        text = stringResource(R.string.downloads_location_unavailable_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
                 }
-                HorizontalDivider()
+                if (volumes.size > 1 || selectedVolumeUnavailable) HorizontalDivider()
+            }
+            sections.forEach { (sectionTitle, rows) ->
+                if (rows.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = sectionTitle,
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        )
+                    }
+                    items(rows, key = { row -> "${row.serverId.value}:${row.bookId.value}" }) { row ->
+                        val rowKey = "${row.serverId.value}:${row.bookId.value}"
+                        DownloadRowItem(
+                            row = row,
+                            onPinnedChanged = { pinned -> onPinnedChanged(row.bookId, row.serverId, pinned) },
+                            onRecoveryAction = { onRecoveryAction(row.bookId, row.recoveryState) },
+                            onDiscardPartials = { discarding = rowKey },
+                            onRemove = { confirming = row.bookId.value },
+                        )
+                        if (discarding == rowKey && row.canDiscardPartials) {
+                            DiscardPartialDialog(
+                                partialBytes = row.partialBytes,
+                                onConfirm = {
+                                    discarding = null
+                                    onDiscardPartials(row.bookId, row.serverId)
+                                },
+                                onDismiss = { discarding = null },
+                            )
+                        }
+                        if (confirming == row.bookId.value) {
+                            RemoveDialog(
+                                isShared = row.isSharedWithAnotherProfile,
+                                onConfirm = {
+                                    confirming = null
+                                    onRemove(row.bookId, row.serverId)
+                                },
+                                onDismiss = { confirming = null },
+                            )
+                        }
+                        HorizontalDivider()
+                    }
+                }
             }
         }
     }
@@ -295,6 +341,7 @@ private fun DownloadRowItem(
     row: DownloadRow,
     onPinnedChanged: (Boolean) -> Unit,
     onRecoveryAction: () -> Unit,
+    onDiscardPartials: () -> Unit,
     onRemove: () -> Unit,
 ) {
     Row(
@@ -324,12 +371,9 @@ private fun DownloadRowItem(
                     pluralStringResource(R.plurals.downloads_files, row.fileCount, row.fileCount),
                     // BW-DL-02 / #107 — a visible failed row can finally say why. Title-hidden rows have
                     // this field redacted in the ViewModel and therefore keep the generic incomplete copy.
-                    when {
-                        row.isFailed && row.failureSummary != null -> row.failureSummary
-                        row.isPaused -> stringResource(R.string.downloads_paused)
-                        !row.isComplete -> stringResource(R.string.downloads_incomplete)
-                        else -> null
-                    },
+                    stringResource(R.string.downloads_other_profile_copy)
+                        .takeIf { row.isOnDeviceForAnotherProfile },
+                    downloadRowStatusText(row),
                 ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 // A paused download is not an error and is not coloured like one. That distinction is the
@@ -340,11 +384,40 @@ private fun DownloadRowItem(
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
             )
+            row.progress?.let { progress ->
+                LinearProgressIndicator(
+                    progress = { progress.fraction.coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                )
+                Text(
+                    text = progress.totalBytes?.let { total ->
+                        stringResource(
+                            R.string.downloads_progress_bytes,
+                            formatBytes(progress.downloadedBytes),
+                            formatBytes(total),
+                        )
+                    } ?: stringResource(R.string.downloads_progress_percent, progress.percent),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (row.canDiscardPartials) {
+                TextButton(onClick = onDiscardPartials) {
+                    Text(
+                        text = stringResource(
+                            R.string.downloads_discard_partial,
+                            formatBytes(row.partialBytes),
+                        ),
+                    )
+                }
+            }
         }
-        DownloadRecoveryActionButton(
-            recoveryState = row.recoveryState,
-            onClick = onRecoveryAction,
-        )
+        if (row.isClaimedByActiveProfile && row.storageState != DownloadStorageState.Unavailable) {
+            DownloadRecoveryActionButton(
+                recoveryState = row.recoveryState,
+                onClick = onRecoveryAction,
+            )
+        }
         IconToggleButton(checked = row.isPinned, onCheckedChange = onPinnedChanged) {
             Icon(
                 imageVector = Icons.Filled.PushPin,
@@ -354,12 +427,45 @@ private fun DownloadRowItem(
                 tint = if (row.isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
             )
         }
-        IconButton(onClick = onRemove) {
-            Icon(
-                imageVector = Icons.Filled.Delete,
-                contentDescription = stringResource(R.string.downloads_remove),
-            )
+        if (row.isClaimedByActiveProfile) {
+            IconButton(onClick = onRemove) {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = stringResource(R.string.downloads_remove),
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun downloadRowStatusText(row: DownloadRow): String? = when {
+    row.storageState == DownloadStorageState.Unavailable ->
+        stringResource(R.string.downloads_storage_unavailable)
+
+    row.storageState == DownloadStorageState.Unknown && row.isComplete ->
+        stringResource(R.string.downloads_storage_unknown)
+
+    else -> when (row.recoveryState) {
+        com.example.shelfplayer.domain.download.DownloadRecoveryState.Complete -> null
+
+        com.example.shelfplayer.domain.download.DownloadRecoveryState.Paused ->
+            stringResource(R.string.downloads_paused)
+
+        com.example.shelfplayer.domain.download.DownloadRecoveryState.Queued ->
+            stringResource(R.string.downloads_queued)
+
+        com.example.shelfplayer.domain.download.DownloadRecoveryState.Running ->
+            stringResource(R.string.downloads_downloading)
+
+        com.example.shelfplayer.domain.download.DownloadRecoveryState.Waiting ->
+            stringResource(R.string.downloads_waiting)
+
+        com.example.shelfplayer.domain.download.DownloadRecoveryState.Retrying ->
+            stringResource(R.string.downloads_retrying)
+
+        com.example.shelfplayer.domain.download.DownloadRecoveryState.Failed ->
+            row.failureSummary ?: stringResource(R.string.downloads_failed)
     }
 }
 
@@ -385,6 +491,32 @@ private fun DownloadRecoveryActionButton(
             contentDescription = stringResource(description),
         )
     }
+}
+
+@Composable
+private fun DiscardPartialDialog(partialBytes: Long, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.downloads_discard_partial_title)) },
+        text = {
+            Text(
+                text = stringResource(
+                    R.string.downloads_discard_partial_body,
+                    formatBytes(partialBytes),
+                ),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(text = stringResource(R.string.downloads_discard_partial_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.downloads_discard_partial_cancel))
+            }
+        },
+    )
 }
 
 /**

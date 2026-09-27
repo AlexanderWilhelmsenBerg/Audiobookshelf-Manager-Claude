@@ -1,12 +1,17 @@
 package com.example.shelfplayer.data.downloads
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
 import android.os.storage.StorageManager
 import com.example.shelfplayer.core.common.dispatcher.ApplicationScope
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.download.DownloadStorageState
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.core.model.getOrNull
 import com.example.shelfplayer.core.model.resultOf
@@ -14,9 +19,12 @@ import com.example.shelfplayer.domain.download.DownloadLocations
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -72,9 +80,37 @@ class StorageVolumes @Inject constructor(
      * leave it there permanently — nothing else in the app can find it either.
      */
     override fun roots(): List<File> {
-        val current = rootFor(chosen.value) ?: context.filesDir
+        val current = rootForVolume(destinationVolumeUuid()) ?: context.filesDir
         val others = candidates().filter { it.absolutePath != current.absolutePath }
         return listOf(current) + others
+    }
+
+    override fun destinationVolumeUuid(): String =
+        chosen.value.takeIf { selected -> selected.isNotEmpty() && rootForVolume(selected) != null }
+            ?: StorageVolumeOption.INTERNAL_UUID
+
+    override fun rootForVolume(uuid: String?): File? = when {
+        uuid == null -> null
+
+        uuid == StorageVolumeOption.INTERNAL_UUID -> context.filesDir
+
+        else -> {
+            val manager = context.getSystemService(StorageManager::class.java) ?: return null
+            context.getExternalFilesDirs(null)
+                .filterNotNull()
+                .firstOrNull { directory -> manager.getStorageVolume(directory)?.uuid == uuid }
+                ?.takeIf { it.exists() || it.mkdirs() }
+        }
+    }
+
+    override fun availableVolumeUuids(): Set<String> {
+        val manager = context.getSystemService(StorageManager::class.java)
+        return buildSet {
+            add(StorageVolumeOption.INTERNAL_UUID)
+            context.getExternalFilesDirs(null).filterNotNull().forEach { directory ->
+                manager?.getStorageVolume(directory)?.uuid?.takeIf(String::isNotBlank)?.let(::add)
+            }
+        }
     }
 
     /**
@@ -103,6 +139,42 @@ class StorageVolumes @Inject constructor(
 
     override fun observeSelected(): Flow<String> = settings.downloadVolumeUuid
 
+    override fun observeAvailableVolumeUuids(): Flow<Set<String>> = callbackFlow {
+        fun publish() {
+            trySend(availableVolumeUuids())
+        }
+
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                publish()
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_MEDIA_MOUNTED)
+            addAction(Intent.ACTION_MEDIA_UNMOUNTED)
+            addAction(Intent.ACTION_MEDIA_REMOVED)
+            addAction(Intent.ACTION_MEDIA_EJECT)
+            addAction(Intent.ACTION_MEDIA_BAD_REMOVAL)
+            addDataScheme("file")
+        }
+
+        @Suppress("DEPRECATION")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(receiver, filter)
+        }
+        publish()
+        awaitClose { runCatching { context.unregisterReceiver(receiver) } }
+    }.distinctUntilChanged()
+
+    override fun availability(volumeUuid: String?): DownloadStorageState = when {
+        volumeUuid == null -> DownloadStorageState.Unknown
+        volumeUuid == StorageVolumeOption.INTERNAL_UUID -> DownloadStorageState.Available
+        rootForVolume(volumeUuid) != null -> DownloadStorageState.Available
+        else -> DownloadStorageState.Unavailable
+    }
+
     override suspend fun select(uuid: String): AppResult<Unit> = resultOf {
         settings.setDownloadVolumeUuid(uuid)
     }
@@ -124,16 +196,5 @@ class StorageVolumes @Inject constructor(
         add(context.filesDir)
         // `getExternalFilesDirs` can contain nulls for volumes that are present but not mounted.
         context.getExternalFilesDirs(null).filterNotNull().forEach(::add)
-    }
-
-    private fun rootFor(uuid: String): File? {
-        if (uuid == StorageVolumeOption.INTERNAL_UUID) return context.filesDir
-        val manager = context.getSystemService(StorageManager::class.java) ?: return null
-        return context.getExternalFilesDirs(null)
-            .filterNotNull()
-            .firstOrNull { directory -> manager.getStorageVolume(directory)?.uuid == uuid }
-            // `getExternalFilesDirs` lists a volume that is unmounted as absent, so a card that has been
-            // removed simply does not appear and this is null — which the caller reads as internal.
-            ?.takeIf { it.exists() || it.mkdirs() }
     }
 }

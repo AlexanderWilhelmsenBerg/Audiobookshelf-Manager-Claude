@@ -109,6 +109,7 @@ class DefaultPlaybackRepositoryTest {
                     libraryDao = database.libraryDao(),
                     progressDao = database.progressDao(),
                     downloads = NoDownloads,
+                    locations = InternalDownloadLocations,
                 ),
                 // PRODUCT_SPEC DL-005 — recorded rather than performed. These cases are about the journal,
                 // and a trigger that fetched a book would make every one of them depend on a catalogue; but
@@ -280,6 +281,7 @@ class DefaultPlaybackRepositoryTest {
                     libraryDao = database.libraryDao(),
                     progressDao = database.progressDao(),
                     downloads = NoDownloads,
+                    locations = InternalDownloadLocations,
                 ),
                 // PRODUCT_SPEC DL-005 — off, which is its default. These cases are about the journal, and
                 // a trigger that fetched a book would make every one of them depend on a catalogue.

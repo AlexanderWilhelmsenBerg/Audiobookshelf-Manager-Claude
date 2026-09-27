@@ -22,6 +22,7 @@ internal object DownloadMappers {
         state = stateOf(row.book.state),
         // BW-DL-02 / #107 — already sanitized before persistence; never replace this with a raw throwable.
         failureSummary = row.book.failureSummary,
+        storageVolumeUuid = row.book.storageVolumeUuid,
         files = row.files.sortedBy(DownloadedFileEntity::fileIndex).map(::toDomain),
         coverUri = row.book.coverUri,
         requestedBy = row.requests.map { request -> ProfileId(request.profileId) }.toSet(),

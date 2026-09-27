@@ -39,6 +39,14 @@ interface OfflineFiles {
     suspend fun discardPartials(serverId: ServerId, bookId: LibraryItemId): AppResult<Long>
 
     /**
+     * Returns the temporary bytes that an explicit discard would reclaim right now.
+     *
+     * This is filesystem truth rather than manifest bookkeeping: a paused/cancelled transfer can leave a
+     * newer .part length on disk than the last durable progress snapshot, and the confirmation must not lie.
+     */
+    suspend fun partialBytes(serverId: ServerId, bookId: LibraryItemId): AppResult<Long>
+
+    /**
      * PRODUCT_SPEC DL-001 — removes files belonging to no manifest at all.
      *
      * A `.part` is kept after a failure because it is what a retry resumes from. That stops being true once

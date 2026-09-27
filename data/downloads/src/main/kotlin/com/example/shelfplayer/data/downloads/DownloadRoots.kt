@@ -1,21 +1,28 @@
 package com.example.shelfplayer.data.downloads
 
+import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import java.io.File
 
 /**
- * PRODUCT_SPEC DL-003 / ADR-0020 — the directories this app may write downloads into.
+ * PRODUCT_SPEC DL-003 / ADR-0020 — app-specific volume roots.
  *
- * One method, because that is the whole of what [DownloadStorage] needs to know about volumes: a list of
- * roots with the current one first. Everything else — which volume the user picked, whether the card is
- * still in the device, what to call it on screen — is `StorageVolumes`' business and would only make this
- * class harder to test.
- *
- * The **first** entry is where new downloads go. The rest exist because the manifest holds absolute
- * locations: a book downloaded before the volume changed is still on the old root, so deletes, sweeps and
- * verification have to look at all of them.
+ * [roots] remains the single abstract method so existing tests can use a lambda. #20 adds default owner-aware
+ * operations; the Android implementation overrides them, while simple test fakes retain internal semantics.
  */
 fun interface DownloadRoots {
 
-    /** Every writable root, current first. Never empty — internal storage is always available. */
+    /** Every currently reachable writable root, preferred future destination first. Never empty. */
     fun roots(): List<File>
+
+    /** Actual volume a brand-new physical copy will own now, after any selected-card fallback. */
+    fun destinationVolumeUuid(): String = StorageVolumeOption.INTERNAL_UUID
+
+    /** Currently reachable root for a known physical owner, or null while that owner is unavailable/unknown. */
+    fun rootForVolume(uuid: String?): File? = when (uuid) {
+        StorageVolumeOption.INTERNAL_UUID -> roots().firstOrNull()
+        else -> null
+    }
+
+    /** Currently reachable physical volume UUIDs. Internal is always represented by the empty UUID. */
+    fun availableVolumeUuids(): Set<String> = setOf(StorageVolumeOption.INTERNAL_UUID)
 }

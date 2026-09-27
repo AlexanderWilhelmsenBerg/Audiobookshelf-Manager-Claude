@@ -43,6 +43,13 @@ data class OfflineBook(
      * bodies, filesystem paths, access tokens and hidden media metadata must never be stored here.
      */
     val failureSummary: String? = null,
+    /**
+     * #20 — stable physical volume owner. null is an intentionally conservative legacy/unknown owner;
+     * empty is internal storage; a non-empty value is an Android removable-volume UUID.
+     *
+     * Never display or log this raw value.
+     */
+    val storageVolumeUuid: String? = null,
     /** Every audio file the book needs, in playback order. */
     val files: List<OfflineFile>,
     /** The cover, if one was fetched. Absent is normal and is not a reason to call a download incomplete. */
@@ -181,4 +188,13 @@ sealed interface StorageRoot {
      * for an unreadable local file.
      */
     data class Tree(val treeUri: String) : StorageRoot
+}
+
+/** #20 — transient accessibility/integrity projection; never persisted as a second download state machine. */
+enum class DownloadStorageState {
+    Available,
+    Unavailable,
+    Unknown,
+    Missing,
+    Corrupt,
 }

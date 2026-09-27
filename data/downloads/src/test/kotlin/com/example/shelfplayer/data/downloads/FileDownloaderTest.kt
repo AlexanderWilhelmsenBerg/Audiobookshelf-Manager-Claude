@@ -16,6 +16,7 @@ import com.example.shelfplayer.core.model.ServerCapability
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineFile
+import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.core.model.getOrNull
 import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
@@ -72,6 +73,7 @@ class FileDownloaderTest {
         repository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
             storage = storage,
+            copyLocks = DownloadCopyLocks(),
             clock = TestAppClock(),
             ioDispatcher = UnconfinedTestDispatcher(),
         )
@@ -104,7 +106,7 @@ class FileDownloaderTest {
     fun `a file is written to a part, verified, then committed under its real name`() = runTest {
         api.body = "audio-bytes".toByteArray()
 
-        val stored = assertNotNull(downloader.download(PROFILE, SERVER, BOOK, queuedFile()).getOrNull())
+        val stored = assertNotNull(download(queuedFile()).getOrNull())
 
         assertEquals(DownloadState.Complete, stored.state)
         assertTrue(committed().exists(), "the final file is on disk")
@@ -118,7 +120,7 @@ class FileDownloaderTest {
     fun `the file lands where DL-003 says`() = runTest {
         api.body = "x".toByteArray()
 
-        downloader.download(PROFILE, SERVER, BOOK, queuedFile())
+        download(queuedFile())
 
         val expected = File(
             ApplicationProvider.getApplicationContext<Context>().filesDir,
@@ -135,7 +137,7 @@ class FileDownloaderTest {
         api.lastModified = "Thu, 14 Aug 2026 18:00:00 GMT"
         api.contentType = "audio/mp4"
 
-        downloader.download(PROFILE, SERVER, BOOK, queuedFile())
+        download(queuedFile())
 
         val file = assertNotNull(repository.observe(SERVER, BOOK).first()).files.single()
         assertEquals(10L, file.downloadedBytes)
@@ -156,7 +158,7 @@ class FileDownloaderTest {
         api.body = "short".toByteArray()
         api.totalBytes = 5_000
 
-        assertIs<AppResult.Failure>(downloader.download(PROFILE, SERVER, BOOK, queuedFile()))
+        assertIs<AppResult.Failure>(download(queuedFile()))
 
         assertFalse(committed().exists(), "nothing was committed")
         assertTrue(part().exists(), "and the part is kept, because it is what a resume continues from")
@@ -175,7 +177,7 @@ class FileDownloaderTest {
         api.body = "<html>Sign in to continue</html>".toByteArray()
         verifier.isReadable = false
 
-        assertIs<AppResult.Failure>(downloader.download(PROFILE, SERVER, BOOK, queuedFile()))
+        assertIs<AppResult.Failure>(download(queuedFile()))
 
         assertFalse(committed().exists())
         assertEquals(DownloadState.Failed, storedFile().state)
@@ -187,7 +189,7 @@ class FileDownloaderTest {
         api.body = ByteArray(0)
         api.totalBytes = null
 
-        assertIs<AppResult.Failure>(downloader.download(PROFILE, SERVER, BOOK, queuedFile()))
+        assertIs<AppResult.Failure>(download(queuedFile()))
 
         assertFalse(committed().exists())
     }
@@ -208,7 +210,7 @@ class FileDownloaderTest {
         api.wasResumed = true
 
         val stored = assertNotNull(
-            downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\"")).getOrNull(),
+            download(queuedFile(eTag = "\"v1\"")).getOrNull(),
         )
 
         assertEquals("head-and-tail", committed().readText())
@@ -231,7 +233,7 @@ class FileDownloaderTest {
         api.body = "the-whole-new-file".toByteArray()
         api.wasResumed = false
 
-        downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\""))
+        download(queuedFile(eTag = "\"v1\""))
 
         assertEquals("the-whole-new-file", committed().readText(), "no trace of the stale head")
     }
@@ -250,7 +252,7 @@ class FileDownloaderTest {
         api.rangeNotSatisfiableETag = "\"v1\""
 
         val stored = assertNotNull(
-            downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\"")).getOrNull(),
+            download(queuedFile(eTag = "\"v1\"")).getOrNull(),
         )
 
         assertEquals(listOf(8L), api.requests.map { it.first }, "the complete part was not fetched again")
@@ -271,7 +273,7 @@ class FileDownloaderTest {
         api.eTag = "\"v2\""
 
         val stored = assertNotNull(
-            downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\"")).getOrNull(),
+            download(queuedFile(eTag = "\"v1\"")).getOrNull(),
         )
 
         assertEquals(listOf(8L, 0L), api.requests.map { it.first })
@@ -291,7 +293,7 @@ class FileDownloaderTest {
         api.eTag = "\"v2\""
 
         val stored = assertNotNull(
-            downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\"")).getOrNull(),
+            download(queuedFile(eTag = "\"v1\"")).getOrNull(),
         )
 
         assertEquals(listOf(5L, 0L), api.requests.map { it.first })
@@ -314,7 +316,7 @@ class FileDownloaderTest {
         api.freshFailure = com.example.shelfplayer.core.model.AppError.Network()
 
         assertIs<AppResult.Failure>(
-            downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\"")),
+            download(queuedFile(eTag = "\"v1\"")),
         )
 
         assertEquals(listOf(5L, 0L), api.requests.map { it.first }, "there is only one clean restart")
@@ -336,7 +338,7 @@ class FileDownloaderTest {
         part().writeText("head")
         api.body = "whole".toByteArray()
 
-        downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = null))
+        download(queuedFile(eTag = null))
 
         assertEquals(0L, api.lastResumeFrom, "no range was requested")
         assertEquals("whole", committed().readText())
@@ -356,7 +358,7 @@ class FileDownloaderTest {
         api.body = "-and-tail".toByteArray()
         api.wasResumed = true
 
-        downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\""))
+        download(queuedFile(eTag = "\"v1\""))
 
         assertTrue(ServerCapability.RangeDownload to true in capabilities.observations)
     }
@@ -369,7 +371,7 @@ class FileDownloaderTest {
         api.body = "whole".toByteArray()
         api.wasResumed = false
 
-        downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\""))
+        download(queuedFile(eTag = "\"v1\""))
 
         assertTrue(ServerCapability.RangeDownload to false in capabilities.observations)
     }
@@ -385,7 +387,7 @@ class FileDownloaderTest {
     fun `a first download records nothing about ranges`() = runTest {
         api.body = "whole".toByteArray()
 
-        downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\""))
+        download(queuedFile(eTag = "\"v1\""))
 
         assertTrue(capabilities.observations.none { (capability, _) -> capability == ServerCapability.RangeDownload })
     }
@@ -401,7 +403,7 @@ class FileDownloaderTest {
         api.body = "x".toByteArray()
         api.eTag = "\"v9\""
 
-        downloader.download(PROFILE, SERVER, BOOK, queuedFile())
+        download(queuedFile())
 
         assertTrue(ServerCapability.ChecksumOrETag to true in capabilities.observations)
     }
@@ -420,13 +422,13 @@ class FileDownloaderTest {
         part().writeText("stale")
         api.body = "whole".toByteArray()
         api.wasResumed = false
-        downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\""))
+        download(queuedFile(eTag = "\"v1\""))
         assertTrue(ServerCapability.RangeDownload to false in capabilities.observations)
 
         part().writeText("head")
         api.body = "-and-tail".toByteArray()
         api.wasResumed = true
-        downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\""))
+        download(queuedFile(eTag = "\"v1\""))
 
         assertEquals(4L, api.lastResumeFrom, "the range was asked for again")
         assertEquals("head-and-tail", committed().readText())
@@ -439,7 +441,7 @@ class FileDownloaderTest {
         part().writeText("head")
         api.failure = com.example.shelfplayer.core.model.AppError.Network()
 
-        assertIs<AppResult.Failure>(downloader.download(PROFILE, SERVER, BOOK, queuedFile(eTag = "\"v1\"")))
+        assertIs<AppResult.Failure>(download(queuedFile(eTag = "\"v1\"")))
 
         assertEquals("head", part().readText(), "untouched")
         assertFalse(committed().exists())
@@ -453,10 +455,19 @@ class FileDownloaderTest {
         committed().writeText("the-old-recording")
         api.body = "the-new-recording".toByteArray()
 
-        downloader.download(PROFILE, SERVER, BOOK, queuedFile())
+        download(queuedFile())
 
         assertEquals("the-new-recording", committed().readText())
     }
+
+    /** Normal direct-file tests model a new copy with an explicit internal-storage owner. */
+    private suspend fun download(file: OfflineFile): AppResult<OfflineFile> = downloader.download(
+        profileId = PROFILE,
+        serverId = SERVER,
+        itemId = BOOK,
+        file = file,
+        storageVolumeUuid = StorageVolumeOption.INTERNAL_UUID,
+    )
 
     private suspend fun storedFile(): OfflineFile =
         assertNotNull(repository.observe(SERVER, BOOK).first()).files.single()

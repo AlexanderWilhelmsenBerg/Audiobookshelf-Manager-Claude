@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ManagementAction
 import com.example.shelfplayer.core.model.ManagementBlock
 import com.example.shelfplayer.core.model.ManagementPermissions
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.library.Book
@@ -156,7 +157,7 @@ class BookViewModel @Inject constructor(
             // PRODUCT_SPEC MGR-007 — absent rather than greyed for a non-administrator, like every other
             // action on this menu whose permission will never arrive by waiting.
             canEmbedMetadata = embedBlock == null,
-            download = downloadStateOf(offline),
+            download = downloadStateOf(offline, profile?.id),
             // ADR note in `BookOverflowMenu`: the web client's own route, not an API endpoint.
             webUrl = book?.let { loaded ->
                 servers.firstOrNull { it.id == loaded.serverId }
@@ -332,8 +333,10 @@ class BookViewModel @Inject constructor(
      * if the last thing recorded on it was a failure, so `Complete` wins over `Failed`. The alternative would
      * offer *retry* on a book that is already playable offline.
      */
-    private fun downloadStateOf(offline: OfflineBook?): DownloadButtonState = when {
-        offline == null -> DownloadButtonState.NotDownloaded
+    private fun downloadStateOf(offline: OfflineBook?, profileId: ProfileId?): DownloadButtonState = when {
+        offline == null || profileId == null -> DownloadButtonState.NotDownloaded
+        profileId !in offline.requestedBy && offline.isComplete -> DownloadButtonState.OnDevice
+        profileId !in offline.requestedBy -> DownloadButtonState.NotDownloaded
         offline.isComplete -> DownloadButtonState.Downloaded
         offline.state == DownloadState.Failed -> DownloadButtonState.Failed
         else -> DownloadButtonState.Downloading(progress = offline.fractionOrNull())
@@ -361,8 +364,13 @@ class BookViewModel @Inject constructor(
     fun onDownloadClicked(state: DownloadButtonState) {
         viewModelScope.launch {
             when (state) {
-                is DownloadButtonState.NotDownloaded, is DownloadButtonState.Failed -> report(downloadBook(bookId))
+                is DownloadButtonState.NotDownloaded,
+                is DownloadButtonState.OnDevice,
+                is DownloadButtonState.Failed,
+                -> report(downloadBook(bookId))
+
                 is DownloadButtonState.Downloading -> report(server.removeDownload.cancel(bookId))
+
                 is DownloadButtonState.Downloaded -> Unit
             }
         }

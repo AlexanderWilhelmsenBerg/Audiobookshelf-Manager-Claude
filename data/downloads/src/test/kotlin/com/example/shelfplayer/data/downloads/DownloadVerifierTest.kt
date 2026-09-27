@@ -7,18 +7,25 @@ import com.example.shelfplayer.core.common.log.DefaultRedactor
 import com.example.shelfplayer.core.common.log.RedactingLogger
 import com.example.shelfplayer.core.common.log.RedactionPolicy
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
+import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
+import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.DownloadState
+import com.example.shelfplayer.core.model.download.DownloadStorageState
 import com.example.shelfplayer.core.model.download.OfflineFile
+import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.core.model.getOrNull
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
+import com.example.shelfplayer.domain.download.DownloadLocations
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -53,11 +60,13 @@ class DownloadVerifierTest {
     private var containersReadable = true
 
     private val logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default))
+    private val locations = TestDownloadLocations()
 
     private val verifier: DownloadVerifier by lazy {
         DownloadVerifier(
             repository = repository,
             verifier = { containersReadable },
+            locations = locations,
             logger = logger,
         )
     }
@@ -71,6 +80,7 @@ class DownloadVerifierTest {
         repository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
             storage = DownloadStorage(context) { listOf(context.filesDir) },
+            copyLocks = DownloadCopyLocks(),
             clock = TestAppClock(),
             ioDispatcher = UnconfinedTestDispatcher(),
         )
@@ -111,6 +121,79 @@ class DownloadVerifierTest {
         val after = assertNotNull(repository.observe(SERVER, BOOK).first())
         assertFalse(after.isComplete, "so the button offers a retry")
         assertEquals(DownloadState.Failed, after.files.single().state)
+    }
+
+    @Test
+    fun `absent known removable volume preserves complete manifest instead of calling it corrupt`() = runTest {
+        val stored = completeBook(bytes = 32)
+        setVolumeOwner("card-uuid")
+        File(java.net.URI(stored.files.single().uri)).delete()
+        locations.forced = DownloadStorageState.Unavailable
+
+        val report = assertNotNull(verifier.verifyManifests().getOrNull())
+        val after = assertNotNull(repository.observe(SERVER, BOOK).first())
+
+        assertTrue(report.isIntact, "unavailable storage is not an integrity failure")
+        assertTrue(after.isComplete, "durable Complete survives temporary volume absence")
+        assertEquals(DownloadState.Complete, after.state)
+        assertEquals(DownloadState.Complete, after.files.single().state)
+    }
+
+    @Test
+    fun `unknown legacy owner with unreachable path stays unknown rather than failed`() = runTest {
+        val stored = completeBook(bytes = 32)
+        setVolumeOwner(null)
+        File(java.net.URI(stored.files.single().uri)).delete()
+        locations.forced = DownloadStorageState.Unknown
+
+        verifier.verifyManifests()
+        val after = assertNotNull(repository.observe(SERVER, BOOK).first())
+
+        assertTrue(after.isComplete)
+        assertEquals(DownloadState.Complete, after.state)
+    }
+
+    @Test
+    fun `storage classifier keeps available unavailable unknown missing and corrupt distinct`() {
+        val good = File(directory, "classify.mp3").apply { writeBytes(ByteArray(32)) }
+        containersReadable = true
+        assertEquals(
+            DownloadStorageState.Available,
+            verifier.classifyStorage(good.toURI().toString(), 32, true, DownloadStorageState.Available) {
+                containersReadable
+            },
+        )
+        assertEquals(
+            DownloadStorageState.Unavailable,
+            verifier.classifyStorage(good.toURI().toString(), 32, true, DownloadStorageState.Unavailable) {
+                containersReadable
+            },
+        )
+        assertEquals(
+            DownloadStorageState.Unknown,
+            verifier.classifyStorage(
+                uri = File(directory, "absent.mp3").toURI().toString(),
+                expectedBytes = 32,
+                readContainer = false,
+                ownerAvailability = DownloadStorageState.Unknown,
+            ) { true },
+        )
+        assertEquals(
+            DownloadStorageState.Missing,
+            verifier.classifyStorage(
+                uri = File(directory, "absent.mp3").toURI().toString(),
+                expectedBytes = 32,
+                readContainer = false,
+                ownerAvailability = DownloadStorageState.Available,
+            ) { true },
+        )
+        containersReadable = false
+        assertEquals(
+            DownloadStorageState.Corrupt,
+            verifier.classifyStorage(good.toURI().toString(), 32, true, DownloadStorageState.Available) {
+                containersReadable
+            },
+        )
     }
 
     /** A file truncated by a full disk opens perfectly well and is still not the book. */
@@ -200,7 +283,13 @@ class DownloadVerifierTest {
             BOOK,
             planned.copy(state = DownloadState.Complete, downloadedBytes = bytes.toLong()),
         )
-        assertNotNull(repository.observe(SERVER, BOOK).first())
+        assertNotNull(repository.markComplete(SERVER, BOOK, coverUri = null).getOrNull())
+    }
+
+    private suspend fun setVolumeOwner(uuid: String?) {
+        val key = EntityKey.of(SERVER.value, BOOK.value)
+        val row = assertNotNull(database.downloadDao().find(key))
+        database.downloadDao().upsertBook(row.book.copy(storageVolumeUuid = uuid))
     }
 
     private fun file(
@@ -251,6 +340,19 @@ class DownloadVerifierTest {
                 canDownload = true,
             ),
         )
+    }
+
+    private class TestDownloadLocations : DownloadLocations {
+        var forced: DownloadStorageState? = null
+
+        override suspend fun options(): List<StorageVolumeOption> = emptyList()
+        override fun observeSelected(): Flow<String> = flowOf(StorageVolumeOption.INTERNAL_UUID)
+        override fun availability(volumeUuid: String?): DownloadStorageState = forced ?: when (volumeUuid) {
+            null -> DownloadStorageState.Unknown
+            else -> DownloadStorageState.Available
+        }
+
+        override suspend fun select(uuid: String): AppResult<Unit> = AppResult.Success(Unit)
     }
 
     private companion object {

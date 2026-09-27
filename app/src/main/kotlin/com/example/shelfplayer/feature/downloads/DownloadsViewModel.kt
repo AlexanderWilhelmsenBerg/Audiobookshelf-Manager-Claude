@@ -4,11 +4,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.download.DownloadProgress
+import com.example.shelfplayer.core.model.download.DownloadStorageState
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.core.model.download.VerificationReport
+import com.example.shelfplayer.core.model.download.durableDownloadProgress
 import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.domain.download.DownloadExecutionKey
+import com.example.shelfplayer.domain.download.DownloadExecutionObserver
+import com.example.shelfplayer.domain.download.DownloadExecutionSnapshot
 import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.download.DownloadRecoveryPolicy
 import com.example.shelfplayer.domain.download.DownloadRecoveryState
@@ -26,8 +33,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -42,8 +52,8 @@ import javax.inject.Inject
  * settings."* This screen answers *what is using space on this phone*, which is a fact about the device.
  *
  * PRODUCT_SPEC 5.2 is honoured at the **title**, not at the row. A book the current profile cannot see is
- * listed with its size and without its name, because the whole reason the list exists is to be able to
- * delete it — and a row nobody can name is exactly the row somebody needs to remove.
+ * listed with its size and without its name so device usage remains truthful. PD-003 still keeps Remove
+ * profile-scoped: a row the active profile does not claim is informational and exposes no destructive action.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -53,6 +63,7 @@ class DownloadsViewModel @Inject constructor(
     private val verification: OfflineVerification,
     private val profiles: ProfileRepository,
     private val locations: DownloadLocations,
+    private val execution: DownloadExecutionObserver,
     /** PRODUCT_SPEC DL-001 — stop a transfer without discarding what it fetched. */
     private val pauseDownload: PauseDownloadUseCase,
     /** The resume half. It re-checks the grant and the free space, which a bare re-enqueue would not. */
@@ -76,8 +87,29 @@ class DownloadsViewModel @Inject constructor(
         initialValue = StorageVolumeOption.INTERNAL_UUID,
     )
 
+    private val availableVolumeUuids = locations.observeAvailableVolumeUuids().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+        initialValue = setOf(StorageVolumeOption.INTERNAL_UUID),
+    )
+
+    val selectedVolumeUnavailable: StateFlow<Boolean> = combine(
+        selectedVolume,
+        availableVolumeUuids,
+    ) { selected, available ->
+        selected.isNotEmpty() && selected !in available
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+        initialValue = false,
+    )
+
     init {
-        viewModelScope.launch { _volumes.value = locations.options() }
+        viewModelScope.launch {
+            availableVolumeUuids.collect {
+                _volumes.value = locations.options()
+            }
+        }
     }
 
     /**
@@ -98,17 +130,78 @@ class DownloadsViewModel @Inject constructor(
     }
 
     private val visibleBooks = profiles.observeActiveProfile().flatMapLatest { profile ->
-        if (profile == null) flowOf(emptyList()) else library.observeAccessibleBooks(profile.id)
+        if (profile == null) {
+            flowOf(VisibleBooks(profileId = null, books = emptyList()))
+        } else {
+            library.observeAccessibleBooks(profile.id).map { books -> VisibleBooks(profile.id, books) }
+        }
+    }
+
+    /**
+     * Durable physical-copy truth is shared once; transient execution observation is derived from its keys.
+     * WorkManager is deliberately not copied into Room merely so this screen can render it.
+     */
+    private val storedDownloads = downloads.observeAll().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+        initialValue = emptyList(),
+    )
+
+    private val executionEvidence = storedDownloads
+        .map { stored -> stored.mapTo(linkedSetOf()) { DownloadExecutionKey(it.serverId, it.itemId) } }
+        .distinctUntilChanged()
+        .flatMapLatest(execution::observe)
+
+    /**
+     * #22 filesystem projection. It is intentionally transient: reclaimable .part bytes belong to disk,
+     * not Room. A fresh projection is rebuilt whenever a durable row changes, including pause/failure,
+     * discard bookkeeping updates and process reconstruction.
+     */
+    private val partialBytes = storedDownloads.mapLatest { stored ->
+        buildMap {
+            stored
+                .filter { book ->
+                    book.state == com.example.shelfplayer.core.model.download.DownloadState.Paused ||
+                        book.state == com.example.shelfplayer.core.model.download.DownloadState.Failed
+                }
+                .forEach { book ->
+                    when (val result = files.partialBytes(book.serverId, book.itemId)) {
+                        is AppResult.Success -> put(DownloadExecutionKey(book.serverId, book.itemId), result.value)
+                        is AppResult.Failure -> Unit
+                    }
+                }
+        }
+    }
+
+    private val transientPresentation = combine(
+        executionEvidence,
+        partialBytes,
+        availableVolumeUuids,
+    ) { executions, partials, available ->
+        DownloadTransientPresentation(
+            executions = executions,
+            partialBytes = partials,
+            availableVolumeUuids = available,
+        )
     }
 
     val uiState: StateFlow<DownloadsUiState> = combine(
-        downloads.observeAll(),
+        storedDownloads,
         downloads.observeTotalBytes(),
         visibleBooks,
-    ) { stored, totalBytes, books ->
-        val byId = books.associateBy(Book::id)
+        transientPresentation,
+    ) { stored, totalBytes, visible, transient ->
+        val byId = visible.books.associateBy(Book::id)
         DownloadsUiState(
-            books = stored.map { copy -> copy.toRow(byId[copy.itemId]) },
+            books = stored.map { copy ->
+                copy.toRow(
+                    book = byId[copy.itemId],
+                    activeProfileId = visible.profileId,
+                    execution = transient.executions[DownloadExecutionKey(copy.serverId, copy.itemId)],
+                    partialBytes = transient.partialBytes[DownloadExecutionKey(copy.serverId, copy.itemId)] ?: 0L,
+                    storageState = storageState(copy.storageVolumeUuid, transient.availableVolumeUuids),
+                )
+            },
             totalBytes = totalBytes,
             isLoaded = true,
         )
@@ -163,7 +256,7 @@ class DownloadsViewModel @Inject constructor(
         }
     }
 
-    /* PRODUCT_SPEC DL-006 — protects one copy from the automatic cleanup, or stops protecting it. */
+    /* PD-003 / PRODUCT_SPEC DL-006 — one device-level pin protects the shared physical copy. */
 
     /**
      * BW-DL-03 / #18 — execute only the recovery action owned by the row's presentation state.
@@ -188,10 +281,22 @@ class DownloadsViewModel @Inject constructor(
         }
     }
 
+    /** #22 — explicit destructive recovery. Normal Retry/Resume never calls this path. */
+    fun onDiscardPartials(bookId: LibraryItemId, serverId: ServerId) {
+        viewModelScope.launch {
+            when (val discarded = files.discardPartials(serverId, bookId)) {
+                is AppResult.Failure -> _message.value = discarded.error.summary
+
+                is AppResult.Success -> {
+                    _message.value = "Discarded ${formatByteCount(discarded.value)} of partial download data."
+                }
+            }
+        }
+    }
+
     fun onPinnedChanged(bookId: LibraryItemId, serverId: ServerId, isPinned: Boolean) {
         viewModelScope.launch {
-            val profileId = profiles.activeProfileId() ?: return@launch
-            downloads.setPinned(serverId, bookId, profileId, isPinned)
+            downloads.setPinned(serverId, bookId, isPinned)
         }
     }
 
@@ -201,12 +306,25 @@ class DownloadsViewModel @Inject constructor(
         "$booksBroken book(s) are missing files and now offer a retry. Nothing was deleted."
     }
 
-    private fun OfflineBook.toRow(book: Book?): DownloadRow {
+    private fun OfflineBook.toRow(
+        book: Book?,
+        activeProfileId: ProfileId?,
+        execution: DownloadExecutionSnapshot?,
+        partialBytes: Long,
+        storageState: DownloadStorageState,
+    ): DownloadRow {
         val recovery = DownloadRecoveryPolicy.resolve(
             durableState = state,
             manifestFilesComplete = isComplete,
             safeFailureSummary = failureSummary,
+            executionEvidence = execution?.evidence,
         )
+        val progress = execution?.progress ?: durableDownloadProgress()
+        val claimedByActiveProfile = activeProfileId != null && activeProfileId in requestedBy
+        val sharedWithAnotherProfile =
+            claimedByActiveProfile && requestedBy.any { profileId -> profileId != activeProfileId }
+        val onDeviceForAnotherProfile =
+            activeProfileId != null && !claimedByActiveProfile && requestedBy.isNotEmpty()
         return DownloadRow(
             bookId = itemId,
             serverId = serverId,
@@ -222,11 +340,47 @@ class DownloadsViewModel @Inject constructor(
             // Even sanitized infrastructure text is not permission to reveal another profile's media context.
             failureSummary = recovery.failureSummary.takeIf { book != null },
             isPinned = isPinned,
-            isSharedWithAnotherProfile = requestedBy.size > 1,
+            isClaimedByActiveProfile = claimedByActiveProfile,
+            isSharedWithAnotherProfile = sharedWithAnotherProfile,
+            isOnDeviceForAnotherProfile = onDeviceForAnotherProfile,
+            partialBytes = partialBytes,
+            progress = progress.takeUnless { recovery.state == DownloadRecoveryState.Complete },
+            storageState = storageState,
         )
     }
 
+    private fun storageState(volumeUuid: String?, available: Set<String>): DownloadStorageState = when {
+        volumeUuid == null -> DownloadStorageState.Unknown
+        volumeUuid in available -> DownloadStorageState.Available
+        else -> DownloadStorageState.Unavailable
+    }
+
+    private fun formatByteCount(bytes: Long): String = when {
+        bytes >= BYTES_PER_GIBIBYTE -> String.format(
+            java.util.Locale.US,
+            "%.1f GiB",
+            bytes / BYTES_PER_GIBIBYTE.toDouble(),
+        )
+
+        bytes >= BYTES_PER_MEBIBYTE -> String.format(
+            java.util.Locale.US,
+            "%.1f MiB",
+            bytes / BYTES_PER_MEBIBYTE.toDouble(),
+        )
+
+        bytes >= BYTES_PER_KIBIBYTE -> String.format(
+            java.util.Locale.US,
+            "%.1f KiB",
+            bytes / BYTES_PER_KIBIBYTE.toDouble(),
+        )
+
+        else -> "$bytes B"
+    }
+
     private companion object {
+        const val BYTES_PER_KIBIBYTE = 1_024L
+        const val BYTES_PER_MEBIBYTE = BYTES_PER_KIBIBYTE * 1_024L
+        const val BYTES_PER_GIBIBYTE = BYTES_PER_MEBIBYTE * 1_024L
         const val STOP_TIMEOUT_MILLIS = 5_000L
         const val SHARED_COPY_KEPT =
             "Removed from your downloads. The files stayed, because another profile on this device also " +
@@ -264,17 +418,31 @@ internal fun DownloadRecoveryState.rowAction(): DownloadRecoveryAction? = when (
 /**
  * @property totalBytes what every download occupies, which is the number somebody came to this screen for.
  */
+private data class VisibleBooks(val profileId: ProfileId?, val books: List<Book>)
+
+private data class DownloadTransientPresentation(
+    val executions: Map<DownloadExecutionKey, DownloadExecutionSnapshot>,
+    val partialBytes: Map<DownloadExecutionKey, Long>,
+    val availableVolumeUuids: Set<String>,
+)
+
 data class DownloadsUiState(
     val books: List<DownloadRow> = emptyList(),
     val totalBytes: Long = 0,
     val isLoaded: Boolean = false,
-)
+) {
+    val activeBooks: List<DownloadRow>
+        get() = books.filter { it.recoveryState != DownloadRecoveryState.Complete }
+
+    val onDeviceBooks: List<DownloadRow>
+        get() = books.filter { it.recoveryState == DownloadRecoveryState.Complete }
+}
 
 /**
  * One downloaded book.
  *
- * @property title `null` when the active profile may not see this book (PRODUCT_SPEC 5.2). The row is still
- *   shown and still deletable — that is the point of decision 6.
+ * @property title `null` when the active profile may not see this book (PRODUCT_SPEC 5.2). The physical row
+ *   is still shown, but profile-scoped Remove is available only when the active profile owns a claim.
  * @property recoveryState the pure BW-DL-02 presentation result. BW-DL-04 may later refine it with transient
  *   execution evidence without persisting WorkManager state.
  * @property failureSummary safe failure copy for a visible failed row; always `null` for title-hidden rows.
@@ -292,10 +460,19 @@ data class DownloadRow(
     val recoveryState: DownloadRecoveryState,
     val failureSummary: String?,
     val isPinned: Boolean,
+    val isClaimedByActiveProfile: Boolean = true,
     val isSharedWithAnotherProfile: Boolean,
+    val isOnDeviceForAnotherProfile: Boolean = false,
+    val partialBytes: Long = 0L,
+    val progress: DownloadProgress? = null,
+    val storageState: DownloadStorageState = DownloadStorageState.Unknown,
 ) {
     val isFailed: Boolean get() = recoveryState == DownloadRecoveryState.Failed
 
     /** PRODUCT_SPEC DL-001 — stopped by the listener, not by a failure. The row must not conflate them. */
     val isPaused: Boolean get() = recoveryState == DownloadRecoveryState.Paused
+
+    val canDiscardPartials: Boolean
+        get() = partialBytes > 0L &&
+            (recoveryState == DownloadRecoveryState.Paused || recoveryState == DownloadRecoveryState.Failed)
 }

@@ -10,6 +10,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.download.DownloadProgress
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.OfflineFile
@@ -51,6 +52,7 @@ class BookDownloader @Inject constructor(
     private val downloads: DownloadApi,
     private val fileDownloader: FileDownloader,
     private val storage: DownloadStorage,
+    private val copyLocks: DownloadCopyLocks,
     private val logger: Logger,
 ) : OfflineFiles {
 
@@ -61,11 +63,12 @@ class BookDownloader @Inject constructor(
      *   Called as bytes arrive; it must not block.
      * @return the completed book, or the reason it is not complete.
      */
+    @Suppress("LongMethod")
     suspend fun download(
         profileId: ProfileId,
         serverId: ServerId,
         itemId: LibraryItemId,
-        onProgress: (Float) -> Unit = {},
+        onProgress: (DownloadProgress) -> Unit = {},
     ): AppResult<OfflineBook> {
         val manifest = repository.observe(serverId, itemId).first()
             ?: return AppResult.Failure(
@@ -79,11 +82,18 @@ class BookDownloader @Inject constructor(
         }
 
         val weights = Weights(manifest.files)
-        onProgress(weights.fractionOf(manifest.files))
+        onProgress(weights.progressOf(manifest.files))
 
         manifest.files.filter { it.state != DownloadState.Complete }.forEach { file ->
-            val fetched = fileDownloader.download(profileId, serverId, itemId, file) { bytes ->
-                onProgress(weights.fractionWith(file, bytes))
+            val fetched = fileDownloader.download(
+                profileId = profileId,
+                serverId = serverId,
+                itemId = itemId,
+                file = file,
+                storageVolumeUuid = manifest.storageVolumeUuid,
+                committedUris = manifest.files.map(OfflineFile::uri),
+            ) { bytes ->
+                onProgress(weights.progressWith(file, bytes))
             }
             if (fetched.isFailure()) {
                 logger.warn(
@@ -91,17 +101,26 @@ class BookDownloader @Inject constructor(
                     "A book download stopped at one of its files",
                     LogField.Count("remaining", manifest.files.count { it.state != DownloadState.Complete }),
                 )
-                repository.markFailed(serverId, itemId, summary = fetched.error.summary)
+                if (!fetched.error.isTemporaryStorageUnavailable()) {
+                    repository.markFailed(serverId, itemId, summary = fetched.error.summary)
+                }
                 return AppResult.Failure(fetched.error)
             }
-            weights.complete(file)
-            onProgress(weights.fraction())
+            val storedFile = (fetched as AppResult.Success).value
+            weights.complete(storedFile)
+            onProgress(weights.progress())
         }
 
         val completed = repository.markComplete(
             serverId,
             itemId,
-            coverUri = manifest.coverUri ?: fetchCover(profileId, serverId, itemId),
+            coverUri = manifest.coverUri ?: fetchCover(
+                profileId = profileId,
+                serverId = serverId,
+                itemId = itemId,
+                storageVolumeUuid = manifest.storageVolumeUuid,
+                committedUris = manifest.files.map(OfflineFile::uri),
+            ),
         )
         if (completed is AppResult.Success) {
             logger.info(
@@ -109,7 +128,14 @@ class BookDownloader @Inject constructor(
                 "A book is available offline",
                 LogField.Count("files", completed.value.files.size),
             )
-            onProgress(1f)
+            onProgress(
+                DownloadProgress(
+                    downloadedBytes = completed.value.downloadedBytes,
+                    totalBytes = completed.value.files.mapNotNull { it.expectedBytes }.sum()
+                        .takeIf { total -> completed.value.files.all { (it.expectedBytes ?: 0L) > 0L } && total > 0L },
+                    fraction = 1f,
+                ),
+            )
         }
         return completed
     }
@@ -124,14 +150,26 @@ class BookDownloader @Inject constructor(
      * Fetched only when the manifest has none, so a retry of a book whose audio failed does not re-fetch
      * artwork it already has.
      */
-    private suspend fun fetchCover(profileId: ProfileId, serverId: ServerId, itemId: LibraryItemId): String? {
+    private suspend fun fetchCover(
+        profileId: ProfileId,
+        serverId: ServerId,
+        itemId: LibraryItemId,
+        storageVolumeUuid: String?,
+        committedUris: List<String>,
+    ): String? {
         var destination: File? = null
         val fetched = downloads.fetchCover(profileId, itemId) {
             // The type is not known until the response arrives, and the name depends on it — so the file is
             // named inside the sink, which is the first moment both facts exist.
-            storage.coverFor(serverId.value, itemId.value, mimeType = null)
-                .also { destination = it }
-                .outputStream()
+            storage.coverFor(
+                serverId = serverId.value,
+                itemId = itemId.value,
+                mimeType = null,
+                volumeUuid = storageVolumeUuid,
+                committedUris = committedUris,
+            )?.also { destination = it }
+                ?.outputStream()
+                ?: throw java.io.IOException("Download storage unavailable")
         }
         return when (fetched) {
             is AppResult.Success -> destination?.toURI()?.toString()
@@ -146,28 +184,65 @@ class BookDownloader @Inject constructor(
     /**
      * PRODUCT_SPEC DL-003 — removes one profile's claim, and the files when it was the last.
      *
-     * The two halves are in this order for a reason: the claim goes through the repository, and only if
-     * nothing else references the copy do the bytes go. Reversing it would delete a book another profile on
-     * the same device is halfway through.
+     * Shared copies release only this profile's claim. For the sole claim, the physical bytes are deleted
+     * first while the claim remains durable; only successful deletion releases the claim and forgets the
+     * manifest. A keyed lock prevents a new claim appearing inside that destructive window.
      *
      * @return `true` when the files were actually removed.
      */
-    override suspend fun remove(profileId: ProfileId, serverId: ServerId, bookId: LibraryItemId): AppResult<Boolean> {
-        val itemId = bookId
-        val released = repository.release(serverId, itemId, profileId)
-        if (released.isFailure()) return AppResult.Failure(released.error)
-        if ((released as AppResult.Success).value) {
-            // Somebody else still wants it. Nothing on disk changes.
-            return AppResult.Success(false)
+    override suspend fun remove(profileId: ProfileId, serverId: ServerId, bookId: LibraryItemId): AppResult<Boolean> =
+        copyLocks.withLock(serverId, bookId) {
+            val manifest = repository.observe(serverId, bookId).first()
+                ?: return@withLock AppResult.Success(false)
+
+            // A profile cannot delete another profile's sole physical copy by releasing a claim it never owned.
+            if (profileId !in manifest.requestedBy) return@withLock AppResult.Success(false)
+
+            if (manifest.requestedBy.size > 1) {
+                val released = repository.release(serverId, bookId, profileId)
+                return@withLock when (released) {
+                    is AppResult.Failure -> AppResult.Failure(released.error)
+                    is AppResult.Success -> AppResult.Success(false)
+                }
+            }
+
+            // Keep the last claim in Room until destructive I/O has genuinely succeeded. The shared keyed lock
+            // prevents a concurrent request from adding a new claim between this decision and deletion.
+            when (
+                storage.deleteItem(
+                    serverId = serverId.value,
+                    itemId = bookId.value,
+                    volumeUuid = manifest.storageVolumeUuid,
+                    committedUris = manifest.files.map(OfflineFile::uri),
+                )
+            ) {
+                StorageDeleteResult.Unavailable -> return@withLock AppResult.Failure(unavailableStorage())
+
+                StorageDeleteResult.Failed -> {
+                    return@withLock AppResult.Failure(
+                        AppError.Storage(summary = "The downloaded files could not be removed from storage."),
+                    )
+                }
+
+                StorageDeleteResult.Deleted -> Unit
+            }
+
+            val released = repository.release(serverId, bookId, profileId)
+            if (released.isFailure()) return@withLock AppResult.Failure(released.error)
+
+            val forgotten = repository.forget(serverId, bookId)
+            if (forgotten.isFailure()) return@withLock AppResult.Failure(forgotten.error)
+
+            logger.info(LogCategory.Sync, "A downloaded book was removed")
+            AppResult.Success(true)
         }
 
-        storage.deleteItem(serverId.value, itemId.value)
-        val forgotten = repository.forget(serverId, itemId)
-        if (forgotten.isFailure()) return AppResult.Failure(forgotten.error)
+    private fun unavailableStorage(): AppError.Storage = AppError.Storage(
+        summary = "The downloaded files are on storage that is currently unavailable.",
+        temporarilyUnavailable = true,
+    )
 
-        logger.info(LogCategory.Sync, "A downloaded book was removed")
-        return AppResult.Success(true)
-    }
+    private fun AppError.isTemporaryStorageUnavailable(): Boolean = this is AppError.Storage && temporarilyUnavailable
 
     /**
      * PRODUCT_SPEC DL-001 — removes the temporary parts of a download the user gave up on.
@@ -175,14 +250,62 @@ class BookDownloader @Inject constructor(
      * Separate from [remove] because it is a different decision: this keeps the manifest and the claim, so
      * the book still shows as *not downloaded* rather than disappearing, and a later tap starts it cleanly.
      */
+    @Suppress("ReturnCount")
     override suspend fun discardPartials(serverId: ServerId, bookId: LibraryItemId): AppResult<Long> {
-        val itemId = bookId
-        val reclaimed = storage.deleteParts(serverId.value, itemId.value)
-        val manifest = repository.observe(serverId, itemId).first()
-        manifest?.files
-            ?.filter { it.state != DownloadState.Complete }
-            ?.forEach { file -> repository.updateFile(serverId, itemId, file.copy(downloadedBytes = 0)) }
-        return AppResult.Success(reclaimed)
+        val manifest = repository.observe(serverId, bookId).first() ?: return AppResult.Success(0L)
+        val committedUris = manifest.files.map(OfflineFile::uri)
+        val reclaimed = storage.deleteParts(
+            serverId = serverId.value,
+            itemId = bookId.value,
+            volumeUuid = manifest.storageVolumeUuid,
+            committedUris = committedUris,
+        ) ?: return AppResult.Failure(unavailableStorage())
+
+        manifest.files
+            .filter { it.state != DownloadState.Complete }
+            .forEach { file ->
+                val stillOnDisk = storage.partialBytesFor(
+                    serverId = serverId.value,
+                    itemId = bookId.value,
+                    fileId = file.remoteFileId,
+                    mimeType = file.mimeType,
+                    volumeUuid = manifest.storageVolumeUuid,
+                    committedUris = committedUris,
+                ) ?: return AppResult.Failure(unavailableStorage())
+                val updated = repository.updateFile(
+                    serverId,
+                    bookId,
+                    file.copy(downloadedBytes = stillOnDisk),
+                )
+                if (updated.isFailure()) return AppResult.Failure(updated.error)
+            }
+
+        val remaining = storage.partialBytes(
+            serverId = serverId.value,
+            itemId = bookId.value,
+            volumeUuid = manifest.storageVolumeUuid,
+            committedUris = committedUris,
+        ) ?: return AppResult.Failure(unavailableStorage())
+        return if (remaining == 0L) {
+            AppResult.Success(reclaimed)
+        } else {
+            AppResult.Failure(
+                AppError.Storage(
+                    summary = "Some partial download data could not be removed. Nothing complete was deleted.",
+                ),
+            )
+        }
+    }
+
+    override suspend fun partialBytes(serverId: ServerId, bookId: LibraryItemId): AppResult<Long> {
+        val manifest = repository.observe(serverId, bookId).first() ?: return AppResult.Success(0L)
+        val bytes = storage.partialBytes(
+            serverId = serverId.value,
+            itemId = bookId.value,
+            volumeUuid = manifest.storageVolumeUuid,
+            committedUris = manifest.files.map(OfflineFile::uri),
+        ) ?: return AppResult.Failure(unavailableStorage())
+        return AppResult.Success(bytes)
     }
 
     /**
@@ -220,6 +343,8 @@ class BookDownloader @Inject constructor(
     private class Weights(files: List<OfflineFile>) {
         private val sizes: Map<String, Long>
         private val total: Long
+        private val truthfulTotal: Long?
+        private val actualBytes = files.associate { it.remoteFileId to it.downloadedBytes }.toMutableMap()
         private val done = mutableSetOf<String>()
         private var partial: Pair<String, Long>? = null
 
@@ -230,26 +355,40 @@ class BookDownloader @Inject constructor(
                 file.remoteFileId to (file.expectedBytes?.takeIf { it > 0 } ?: fallback)
             }
             total = sizes.values.sum().coerceAtLeast(1)
+            truthfulTotal = files
+                .map { it.expectedBytes }
+                .takeIf { expected -> expected.all { (it ?: 0L) > 0L } }
+                ?.sumOf { it ?: 0L }
+                ?.takeIf { it > 0L }
             files.filter { it.state == DownloadState.Complete }.forEach { done += it.remoteFileId }
         }
 
         fun complete(file: OfflineFile) {
             done += file.remoteFileId
+            actualBytes[file.remoteFileId] = file.downloadedBytes
             partial = null
         }
 
-        fun fractionOf(files: List<OfflineFile>): Float {
+        fun progressOf(files: List<OfflineFile>): DownloadProgress {
+            files.forEach { file -> actualBytes[file.remoteFileId] = file.downloadedBytes }
             files.filter { it.state == DownloadState.Complete }.forEach { done += it.remoteFileId }
-            return fraction()
+            return progress()
         }
 
-        /** The running fraction while [file] is being written, with [bytes] of it on disk. */
-        fun fractionWith(file: OfflineFile, bytes: Long): Float {
+        /** The running snapshot while [file] is being written, with [bytes] of it physically on disk. */
+        fun progressWith(file: OfflineFile, bytes: Long): DownloadProgress {
+            actualBytes[file.remoteFileId] = bytes.coerceAtLeast(0L)
             partial = file.remoteFileId to bytes.coerceAtMost(sizes[file.remoteFileId] ?: bytes)
-            return fraction()
+            return progress()
         }
 
-        fun fraction(): Float {
+        fun progress(): DownloadProgress = DownloadProgress(
+            downloadedBytes = actualBytes.values.sum(),
+            totalBytes = truthfulTotal,
+            fraction = fraction(),
+        )
+
+        private fun fraction(): Float {
             val finished = done.sumOf { id -> sizes[id] ?: 0 }
             val inFlight = partial?.takeIf { it.first !in done }?.second ?: 0
             return ((finished + inFlight).toFloat() / total).coerceIn(0f, 1f)
