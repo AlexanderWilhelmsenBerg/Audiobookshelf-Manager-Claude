@@ -37,9 +37,17 @@ class DownloadBookUseCase @Inject constructor(
         }
 
         val existing = downloads.observe(profile.serverId, bookId).first()
+        if (isAutomatic && existing?.state == DownloadState.Paused) return AppResult.Success(Unit)
+
+        // Keep the catalogue entitlement check even when another profile already downloaded the bytes.
+        // BookAssetSource reads the active profile's visibility rows, so knowing an item id is never enough to
+        // attach a profile to somebody else's local media.
+        val planned = assets.assetsFor(profile.id, bookId)
+        if (planned.isFailure()) return AppResult.Failure(planned.error)
+        val book = (planned as AppResult.Success).value
 
         // PD-003 — another profile may already have the complete physical copy. Claim that copy immediately:
-        // no asset lookup, free-space gate or WorkManager job is needed because no bytes have to move.
+        // entitlement is proven above, but no free-space gate or WorkManager job is needed because no bytes move.
         if (existing?.isComplete == true) {
             if (profile.id in existing.requestedBy) return AppResult.Success(Unit)
             return when (val claimed = downloads.request(profile.serverId, bookId, profile.id, existing.files)) {
@@ -47,12 +55,6 @@ class DownloadBookUseCase @Inject constructor(
                 is AppResult.Failure -> AppResult.Failure(claimed.error)
             }
         }
-
-        if (isAutomatic && existing?.state == DownloadState.Paused) return AppResult.Success(Unit)
-
-        val planned = assets.assetsFor(profile.id, bookId)
-        if (planned.isFailure()) return AppResult.Failure(planned.error)
-        val book = (planned as AppResult.Success).value
         if (book.files.isEmpty()) {
             return AppResult.Failure(
                 AppError.Unknown(summary = "This book has no audio files to download."),
