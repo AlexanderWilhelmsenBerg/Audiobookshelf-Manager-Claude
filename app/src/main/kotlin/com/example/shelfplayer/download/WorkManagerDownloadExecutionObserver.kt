@@ -5,8 +5,6 @@ import androidx.work.NetworkType
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkQuery
-import androidx.work.getWorkInfosFlow
-import androidx.work.getWorkInfosForUniqueWorkFlow
 import com.example.shelfplayer.core.common.connectivity.NetworkMonitor
 import com.example.shelfplayer.core.model.download.DownloadProgress
 import com.example.shelfplayer.domain.download.DownloadExecutionEvidence
