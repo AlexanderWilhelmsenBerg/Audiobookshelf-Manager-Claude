@@ -191,50 +191,50 @@ class BookDownloader @Inject constructor(
      */
     override suspend fun remove(profileId: ProfileId, serverId: ServerId, bookId: LibraryItemId): AppResult<Boolean> =
         copyLocks.withLock(serverId, bookId) {
-        val manifest = repository.observe(serverId, bookId).first()
-            ?: return@withLock AppResult.Success(false)
+            val manifest = repository.observe(serverId, bookId).first()
+                ?: return@withLock AppResult.Success(false)
 
-        // A profile cannot delete another profile's sole physical copy by releasing a claim it never owned.
-        if (profileId !in manifest.requestedBy) return@withLock AppResult.Success(false)
+            // A profile cannot delete another profile's sole physical copy by releasing a claim it never owned.
+            if (profileId !in manifest.requestedBy) return@withLock AppResult.Success(false)
 
-        if (manifest.requestedBy.size > 1) {
-            val released = repository.release(serverId, bookId, profileId)
-            return@withLock when (released) {
-                is AppResult.Failure -> AppResult.Failure(released.error)
-                is AppResult.Success -> AppResult.Success(false)
+            if (manifest.requestedBy.size > 1) {
+                val released = repository.release(serverId, bookId, profileId)
+                return@withLock when (released) {
+                    is AppResult.Failure -> AppResult.Failure(released.error)
+                    is AppResult.Success -> AppResult.Success(false)
+                }
             }
-        }
 
-        // Keep the last claim in Room until destructive I/O has genuinely succeeded. The shared keyed lock
-        // prevents a concurrent request from adding a new claim between this decision and deletion.
-        when (
-            storage.deleteItem(
-                serverId = serverId.value,
-                itemId = bookId.value,
-                volumeUuid = manifest.storageVolumeUuid,
-                committedUris = manifest.files.map(OfflineFile::uri),
-            )
-        ) {
-            StorageDeleteResult.Unavailable -> return@withLock AppResult.Failure(unavailableStorage())
-
-            StorageDeleteResult.Failed -> {
-                return@withLock AppResult.Failure(
-                    AppError.Storage(summary = "The downloaded files could not be removed from storage."),
+            // Keep the last claim in Room until destructive I/O has genuinely succeeded. The shared keyed lock
+            // prevents a concurrent request from adding a new claim between this decision and deletion.
+            when (
+                storage.deleteItem(
+                    serverId = serverId.value,
+                    itemId = bookId.value,
+                    volumeUuid = manifest.storageVolumeUuid,
+                    committedUris = manifest.files.map(OfflineFile::uri),
                 )
+            ) {
+                StorageDeleteResult.Unavailable -> return@withLock AppResult.Failure(unavailableStorage())
+
+                StorageDeleteResult.Failed -> {
+                    return@withLock AppResult.Failure(
+                        AppError.Storage(summary = "The downloaded files could not be removed from storage."),
+                    )
+                }
+
+                StorageDeleteResult.Deleted -> Unit
             }
 
-            StorageDeleteResult.Deleted -> Unit
+            val released = repository.release(serverId, bookId, profileId)
+            if (released.isFailure()) return@withLock AppResult.Failure(released.error)
+
+            val forgotten = repository.forget(serverId, bookId)
+            if (forgotten.isFailure()) return@withLock AppResult.Failure(forgotten.error)
+
+            logger.info(LogCategory.Sync, "A downloaded book was removed")
+            AppResult.Success(true)
         }
-
-        val released = repository.release(serverId, bookId, profileId)
-        if (released.isFailure()) return@withLock AppResult.Failure(released.error)
-
-        val forgotten = repository.forget(serverId, bookId)
-        if (forgotten.isFailure()) return@withLock AppResult.Failure(forgotten.error)
-
-        logger.info(LogCategory.Sync, "A downloaded book was removed")
-        AppResult.Success(true)
-    }
 
     private fun unavailableStorage(): AppError.Storage = AppError.Storage(
         summary = "The downloaded files are on storage that is currently unavailable.",
