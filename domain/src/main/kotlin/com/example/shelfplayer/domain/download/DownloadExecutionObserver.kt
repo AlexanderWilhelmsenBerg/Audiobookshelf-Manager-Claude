@@ -13,10 +13,7 @@ import kotlinx.coroutines.flow.Flow
  */
 data class DownloadExecutionKey(val serverId: ServerId, val itemId: LibraryItemId)
 
-data class DownloadExecutionSnapshot(
-    val evidence: DownloadExecutionEvidence,
-    val progress: DownloadProgress? = null,
-)
+data class DownloadExecutionSnapshot(val evidence: DownloadExecutionEvidence, val progress: DownloadProgress? = null)
 
 /**
  * Read-only transient execution evidence for the device's physical download rows.
