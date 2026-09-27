@@ -562,7 +562,9 @@ Associated manifest and cover are stored alongside or in Room using stable ident
 - Path traversal is impossible.
 - Downloads are not exposed to other apps by default.
 - A shared physical blob may be referenced by multiple local profiles only when they belong to the same server item and each profile has a recorded entitlement.
-- Removing a profile decrements references; physical media is deleted only when no profile references it.
+- When an entitled profile selects Download for a complete physical copy already present for another local profile, BookWave adds that profile's reference without transferring the media again.
+- The UI distinguishes a download claimed by the active profile from a physical copy already on the device for another profile, without revealing the other profile's identity.
+- Removing a download from a profile removes only that profile's reference; physical media is deleted only when no profile references it.
 - Logging out does not delete downloads unless chosen.
 - Removing a server connection presents choices: keep orphaned local media, export later, or delete.
 
@@ -626,6 +628,7 @@ Settings:
 - Cleanup never removes the currently playing book.
 - Cleanup never removes a book with unsynced progress/session data.
 - Cleanup never removes pinned downloads.
+- A pin belongs to the shared physical copy on this device, not to an individual profile reference; every authorized profile sees and changes the same pin state.
 - Cleanup respects retention and free-space reserve.
 - The user receives a summary after automatic cleanup.
 - Deletion is transactionally reflected in Room and filesystem state.
