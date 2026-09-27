@@ -195,7 +195,7 @@ class DownloadStorage @Inject constructor(
             .all { directory -> !directory.exists() || directory.deleteRecursively() }
     }
 
-    fun deleteItem(
+    internal fun deleteItem(
         serverId: String,
         itemId: String,
         volumeUuid: String?,
