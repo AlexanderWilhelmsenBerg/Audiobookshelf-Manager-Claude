@@ -553,7 +553,7 @@
     <string name="book_synopsis_less">Show less</string>
     <string name="book_section_about">About this book</string>
     <!--
-      PRODUCT_SPEC DL-001 — one control, four states. The label is the content description, and it names
+      PRODUCT_SPEC DL-001 / PD-003 — one control, five states. The label is the content description, and it names
       what a tap *does* rather than what the book is: "Cancel" and "Remove" are the difference between
       keeping and losing a partial download, and for somebody using TalkBack the label is the only clue.
     -->
