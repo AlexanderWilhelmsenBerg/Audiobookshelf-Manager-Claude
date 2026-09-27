@@ -245,7 +245,11 @@ class DownloadsViewModelTest {
         assertTrue(useCase(bookId) is AppResult.Success)
 
         assertEquals(listOf(bookId), downloads.requested)
-        assertEquals(emptyList(), scheduler.enqueued, "the existing complete physical copy must not be downloaded again")
+        assertEquals(
+            emptyList(),
+            scheduler.enqueued,
+            "the existing complete physical copy must not be downloaded again",
+        )
     }
 
     @Test
@@ -656,11 +660,7 @@ class DownloadsViewModelTest {
             return AppResult.Success(Unit)
         }
 
-        override suspend fun setPinned(
-            serverId: ServerId,
-            itemId: LibraryItemId,
-            isPinned: Boolean,
-        ): AppResult<Unit> {
+        override suspend fun setPinned(serverId: ServerId, itemId: LibraryItemId, isPinned: Boolean): AppResult<Unit> {
             pinned += itemId to isPinned
             return AppResult.Success(Unit)
         }
