@@ -112,6 +112,9 @@ internal class FakeOfflineFiles : OfflineFiles {
     override suspend fun discardPartials(serverId: ServerId, bookId: LibraryItemId): AppResult<Long> =
         AppResult.Success(0)
 
+    override suspend fun partialBytes(serverId: ServerId, bookId: LibraryItemId): AppResult<Long> =
+        AppResult.Success(0)
+
     override suspend fun sweepOrphans(): AppResult<Long> = AppResult.Success(0)
 }
 
@@ -177,7 +180,6 @@ internal class FakeDownloadRepository(stored: List<OfflineBook> = emptyList()) :
     override suspend fun setPinned(
         serverId: ServerId,
         itemId: LibraryItemId,
-        profileId: ProfileId,
         isPinned: Boolean,
     ): AppResult<Unit> {
         pinned += itemId to isPinned
