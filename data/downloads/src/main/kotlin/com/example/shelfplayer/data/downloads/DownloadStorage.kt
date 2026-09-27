@@ -40,6 +40,7 @@ internal enum class StorageDeleteResult {
  * chooses their own folder they give that up deliberately, and ADR-0018 records it as a deviation.
  */
 @Singleton
+@Suppress("TooManyFunctions")
 class DownloadStorage @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val volumes: DownloadRoots,
