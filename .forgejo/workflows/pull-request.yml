@@ -535,7 +535,7 @@ jobs:
           mkdir -p ci-diagnostics
 
           set +e
-          env -u FORGEJO_TOKEN -u GITHUB_TOKEN             ./gradlew quickKtlint --max-workers="$GRADLE_MAX_WORKERS"               -Pshelfplayer.warningsAsErrors=true 2>&1             | tee ci-diagnostics/gradle-quick.log
+          env -u FORGEJO_TOKEN -u GITHUB_TOKEN             ./gradlew quickKtlint --continue --max-workers="$GRADLE_MAX_WORKERS"               -Pshelfplayer.warningsAsErrors=true 2>&1             | tee ci-diagnostics/gradle-quick.log
           status="${PIPESTATUS[0]}"
           set -e
 
