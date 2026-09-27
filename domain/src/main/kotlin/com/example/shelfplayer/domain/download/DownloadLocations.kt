@@ -21,8 +21,7 @@ interface DownloadLocations {
     fun observeSelected(): Flow<String>
 
     /** Aggregate mounted/reachable UUID set; used to react to card removal/reinsertion without per-row listeners. */
-    fun observeAvailableVolumeUuids(): Flow<Set<String>> =
-        flowOf(setOf(StorageVolumeOption.INTERNAL_UUID))
+    fun observeAvailableVolumeUuids(): Flow<Set<String>> = flowOf(setOf(StorageVolumeOption.INTERNAL_UUID))
 
     /**
      * Current accessibility of one physical copy's durable owner.
