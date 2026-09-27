@@ -58,6 +58,18 @@ class DownloadsScreenTest {
 
     @Test
     fun `execution states render explicit listener-facing status copy`() {
+        var recoveryState by mutableStateOf(DownloadRecoveryState.Queued)
+        compose.setContent {
+            DownloadsScreen(
+                uiState = state(recoveryState),
+                onRemove = { _, _ -> },
+                onPinnedChanged = { _, _, _ -> },
+                onRecoveryAction = { _, _ -> },
+                onVerify = {},
+                onNavigateUp = {},
+            )
+        }
+
         val expected = listOf(
             DownloadRecoveryState.Queued to "Queued",
             DownloadRecoveryState.Running to "Downloading",
@@ -67,7 +79,8 @@ class DownloadsScreenTest {
         )
 
         expected.forEach { (state, text) ->
-            render(state)
+            recoveryState = state
+            compose.waitForIdle()
             compose.onNodeWithText(text, substring = true).assertExists()
         }
     }
