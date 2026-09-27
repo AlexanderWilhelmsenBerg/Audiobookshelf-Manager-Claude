@@ -52,8 +52,8 @@ class DownloadProgressProjectionTest {
         )
 
         val visible = listOf(
-            notification.extras.getCharSequence(Notification.EXTRA_TITLE).orEmpty().toString(),
-            notification.extras.getCharSequence(Notification.EXTRA_TEXT).orEmpty().toString(),
+            notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty(),
+            notification.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty(),
         ).joinToString(" ")
         assertTrue(visible.contains("Waiting for an allowed network"))
         assertFalse(visible.contains(server.value))
