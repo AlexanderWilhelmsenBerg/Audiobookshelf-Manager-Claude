@@ -134,25 +134,23 @@ class DownloadVerifier @Inject constructor(
         readContainer: Boolean,
         ownerAvailability: DownloadStorageState,
         verifier: MediaContainerVerifier,
-    ): DownloadStorageState {
-        if (ownerAvailability == DownloadStorageState.Unavailable) return DownloadStorageState.Unavailable
-        if (uri.startsWith(CONTENT_SCHEME)) return DownloadStorageState.Unknown
+    ): DownloadStorageState = when {
+        ownerAvailability == DownloadStorageState.Unavailable -> DownloadStorageState.Unavailable
+        uri.startsWith(CONTENT_SCHEME) -> DownloadStorageState.Unknown
 
-        val file = fileOf(uri)
-        if (file == null || !file.isFile) {
-            return if (ownerAvailability == DownloadStorageState.Unknown) {
-                DownloadStorageState.Unknown
-            } else {
-                DownloadStorageState.Missing
+        else -> {
+            val file = fileOf(uri)
+            when {
+                file == null || !file.isFile -> if (ownerAvailability == DownloadStorageState.Unknown) {
+                    DownloadStorageState.Unknown
+                } else {
+                    DownloadStorageState.Missing
+                }
+
+                expectedBytes > 0 && file.length() != expectedBytes -> DownloadStorageState.Missing
+                readContainer && !verifier.isReadable(file) -> DownloadStorageState.Corrupt
+                else -> DownloadStorageState.Available
             }
-        }
-        if (expectedBytes > 0 && file.length() != expectedBytes) return DownloadStorageState.Missing
-        if (readContainer && !verifier.isReadable(file)) return DownloadStorageState.Corrupt
-        return if (ownerAvailability == DownloadStorageState.Unknown) {
-            // The durable owner remains unknown, but the file itself is currently reachable and intact.
-            DownloadStorageState.Available
-        } else {
-            DownloadStorageState.Available
         }
     }
 
