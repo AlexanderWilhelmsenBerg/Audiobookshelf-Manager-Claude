@@ -351,7 +351,6 @@
     <string name="downloads_verify">Kontroller nedlastede filer</string>
     <string name="downloads_hidden_title">En bok i et bibliotek denne profilen ikke ser</string>
     <string name="downloads_other_profile_copy">Nedlastet på denne enheten for en annen profil</string>
-    <string name="downloads_incomplete">ufullstendig</string>
     <string name="downloads_queued">I kø</string>
     <string name="downloads_downloading">Laster ned</string>
     <string name="downloads_waiting">Venter på et tillatt nettverk</string>
