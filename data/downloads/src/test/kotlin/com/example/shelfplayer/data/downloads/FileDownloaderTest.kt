@@ -461,8 +461,7 @@ class FileDownloaderTest {
     }
 
     /** Normal direct-file tests model a new copy with an explicit internal-storage owner. */
-    private suspend fun download(file: OfflineFile): AppResult<OfflineFile> =
-        downloader.download(
+    private suspend fun download(file: OfflineFile): AppResult<OfflineFile> = downloader.download(
             profileId = PROFILE,
             serverId = SERVER,
             itemId = BOOK,
