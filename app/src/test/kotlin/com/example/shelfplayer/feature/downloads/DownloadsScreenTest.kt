@@ -169,6 +169,33 @@ class DownloadsScreenTest {
     }
 
     @Test
+    fun `another profiles copy is visible but has no profile-scoped remove or recovery action`() {
+        compose.setContent {
+            DownloadsScreen(
+                uiState = state(DownloadRecoveryState.Complete).copy(
+                    books = listOf(
+                        state(DownloadRecoveryState.Complete).books.single().copy(
+                            isClaimedByActiveProfile = false,
+                            isOnDeviceForAnotherProfile = true,
+                        ),
+                    ),
+                ),
+                onRemove = { _, _ -> },
+                onPinnedChanged = { _, _, _ -> },
+                onRecoveryAction = { _, _ -> },
+                onVerify = {},
+                onNavigateUp = {},
+            )
+        }
+
+        compose.onNodeWithText("Downloaded on this device for another profile", substring = true).assertExists()
+        compose.onNodeWithContentDescription("Remove this download").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Pause this download").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Resume this download").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Retry this download").assertDoesNotExist()
+    }
+
+    @Test
     fun `queued waiting retrying and complete rows expose no recovery action`() {
         var recoveryState by mutableStateOf(DownloadRecoveryState.Queued)
         compose.setContent {
