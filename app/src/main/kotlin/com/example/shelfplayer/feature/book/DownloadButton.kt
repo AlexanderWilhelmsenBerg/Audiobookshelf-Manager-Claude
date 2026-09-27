@@ -23,11 +23,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
 
-/** So a test can find the button without depending on which of its four icons is showing. */
+/** So a test can find the button without depending on which of its five icons is showing. */
 internal const val BOOK_DOWNLOAD_BUTTON = "book-download-button"
 
 /**
- * PRODUCT_SPEC DL-001 — one button, four states, and each tap means the obvious thing.
+ * PRODUCT_SPEC DL-001 / PD-003 — one button, five states, and each tap means the obvious thing.
  *
  * ### Why one control rather than separate download and delete
  *
@@ -36,7 +36,11 @@ internal const val BOOK_DOWNLOAD_BUTTON = "book-download-button"
  * Audiobookshelf app does, and the reason both landed there is that a book is in exactly one of those
  * states, so a second control would always be the one that does nothing.
  *
- * The fourth state is **failed**, which ShelfPlayer does not surface separately. It is added here because
+ * The extra states are **failed** and **on device for another profile**. Failed gives retry rather than
+ * hiding the error; OnDevice lets an entitled profile claim the existing physical copy without another
+ * transfer.
+ *
+ * The failed state is added because
  * this app has to work against a self-hosted server on a home connection, where a stopped download is
  * common and "tap to try again" is a more useful thing to show than an idle download icon that hides the
  * fact that something already went wrong.
@@ -92,7 +96,7 @@ internal fun DownloadButton(state: DownloadButtonState, onClick: () -> Unit, mod
 /**
  * What the button is showing, and therefore what a tap does.
  *
- * A sealed hierarchy rather than an enum plus a nullable float, because three of the four states have no
+ * A sealed hierarchy rather than an enum plus a nullable float, because four of the five states have no
  * progress and a reader should not have to know which. The label travels with the state for the same
  * reason: the content description is the only thing that distinguishes *cancel* from *remove* for somebody
  * using TalkBack, and pairing it with the icon here makes them impossible to get out of step.
