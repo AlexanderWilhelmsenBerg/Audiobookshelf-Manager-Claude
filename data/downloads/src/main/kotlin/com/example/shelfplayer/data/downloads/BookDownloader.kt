@@ -63,6 +63,7 @@ class BookDownloader @Inject constructor(
      *   Called as bytes arrive; it must not block.
      * @return the completed book, or the reason it is not complete.
      */
+    @Suppress("LongMethod")
     suspend fun download(
         profileId: ProfileId,
         serverId: ServerId,
@@ -249,6 +250,7 @@ class BookDownloader @Inject constructor(
      * Separate from [remove] because it is a different decision: this keeps the manifest and the claim, so
      * the book still shows as *not downloaded* rather than disappearing, and a later tap starts it cleanly.
      */
+    @Suppress("ReturnCount")
     override suspend fun discardPartials(serverId: ServerId, bookId: LibraryItemId): AppResult<Long> {
         val manifest = repository.observe(serverId, bookId).first() ?: return AppResult.Success(0L)
         val committedUris = manifest.files.map(OfflineFile::uri)
