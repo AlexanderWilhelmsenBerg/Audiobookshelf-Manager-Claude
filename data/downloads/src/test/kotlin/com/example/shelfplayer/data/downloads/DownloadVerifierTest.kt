@@ -283,7 +283,7 @@ class DownloadVerifierTest {
             BOOK,
             planned.copy(state = DownloadState.Complete, downloadedBytes = bytes.toLong()),
         )
-        assertNotNull(repository.observe(SERVER, BOOK).first())
+        assertNotNull(repository.markComplete(SERVER, BOOK, coverUri = null).getOrNull())
     }
 
     private suspend fun setVolumeOwner(uuid: String?) {
