@@ -34,8 +34,9 @@ interface DownloadDao {
      * a fact about the device rather than about an account.
      *
      * PRODUCT_SPEC 5.2 still applies to what may be *shown*: a caller renders the title only for a book the
-     * current profile can see, and everything else as an untitled row with its size. The boundary is at the
-     * screen because the deletion this list exists for has to be possible for a row nobody can name.
+     * current profile can see, and everything else as an untitled row with its size. PD-003 keeps destructive
+     * actions claim-scoped, so an unclaimed hidden row is visible for device accounting but is not removable
+     * by the active profile.
      */
     @Transaction
     @Query("SELECT * FROM downloaded_books ORDER BY updatedAt DESC")
