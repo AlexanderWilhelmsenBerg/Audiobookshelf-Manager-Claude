@@ -33,8 +33,8 @@ interface DownloadRepository {
      *
      * Not scoped to a profile, by decision 6: the storage screen answers *"what is using space here"*, which
      * is a fact about the device. PRODUCT_SPEC 5.2 is honoured at the screen — a book the current profile
-     * cannot see is listed with its size and without its title — because the deletion this list exists for
-     * has to work on a row nobody can name.
+     * cannot see is listed with its size and without its title. PD-003 keeps Remove profile-scoped, so such
+     * a row is device-accounting information rather than authority to delete another profile's claim.
      */
     fun observeAll(): Flow<List<OfflineBook>>
 
