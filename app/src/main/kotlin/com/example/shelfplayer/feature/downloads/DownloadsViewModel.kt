@@ -52,8 +52,8 @@ import javax.inject.Inject
  * settings."* This screen answers *what is using space on this phone*, which is a fact about the device.
  *
  * PRODUCT_SPEC 5.2 is honoured at the **title**, not at the row. A book the current profile cannot see is
- * listed with its size and without its name, because the whole reason the list exists is to be able to
- * delete it — and a row nobody can name is exactly the row somebody needs to remove.
+ * listed with its size and without its name so device usage remains truthful. PD-003 still keeps Remove
+ * profile-scoped: a row the active profile does not claim is informational and exposes no destructive action.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
