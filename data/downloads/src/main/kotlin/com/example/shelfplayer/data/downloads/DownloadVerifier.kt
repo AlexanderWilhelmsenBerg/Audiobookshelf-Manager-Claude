@@ -136,6 +136,7 @@ class DownloadVerifier @Inject constructor(
         verifier: MediaContainerVerifier,
     ): DownloadStorageState = when {
         ownerAvailability == DownloadStorageState.Unavailable -> DownloadStorageState.Unavailable
+
         uri.startsWith(CONTENT_SCHEME) -> DownloadStorageState.Unknown
 
         else -> {
@@ -148,7 +149,9 @@ class DownloadVerifier @Inject constructor(
                 }
 
                 expectedBytes > 0 && file.length() != expectedBytes -> DownloadStorageState.Missing
+
                 readContainer && !verifier.isReadable(file) -> DownloadStorageState.Corrupt
+
                 else -> DownloadStorageState.Available
             }
         }
