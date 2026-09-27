@@ -140,6 +140,11 @@ class BookDownloaderTest {
     fun `progress is weighted by size rather than by file count`() = runTest {
         repository.request(SERVER, BOOK, ADA, files(sizes = listOf(100, 1_000, 100)))
         val seen = mutableListOf<DownloadProgress>()
+        api.bodyBytesByFile = mapOf(
+            "file-1" to 100,
+            "file-2" to 1_000,
+            "file-3" to 100,
+        )
 
         downloader.download(ADA, SERVER, BOOK) { seen += it }
 
@@ -356,6 +361,7 @@ class BookDownloaderTest {
         val fetched = mutableListOf<String>()
         var failOn: String? = null
         var afterWrite: (() -> Unit)? = null
+        var bodyBytesByFile: Map<String, Int> = emptyMap()
 
         /** Writes bytes and *then* fails, which is how a real dropped connection leaves a `.part` behind. */
         var truncateOn: String? = null
@@ -375,7 +381,7 @@ class BookDownloaderTest {
                 sink(false).use { stream -> stream.write(ByteArray(BODY_BYTES / 2)) }
                 return AppResult.Failure(AppError.Network())
             }
-            val body = ByteArray(BODY_BYTES) { 'a'.code.toByte() }
+            val body = ByteArray(bodyBytesByFile[fileId] ?: BODY_BYTES) { 'a'.code.toByte() }
             sink(false).use { stream -> stream.write(body) }
             onProgress(body.size.toLong())
             afterWrite?.invoke()
@@ -406,6 +412,7 @@ class BookDownloaderTest {
             failOn = null
             truncateOn = null
             afterWrite = null
+            bodyBytesByFile = emptyMap()
         }
 
         private companion object {
