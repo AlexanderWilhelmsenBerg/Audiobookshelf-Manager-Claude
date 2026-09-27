@@ -1,13 +1,17 @@
 package com.example.shelfplayer.download
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.text.format.Formatter
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.example.shelfplayer.MainActivity
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.LibraryItemId
@@ -51,13 +55,21 @@ class DownloadNotificationFactory @Inject constructor(@param:ApplicationContext 
     }
 
     fun notificationId(serverId: ServerId, itemId: LibraryItemId): Int =
-        NOTIFICATION_ID_BASE + (BookDownloadWorker.nameFor(serverId, itemId).hashCode() and 0x3fff_ffff)
+        NOTIFICATION_ID_BASE + (BookDownloadWorker.nameFor(serverId, itemId).hashCode() and NOTIFICATION_ID_HASH_MASK)
 
     fun cancel(serverId: ServerId, itemId: LibraryItemId) {
         NotificationManagerCompat.from(context).cancel(notificationId(serverId, itemId))
     }
 
     fun post(serverId: ServerId, itemId: LibraryItemId, state: DownloadRecoveryState, progress: DownloadProgress?) {
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
         NotificationManagerCompat.from(context).notify(
             notificationId(serverId, itemId),
             notification(serverId, itemId, state, progress),
@@ -111,6 +123,7 @@ class DownloadNotificationFactory @Inject constructor(@param:ApplicationContext 
         private const val CHANNEL_ID = "shelfplayer.downloads"
         private const val NOTIFICATION_GROUP = "bookwave.downloads"
         private const val NOTIFICATION_ID_BASE = 4_200
+        private const val NOTIFICATION_ID_HASH_MASK = 0x3fff_ffff
         private const val PERCENT = 100
     }
 }
