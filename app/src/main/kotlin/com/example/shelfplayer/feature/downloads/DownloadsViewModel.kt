@@ -321,6 +321,10 @@ class DownloadsViewModel @Inject constructor(
         )
         val progress = execution?.progress ?: durableDownloadProgress()
         val claimedByActiveProfile = activeProfileId != null && activeProfileId in requestedBy
+        val sharedWithAnotherProfile =
+            claimedByActiveProfile && requestedBy.any { profileId -> profileId != activeProfileId }
+        val onDeviceForAnotherProfile =
+            activeProfileId != null && !claimedByActiveProfile && requestedBy.isNotEmpty()
         return DownloadRow(
             bookId = itemId,
             serverId = serverId,
@@ -337,10 +341,8 @@ class DownloadsViewModel @Inject constructor(
             failureSummary = recovery.failureSummary.takeIf { book != null },
             isPinned = isPinned,
             isClaimedByActiveProfile = claimedByActiveProfile,
-            isSharedWithAnotherProfile =
-            claimedByActiveProfile && requestedBy.any { profileId -> profileId != activeProfileId },
-            isOnDeviceForAnotherProfile =
-            activeProfileId != null && !claimedByActiveProfile && requestedBy.isNotEmpty(),
+            isSharedWithAnotherProfile = sharedWithAnotherProfile,
+            isOnDeviceForAnotherProfile = onDeviceForAnotherProfile,
             partialBytes = partialBytes,
             progress = progress.takeUnless { recovery.state == DownloadRecoveryState.Complete },
             storageState = storageState,
