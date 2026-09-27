@@ -166,9 +166,9 @@ internal fun classifyDownloadWork(
     WorkInfo.State.CANCELLED -> DownloadExecutionEvidence.Cancelled
 }
 
-private fun DownloadNetworkSnapshot.satisfies(required: NetworkType): Boolean = when (required) {
-    NetworkType.NOT_REQUIRED -> true
-    NetworkType.UNMETERED -> isOnline && isUnmetered
+private fun DownloadNetworkSnapshot.satisfies(required: NetworkType): Boolean = when {
+    required == NetworkType.NOT_REQUIRED -> true
+    required == NetworkType.UNMETERED -> isOnline && isUnmetered
     else -> isOnline
 }
 
