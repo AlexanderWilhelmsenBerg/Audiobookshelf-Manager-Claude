@@ -159,10 +159,9 @@ class DefaultDownloadRepository @Inject constructor(
         if (current?.state == DownloadState.Paused.name) touch(key, state = DownloadState.Queued)
     }
 
-    override suspend fun setPinned(serverId: ServerId, itemId: LibraryItemId, isPinned: Boolean): AppResult<Unit> =
-        io {
-            downloadDao.setPinned(keyOf(serverId, itemId), isPinned)
-        }
+    override suspend fun setPinned(serverId: ServerId, itemId: LibraryItemId, isPinned: Boolean): AppResult<Unit> = io {
+        downloadDao.setPinned(keyOf(serverId, itemId), isPinned)
+    }
 
     override suspend fun release(serverId: ServerId, itemId: LibraryItemId, profileId: ProfileId): AppResult<Boolean> =
         io {
