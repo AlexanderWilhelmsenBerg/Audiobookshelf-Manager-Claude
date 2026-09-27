@@ -563,7 +563,7 @@
     <string name="book_download_remove">Remove the download</string>
     <string name="book_download_retry">Retry the download</string>
     <string name="book_download_remove_title">Remove this download?</string>
-    <string name="book_download_remove_body">This removes the book from this profile's downloads. If no other profile uses the copy, its audio files are removed and the space is freed. If another profile still uses it, the files stay on this device. Nothing is deleted on your server, your position is kept, and you can add the download again whenever you like.</string>
+    <string name="book_download_remove_body">This removes the book from this profile’s downloads. If no other profile uses the copy, its audio files are removed and the space is freed. If another profile still uses it, the files stay on this device. Nothing is deleted on your server, your position is kept, and you can add the download again whenever you like.</string>
     <string name="book_download_remove_confirm">Remove</string>
     <string name="book_download_remove_cancel">Keep it</string>
     <!--
