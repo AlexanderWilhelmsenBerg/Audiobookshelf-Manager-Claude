@@ -338,9 +338,9 @@ class DownloadsViewModel @Inject constructor(
             isPinned = isPinned,
             isClaimedByActiveProfile = claimedByActiveProfile,
             isSharedWithAnotherProfile =
-                claimedByActiveProfile && requestedBy.any { profileId -> profileId != activeProfileId },
+            claimedByActiveProfile && requestedBy.any { profileId -> profileId != activeProfileId },
             isOnDeviceForAnotherProfile =
-                activeProfileId != null && !claimedByActiveProfile && requestedBy.isNotEmpty(),
+            activeProfileId != null && !claimedByActiveProfile && requestedBy.isNotEmpty(),
             partialBytes = partialBytes,
             progress = progress.takeUnless { recovery.state == DownloadRecoveryState.Complete },
             storageState = storageState,
@@ -416,10 +416,7 @@ internal fun DownloadRecoveryState.rowAction(): DownloadRecoveryAction? = when (
 /**
  * @property totalBytes what every download occupies, which is the number somebody came to this screen for.
  */
-private data class VisibleBooks(
-    val profileId: ProfileId?,
-    val books: List<Book>,
-)
+private data class VisibleBooks(val profileId: ProfileId?, val books: List<Book>)
 
 private data class DownloadTransientPresentation(
     val executions: Map<DownloadExecutionKey, DownloadExecutionSnapshot>,
