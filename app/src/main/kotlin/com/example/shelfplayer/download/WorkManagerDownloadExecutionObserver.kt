@@ -168,39 +168,39 @@ internal fun classifyDownloadWork(
 
 private fun DownloadNetworkSnapshot.satisfies(required: NetworkType): Boolean = when (required) {
     NetworkType.NOT_REQUIRED -> true
-
-    NetworkType.CONNECTED -> isOnline
-
     NetworkType.UNMETERED -> isOnline && isUnmetered
-
-    NetworkType.NOT_ROAMING,
-    NetworkType.METERED,
-    NetworkType.TEMPORARILY_UNMETERED,
-    -> isOnline
+    else -> isOnline
 }
 
 private fun WorkInfo.downloadProgress(): DownloadProgress? {
-    val downloaded = progress.getLong(BookDownloadWorker.KEY_PROGRESS_BYTES, -1L)
-    val percent = progress.getInt(BookDownloadWorker.KEY_PROGRESS_PERCENT, -1)
-    if (downloaded < 0L || percent !in 0..100) return null
+    val downloaded = progress.getLong(BookDownloadWorker.KEY_PROGRESS_BYTES, UNKNOWN_PROGRESS_BYTES)
+    val percent = progress.getInt(BookDownloadWorker.KEY_PROGRESS_PERCENT, UNKNOWN_PROGRESS_PERCENT)
+    if (downloaded < 0L || percent !in 0..PROGRESS_PERCENT_MAX) return null
 
-    val total = progress.getLong(BookDownloadWorker.KEY_PROGRESS_TOTAL_BYTES, -1L).takeIf { it > 0L }
+    val total = progress.getLong(BookDownloadWorker.KEY_PROGRESS_TOTAL_BYTES, UNKNOWN_PROGRESS_BYTES).takeIf { it > 0L }
     return DownloadProgress(
         downloadedBytes = downloaded,
         totalBytes = total,
-        fraction = percent / 100f,
+        fraction = percent / PROGRESS_PERCENT_MAX.toFloat(),
     )
 }
 
 private fun WorkInfo.executionPriority(): Int = when (state) {
-    WorkInfo.State.RUNNING -> 3
+    WorkInfo.State.RUNNING -> PRIORITY_RUNNING
 
     WorkInfo.State.ENQUEUED,
     WorkInfo.State.BLOCKED,
-    -> 2
+    -> PRIORITY_PENDING
 
     WorkInfo.State.SUCCEEDED,
     WorkInfo.State.FAILED,
     WorkInfo.State.CANCELLED,
-    -> 1
+    -> PRIORITY_FINISHED
 }
+
+private const val UNKNOWN_PROGRESS_BYTES = -1L
+private const val UNKNOWN_PROGRESS_PERCENT = -1
+private const val PROGRESS_PERCENT_MAX = 100
+private const val PRIORITY_RUNNING = 3
+private const val PRIORITY_PENDING = 2
+private const val PRIORITY_FINISHED = 1
