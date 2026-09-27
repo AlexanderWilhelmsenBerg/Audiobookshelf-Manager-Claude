@@ -478,7 +478,6 @@
     <!-- PRODUCT_SPEC 5.2 — a book the signed-in profile may not see is listed, and not named. -->
     <string name="downloads_hidden_title">A book in a library this profile cannot see</string>
     <string name="downloads_other_profile_copy">Downloaded on this device for another profile</string>
-    <string name="downloads_incomplete">incomplete</string>
     <string name="downloads_queued">Queued</string>
     <string name="downloads_downloading">Downloading</string>
     <string name="downloads_waiting">Waiting for an allowed network</string>
