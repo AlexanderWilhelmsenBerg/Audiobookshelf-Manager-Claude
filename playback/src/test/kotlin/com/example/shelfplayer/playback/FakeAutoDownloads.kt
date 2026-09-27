@@ -50,7 +50,6 @@ internal object FakeAutoDownloads : DownloadRepository {
     override suspend fun setPinned(
         serverId: ServerId,
         itemId: LibraryItemId,
-        profileId: ProfileId,
         isPinned: Boolean,
     ): AppResult<Unit> = error("Not used by Android Auto browse tests")
 
