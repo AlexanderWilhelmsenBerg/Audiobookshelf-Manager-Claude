@@ -41,6 +41,7 @@ import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.DownloadBookUseCase
 import com.example.shelfplayer.domain.usecase.PauseDownloadUseCase
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -306,6 +307,7 @@ class DownloadsViewModelTest {
         }
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun `discard partials is separate from retry and reports only actually reclaimed bytes`() = runTest {
         val book = offlineBook("tidewatch", state = DownloadState.Failed)
