@@ -265,6 +265,19 @@ class BookOverflowMenuScreenTest {
         composeRule.onNodeWithContentDescription("Remove the download").assertIsDisplayed()
     }
 
+    @Test
+    fun `a copy downloaded for another profile offers instant attachment instead of removal`() {
+        val taps = mutableListOf<DownloadButtonState>()
+        render(download = DownloadButtonState.OnDevice, onDownloadClicked = { taps += it })
+
+        composeRule.onNodeWithContentDescription("Use the downloaded copy").performClick()
+
+        assertEquals(listOf<DownloadButtonState>(DownloadButtonState.OnDevice), taps)
+        composeRule.onNodeWithContentDescription("Remove the download").assertDoesNotExist()
+        composeRule.onNodeWithText("Downloaded on this device for another profile", substring = true)
+            .assertIsDisplayed()
+    }
+
     /** A stopped download says so, rather than looking like one that was never started. */
     @Test
     fun `a failed download offers a retry`() {
@@ -289,9 +302,10 @@ class BookOverflowMenuScreenTest {
 
         composeRule.onNodeWithText("Remove this download?").assertIsDisplayed()
         composeRule.onNodeWithText(
-            "The audio files come off this device and the space is freed. Nothing is deleted on your " +
-                "server, your position is kept, and you can download it again whenever you like. If another " +
-                "profile on this phone downloaded the same book, their copy stays.",
+            "This removes the book from this profile's downloads. If no other profile uses the copy, its " +
+                "audio files are removed and the space is freed. If another profile still uses it, the files " +
+                "stay on this device. Nothing is deleted on your server, your position is kept, and you can " +
+                "add the download again whenever you like.",
         ).assertIsDisplayed()
         assertEquals(0, removed, "nothing happens until it is confirmed")
 
