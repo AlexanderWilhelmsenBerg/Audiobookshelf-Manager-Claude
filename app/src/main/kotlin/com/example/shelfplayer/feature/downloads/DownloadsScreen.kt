@@ -118,13 +118,13 @@ fun DownloadsScreen(
         com.example.shelfplayer.core.model.LibraryItemId,
         com.example.shelfplayer.domain.download.DownloadRecoveryState,
     ) -> Unit,
+    onVerify: () -> Unit,
+    onNavigateUp: () -> Unit,
+    modifier: Modifier = Modifier,
     onDiscardPartials: (
         com.example.shelfplayer.core.model.LibraryItemId,
         com.example.shelfplayer.core.model.ServerId,
     ) -> Unit = { _, _ -> },
-    onVerify: () -> Unit,
-    onNavigateUp: () -> Unit,
-    modifier: Modifier = Modifier,
     message: String? = null,
     onMessageShown: () -> Unit = {},
     volumes: List<StorageVolumeOption> = emptyList(),
@@ -373,35 +373,7 @@ private fun DownloadRowItem(
                     // this field redacted in the ViewModel and therefore keep the generic incomplete copy.
                     stringResource(R.string.downloads_other_profile_copy)
                         .takeIf { row.isOnDeviceForAnotherProfile },
-                    when {
-                        row.storageState == DownloadStorageState.Unavailable ->
-                            stringResource(R.string.downloads_storage_unavailable)
-
-                        row.storageState == DownloadStorageState.Unknown && row.isComplete ->
-                            stringResource(R.string.downloads_storage_unknown)
-
-                        else -> when (row.recoveryState) {
-                            com.example.shelfplayer.domain.download.DownloadRecoveryState.Complete -> null
-
-                            com.example.shelfplayer.domain.download.DownloadRecoveryState.Paused ->
-                                stringResource(R.string.downloads_paused)
-
-                            com.example.shelfplayer.domain.download.DownloadRecoveryState.Queued ->
-                                stringResource(R.string.downloads_queued)
-
-                            com.example.shelfplayer.domain.download.DownloadRecoveryState.Running ->
-                                stringResource(R.string.downloads_downloading)
-
-                            com.example.shelfplayer.domain.download.DownloadRecoveryState.Waiting ->
-                                stringResource(R.string.downloads_waiting)
-
-                            com.example.shelfplayer.domain.download.DownloadRecoveryState.Retrying ->
-                                stringResource(R.string.downloads_retrying)
-
-                            com.example.shelfplayer.domain.download.DownloadRecoveryState.Failed ->
-                                row.failureSummary ?: stringResource(R.string.downloads_failed)
-                        }
-                    },
+                    downloadRowStatusText(row),
                 ).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 // A paused download is not an error and is not coloured like one. That distinction is the
@@ -463,6 +435,37 @@ private fun DownloadRowItem(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun downloadRowStatusText(row: DownloadRow): String? = when {
+    row.storageState == DownloadStorageState.Unavailable ->
+        stringResource(R.string.downloads_storage_unavailable)
+
+    row.storageState == DownloadStorageState.Unknown && row.isComplete ->
+        stringResource(R.string.downloads_storage_unknown)
+
+    else -> when (row.recoveryState) {
+        com.example.shelfplayer.domain.download.DownloadRecoveryState.Complete -> null
+
+        com.example.shelfplayer.domain.download.DownloadRecoveryState.Paused ->
+            stringResource(R.string.downloads_paused)
+
+        com.example.shelfplayer.domain.download.DownloadRecoveryState.Queued ->
+            stringResource(R.string.downloads_queued)
+
+        com.example.shelfplayer.domain.download.DownloadRecoveryState.Running ->
+            stringResource(R.string.downloads_downloading)
+
+        com.example.shelfplayer.domain.download.DownloadRecoveryState.Waiting ->
+            stringResource(R.string.downloads_waiting)
+
+        com.example.shelfplayer.domain.download.DownloadRecoveryState.Retrying ->
+            stringResource(R.string.downloads_retrying)
+
+        com.example.shelfplayer.domain.download.DownloadRecoveryState.Failed ->
+            row.failureSummary ?: stringResource(R.string.downloads_failed)
     }
 }
 
