@@ -75,7 +75,7 @@ class FileDownloader @Inject constructor(
      * verify, atomically commit, then publish the completed manifest. Keeping those transitions together
      * makes the crash boundary visible; extracting them would hide the order behind parameter-heavy helpers.
      */
-    @Suppress("LongMethod", "ReturnCount")
+    @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod")
     suspend fun download(
         profileId: ProfileId,
         serverId: ServerId,
