@@ -370,6 +370,7 @@ class BookViewModel @Inject constructor(
                 -> report(downloadBook(bookId))
 
                 is DownloadButtonState.Downloading -> report(server.removeDownload.cancel(bookId))
+
                 is DownloadButtonState.Downloaded -> Unit
             }
         }
