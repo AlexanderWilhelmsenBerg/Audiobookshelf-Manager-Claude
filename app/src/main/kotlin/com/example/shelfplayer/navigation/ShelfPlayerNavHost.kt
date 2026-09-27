@@ -36,8 +36,8 @@ fun ShelfPlayerNavHost(
     onBookPlaySelected: (LibraryItemId) -> Unit,
     playbackMessage: String?,
     onPlaybackMessageShown: () -> Unit,
-    openDownloadsRequest: Int = 0,
     modifier: Modifier = Modifier,
+    openDownloadsRequest: Int = 0,
     navController: NavHostController = rememberNavController(),
 ) {
     LaunchedEffect(openDownloadsRequest, startDestination) {
