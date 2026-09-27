@@ -33,7 +33,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class WorkManagerDownloadExecutionObserver @Inject constructor(
-    @param:ApplicationContext context: Context,
+    @ApplicationContext context: Context,
     private val network: NetworkMonitor,
 ) : DownloadExecutionObserver {
     private val workManager = WorkManager.getInstance(context)
