@@ -253,6 +253,23 @@ class DownloadsViewModelTest {
     }
 
     @Test
+    fun `another profiles complete copy still requires active profile entitlement`() = runTest {
+        val scheduler = TrackingScheduler()
+        val bookId = LibraryItemId("tidewatch")
+        downloads.emit(listOf(offlineBook("tidewatch", requestedBy = setOf(GRACE))))
+        val deniedAssets = object : BookAssetSource {
+            override suspend fun assetsFor(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookAssets> =
+                AppResult.Failure(AppError.Authorization(summary = "This book is not in your library."))
+        }
+        val useCase = DownloadBookUseCase(FakeProfiles(), deniedAssets, downloads, scheduler)
+
+        assertTrue(useCase(bookId) is AppResult.Failure)
+
+        assertEquals(emptyList(), downloads.requested)
+        assertEquals(emptyList(), scheduler.enqueued)
+    }
+
+    @Test
     fun `states without a manual recovery action call neither use case`() = runTest {
         val scheduler = TrackingScheduler()
         val viewModel = viewModel(scheduler)
