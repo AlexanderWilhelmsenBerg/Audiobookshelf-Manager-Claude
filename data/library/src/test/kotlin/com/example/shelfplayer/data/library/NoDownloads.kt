@@ -53,11 +53,8 @@ internal object NoDownloads : DownloadRepository {
 
     override suspend fun markQueued(serverId: ServerId, itemId: LibraryItemId): AppResult<Unit> = unsupported()
 
-    override suspend fun setPinned(
-        serverId: ServerId,
-        itemId: LibraryItemId,
-        isPinned: Boolean,
-    ): AppResult<Unit> = unsupported()
+    override suspend fun setPinned(serverId: ServerId, itemId: LibraryItemId, isPinned: Boolean): AppResult<Unit> =
+        unsupported()
 
     override suspend fun release(serverId: ServerId, itemId: LibraryItemId, profileId: ProfileId): AppResult<Boolean> =
         unsupported()
