@@ -462,12 +462,12 @@ class FileDownloaderTest {
 
     /** Normal direct-file tests model a new copy with an explicit internal-storage owner. */
     private suspend fun download(file: OfflineFile): AppResult<OfflineFile> = downloader.download(
-            profileId = PROFILE,
-            serverId = SERVER,
-            itemId = BOOK,
-            file = file,
-            storageVolumeUuid = StorageVolumeOption.INTERNAL_UUID,
-        )
+        profileId = PROFILE,
+        serverId = SERVER,
+        itemId = BOOK,
+        file = file,
+        storageVolumeUuid = StorageVolumeOption.INTERNAL_UUID,
+    )
 
     private suspend fun storedFile(): OfflineFile =
         assertNotNull(repository.observe(SERVER, BOOK).first()).files.single()
