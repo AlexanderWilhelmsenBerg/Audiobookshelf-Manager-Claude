@@ -302,7 +302,7 @@ class BookOverflowMenuScreenTest {
 
         composeRule.onNodeWithText("Remove this download?").assertIsDisplayed()
         composeRule.onNodeWithText(
-            "This removes the book from this profile's downloads. If no other profile uses the copy, its " +
+            "This removes the book from this profile’s downloads. If no other profile uses the copy, its " +
                 "audio files are removed and the space is freed. If another profile still uses it, the files " +
                 "stay on this device. Nothing is deleted on your server, your position is kept, and you can " +
                 "add the download again whenever you like.",
