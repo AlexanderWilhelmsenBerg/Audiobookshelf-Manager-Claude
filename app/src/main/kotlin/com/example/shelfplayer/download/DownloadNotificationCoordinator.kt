@@ -7,6 +7,7 @@ import com.example.shelfplayer.domain.download.DownloadRecoveryPolicy
 import com.example.shelfplayer.domain.download.DownloadRecoveryState
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -17,6 +18,7 @@ import javax.inject.Singleton
  * #29 — keeps non-running download notifications truthful across process reconstruction and WorkManager
  * retries. Room remains physical truth; WorkManager remains transient execution truth.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
 class DownloadNotificationCoordinator @Inject constructor(
     private val downloads: DownloadRepository,
