@@ -79,7 +79,6 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
-          - "#171 — feat/133-foreground-realtime-sync-clean"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
       variant:
