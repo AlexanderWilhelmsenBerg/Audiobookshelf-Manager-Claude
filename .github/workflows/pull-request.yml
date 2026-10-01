@@ -1,94 +1,336 @@
-name: Pull request
+name: CI · PR verification
 
-# PRODUCT_SPEC 18 — the pull-request gate.
+run-name: "CI · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.ref_name }} · ${{ github.event_name == 'pull_request' && 'quick' || inputs.depth }}"
+
+# GitHub-native BookWave pull-request gate, ported from the improved GitHub CI model.
 #
-# Ordered so the cheapest signal fails first: wrapper validation and secret scanning before anything
-# downloads a dependency, then the single `verifyDebug` command PRODUCT_SPEC 16.5 defines.
+# Keep the repository's GitHub quality contract while adapting execution to the
+# self-hosted linux-amd64 GitHub runner. GitHub workflows remain untouched.
+#
+# Security model:
+# - never expose signing material to pull-request code;
+# - do not persist checkout credentials;
+# - strip the automatic GitHub/GitHub token before invoking repository-controlled
+#   shell or Gradle code;
+# - pin reusable actions and downloaded security tooling immutably.
+#
+# Reliability model:
+# - automatic pull-request events run Quick only;
+# - Quick fails before the expensive Android regression graph;
+# - Standard keeps the complete verifyDebug evidence without packaging an APK;
+# - compute profiles change worker pressure only, never selected evidence;
+# - --rerun-tasks follows build/classpath changes, not workflow-only edits;
+# - an optional debug APK is built only after Standard/Intensive verification has passed.
 
 on:
   pull_request:
-    branches: [main]
-  push:
-    branches: [main]
-    # Opening/closing a PR regenerates only the Build APK dropdown. That generated commit has
-    # already been validated as workflow YAML and does not need the full Android verification lane.
-    paths-ignore:
-      - '.github/workflows/apk.yml'
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'GitHub PR number being verified (optional; branch name is used when omitted)'
+        required: false
+        type: string
+        default: ''
+      depth:
+        description: 'Verification depth'
+        type: choice
+        required: true
+        default: standard
+        options:
+          - quick
+          - standard
+          - intensive
+      compute_profile:
+        description: 'Compute profile; evidence is identical for the same depth'
+        type: choice
+        required: true
+        default: balanced
+        options:
+          - quiet
+          - balanced
+          - fast
+      profiling:
+        description: 'Retain detailed CI telemetry for this run'
+        type: boolean
+        default: true
+      build_apk:
+        description: 'Build and upload a debug APK only after Standard/Intensive checks pass'
+        type: boolean
+        default: false
+      force_rerun:
+        description: 'Force --rerun-tasks even when the diff does not affect the build/classpath'
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
+  # A second manual click should queue, not kill an already-expensive Gradle run. This also avoids
+  # exercising the runner/container cancellation path unnecessarily.
+  cancel-in-progress: false
 
 env:
-  # PRODUCT_SPEC 16.3 — Kotlin compiler warnings are errors in CI, and only in CI.
-  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false
+  # Runner-specific limits. Keep the repository's diagnostics/encoding flags while
+  # bounding Gradle and Kotlin memory independently on the self-hosted runner.
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx3g -Dorg.gradle.daemon=false -Dorg.gradle.project.kotlin.daemon.jvmargs=-Xmx2g
+  JAVA_TOOL_OPTIONS: -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8
+  GRADLE_WRAPPER_JAR_SHA256: 7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172
+  GITLEAKS_VERSION: 8.30.1
+  GITLEAKS_LINUX_X64_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
 
 jobs:
-  wrapper-validation:
-    name: Gradle wrapper validation
+  identity:
+    name: "CI · ${{ github.ref_name }} · resolve target"
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      display_label: ${{ steps.metadata.outputs.display_label }}
+      pr_number: ${{ steps.metadata.outputs.pr_number }}
+      pr_title: ${{ steps.metadata.outputs.pr_title }}
+      pr_head: ${{ steps.metadata.outputs.pr_head }}
+      pr_branch: ${{ steps.metadata.outputs.pr_branch }}
+      selected_branch: ${{ steps.metadata.outputs.selected_branch }}
+      depth: ${{ steps.metadata.outputs.depth }}
+      compute_profile: ${{ steps.metadata.outputs.compute_profile }}
+      profiling: ${{ steps.metadata.outputs.profiling }}
+      build_apk: ${{ steps.metadata.outputs.build_apk }}
+      status_context: ${{ steps.metadata.outputs.status_context }}
     steps:
-      - uses: actions/checkout@v7
-      # PRODUCT_SPEC 18.1 — verifies gradle-wrapper.jar against the known-good checksums, which is
-      # the mitigation for a malicious wrapper jar being committed.
-      - uses: gradle/actions/wrapper-validation@v6
-
-  secret-scan:
-    name: Secret scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      # PRODUCT_SPEC 15 / 18.8 — no production secrets in the repository.
-      #
-      # The binary is installed from a pinned release rather than through the marketplace action,
-      # which is licence-gated for organizations; a scan that silently stops running is worse than
-      # no scan, because the badge still says green.
-      - name: Install gitleaks
+      - name: Resolve PR metadata or branch label
+        id: metadata
         env:
-          GITLEAKS_VERSION: 8.24.0
+          REQUESTED_PR: ${{ inputs.pr_number }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          SELECTED_BRANCH: ${{ github.ref_name }}
+          EVENT_HEAD_BRANCH: ${{ github.head_ref }}
+          REQUESTED_DEPTH: ${{ inputs.depth }}
+          REQUESTED_PROFILE: ${{ inputs.compute_profile }}
+          REQUESTED_PROFILING: ${{ inputs.profiling }}
+          REQUESTED_BUILD_APK: ${{ inputs.build_apk }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          curl -sSfL \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xz -C /usr/local/bin gitleaks
-          gitleaks version
+          set -euo pipefail
 
-      - name: Scan working tree and history
-        run: gitleaks detect --source . --redact --verbose --no-banner
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            requested_pr="$EVENT_PR"
+            selected_branch="$EVENT_HEAD_BRANCH"
+            depth="quick"
+            compute_profile="balanced"
+            profiling="false"
+            build_apk="false"
+          else
+            requested_pr="$REQUESTED_PR"
+            selected_branch="$SELECTED_BRANCH"
+            depth="${REQUESTED_DEPTH:-standard}"
+            compute_profile="${REQUESTED_PROFILE:-balanced}"
+            profiling="${REQUESTED_PROFILING:-false}"
+            build_apk="${REQUESTED_BUILD_APK:-false}"
+          fi
 
-  schema-immutability:
-    name: Committed Room schemas are immutable
+          case "$depth" in quick|standard|intensive) ;; *) echo "::error::Unsupported verification depth: $depth"; exit 1 ;; esac
+          case "$compute_profile" in quiet|balanced|fast) ;; *) echo "::error::Unsupported compute profile: $compute_profile"; exit 1 ;; esac
+          if [ "$depth" = "quick" ] && [ "$build_apk" = "true" ]; then
+            echo "::error::build_apk requires Standard or Intensive verification."
+            exit 1
+          fi
+
+          display_label="$selected_branch"
+          pr_title=""
+          pr_head=""
+          pr_branch=""
+
+          if [ -n "$requested_pr" ]; then
+            if ! [[ "$requested_pr" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::PR number must be a positive integer when supplied: $requested_pr"
+              exit 1
+            fi
+
+            pr_json="$(curl -fsS \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H 'Accept: application/json' \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$requested_pr")"
+
+            pr_values="$(printf '%s' "$pr_json" | node -e '
+              let raw = "";
+              process.stdin.setEncoding("utf8");
+              process.stdin.on("data", chunk => raw += chunk);
+              process.stdin.on("end", () => {
+                const pr = JSON.parse(raw);
+                const title = String(pr.title || "").replace(/\s+/g, " ").trim().slice(0, 120);
+                process.stdout.write(
+                  title + "\t" +
+                  String(pr.head?.sha || "") + "\t" +
+                  String(pr.head?.ref || "")
+                );
+              });
+            ')"
+            IFS=$'\t' read -r pr_title pr_head pr_branch <<<"$pr_values"
+
+            if [ -z "$pr_title" ] || [ -z "$pr_head" ] || [ -z "$pr_branch" ]; then
+              echo "::error::GitHub did not return complete metadata for PR #$requested_pr."
+              exit 1
+            fi
+            if [ "$selected_branch" != "$pr_branch" ]; then
+              echo "::error::PR #$requested_pr belongs to '$pr_branch', but selected source is '$selected_branch'."
+              exit 1
+            fi
+            display_label="PR #$requested_pr · $pr_title"
+          fi
+
+          echo "display_label=$display_label" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$requested_pr" >> "$GITHUB_OUTPUT"
+          echo "pr_title=$pr_title" >> "$GITHUB_OUTPUT"
+          echo "pr_head=$pr_head" >> "$GITHUB_OUTPUT"
+          status_context="BookWave / PR verification"
+          if [ "$depth" = "quick" ]; then
+            status_context="BookWave / PR quick"
+          elif [ "$depth" = "intensive" ]; then
+            status_context="BookWave / PR intensive"
+          fi
+
+          echo "pr_branch=$pr_branch" >> "$GITHUB_OUTPUT"
+          echo "selected_branch=$selected_branch" >> "$GITHUB_OUTPUT"
+          echo "depth=$depth" >> "$GITHUB_OUTPUT"
+          echo "compute_profile=$compute_profile" >> "$GITHUB_OUTPUT"
+          echo "profiling=$profiling" >> "$GITHUB_OUTPUT"
+          echo "build_apk=$build_apk" >> "$GITHUB_OUTPUT"
+          echo "status_context=$status_context" >> "$GITHUB_OUTPUT"
+          echo "Resolved CI target: $display_label · depth=$depth · profile=$compute_profile · build_apk=$build_apk"
+
+  preflight:
+    name: "CI · ${{ needs.identity.outputs.display_label }} · Preflight · wf:${{ github.ref_name }}"
+    needs: identity
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    timeout-minutes: 10
+    outputs:
+      build_changed: ${{ steps.classify.outputs.build_changed }}
+      ci_infra_changed: ${{ steps.classify.outputs.ci_infra_changed }}
+      dependency_inputs_changed: ${{ steps.classify.outputs.dependency_inputs_changed }}
+      checked_head: ${{ steps.classify.outputs.checked_head }}
+      status_description: ${{ steps.preflight_summary.outputs.status_description }}
     steps:
-      - uses: actions/checkout@v7
+      # One full-history checkout serves all cheap prerequisite checks. On the capacity-1 shared runner,
+      # separate jobs only repeated container/network/checkout startup without adding isolation: none of
+      # these checks receives secrets or privileged credentials.
+      - name: Check out BookWave
+        uses: https://data.github.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
+          ref: ${{ needs.identity.outputs.selected_branch }}
           fetch-depth: 0
+          persist-credentials: false
 
-      # PRODUCT_SPEC 13.1 / 22.11 — the check the "Room schema is committed and current" step below cannot
-      # make, and the one that would have prevented a real crash.
-      #
-      # That step compares the *exported* schema against the committed one, so it catches a schema somebody
-      # forgot to commit. It says nothing about a committed schema being **changed**, because once the change
-      # is committed the working tree is clean and the step is green.
-      #
-      # On 2026-08-14 version 14 shipped in build 0.9.2, the next commit removed a column and left the version
-      # at 14 on the reasoning that 14 "had not shipped", and the owner's phone would not start: Room stores
-      # each version's identity hash in `room_master_table`, compares it on open, and has no migration to a
-      # hash that changed underneath it. Fresh installs and every migration test starting from an older
-      # version are unaffected, which is exactly what makes it easy to ship.
-      #
-      # A modified file under `schemas/` is therefore always wrong. Adding one — a new version — is the only
-      # correct way to change the database.
-      - name: No committed schema may be modified
+      - name: PR policy and change classification
+        id: classify
+        continue-on-error: true
+        env:
+          REQUESTED_PR: ${{ needs.identity.outputs.pr_number }}
+          EXPECTED_PR_HEAD: ${{ needs.identity.outputs.pr_head }}
+          SELECTED_BRANCH: ${{ needs.identity.outputs.selected_branch }}
+          TARGET_LABEL: ${{ needs.identity.outputs.display_label }}
         run: |
-          base="origin/${{ github.base_ref }}"
+          set -euo pipefail
+
+          case "$GITHUB_EVENT_NAME" in
+            pull_request)
+              base_ref="${GITHUB_BASE_REF:?GITHUB_BASE_REF is required for pull_request runs}"
+              ;;
+            workflow_dispatch)
+              base_ref="main"
+              ;;
+            *)
+              echo "::error::Unsupported event for PR verification: $GITHUB_EVENT_NAME"
+              exit 1
+              ;;
+          esac
+
+          checked_out_head="$(git rev-parse HEAD)"
+          echo "checked_head=$checked_out_head" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$REQUESTED_PR" ]; then
+            if [ "$EXPECTED_PR_HEAD" != "$checked_out_head" ]; then
+              echo "::error::PR #$REQUESTED_PR does not match the selected branch/ref."
+              echo "pr_head=$EXPECTED_PR_HEAD"
+              echo "checked_out_head=$checked_out_head"
+              exit 1
+            fi
+            echo "Validated $TARGET_LABEL -> $SELECTED_BRANCH @ ${checked_out_head:0:8}."
+          else
+            echo "No PR number supplied; validating branch $SELECTED_BRANCH @ ${checked_out_head:0:8}."
+          fi
+
+          base="origin/$base_ref"
+          git rev-parse --verify "$base^{commit}" >/dev/null
+
+          if ! git merge-base --is-ancestor "$base" HEAD; then
+            echo "::error::Checked-out head does not contain current $base_ref. Rebase/update it before acceptance."
+            echo "base=$(git rev-parse "$base")"
+            echo "head=$(git rev-parse HEAD)"
+            exit 1
+          fi
+
+          bash scripts/ci/classify-changes.sh "$base" HEAD
+
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "${{ inputs.force_rerun }}" = "true" ]; then
+            echo "build_changed=true" >> "$GITHUB_OUTPUT"
+            echo "Full rerun forced by workflow input."
+          fi
+
+      - name: Gradle wrapper validation
+        id: wrapper_check
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+
+          distribution_url="$(grep '^distributionUrl=' gradle/wrapper/gradle-wrapper.properties | cut -d= -f2- | sed 's/\\:/:/g')"
+          distribution_sha="$(grep '^distributionSha256Sum=' gradle/wrapper/gradle-wrapper.properties | cut -d= -f2-)"
+
+          if ! printf '%s' "$distribution_sha" | grep -Eq '^[0-9a-f]{64}$'; then
+            echo "::error::gradle-wrapper.properties must pin distributionSha256Sum."
+            exit 1
+          fi
+
+          actual="$(sha256sum gradle/wrapper/gradle-wrapper.jar | awk '{print $1}')"
+          if [ "$actual" != "$GRADLE_WRAPPER_JAR_SHA256" ]; then
+            echo "::error::Gradle wrapper JAR checksum mismatch."
+            echo "distribution=$distribution_url"
+            echo "expected=$GRADLE_WRAPPER_JAR_SHA256"
+            echo "actual=$actual"
+            echo "A wrapper upgrade must update this pinned digest in the PR workflow after independent verification."
+            exit 1
+          fi
+
+          echo "Gradle wrapper JAR verified: $actual"
+          echo "Gradle distribution is SHA-pinned: $distribution_sha"
+
+      - name: Secret scan
+        id: secret_scan
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          archive="$tmp/gitleaks.tar.gz"
+
+          curl --fail --location --silent --show-error \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            --output "$archive"
+
+          printf '%s  %s\n' "$GITLEAKS_LINUX_X64_SHA256" "$archive" | sha256sum --check -
+          tar -xzf "$archive" -C "$tmp" gitleaks
+          install -m 0755 "$tmp/gitleaks" /usr/local/bin/gitleaks
+          gitleaks version
+          base_ref="${GITHUB_BASE_REF:-main}"
+          env -u GITHUB_TOKEN -u GITHUB_TOKEN             gitleaks git . --redact --verbose --no-banner --log-opts="origin/$base_ref..HEAD"
+
+      - name: Committed Room schemas are immutable
+        id: schema_check
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          base_ref="${GITHUB_BASE_REF:-main}"
+          base="origin/$base_ref"
+          git rev-parse --verify "$base^{commit}" >/dev/null
+
           modified="$(git diff --diff-filter=MD --name-only "$base"...HEAD -- core/database/schemas)"
           if [ -n "$modified" ]; then
             echo "::error::A committed Room schema was modified or deleted. Bump the database version instead."
@@ -100,156 +342,558 @@ jobs:
             git diff "$base"...HEAD -- core/database/schemas
             exit 1
           fi
-          echo "No committed schema was modified."
+          echo "No committed Room schema was modified."
+
+      - name: Validate CI scripts
+        id: script_check
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' script; do
+            bash -n "$script"
+          done < <(find scripts/ci scripts/codex -type f -name '*.sh' -print0)
+          python3 -m compileall -q scripts/ci
+          python3 -m unittest discover -s scripts/ci/tests -p 'test_*.py'
+
+      - name: Summarize preflight
+        id: preflight_summary
+        if: ${{ always() }}
+        env:
+          TARGET_LABEL: ${{ needs.identity.outputs.display_label }}
+          WORKFLOW_SOURCE: ${{ github.ref_name }}
+          POLICY_OUTCOME: ${{ steps.classify.outcome }}
+          WRAPPER_OUTCOME: ${{ steps.wrapper_check.outcome }}
+          SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
+          SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
+          SCRIPT_OUTCOME: ${{ steps.script_check.outcome }}
+        run: |
+          set -euo pipefail
+          summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
+          failed=()
+
+          render() {
+            local name="$1"
+            local outcome="$2"
+            local icon="✅"
+            if [ "$outcome" != "success" ]; then
+              icon="❌"
+              failed+=("$name")
+            fi
+            printf '| %s | %s %s |\n' "$name" "$icon" "$outcome"
+          }
+
+          {
+            echo "## CI · $TARGET_LABEL · Preflight · wf:$WORKFLOW_SOURCE"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            render "PR / branch policy" "$POLICY_OUTCOME"
+            render "Gradle wrapper integrity" "$WRAPPER_OUTCOME"
+            render "Secret scan" "$SECRET_SCAN_OUTCOME"
+            render "Committed Room schemas" "$SCHEMA_OUTCOME"
+            render "CI script syntax/tests" "$SCRIPT_OUTCOME"
+            echo
+          } > /tmp/bookwave-preflight-summary.md
+
+          cat /tmp/bookwave-preflight-summary.md
+          if [ -n "$summary" ]; then
+            cat /tmp/bookwave-preflight-summary.md >> "$summary"
+          fi
+
+          if [ "${#failed[@]}" -eq 0 ]; then
+            description="BookWave preflight passed"
+          else
+            joined="$(IFS=', '; echo "${failed[*]}")"
+            description="Preflight failed: $joined"
+          fi
+          echo "status_description=${description:0:220}" >> "$GITHUB_OUTPUT"
+
+      - name: Require every preflight check to pass
+        if: ${{ always() }}
+        env:
+          POLICY_OUTCOME: ${{ steps.classify.outcome }}
+          WRAPPER_OUTCOME: ${{ steps.wrapper_check.outcome }}
+          SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
+          SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
+          SCRIPT_OUTCOME: ${{ steps.script_check.outcome }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for result in \
+            "PR policy/change classification:$POLICY_OUTCOME" \
+            "Gradle wrapper validation:$WRAPPER_OUTCOME" \
+            "Secret scan:$SECRET_SCAN_OUTCOME" \
+            "Room schema immutability:$SCHEMA_OUTCOME" \
+            "CI script validation:$SCRIPT_OUTCOME"; do
+            name="${result%%:*}"
+            outcome="${result#*:}"
+            if [ "$outcome" != "success" ]; then
+              echo "::error::Preflight check failed: $name ($outcome)"
+              failed=1
+            fi
+          done
+          exit "$failed"
 
   verify:
-    name: verifyDebug
+    name: "CI · ${{ needs.identity.outputs.display_label }} · verification · wf:${{ github.ref_name }}"
     runs-on: ubuntu-latest
-    needs: [wrapper-validation]
-    timeout-minutes: 60
+    container:
+      image: github.homebord.org/alexander/bookwave-ci@sha256:bf0f8f06ed41f9dd98b36332b2f1170906d0363c89fdd7c918ce0186844b6b85
+    needs:
+      - identity
+      - preflight
+    timeout-minutes: 90
+    outputs:
+      status_description: ${{ steps.final_status.outputs.status_description }}
     steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-provider: basic
-          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
-
-      # PRODUCT_SPEC 16.5 — verifyDebug already includes ktlintCheck, detekt with type resolution,
-      # Room schema verification and the debug assembly, in one command.
-      #
-      # `--continue` reports every independent failure instead of stopping at the first. The gate is
-      # unchanged — the build still fails — but a reviewer sees the whole list in one run rather than
-      # discovering the next lint error only after fixing the previous one.
-      - name: Verify debug
-        run: ./gradlew verifyDebug --continue -Pshelfplayer.warningsAsErrors=true
-
-      # Gradle only prints lint's first finding on the console. The full text report is what makes a
-      # lint failure diagnosable from the log alone, without downloading an artifact.
-      - name: Print lint reports
-        if: failure()
+      - name: Resolve verification depth and compute profile
+        id: mode
+        env:
+          DEPTH: ${{ needs.identity.outputs.depth }}
+          PROFILE: ${{ needs.identity.outputs.compute_profile }}
         run: |
-          found=0
-          while IFS= read -r report; do
-            found=1
-            echo "::group::$report"
-            cat "$report"
-            echo "::endgroup::"
-          done < <(find . -path '*/build/reports/lint-results-*.txt' -print)
-          [ "$found" -eq 1 ] || echo "No lint text reports were produced."
+          set -euo pipefail
+          case "$PROFILE" in
+            quiet) workers=2 ;;
+            balanced) workers=4 ;;
+            fast) workers=6 ;;
+            *) echo "::error::Unknown compute profile: $PROFILE"; exit 1 ;;
+          esac
+          echo "GRADLE_MAX_WORKERS=$workers" >> "$GITHUB_ENV"
+          echo "BOOKWAVE_CI_DEPTH=$DEPTH" >> "$GITHUB_ENV"
+          echo "BOOKWAVE_CI_PROFILE=$PROFILE" >> "$GITHUB_ENV"
+          echo "workers=$workers" >> "$GITHUB_OUTPUT"
+          echo "depth=$DEPTH" >> "$GITHUB_OUTPUT"
+          echo "profile=$PROFILE" >> "$GITHUB_OUTPUT"
 
-      # PRODUCT_SPEC 18.6 — a schema change that was not committed is a failure, not a surprise on
-      # a user's device.
-      #
-      # `git status --porcelain`, not `git diff`: a schema for a brand-new database version is an
-      # *untracked* file, which `git diff` reports as clean. That is exactly the case this check
-      # exists to catch.
+      - name: Report runner capacity
+        run: |
+          set -euo pipefail
+          echo "logical_cpus=$(nproc)"
+          grep -E '^(MemTotal|MemAvailable):' /proc/meminfo || true
+          printf 'cgroup_memory_max='; cat /sys/fs/cgroup/memory.max 2>/dev/null || echo unavailable
+          printf 'cgroup_cpu_max='; cat /sys/fs/cgroup/cpu.max 2>/dev/null || echo unavailable
+          df -h / || true
+
+      - name: Check out validated PR HEAD
+        uses: https://data.github.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.preflight.outputs.checked_head }}
+          persist-credentials: false
+
+      - name: Compute Gradle cache key
+        id: gradle_cache_key
+        run: |
+          set -euo pipefail
+          echo "hash=$(bash scripts/ci/gradle-cache-key.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore trusted Gradle cache
+        id: gradle_cache
+        continue-on-error: true
+        uses: https://data.github.org/actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: bookwave-gradle-trusted-v1-${{ steps.gradle_cache_key.outputs.hash }}
+          restore-keys: |
+            bookwave-gradle-trusted-v1-
+
+      - name: Report Gradle cache restore
+        if: ${{ always() }}
+        run: |
+          echo "gradle_cache_step=${{ steps.gradle_cache.outcome }}"
+          echo "gradle_cache_hit=${{ steps.gradle_cache.outputs.cache-hit }}"
+          echo "gradle_cache_matched_key=${{ steps.gradle_cache.outputs.cache-matched-key }}"
+
+      - name: Prepare BookWave Android environment
+        id: setup
+        env:
+          BOOKWAVE_CODEX_PREWARM: none
+          BOOKWAVE_ANDROID_SDK_MODE: auto
+        run: |
+          set -euo pipefail
+          env -u GITHUB_TOKEN -u GITHUB_TOKEN \
+            BOOKWAVE_CODEX_PREWARM="$BOOKWAVE_CODEX_PREWARM" \
+            BOOKWAVE_ANDROID_SDK_MODE="$BOOKWAVE_ANDROID_SDK_MODE" \
+            bash scripts/codex/setup.sh
+
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Quick is deliberately only formatting evidence. A failure here prevents the expensive
+      # compile/test/Lint/Kover graph from starting.
+      - name: Quick KtLint
+        id: quick_gate
+        if: ${{ steps.setup.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p ci-diagnostics
+
+          set +e
+          env -u GITHUB_TOKEN -u GITHUB_TOKEN             ./gradlew quickKtlint --continue --max-workers="$GRADLE_MAX_WORKERS"               -Pshelfplayer.warningsAsErrors=true 2>&1             | tee ci-diagnostics/gradle-quick.log
+          status="${PIPESTATUS[0]}"
+          set -e
+
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Verify debug once without assembling APKs
+        id: verify_debug
+        if: ${{ steps.setup.outcome == 'success' && steps.quick_gate.outcome == 'success' && needs.identity.outputs.depth != 'quick' }}
+        continue-on-error: true
+        env:
+          BUILD_CHANGED: ${{ needs.preflight.outputs.build_changed }}
+          DEPTH: ${{ needs.identity.outputs.depth }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci-diagnostics
+          extra_args=()
+          if [ "$BUILD_CHANGED" = "true" ]; then
+            extra_args+=(--rerun-tasks)
+            echo "Verification mode: full rerun (R-31 build/classpath safety)."
+          else
+            echo "Verification mode: normal."
+          fi
+          if [ "$DEPTH" = "intensive" ]; then
+            extra_args+=(--rerun-tasks --no-build-cache)
+            echo "Intensive mode: task outputs and Gradle build cache are not trusted as execution evidence."
+          fi
+
+          set +e
+          env -u GITHUB_TOKEN -u GITHUB_TOKEN             ./gradlew verifyDebug --continue -x assembleDebug "${extra_args[@]}" --max-workers="$GRADLE_MAX_WORKERS"               -Pshelfplayer.warningsAsErrors=true 2>&1             | tee ci-diagnostics/gradle-verify.log
+          status="${PIPESTATUS[0]}"
+          set -e
+
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+
       - name: Room schema is committed and current
+        id: schema_check
+        if: ${{ always() && needs.identity.outputs.depth != 'quick' }}
+        continue-on-error: true
         run: |
+          set -euo pipefail
           changes="$(git status --porcelain -- core/database/schemas)"
           if [ -n "$changes" ]; then
             echo "::error::Room exported a schema that is not committed, or differs from the committed one."
             echo "$changes"
             echo "Run ./gradlew :core:database:kspDebugKotlin and commit core/database/schemas."
-            echo "--- exported schema ---"
-            find core/database/schemas -name '*.json' -print -exec cat {} \;
             exit 1
           fi
+          echo "Room schemas are committed and current."
 
-      # Uploaded unconditionally: the schema check above only runs when `verifyDebug` succeeded, so
-      # on a failing build the exported schema would otherwise be unreachable — and that is exactly
-      # when a first run needs to produce it.
-      - name: Upload Room schemas
-        if: always()
-        uses: actions/upload-artifact@v7
+      - name: Resolve dependencies for the debug variant
+        id: dependencies
+        if: ${{ always() && needs.identity.outputs.depth != 'quick' && steps.setup.outcome == 'success' && (needs.preflight.outputs.dependency_inputs_changed == 'true' || needs.identity.outputs.depth == 'intensive') }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p ci-diagnostics
+          set +e
+          env -u GITHUB_TOKEN -u GITHUB_TOKEN \
+            ./gradlew :app:dependencies --configuration debugRuntimeClasspath --max-workers="$GRADLE_MAX_WORKERS" \
+              > dependency-report.txt 2> ci-diagnostics/dependency-resolution.log
+          status="$?"
+          set -e
+          if [ -s ci-diagnostics/dependency-resolution.log ]; then
+            cat ci-diagnostics/dependency-resolution.log
+          fi
+          exit "$status"
+
+      - name: Build consolidated diagnostics
+        id: diagnostics
+        if: ${{ always() }}
+        env:
+          TARGET_LABEL: ${{ needs.identity.outputs.display_label }}
+          WORKFLOW_SOURCE: ${{ github.ref_name }}
+          SETUP_OUTCOME: ${{ steps.setup.outcome }}
+          DEPTH: ${{ needs.identity.outputs.depth }}
+          QUICK_OUTCOME: ${{ steps.quick_gate.outcome }}
+          QUICK_EXIT: ${{ steps.quick_gate.outputs.exit_code }}
+          VERIFY_OUTCOME: ${{ steps.verify_debug.outcome }}
+          VERIFY_EXIT: ${{ steps.verify_debug.outputs.exit_code }}
+          SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
+          DEPENDENCY_OUTCOME: ${{ steps.dependencies.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci-diagnostics
+          python3 scripts/ci/pr-diagnostics.py
+
+          summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
+          if [ -n "$summary" ]; then
+            cat ci-diagnostics/summary.md >> "$summary"
+          fi
+
+      - name: Package quality reports on validation failure
+        if: ${{ always() && (steps.quick_gate.outcome != 'success' || (needs.identity.outputs.depth != 'quick' && steps.verify_debug.outcome != 'success')) }}
+        run: |
+          set -euo pipefail
+          mkdir -p ci-artifacts
+
+          mapfile -d '' reports < <(
+            find . -type f \
+              \( -path '*/build/reports/ktlint/*' \
+                 -o -path '*/build/reports/detekt/*' \
+                 -o -path '*/build/reports/lint-results-*.html' \
+                 -o -path '*/build/reports/lint-results-*.sarif' \
+                 -o -path '*/build/reports/lint-results-*.txt' \
+                 -o -path '*/build/reports/tests/*' \
+                 -o -path '*/build/test-results/*' \) \
+              -print0
+          )
+
+          if [ "${#reports[@]}" -eq 0 ]; then
+            echo "No quality-report files were produced."
+            exit 0
+          fi
+
+          printf '%s\0' "${reports[@]}" \
+            | tar --null --files-from=- -czf ci-artifacts/quality-reports.tar.gz
+
+          echo "Packaged ${#reports[@]} quality-report files into one failure-diagnostics archive."
+          ls -lh ci-artifacts/quality-reports.tar.gz
+
+      - name: Upload CI diagnostics on failure
+        if: ${{ always() && (steps.setup.outcome != 'success' || steps.quick_gate.outcome != 'success' || (needs.identity.outputs.depth != 'quick' && steps.verify_debug.outcome != 'success') || (needs.identity.outputs.depth != 'quick' && steps.schema_check.outcome != 'success') || (steps.dependencies.outcome != 'success' && steps.dependencies.outcome != 'skipped')) }}
+        continue-on-error: true
+        uses: https://data.github.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        with:
+          name: ci-diagnostics
+          path: ci-diagnostics/**
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload dependency report on dependency failure
+        if: ${{ always() && needs.identity.outputs.depth != 'quick' && steps.dependencies.outcome != 'success' && steps.dependencies.outcome != 'skipped' }}
+        continue-on-error: true
+        uses: https://data.github.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        with:
+          name: dependency-report
+          path: dependency-report.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload Room schemas on schema failure
+        if: ${{ always() && needs.identity.outputs.depth != 'quick' && steps.schema_check.outcome != 'success' }}
+        continue-on-error: true
+        uses: https://data.github.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: room-schemas
           path: core/database/schemas/**
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Upload lint and detekt reports
-        if: always()
-        uses: actions/upload-artifact@v7
+      - name: Upload packaged quality reports on validation failure
+        if: ${{ always() && (steps.quick_gate.outcome != 'success' || (needs.identity.outputs.depth != 'quick' && steps.verify_debug.outcome != 'success')) }}
+        continue-on-error: true
+        uses: https://data.github.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
           name: quality-reports
-          path: |
-            **/build/reports/detekt/**
-            **/build/reports/lint-results-*.html
-            **/build/reports/lint-results-*.sarif
-            **/build/reports/lint-results-*.txt
-            **/build/reports/tests/**
+          path: ci-artifacts/quality-reports.tar.gz
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v7
+      - name: Collect CI telemetry
+        if: ${{ always() }}
+        env:
+          BOOKWAVE_CI_SHA: ${{ needs.preflight.outputs.checked_head }}
+          BOOKWAVE_CI_DEPTH: ${{ needs.identity.outputs.depth }}
+          BOOKWAVE_CI_PROFILE: ${{ needs.identity.outputs.compute_profile }}
+          GRADLE_MAX_WORKERS: ${{ steps.mode.outputs.workers }}
+          BOOKWAVE_CACHE_HIT: ${{ steps.gradle_cache.outputs.cache-hit }}
+          BOOKWAVE_CACHE_KEY: ${{ steps.gradle_cache.outputs.cache-matched-key }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/ci-telemetry.py ci-diagnostics/gradle-quick.log ci-diagnostics/gradle-verify.log
+
+      - name: Upload CI telemetry
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: https://data.github.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: ci-telemetry
+          path: ci-telemetry/metrics.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload profiling logs
+        if: ${{ always() && needs.identity.outputs.profiling == 'true' }}
+        continue-on-error: true
+        uses: https://data.github.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        with:
+          name: ci-profile-logs
+          path: |
+            ci-diagnostics/gradle-quick.log
+            ci-diagnostics/gradle-verify.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Final verification gate
+        id: verification_gate
+        if: ${{ always() }}
+        env:
+          DEPTH: ${{ needs.identity.outputs.depth }}
+          SETUP_OUTCOME: ${{ steps.setup.outcome }}
+          QUICK_OUTCOME: ${{ steps.quick_gate.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify_debug.outcome }}
+          SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
+          DEPENDENCY_OUTCOME: ${{ steps.dependencies.outcome }}
+        run: |
+          set -euo pipefail
+          failed=0
+
+          require_success() {
+            local name="$1"
+            local outcome="$2"
+            if [ "$outcome" != "success" ]; then
+              echo "::error::$name failed or was skipped ($outcome). See the consolidated diagnostics above."
+              failed=1
+            fi
+          }
+
+          require_success "Android environment" "$SETUP_OUTCOME"
+          require_success "Quick KtLint" "$QUICK_OUTCOME"
+
+          if [ "$DEPTH" != "quick" ]; then
+            require_success "verifyDebug" "$VERIFY_OUTCOME"
+            require_success "Room schema" "$SCHEMA_OUTCOME"
+            if [ "$DEPENDENCY_OUTCOME" != "success" ] && [ "$DEPENDENCY_OUTCOME" != "skipped" ]; then
+              require_success "Dependency resolution" "$DEPENDENCY_OUTCOME"
+            fi
+          fi
+          exit "$failed"
+
+      # Optional convenience artifact only. It is deliberately after the quality gate so packaging can never
+      # make Standard slower unless the user explicitly asks for an APK.
+      - name: Build optional verified debug APK
+        id: apk_build
+        if: ${{ github.event_name == 'workflow_dispatch' && needs.identity.outputs.build_apk == 'true' && needs.identity.outputs.depth != 'quick' && steps.verification_gate.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          env -u GITHUB_TOKEN -u GITHUB_TOKEN             ./gradlew :app:assembleDebug --max-workers="$GRADLE_MAX_WORKERS"
+          apk="$(find app/build/outputs/apk/debug -name '*.apk' -type f | head -1)"
+          test -n "$apk" || { echo "::error::assembleDebug completed without an APK."; exit 1; }
+          echo "apk=$apk" >> "$GITHUB_OUTPUT"
+          echo "::notice::PR verification APK uses the CI debug signing identity; release/upload signing secrets are never exposed here."
+
+      - name: Upload optional verified debug APK
+        if: ${{ steps.apk_build.outcome == 'success' }}
+        uses: https://data.github.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        with:
+          name: bookwave-verified-debug-${{ needs.preflight.outputs.checked_head }}
+          path: ${{ steps.apk_build.outputs.apk }}
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
 
-  dependency-report:
-    name: Dependency and licence report
+      - name: Final status description
+        id: final_status
+        if: ${{ always() }}
+        env:
+          DIAGNOSTIC_DESCRIPTION: ${{ steps.diagnostics.outputs.status_description }}
+          BUILD_APK: ${{ needs.identity.outputs.build_apk }}
+          APK_OUTCOME: ${{ steps.apk_build.outcome }}
+        run: |
+          set -euo pipefail
+          description="${DIAGNOSTIC_DESCRIPTION:-BookWave verification failed}"
+          if [ "$BUILD_APK" = "true" ] && [ "$APK_OUTCOME" != "success" ] && [ "$APK_OUTCOME" != "skipped" ]; then
+            description="Verification passed; optional APK build failed"
+          fi
+          echo "status_description=${description:0:220}" >> "$GITHUB_OUTPUT"
+
+      - name: Require optional APK when requested
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && needs.identity.outputs.build_apk == 'true' && needs.identity.outputs.depth != 'quick' }}
+        env:
+          VERIFICATION_OUTCOME: ${{ steps.verification_gate.outcome }}
+          APK_OUTCOME: ${{ steps.apk_build.outcome }}
+        run: |
+          set -euo pipefail
+          [ "$VERIFICATION_OUTCOME" = "success" ] || exit 1
+          if [ "$APK_OUTCOME" != "success" ]; then
+            echo "::error::Verified APK was requested but the post-verification APK build did not succeed."
+            exit 1
+          fi
+
+  pr-status:
+    name: "CI · ${{ needs.identity.outputs.display_label }} · publish check · wf:${{ github.ref_name }}"
     runs-on: ubuntu-latest
-    needs: [wrapper-validation]
-    timeout-minutes: 30
+    needs:
+      - identity
+      - preflight
+      - verify
+    if: ${{ always() }}
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - name: Publish verification status
+        env:
+          REQUESTED_PR: ${{ needs.identity.outputs.pr_number }}
+          PR_HEAD: ${{ needs.identity.outputs.pr_head }}
+          PR_BRANCH: ${{ needs.identity.outputs.pr_branch }}
+          TARGET_LABEL: ${{ needs.identity.outputs.display_label }}
+          SELECTED_BRANCH: ${{ needs.identity.outputs.selected_branch }}
+          STATUS_CONTEXT: ${{ needs.identity.outputs.status_context }}
+          DEPTH: ${{ needs.identity.outputs.depth }}
+          CHECKED_HEAD: ${{ needs.preflight.outputs.checked_head }}
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          PREFLIGHT_DESCRIPTION: ${{ needs.preflight.outputs.status_description }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          VERIFY_DESCRIPTION: ${{ needs.verify.outputs.status_description }}
+        run: |
+          set -euo pipefail
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '17'
+          state=failure
+          status_sha="$CHECKED_HEAD"
+          description="BookWave verification failed"
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-provider: basic
-          cache-read-only: true
+          if [ -n "$REQUESTED_PR" ]; then
+            status_sha="$PR_HEAD"
+            if [ "$SELECTED_BRANCH" != "$PR_BRANCH" ]; then
+              description="Selected branch does not match PR #$REQUESTED_PR"
+            elif [ -n "$CHECKED_HEAD" ] && [ "$CHECKED_HEAD" != "$PR_HEAD" ]; then
+              status_sha="$CHECKED_HEAD"
+              description="PR head changed during verification; rerun checks"
+            elif [ "$PREFLIGHT_RESULT" != "success" ]; then
+              description="${PREFLIGHT_DESCRIPTION:-BookWave preflight failed}"
+            elif [ "$VERIFY_RESULT" != "success" ]; then
+              description="${VERIFY_DESCRIPTION:-BookWave verification failed}"
+            else
+              status_sha="$CHECKED_HEAD"
+              state=success
+              description="BookWave $DEPTH verification passed"
+            fi
+          else
+            if [ -z "$status_sha" ]; then
+              echo "No checked commit SHA is available for branch-only status publishing."
+              exit 0
+            elif [ "$PREFLIGHT_RESULT" != "success" ]; then
+              description="${PREFLIGHT_DESCRIPTION:-BookWave preflight failed}"
+            elif [ "$VERIFY_RESULT" != "success" ]; then
+              description="${VERIFY_DESCRIPTION:-BookWave verification failed}"
+            else
+              state=success
+              description="BookWave $DEPTH branch verification passed"
+            fi
+          fi
 
-      # PRODUCT_SPEC 18.9 — the resolved dependency set is reviewable on every pull request, which
-      # is what makes an unexpected transitive dependency visible before it ships.
-      - name: Resolve dependencies for the debug variant
-        run: ./gradlew :app:dependencies --configuration debugRuntimeClasspath > dependency-report.txt
+          description="${description:0:220}"
+          payload="$(STATUS_STATE="$state" STATUS_DESCRIPTION="$description" node -e '
+            process.stdout.write(JSON.stringify({
+              state: process.env.STATUS_STATE,
+              context: process.env.STATUS_CONTEXT,
+              description: process.env.STATUS_DESCRIPTION
+            }));
+          ')"
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: dependency-report
-          path: dependency-report.txt
-          retention-days: 7
+          curl -fsS \
+            -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H 'Content-Type: application/json' \
+            -d "$payload" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$status_sha"
 
-  classpath-rerun-acceptance:
-    name: Classpath rerun acceptance
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-provider: basic
-          cache-read-only: true
-
-      - name: Rerun ktlint gate
-        run: ./gradlew ktlintCheck --rerun-tasks
-
-      - name: Rerun full BookWave gate
-        run: ./gradlew verifyDebug --continue --rerun-tasks -Pshelfplayer.warningsAsErrors=true
+          echo "Published $state status for $TARGET_LABEL at $status_sha: $description"
