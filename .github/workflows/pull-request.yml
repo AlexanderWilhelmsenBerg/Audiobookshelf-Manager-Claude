@@ -2,15 +2,15 @@ name: CI · PR verification
 
 run-name: "CI · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.ref_name }} · ${{ github.event_name == 'pull_request' && 'quick' || inputs.depth }}"
 
-# GitHub-native BookWave pull-request gate, ported from the improved GitHub CI model.
+# Forgejo-native BookWave pull-request gate.
 #
 # Keep the repository's GitHub quality contract while adapting execution to the
-# self-hosted linux-amd64 GitHub runner. GitHub workflows remain untouched.
+# self-hosted linux-amd64 Forgejo runner. This is the GitHub-native counterpart of the improved Forgejo workflow.
 #
 # Security model:
 # - never expose signing material to pull-request code;
 # - do not persist checkout credentials;
-# - strip the automatic GitHub/GitHub token before invoking repository-controlled
+# - strip the automatic Forgejo/GitHub token before invoking repository-controlled
 #   shell or Gradle code;
 # - pin reusable actions and downloaded security tooling immutably.
 #
@@ -28,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: 'GitHub PR number being verified (optional; branch name is used when omitted)'
+        description: 'Forgejo PR number being verified (optional; branch name is used when omitted)'
         required: false
         type: string
         default: ''
@@ -69,7 +69,12 @@ concurrency:
   # exercising the runner/container cancellation path unnecessarily.
   cancel-in-progress: false
 
+permissions:
+  contents: read
+  pull-requests: read
+
 env:
+  GITHUB_TOKEN: ${{ github.token }}
   # Runner-specific limits. Keep the repository's diagnostics/encoding flags while
   # bounding Gradle and Kotlin memory independently on the self-hosted runner.
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx3g -Dorg.gradle.daemon=false -Dorg.gradle.project.kotlin.daemon.jvmargs=-Xmx2g
@@ -167,7 +172,7 @@ jobs:
             IFS=$'\t' read -r pr_title pr_head pr_branch <<<"$pr_values"
 
             if [ -z "$pr_title" ] || [ -z "$pr_head" ] || [ -z "$pr_branch" ]; then
-              echo "::error::GitHub did not return complete metadata for PR #$requested_pr."
+              echo "::error::Forgejo did not return complete metadata for PR #$requested_pr."
               exit 1
             fi
             if [ "$selected_branch" != "$pr_branch" ]; then
@@ -213,7 +218,7 @@ jobs:
       # separate jobs only repeated container/network/checkout startup without adding isolation: none of
       # these checks receives secrets or privileged credentials.
       - name: Check out BookWave
-        uses: https://data.github.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.identity.outputs.selected_branch }}
           fetch-depth: 0
@@ -320,7 +325,7 @@ jobs:
           install -m 0755 "$tmp/gitleaks" /usr/local/bin/gitleaks
           gitleaks version
           base_ref="${GITHUB_BASE_REF:-main}"
-          env -u GITHUB_TOKEN -u GITHUB_TOKEN             gitleaks git . --redact --verbose --no-banner --log-opts="origin/$base_ref..HEAD"
+          env -u GITHUB_TOKEN             gitleaks git . --redact --verbose --no-banner --log-opts="origin/$base_ref..HEAD"
 
       - name: Committed Room schemas are immutable
         id: schema_check
@@ -476,7 +481,7 @@ jobs:
           df -h / || true
 
       - name: Check out validated PR HEAD
-        uses: https://data.github.org/actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.preflight.outputs.checked_head }}
           persist-credentials: false
@@ -490,7 +495,7 @@ jobs:
       - name: Restore trusted Gradle cache
         id: gradle_cache
         continue-on-error: true
-        uses: https://data.github.org/actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.gradle/caches
@@ -513,7 +518,7 @@ jobs:
           BOOKWAVE_ANDROID_SDK_MODE: auto
         run: |
           set -euo pipefail
-          env -u GITHUB_TOKEN -u GITHUB_TOKEN \
+          env -u GITHUB_TOKEN \
             BOOKWAVE_CODEX_PREWARM="$BOOKWAVE_CODEX_PREWARM" \
             BOOKWAVE_ANDROID_SDK_MODE="$BOOKWAVE_ANDROID_SDK_MODE" \
             bash scripts/codex/setup.sh
@@ -535,7 +540,7 @@ jobs:
           mkdir -p ci-diagnostics
 
           set +e
-          env -u GITHUB_TOKEN -u GITHUB_TOKEN             ./gradlew quickKtlint --continue --max-workers="$GRADLE_MAX_WORKERS"               -Pshelfplayer.warningsAsErrors=true 2>&1             | tee ci-diagnostics/gradle-quick.log
+          env -u GITHUB_TOKEN             ./gradlew quickKtlint --continue --max-workers="$GRADLE_MAX_WORKERS"               -Pshelfplayer.warningsAsErrors=true 2>&1             | tee ci-diagnostics/gradle-quick.log
           status="${PIPESTATUS[0]}"
           set -e
 
@@ -565,7 +570,7 @@ jobs:
           fi
 
           set +e
-          env -u GITHUB_TOKEN -u GITHUB_TOKEN             ./gradlew verifyDebug --continue -x assembleDebug "${extra_args[@]}" --max-workers="$GRADLE_MAX_WORKERS"               -Pshelfplayer.warningsAsErrors=true 2>&1             | tee ci-diagnostics/gradle-verify.log
+          env -u GITHUB_TOKEN             ./gradlew verifyDebug --continue -x assembleDebug "${extra_args[@]}" --max-workers="$GRADLE_MAX_WORKERS"               -Pshelfplayer.warningsAsErrors=true 2>&1             | tee ci-diagnostics/gradle-verify.log
           status="${PIPESTATUS[0]}"
           set -e
 
@@ -595,7 +600,7 @@ jobs:
           set -euo pipefail
           mkdir -p ci-diagnostics
           set +e
-          env -u GITHUB_TOKEN -u GITHUB_TOKEN \
+          env -u GITHUB_TOKEN \
             ./gradlew :app:dependencies --configuration debugRuntimeClasspath --max-workers="$GRADLE_MAX_WORKERS" \
               > dependency-report.txt 2> ci-diagnostics/dependency-resolution.log
           status="$?"
@@ -661,7 +666,7 @@ jobs:
       - name: Upload CI diagnostics on failure
         if: ${{ always() && (steps.setup.outcome != 'success' || steps.quick_gate.outcome != 'success' || (needs.identity.outputs.depth != 'quick' && steps.verify_debug.outcome != 'success') || (needs.identity.outputs.depth != 'quick' && steps.schema_check.outcome != 'success') || (steps.dependencies.outcome != 'success' && steps.dependencies.outcome != 'skipped')) }}
         continue-on-error: true
-        uses: https://data.github.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        uses: actions/upload-artifact@v7
         with:
           name: ci-diagnostics
           path: ci-diagnostics/**
@@ -671,7 +676,7 @@ jobs:
       - name: Upload dependency report on dependency failure
         if: ${{ always() && needs.identity.outputs.depth != 'quick' && steps.dependencies.outcome != 'success' && steps.dependencies.outcome != 'skipped' }}
         continue-on-error: true
-        uses: https://data.github.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        uses: actions/upload-artifact@v7
         with:
           name: dependency-report
           path: dependency-report.txt
@@ -681,7 +686,7 @@ jobs:
       - name: Upload Room schemas on schema failure
         if: ${{ always() && needs.identity.outputs.depth != 'quick' && steps.schema_check.outcome != 'success' }}
         continue-on-error: true
-        uses: https://data.github.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        uses: actions/upload-artifact@v7
         with:
           name: room-schemas
           path: core/database/schemas/**
@@ -691,7 +696,7 @@ jobs:
       - name: Upload packaged quality reports on validation failure
         if: ${{ always() && (steps.quick_gate.outcome != 'success' || (needs.identity.outputs.depth != 'quick' && steps.verify_debug.outcome != 'success')) }}
         continue-on-error: true
-        uses: https://data.github.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        uses: actions/upload-artifact@v7
         with:
           name: quality-reports
           path: ci-artifacts/quality-reports.tar.gz
@@ -714,7 +719,7 @@ jobs:
       - name: Upload CI telemetry
         if: ${{ always() }}
         continue-on-error: true
-        uses: https://data.github.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        uses: actions/upload-artifact@v7
         with:
           name: ci-telemetry
           path: ci-telemetry/metrics.json
@@ -724,7 +729,7 @@ jobs:
       - name: Upload profiling logs
         if: ${{ always() && needs.identity.outputs.profiling == 'true' }}
         continue-on-error: true
-        uses: https://data.github.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        uses: actions/upload-artifact@v7
         with:
           name: ci-profile-logs
           path: |
@@ -776,7 +781,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          env -u GITHUB_TOKEN -u GITHUB_TOKEN             ./gradlew :app:assembleDebug --max-workers="$GRADLE_MAX_WORKERS"
+          env -u GITHUB_TOKEN             ./gradlew :app:assembleDebug --max-workers="$GRADLE_MAX_WORKERS"
           apk="$(find app/build/outputs/apk/debug -name '*.apk' -type f | head -1)"
           test -n "$apk" || { echo "::error::assembleDebug completed without an APK."; exit 1; }
           echo "apk=$apk" >> "$GITHUB_OUTPUT"
@@ -784,7 +789,7 @@ jobs:
 
       - name: Upload optional verified debug APK
         if: ${{ steps.apk_build.outcome == 'success' }}
-        uses: https://data.github.org/actions/upload-artifact@c6a3b2bd78b3985e4b2f15397fec357f0fd808de
+        uses: actions/upload-artifact@v7
         with:
           name: bookwave-verified-debug-${{ needs.preflight.outputs.checked_head }}
           path: ${{ steps.apk_build.outputs.apk }}
@@ -819,81 +824,3 @@ jobs:
             exit 1
           fi
 
-  pr-status:
-    name: "CI · ${{ needs.identity.outputs.display_label }} · publish check · wf:${{ github.ref_name }}"
-    runs-on: ubuntu-latest
-    needs:
-      - identity
-      - preflight
-      - verify
-    if: ${{ always() }}
-    timeout-minutes: 5
-    steps:
-      - name: Publish verification status
-        env:
-          REQUESTED_PR: ${{ needs.identity.outputs.pr_number }}
-          PR_HEAD: ${{ needs.identity.outputs.pr_head }}
-          PR_BRANCH: ${{ needs.identity.outputs.pr_branch }}
-          TARGET_LABEL: ${{ needs.identity.outputs.display_label }}
-          SELECTED_BRANCH: ${{ needs.identity.outputs.selected_branch }}
-          STATUS_CONTEXT: ${{ needs.identity.outputs.status_context }}
-          DEPTH: ${{ needs.identity.outputs.depth }}
-          CHECKED_HEAD: ${{ needs.preflight.outputs.checked_head }}
-          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
-          PREFLIGHT_DESCRIPTION: ${{ needs.preflight.outputs.status_description }}
-          VERIFY_RESULT: ${{ needs.verify.result }}
-          VERIFY_DESCRIPTION: ${{ needs.verify.outputs.status_description }}
-        run: |
-          set -euo pipefail
-
-          state=failure
-          status_sha="$CHECKED_HEAD"
-          description="BookWave verification failed"
-
-          if [ -n "$REQUESTED_PR" ]; then
-            status_sha="$PR_HEAD"
-            if [ "$SELECTED_BRANCH" != "$PR_BRANCH" ]; then
-              description="Selected branch does not match PR #$REQUESTED_PR"
-            elif [ -n "$CHECKED_HEAD" ] && [ "$CHECKED_HEAD" != "$PR_HEAD" ]; then
-              status_sha="$CHECKED_HEAD"
-              description="PR head changed during verification; rerun checks"
-            elif [ "$PREFLIGHT_RESULT" != "success" ]; then
-              description="${PREFLIGHT_DESCRIPTION:-BookWave preflight failed}"
-            elif [ "$VERIFY_RESULT" != "success" ]; then
-              description="${VERIFY_DESCRIPTION:-BookWave verification failed}"
-            else
-              status_sha="$CHECKED_HEAD"
-              state=success
-              description="BookWave $DEPTH verification passed"
-            fi
-          else
-            if [ -z "$status_sha" ]; then
-              echo "No checked commit SHA is available for branch-only status publishing."
-              exit 0
-            elif [ "$PREFLIGHT_RESULT" != "success" ]; then
-              description="${PREFLIGHT_DESCRIPTION:-BookWave preflight failed}"
-            elif [ "$VERIFY_RESULT" != "success" ]; then
-              description="${VERIFY_DESCRIPTION:-BookWave verification failed}"
-            else
-              state=success
-              description="BookWave $DEPTH branch verification passed"
-            fi
-          fi
-
-          description="${description:0:220}"
-          payload="$(STATUS_STATE="$state" STATUS_DESCRIPTION="$description" node -e '
-            process.stdout.write(JSON.stringify({
-              state: process.env.STATUS_STATE,
-              context: process.env.STATUS_CONTEXT,
-              description: process.env.STATUS_DESCRIPTION
-            }));
-          ')"
-
-          curl -fsS \
-            -X POST \
-            -H "Authorization: token $GITHUB_TOKEN" \
-            -H 'Content-Type: application/json' \
-            -d "$payload" \
-            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/statuses/$status_sha"
-
-          echo "Published $state status for $TARGET_LABEL at $status_sha: $description"
