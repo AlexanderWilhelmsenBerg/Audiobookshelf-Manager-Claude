@@ -79,6 +79,7 @@ on:
         default: 'Use selected branch/ref'
         options:
           # BEGIN GENERATED OPEN PR OPTIONS
+          - "#200 — mcp/hallmark-slice-1-player"
           - "#173 — sync/github-ci-core-parity"
           - "Use selected branch/ref"
           # END GENERATED OPEN PR OPTIONS
