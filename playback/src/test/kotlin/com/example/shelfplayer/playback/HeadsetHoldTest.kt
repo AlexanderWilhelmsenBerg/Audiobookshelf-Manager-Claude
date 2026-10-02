@@ -243,6 +243,22 @@ class HeadsetHoldTest {
         assertNull(owner.headsetForCar(listOf(car)))
     }
 
+    /** Issue #100 — the system output chooser moves audio without going through BookWave's own chooser. */
+    @Test
+    fun `a system chooser move to the speaker supersedes a headset heard by framework policy`() {
+        val owner = RouteHeardOwnership()
+        owner.onBookChanged(hasBook = true)
+        owner.onPlaybackObserved(listOf(budsA.copy(isActive = true), speaker))
+        assertEquals(RouteHeardEvidence.FrameworkPolicyWhilePlaying, owner.heardRoute?.evidence)
+        assertEquals(budsA.id, owner.headsetForCar(listOf(budsA, speaker, car)))
+
+        // No onExplicitSelection: only the framework reports that the speaker now carries playback.
+        owner.onOutputsChanged(listOf(budsA, speaker.copy(isActive = true)), isPlaying = true)
+
+        assertEquals(speaker.id, owner.heardRoute?.outputId)
+        assertNull(owner.headsetForCar(listOf(budsA, speaker, car)))
+    }
+
     private fun output(
         id: String,
         name: String,
