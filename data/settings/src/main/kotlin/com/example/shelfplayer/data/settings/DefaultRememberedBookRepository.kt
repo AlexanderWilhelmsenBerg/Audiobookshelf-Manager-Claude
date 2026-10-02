@@ -10,6 +10,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.domain.repository.RememberedBookRepository
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
@@ -31,6 +32,9 @@ class DefaultRememberedBookRepository @Inject constructor(
     private val writeGate = Mutex()
 
     override suspend fun rememberedBook(profileId: ProfileId): LibraryItemId? = settings.rememberedBook(profileId)
+
+    override fun observeRememberedBook(profileId: ProfileId): Flow<LibraryItemId?> =
+        settings.observeRememberedBook(profileId)
 
     override suspend fun remember(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> = writeGate.withLock {
         resultOf(onError = ::storeFailure) {

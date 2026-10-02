@@ -643,6 +643,8 @@ class ProfileSwitcherViewModelTest {
 
         override suspend fun rememberedBook(profileId: ProfileId): LibraryItemId? = values[profileId]
 
+        override fun observeRememberedBook(profileId: ProfileId): Flow<LibraryItemId?> = flowOf(values[profileId])
+
         override suspend fun remember(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> {
             values[profileId] = bookId
             return AppResult.Success(Unit)
