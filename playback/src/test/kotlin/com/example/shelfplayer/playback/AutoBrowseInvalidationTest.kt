@@ -1,20 +1,34 @@
 package com.example.shelfplayer.playback
 
+import com.example.shelfplayer.core.model.AuthorId
+import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
+import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.core.model.library.LocalAvailability
+import com.example.shelfplayer.core.model.library.MediaProgress
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
+import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.hours
 
 /** #10 + PD-001 — pure proof of BookWave's published browse shape. */
+@OptIn(ExperimentalCoroutinesApi::class)
 class AutoBrowseInvalidationTest {
 
     @Test
@@ -112,7 +126,8 @@ class AutoBrowseInvalidationTest {
                 completeReads += 1
                 flowOf(emptyList<Book>())
             },
-            build = { scope, _, _, _ ->
+            rememberedBook = { flowOf(null) },
+            build = { scope, _, _, _, _ ->
                 val children = (1..200).associate { index -> "parent-$index" to listOf("child-$index") }
                 AutoBrowseSnapshot(
                     scope = scope,
@@ -138,7 +153,8 @@ class AutoBrowseInvalidationTest {
             savedProfiles = flowOf(emptyList<Profile>()),
             savedServers = flowOf(emptyList<Server>()),
             accessibleBooks = { flowOf(emptyList()) },
-            build = { scope, _, _, _ ->
+            rememberedBook = { flowOf(null) },
+            build = { scope, _, _, _, _ ->
                 scopes += scope
                 snapshot(emptyMap(), profileId = scope.profileId?.value, generation = scope.generation)
             },
@@ -235,6 +251,7 @@ class AutoBrowseInvalidationTest {
             books = emptyList(),
             profiles = emptyList(),
             servers = emptyList(),
+            rememberedId = null,
         )
         assertEquals(
             listOf(
@@ -248,6 +265,127 @@ class AutoBrowseInvalidationTest {
         assertFalse(current.childrenByParent.containsKey(AutoLibrary.TAB_LIBRARY))
         assertFalse(current.childrenByParent.containsKey(AutoLibrary.TAB_HISTORY))
     }
+
+    @Test
+    fun `remembered book change within a profile invalidates the resume root with its child count`() = runTest {
+        val remembered = MutableStateFlow<LibraryItemId?>(null)
+        val library = listOf(book("book-a"), book("book-b"))
+        val source = sourceOf(library, remembered)
+        val seen = mutableListOf<AutoBrowseSnapshot>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots().collect { seen += it } }
+        val tracker = AutoBrowseInvalidationTracker()
+        assertEquals(BrowseInvalidationPlan.None, tracker.next(seen.last(), emptySet()))
+        assertEquals(emptyList(), seen.last().childrenByParent[AutoLibrary.RECENT_ROOT])
+
+        remembered.value = LibraryItemId("book-a")
+        val remembering = tracker.next(seen.last(), emptySet())
+        assertFalse(remembering.profileBoundary)
+        assertEquals(listOf(BrowseInvalidation(AutoLibrary.RECENT_ROOT, 1)), remembering.notifications)
+
+        remembered.value = LibraryItemId("book-b")
+        val switching = tracker.next(seen.last(), emptySet())
+        assertEquals(listOf(BrowseInvalidation(AutoLibrary.RECENT_ROOT, 1)), switching.notifications)
+        assertEquals(listOf("book-b"), seen.last().childrenByParent[AutoLibrary.RECENT_ROOT])
+
+        remembered.value = null
+        val forgetting = tracker.next(seen.last(), emptySet())
+        assertEquals(listOf(BrowseInvalidation(AutoLibrary.RECENT_ROOT, 0)), forgetting.notifications)
+    }
+
+    @Test
+    fun `an unrelated change does not invalidate the resume root`() = runTest {
+        val remembered = MutableStateFlow<LibraryItemId?>(LibraryItemId("book-a"))
+        val source = sourceOf(listOf(book("book-a")), remembered)
+        val seen = mutableListOf<AutoBrowseSnapshot>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { source.snapshots().collect { seen += it } }
+        val tracker = AutoBrowseInvalidationTracker()
+        tracker.next(seen.last(), emptySet())
+        val emissions = seen.size
+
+        remembered.value = LibraryItemId("book-a")
+        assertEquals(emissions, seen.size, "re-remembering the same book is not a change")
+
+        val grown = AutoBrowseSnapshotBuilder.build(
+            scope = seen.last().scope,
+            books = listOf(book("book-a"), book("book-unplayed")),
+            profiles = emptyList(),
+            servers = emptyList(),
+            rememberedId = LibraryItemId("book-a"),
+        )
+        assertTrue(tracker.next(grown, emptySet()).notifications.none { it.parentId == AutoLibrary.RECENT_ROOT })
+    }
+
+    @Test
+    fun `the resume root follows the same candidate rule as the resume row`() {
+        fun children(books: List<Book>, remembered: String?) = AutoBrowseSnapshotBuilder.build(
+            scope = BrowseProfileScope(ProfileId("profile-a"), generation = 1),
+            books = books,
+            profiles = emptyList(),
+            servers = emptyList(),
+            rememberedId = remembered?.let(::LibraryItemId),
+        ).childrenByParent[AutoLibrary.RECENT_ROOT]
+
+        assertEquals(listOf("book-a"), children(listOf(book("book-a"), book("book-b")), "book-a"))
+        assertEquals(emptyList(), children(listOf(book("book-a")), "missing"))
+        assertEquals(emptyList(), children(listOf(book("book-a", finished = true)), "book-a"))
+        assertEquals(
+            listOf("book-b"),
+            children(listOf(book("book-a"), book("book-b", progressed = true)), null),
+            "without a remembered book the newest Continue book is the candidate",
+        )
+    }
+
+    private fun sourceOf(books: List<Book>, remembered: Flow<LibraryItemId?>) = AutoBrowseSnapshotSource(
+        activeProfiles = flowOf(ProfileId("profile-a")),
+        savedProfiles = flowOf(emptyList<Profile>()),
+        savedServers = flowOf(emptyList<Server>()),
+        accessibleBooks = { flowOf(books) },
+        rememberedBook = { remembered },
+        build = AutoBrowseSnapshotBuilder::build,
+    )
+
+    private fun book(id: String, progressed: Boolean = false, finished: Boolean = false) = Book(
+        serverId = SERVER,
+        id = LibraryItemId(id),
+        libraryId = LibraryId("lib"),
+        title = id,
+        subtitle = null,
+        authors = listOf(Author(SERVER, AuthorId("author-1"), "Author")),
+        narrators = emptyList(),
+        seriesMemberships = emptyList(),
+        duration = 4.hours,
+        description = null,
+        genres = emptyList(),
+        tags = emptyList(),
+        publishedYear = null,
+        publisher = null,
+        language = null,
+        isbn = null,
+        asin = null,
+        isExplicit = false,
+        isAbridged = false,
+        coverPath = null,
+        trackCount = 1,
+        sizeBytes = 0,
+        remoteUpdatedAt = null,
+        addedAt = Instant.ofEpochMilli(1_000),
+        lastFetchedAt = Instant.ofEpochMilli(0),
+        progress = if (progressed || finished) {
+            MediaProgress(
+                serverId = SERVER,
+                profileId = ProfileId("profile-a"),
+                bookId = LibraryItemId(id),
+                position = 1.hours,
+                duration = 4.hours,
+                isFinished = finished,
+                updatedAt = Instant.ofEpochMilli(2_000),
+                hasUnsyncedChanges = false,
+            )
+        } else {
+            null
+        },
+        localAvailability = LocalAvailability.NotDownloaded,
+    )
 
     private fun changedParents(before: AutoBrowseSnapshot, after: AutoBrowseSnapshot): Set<String> =
         plan(before, after).notifications.mapTo(linkedSetOf()) { it.parentId }
@@ -280,4 +418,8 @@ class AutoBrowseInvalidationTest {
         accessibleBookIds = accessibleBookIds,
         resumableBookIds = resumableBookIds,
     )
+
+    private companion object {
+        val SERVER = ServerId("server-1")
+    }
 }

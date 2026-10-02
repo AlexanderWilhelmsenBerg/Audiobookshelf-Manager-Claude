@@ -172,11 +172,22 @@ class PlaybackController @Inject constructor(
         }
     }
 
+    /**
+     * Opens [session] in the player.
+     *
+     * An arm (`startPlaying == false`) never replaces a real book that is already loaded: arming is a courtesy
+     * that can finish after a network round trip, by which time the listener may have started something else,
+     * and replacing it would also play the wrong book. Only the metadata-only resume placeholder is replaced.
+     */
     private suspend fun start(session: PlaybackSession, startPlaying: Boolean): AppResult<Unit> =
         withContext(mainDispatcher) {
             val media = connect() ?: return@withContext AppResult.Failure(
                 AppError.Playback(summary = "The player could not be started.", isRetryable = true),
             )
+            if (!startPlaying && media.currentMediaItem.isRealBook()) {
+                _state.value = _state.value.copy(isLoading = false)
+                return@withContext AppResult.Success(Unit)
+            }
             // PRODUCT_SPEC PLAY-004 / PLAY-008 / PLAY-009 — the sleep timer, the outbox and auto-rewind all need
             // to know, in that order. See [BookChanges]; the chapters travel to them here rather than in the
             // playlist, because a long book's list in every `MediaItem`'s extras would be tens of kilobytes
@@ -213,6 +224,8 @@ class PlaybackController @Inject constructor(
             }
             AppResult.Success(Unit)
         }
+
+    private fun MediaItem?.isRealBook(): Boolean = this != null && !MediaItems.isResumePlaceholder(this)
 
     /**
      * The transport control a mini player and a notification share.

@@ -29,48 +29,11 @@ The foreground realtime and recent-book hydration slices that previously led thi
 still open in the tracker even though its implementation merged; that tracker state is stale and must not
 cause the foreground-sync work to be recreated.
 
-The active Android correctness work is now the remaining system/Android Auto behavior below. An open pull
-request is not completion: #34 and #35 remain active until their implementation is merged and the required
-device/host evidence is recorded.
+The one remaining active Android correctness item is below. Forgejo #34, #35 and #10 (GitHub #126, #196 and
+#99) have merged — see "Merged implementation awaiting physical/device acceptance"; an open pull request
+was never completion, and neither is a merged one without the device/host evidence recorded there.
 
-### 1. Issues #34 and #35 — Android Auto player state and History affordance
-
-**#34 — Car selected state.** The issue remains open. Preserve ADR-0029's routing truth and prove on API 33+
-with the real projected host whether the state BookWave publishes is rendered as intended. Do not infer a
-host limitation before the app-side publication path is proven on the current build.
-
-**#35 — History affordance.** The issue remains open. Media3's player queue/timeline is not a History
-navigation surface and must not be repurposed as one. Keep any player-to-History affordance within supported
-Media3 metadata/navigation contracts and verify what the projected host actually exposes.
-
-**Owner/boundary:** Android System & Auto, with Playback & Lifecycle review wherever playback truth or route
-ownership is touched.
-
-**Sequence:** complete and accept these focused issues before starting another speculative Android Auto
-player workaround. Their current implementation is being reviewed separately; this roadmap does not mark
-them complete merely because a PR exists.
-
-### 2. Issue #10 — make Android Auto browse invalidation shape-aware
-
-**User problem/value:** meaningful browse membership changes must refresh without stale profile content or
-N-full-library-read fan-out.
-
-**Owner/boundary:** derive one profile-bound browse snapshot per invalidation sweep and compare actual
-shape/membership, including same-count/different-member cases.
-
-**Prerequisites:** ADR-0029's stable browse/product structure is settled, and the route-ownership work in
-#11/#36 is already merged. Keep this slice independent of #34/#35 player rendering and of resume-freshness
-policy.
-
-**Non-goals:** no root redesign, routing redesign or independent resume-position owner.
-
-**Proof/acceptance:** one-snapshot orchestration, dynamic series/author nodes, Downloads, Recently added,
-Listen again, Discover, Continue, same-count membership changes and hard profile-switch invalidation;
-DHU/real-host evidence verifies visible refresh separately from JVM proof.
-
-**Effort / risk:** Medium / Medium.
-
-### 3. Issue #6 — retest headset Back/Previous on the current media-button layout
+### 1. Issue #6 — retest headset Back/Previous on the current media-button layout
 
 Issue #38 is complete through Forgejo PR #56, so the prerequisite media-button layout change is no longer a
 reason to defer #6. Retest the reported headset Previous/Back failure on current `main` first. If it still
@@ -93,7 +56,19 @@ is evidence that automated tests cannot supply:
   boundary until the repeat physical headset + car drive passes. Do not broaden it into generic
   resume-after-focus-loss behavior.
 - **#38 / Forgejo PR #56 — phone/car media-button priority:** issue closed and the state-dependent layout is
-  on `main`; phone notification plus DHU/real-car rendering remains device/host evidence.
+  on `main`; phone notification plus DHU/real-car rendering remains device/host evidence. **Deliberate
+  exception (GitHub #130):** while a sleep timer is running it takes the compact forward slot. This
+  is intended, not a defect.
+- **#34 and #35 / Forgejo PR #67 (GitHub #126 and #196) — Android Auto Car selected state and History
+  affordance:** implemented; physical acceptance pending. Car is preserved as its own explicit destination
+  and the player-side History metadata is dropped while Media3's media-notification controller is denied
+  `COMMAND_GET_TIMELINE`, so the host's standard Queue button should disappear. `docs/risks.md` R-107 and
+  R-110 are the acceptance boundary: re-run the projected-host drive and verify Car renders selected and
+  Queue is absent.
+- **#10 / Forgejo PR #69 (GitHub #99) — shape-aware Android Auto browse invalidation:** implemented;
+  physical acceptance pending. One profile-bound snapshot per sweep, including the resume tile's
+  remembered book, drives invalidation; DHU/real-host evidence must still verify the visible refresh,
+  including the resume tile after a different book is played within one profile.
 - **#7 / Forgejo PR #58 — shake-to-extend lifecycle:** issue closed and the lifecycle/settings race is fixed;
   deliberate-shake behavior still requires real accelerometer checks in foreground, background and screen-off
   playback.

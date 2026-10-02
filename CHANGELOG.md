@@ -6,6 +6,27 @@ giving it a section of its own.
 
 ## Unreleased
 
+### Resume tile invalidation, profile-switch restore and test hardening (#99, #185, #128, #133, #100)
+
+- **The Android Auto resume tile now refreshes within a profile (#99/#185).** The remembered book was not
+  part of the browse snapshot, so `RECENT_ROOT` was invalidated only at a profile boundary. The remembered
+  book now joins the one snapshot per sweep (`RememberedBookRepository.observeRememberedBook`), and a change
+  of the remembered book or of the resume candidate notifies `RECENT_ROOT` with the correct child count.
+  An unrelated library change does not.
+- **A profile switch restores the incoming profile's book by the Android Auto resume rule.**
+  `RestoreProfilePlaybackUseCase` previously returned when the profile had no locally remembered book, which
+  left an empty player (and an empty car session) for a profile that only had server progress. It now arms
+  the same candidate as Android Auto's resume row: the remembered unfinished book, else the newest unfinished
+  Continue book. It still only arms, never plays, and stays silent on failure.
+- **Test and structure changes, no behaviour change.** The idle Android Auto post-connect install moved into
+  `CarPostConnectRestorer` and the car-arrival continuity precheck into `CarContinuityPlayPrecheck`, both
+  covered by behavioural tests (real ExoPlayer for the restorer) in place of source-string checks alone.
+  Added real-repository tests for remote progress conflict rules (newer accepted, equal/older rejected,
+  invisible book not written) and a route-ownership test for a system output-chooser move to the speaker.
+- **Docs.** Roadmap status for Forgejo #10/#34/#35 is now "implemented; physical acceptance pending", the
+  merged PR number (#67) and test names in R-107, R-108 and R-110 are corrected, and the deliberate #130
+  exception (a running sleep timer takes the compact forward slot) is recorded.
+
 ### Headset Previous seeks back (PLAY-007)
 
 - **Headset/steering-wheel Previous no longer restarts the book.** It now jumps back by the configured skip

@@ -97,6 +97,19 @@ class CarProfileSelectionWiringTest {
         assertTrue(record > guard, "the exclusion must guard the write")
     }
 
+    /** Arming after a profile switch must never replace a real book the listener started meanwhile. */
+    @Test
+    fun `an arm does not replace a real loaded book`() {
+        val start = File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackController.kt").readText()
+            .substringAfter("private suspend fun start(")
+            .substringBefore("private fun MediaItem?.isRealBook")
+
+        val guard = start.indexOf("if (!startPlaying && media.currentMediaItem.isRealBook())")
+        assertTrue(guard >= 0, "start must guard an arm against a loaded real book")
+        assertTrue(guard < start.indexOf("bookChanges.onBookOpened"), "the guard precedes any book-change claim")
+        assertTrue(guard < start.indexOf("media.setMediaItem("), "the guard precedes the player write")
+    }
+
     private fun serviceSource(): String =
         File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt").readText()
 

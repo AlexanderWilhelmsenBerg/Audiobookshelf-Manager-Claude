@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.library.homeShelvesOf
+import com.example.shelfplayer.domain.library.resumeCandidate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -42,6 +43,10 @@ internal data class AutoBrowseSnapshot(
     /** Books eligible for a resume identity, including a local remembered book with no cached progress. */
     val resumableBookIds: Set<LibraryItemId>,
 )
+
+/** Derives one [AutoBrowseSnapshot] from one emission of every input the browse tree depends on. */
+internal typealias BrowseSnapshotBuild =
+    (BrowseProfileScope, List<Book>, List<Profile>, List<Server>, LibraryItemId?) -> AutoBrowseSnapshot
 
 /** One Media3 parent refresh. A null count is resolved without another complete library read. */
 internal data class BrowseInvalidation(val parentId: String, val childCount: Int?)
@@ -112,16 +117,19 @@ internal class AutoBrowseInvalidationTracker {
  *
  * #10's invariant remains intact: there is one [accessibleBooks] subscription for the active profile
  * generation, and every library-backed parent decision in one emitted snapshot comes from that same immutable
- * [List]. #65 adds the saved-profile presentation facts to the same snapshot rather than creating a second
- * invalidation loop for the Profiles destination. Lock eligibility is point-read when rows/actions are served so
- * the security decision cannot be made stale by a cached presentation token.
+ * [List]. The device-local remembered book joins the same snapshot, so a change of the resume tile's book
+ * within one profile invalidates [AutoLibrary.RECENT_ROOT]. #65 adds the saved-profile presentation facts
+ * to the same snapshot rather than creating a second invalidation loop for the Profiles destination. Lock
+ * eligibility is point-read when rows/actions are served so the security decision cannot be made stale by
+ * a cached presentation token.
  */
 internal class AutoBrowseSnapshotSource(
     private val activeProfiles: Flow<ProfileId?>,
     private val savedProfiles: Flow<List<Profile>>,
     private val savedServers: Flow<List<Server>>,
     private val accessibleBooks: (ProfileId) -> Flow<List<Book>>,
-    private val build: (BrowseProfileScope, List<Book>, List<Profile>, List<Server>) -> AutoBrowseSnapshot,
+    private val rememberedBook: (ProfileId) -> Flow<LibraryItemId?>,
+    private val build: BrowseSnapshotBuild,
 ) {
     @OptIn(ExperimentalCoroutinesApi::class)
     fun snapshots(): Flow<AutoBrowseSnapshot> = activeProfiles
@@ -134,8 +142,11 @@ internal class AutoBrowseSnapshotSource(
             val books = scope.profileId
                 ?.let(accessibleBooks)
                 ?: flowOf(emptyList())
-            combine(books, savedProfiles, savedServers) { all, profiles, servers ->
-                build(scope, all, profiles, servers)
+            val remembered = scope.profileId
+                ?.let(rememberedBook)
+                ?: flowOf(null)
+            combine(books, savedProfiles, savedServers, remembered) { all, profiles, servers, rememberedId ->
+                build(scope, all, profiles, servers, rememberedId)
             }
         }
         .distinctUntilChanged()
@@ -156,6 +167,7 @@ internal object AutoBrowseSnapshotBuilder {
         AutoLibrary.TAB_SERIES,
         AutoLibrary.TAB_AUTHORS,
         AutoLibrary.TAB_PROFILES,
+        AutoLibrary.RECENT_ROOT,
     )
 
     private val retiredProfileScopedParents = setOf(
@@ -169,13 +181,14 @@ internal object AutoBrowseSnapshotBuilder {
         AutoLibrary.TAB_OUTPUT,
     )
 
-    private val profileScopedParents = ordinaryParents + retiredProfileScopedParents + AutoLibrary.RECENT_ROOT
+    private val profileScopedParents = ordinaryParents + retiredProfileScopedParents
 
     fun build(
         scope: BrowseProfileScope,
         books: List<Book>,
         profiles: List<Profile>,
         servers: List<Server>,
+        rememberedId: LibraryItemId?,
     ): AutoBrowseSnapshot {
         val shelves = homeShelvesOf(books)
         val series = autoSeriesNodes(books)
@@ -189,6 +202,8 @@ internal object AutoBrowseSnapshotBuilder {
                 AutoLibrary.TAB_AUTHORS,
                 AutoLibrary.TAB_PROFILES,
             ),
+            // The resume tile's single child: the same choice AutoLibrary.lastPlayed() serves, by opaque id only.
+            AutoLibrary.RECENT_ROOT to listOfNotNull(resumeCandidate(books, rememberedId)?.id?.value),
             AutoLibrary.TAB_CONTINUE to shelves.continueListening.map { book -> book.id.value },
             AutoLibrary.TAB_SERIES to series.map { node -> node.membership.series.id.value },
             AutoLibrary.TAB_AUTHORS to authors.map { node -> node.author.id.value },
