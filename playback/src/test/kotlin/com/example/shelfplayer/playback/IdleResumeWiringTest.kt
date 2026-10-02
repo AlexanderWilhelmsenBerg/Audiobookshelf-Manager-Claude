@@ -49,6 +49,15 @@ class IdleResumeWiringTest {
         assertTrue("return null" in snapshot)
     }
 
+    @Test
+    fun `session player maps headset Previous to the configured skip`() {
+        val construction = serviceSource()
+            .substringAfter("val sessionPlayer = ResumeFreshnessPlayer(")
+            .substringBefore("val mediaSession")
+
+        assertTrue("skipIntervals = { skips }" in construction)
+    }
+
     private fun serviceSource(): String =
         File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt").readText()
 }

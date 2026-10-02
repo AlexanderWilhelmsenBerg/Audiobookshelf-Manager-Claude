@@ -108,7 +108,8 @@ change phone-button priority.
 
 The back slot remains occupied in every supported state. That is a safety invariant: leaving it vacant lets
 Media3 expose raw Previous again, which can reach `Player.seekToPrevious()` and restart a single-window
-audiobook.
+audiobook. As a second line of defence (#197), `ResumeFreshnessPlayer` maps Previous, SeekBack and SeekForward
+to the configured relative skip, so a Previous that does arrive jumps back instead of restarting the book.
 
 ### 8. The current output is shown by lighting an action, because nothing else on the player can show it
 
@@ -140,7 +141,7 @@ Both conclusions were reasoning about the wrong layer. Android Auto is served by
 
 **The owner then took the decision the third version deferred.** *"Compact player still don't show headset or car button. I need them more than seek forward and back."* The output actions therefore name the back and forward slots outright, and PLAY-007's skips name the same slots with an overflow fallback. Issue #38 later made the ordering state-dependent: outputs win while a car controller is bound; otherwise skips win so the phone keeps its compact seek controls.
 
-Two properties are asserted rather than reasoned about: the state-dependent ordering is run through Media3's real conversion, and the back slot is occupied in every binding/action-visibility combination. If it is ever vacated, Media3 stops clearing `ACTION_SKIP_TO_PREVIOUS`, nothing in this app intercepts it, and a head unit's *previous* reaches `Player.seekToPrevious` and restarts the book.
+Two properties are asserted rather than reasoned about: the state-dependent ordering is run through Media3's real conversion, and the back slot is occupied in every binding/action-visibility combination. If it is ever vacated, Media3 stops clearing `ACTION_SKIP_TO_PREVIOUS` and a head unit's *previous* reaches the session player. Slot occupancy keeps Previous off the surface; `ResumeFreshnessPlayer` now also maps Previous/SeekBack/SeekForward to the configured relative skip as a second line of defence (#197), so it no longer restarts the book.
 
 ### 9. Car lifecycle continuity uses focus evidence plus a physical projection boundary
 
