@@ -23,11 +23,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
 
-/** So a test can find the button without depending on which of its five icons is showing. */
+/** So a test can find the button without depending on which of its icons is showing. */
 internal const val BOOK_DOWNLOAD_BUTTON = "book-download-button"
 
 /**
- * PRODUCT_SPEC DL-001 / PD-003 — one button, five states, and each tap means the obvious thing.
+ * PRODUCT_SPEC DL-001 / PD-003 — one button, a handful of states, and each tap means the obvious thing.
  *
  * ### Why one control rather than separate download and delete
  *
@@ -54,6 +54,14 @@ internal const val BOOK_DOWNLOAD_BUTTON = "book-download-button"
  * The ring is *indeterminate* until the first byte lands. A determinate ring frozen at zero is
  * indistinguishable from a download that is not happening, and the gap between pressing and the first byte
  * is exactly when a user is deciding whether the button worked.
+ *
+ * ### The tap is answered before the download exists (#202)
+ *
+ * Pressing *Download* first checks the account's permission, the book's files and the free space, and only
+ * then writes the download — which can take seconds, and the button used to sit unchanged for all of it.
+ * [DownloadButtonState.Starting] is shown from the tap itself: the same indeterminate ring, the icon of the
+ * action already taken, and the control disabled, so a second tap can neither repeat the request nor be
+ * read as *cancel*.
  */
 @Composable
 internal fun DownloadButton(state: DownloadButtonState, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -62,7 +70,7 @@ internal fun DownloadButton(state: DownloadButtonState, onClick: () -> Unit, mod
         label = "download-progress",
     )
     Box(modifier = modifier.size(BUTTON), contentAlignment = Alignment.Center) {
-        if (state is DownloadButtonState.Downloading) {
+        if (state is DownloadButtonState.Downloading || state is DownloadButtonState.Starting) {
             if (state.progress == null) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(RING),
@@ -78,11 +86,16 @@ internal fun DownloadButton(state: DownloadButtonState, onClick: () -> Unit, mod
                 )
             }
         }
-        FilledTonalIconButton(onClick = onClick, modifier = Modifier.testTag(BOOK_DOWNLOAD_BUTTON)) {
+        FilledTonalIconButton(
+            onClick = onClick,
+            enabled = state !is DownloadButtonState.Starting,
+            modifier = Modifier.testTag(BOOK_DOWNLOAD_BUTTON),
+        ) {
             Icon(
                 imageVector = when (state) {
                     is DownloadButtonState.NotDownloaded -> Icons.Filled.Download
                     is DownloadButtonState.OnDevice -> Icons.Filled.AddCircle
+                    is DownloadButtonState.Starting -> Icons.Filled.Download
                     is DownloadButtonState.Downloading -> Icons.Filled.Close
                     is DownloadButtonState.Downloaded -> Icons.Filled.DownloadDone
                     is DownloadButtonState.Failed -> Icons.Filled.Refresh
@@ -96,10 +109,10 @@ internal fun DownloadButton(state: DownloadButtonState, onClick: () -> Unit, mod
 /**
  * What the button is showing, and therefore what a tap does.
  *
- * A sealed hierarchy rather than an enum plus a nullable float, because four of the five states have no
- * progress and a reader should not have to know which. The label travels with the state for the same
- * reason: the content description is the only thing that distinguishes *cancel* from *remove* for somebody
- * using TalkBack, and pairing it with the icon here makes them impossible to get out of step.
+ * A sealed hierarchy rather than an enum plus a nullable float, because only one state has progress and a
+ * reader should not have to know which. The label travels with the state for the same reason: the content
+ * description is the only thing that distinguishes *cancel* from *remove* for somebody using TalkBack, and
+ * pairing it with the icon here makes them impossible to get out of step.
  */
 @Immutable
 sealed interface DownloadButtonState {
@@ -121,6 +134,15 @@ sealed interface DownloadButtonState {
     }
 
     /**
+     * #202 — the tap has been taken and the download is being authorised and queued. Nothing is on the
+     * device yet and there is nothing to cancel, so a tap does nothing; the manifest replaces this the moment
+     * the download is written, and a refusal reverts it with the reason.
+     */
+    data object Starting : DownloadButtonState {
+        override val label: Int = R.string.book_download_starting
+    }
+
+    /**
      * Arriving. A tap **cancels**, and cancelling keeps what has already been fetched.
      *
      * @property progress `null` until the first byte, which shows an indeterminate ring.
@@ -138,6 +160,18 @@ sealed interface DownloadButtonState {
     data object Failed : DownloadButtonState {
         override val label: Int = R.string.book_download_retry
     }
+}
+
+/**
+ * #202 — what the button shows while a Download tap is still being authorised and queued.
+ *
+ * The manifest's own evidence always wins: once it says the book is arriving or here, that is what is shown,
+ * whether or not the tap's request has reported back. Before that, the button says the tap was taken.
+ */
+internal fun DownloadButtonState.whileStarting(isStarting: Boolean): DownloadButtonState = when {
+    !isStarting -> this
+    this is DownloadButtonState.Downloading || this is DownloadButtonState.Downloaded -> this
+    else -> DownloadButtonState.Starting
 }
 
 /** Material 3's icon-button touch target, which the ring has to sit outside rather than inside. */

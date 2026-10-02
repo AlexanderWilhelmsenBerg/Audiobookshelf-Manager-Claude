@@ -431,10 +431,17 @@ class PlaybackController @Inject constructor(
      * "Optional continue playing across profile switch is not supported in version 1." The incoming account
      * gets a stopped player, and the listener presses play.
      *
-     * Doing nothing when no controller was ever built is correct rather than lazy: no controller means the
-     * service was never started, which means nothing is loaded and there is no position to lose.
+     * ### A session the phone never attached to is still handed over (#174)
+     *
+     * No controller does **not** mean nothing is loaded. Android Auto starts the service and plays through
+     * it without the phone UI ever building a controller, and a switch made from the car's Profiles list is
+     * exactly that case. Skipping it there left the outgoing book playing — and the incoming book, armed
+     * onto a player still set to play, started on its own. So a live session is attached to first, by its
+     * direct token: that never starts the service, and with no live session there is genuinely nothing
+     * loaded and nothing to lose.
      */
     suspend fun handOver(outgoing: ProfileId) {
+        attachForHandOver()
         withContext(mainDispatcher) {
             val media = controller ?: return@withContext
             // Paused first. The flush that follows reads a position that has stopped moving, and a listener
@@ -459,6 +466,13 @@ class PlaybackController @Inject constructor(
         // The connection itself, so the incoming account does not inherit a controller aimed at a session
         // opened as somebody else.
         release()
+    }
+
+    /** #174 — attaches to the live session for [handOver] only when no controller exists; never starts one. */
+    private suspend fun attachForHandOver() {
+        val token = liveSession.currentToken() ?: return
+        val isAttached = withContext(mainDispatcher) { controller != null }
+        if (!isAttached) attachToExistingSession(token)
     }
 
     /**

@@ -137,21 +137,39 @@ class AutoBrowseTreeTest {
         )
     }
 
+    /**
+     * #174 — a profile row is an action. A browsable row made the host open a child view, and a profile has
+     * no children, so selecting one showed an empty library instead of switching.
+     */
     @Test
-    fun `Profiles exposes every saved profile as browsable non-playable rows`() = runTest {
+    fun `Profiles exposes every saved profile as an action row and never as a container`() = runTest {
         val rows = auto(StubProfiles(includeSecond = true))
             .children(AutoLibrary.TAB_PROFILES, now = null)
 
         assertEquals(listOf("profile/profile-1", "profile/profile-2"), rows.map { item -> item.mediaId })
         assertEquals(listOf("Demo listener", "Other listener"), rows.titles())
-        assertTrue(rows.all { item -> item.mediaMetadata.isBrowsable == true })
-        assertTrue(rows.none { item -> item.mediaMetadata.isPlayable == true })
+        assertTrue(rows.none { item -> item.mediaMetadata.isBrowsable == true }, "a host must not open a row")
+        assertTrue(rows.all { item -> item.mediaMetadata.isPlayable == true }, "selecting a row is the switch")
+        assertTrue(rows.all { item -> item.localConfiguration == null }, "a profile row carries no media URI")
         assertTrue(rows.first().mediaMetadata.subtitle?.toString().orEmpty().contains("Active profile"))
         assertTrue(rows.first().mediaMetadata.supportedCommands.isEmpty())
         assertEquals(
             listOf(AutoLibrary.ACTION_SWITCH_PROFILE),
             rows.last().mediaMetadata.supportedCommands,
         )
+        assertEquals(
+            listOf(PROFILE, ProfileId("profile-2")),
+            rows.map { row -> AutoLibrary.profileSelectionOf(listOf(row)) },
+            "selecting a row must name exactly that row's profile",
+        )
+    }
+
+    @Test
+    fun `only the active profile's row reads as already in use`() = runTest {
+        val auto = auto(StubProfiles(includeSecond = true))
+
+        assertTrue(auto.isActiveProfile(PROFILE))
+        assertFalse(auto.isActiveProfile(ProfileId("profile-2")))
     }
 
     @Test

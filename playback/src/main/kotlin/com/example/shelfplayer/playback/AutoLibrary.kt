@@ -167,10 +167,10 @@ class AutoLibrary @Inject constructor(
     }
 
     /**
-     * AUTH-002 / AUTH-005 — Profiles is navigation plus a media-item command, never a playable fake book.
+     * AUTH-002 / AUTH-005 / #174 — Profiles is a list of actions: selecting a row *is* the switch.
      *
-     * Lock eligibility is point-read here rather than cached in #10's snapshot. The switch command repeats
-     * the authoritative check inside SwitchProfileUseCase, so a stale host can never turn presentation state
+     * Lock eligibility is point-read here rather than cached in #10's snapshot. The switch repeats the
+     * authoritative check inside SwitchProfileUseCase, so a stale host can never turn presentation state
      * into a lock bypass.
      */
     private suspend fun profileRows(): List<MediaItem> {
@@ -188,6 +188,9 @@ class AutoLibrary @Inject constructor(
             )
         }
     }
+
+    /** #174 — whether a selected Profiles row names the profile the car is already browsing as. */
+    suspend fun isActiveProfile(profileId: ProfileId): Boolean = profiles.activeProfileId() == profileId
 
     private fun profileItem(profile: Profile, server: Server?, isActive: Boolean, canActivate: Boolean): MediaItem {
         val status = when {
@@ -209,14 +212,18 @@ class AutoLibrary @Inject constructor(
                 MediaMetadata.Builder()
                     .setTitle(profile.displayName)
                     .setSubtitle(identity)
-                    // Android Auto's media hierarchy requires a row to be browsable, playable, or both.
-                    // A profile is not audio, so keep it non-playable and use the supported browse action for
-                    // switching. Marking the row browsable keeps every saved profile visible to car hosts;
-                    // selecting the row itself exposes no profile library and therefore returns no children.
-                    .setIsBrowsable(true)
-                    .setIsPlayable(false)
-                    .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                    // #174 — Android Auto's media hierarchy requires a row to be browsable, playable, or
+                    // both, and a host *navigates into* a browsable row. A profile has no children, so a
+                    // browsable row opened an empty view and the switch hid behind a browse action most
+                    // hosts never draw. A playable row is the host's own "do this" gesture: selecting it
+                    // reaches PlaybackService.onSetMediaItems, which switches profile and never plays —
+                    // see selectProfileFromRow. The Profiles tab styles playable rows as a list, so the
+                    // row stays text-first.
+                    .setIsBrowsable(false)
+                    .setIsPlayable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_MIXED)
                     .apply {
+                        // Kept for hosts that do draw browse actions; it runs the same switch as the row.
                         if (!isActive) setSupportedCommands(listOf(ACTION_SWITCH_PROFILE))
                     }
                     .build(),
@@ -515,6 +522,15 @@ class AutoLibrary @Inject constructor(
             ?.removePrefix(PROFILE_PREFIX)
             ?.takeIf(String::isNotBlank)
             ?.let(::ProfileId)
+
+        /**
+         * #174 — the profile a controller's set-media request selects, or `null` for an ordinary media request.
+         *
+         * Only a request for exactly one item counts: that is what selecting a row sends. A profile id inside
+         * a longer list is not a selection, and is left to book resolution, which resolves it to nothing.
+         */
+        internal fun profileSelectionOf(mediaItems: List<MediaItem>): ProfileId? =
+            mediaItems.singleOrNull()?.mediaId?.let(::profileIdOf)
 
         fun resolve(mediaId: String): Target? = when {
             mediaId.startsWith(BOOK_PREFIX) -> Target(LibraryItemId(mediaId.removePrefix(BOOK_PREFIX)), null)

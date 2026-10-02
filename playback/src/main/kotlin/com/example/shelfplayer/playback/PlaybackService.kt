@@ -77,6 +77,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
@@ -2522,6 +2524,9 @@ class PlaybackService : MediaLibraryService() {
      */
     private inner class LibraryCallback : MediaLibrarySession.Callback {
 
+        /** #174 — car profile selections run one at a time; see [switchProfileFromCar]. */
+        private val carProfileSwitch = Mutex()
+
         /**
          * PRODUCT_SPEC 11.1 — the browse root, which is what makes the app appear in a car at all.
          *
@@ -2795,8 +2800,44 @@ class PlaybackService : MediaLibraryService() {
                     LogField.Millis("startAt", startPositionMs),
                 ),
             )
+            AutoLibrary.profileSelectionOf(mediaItems)?.let { profileId ->
+                return selectProfileFromRow(session, controller, profileId)
+            }
             return future {
                 setMediaItems(session, controller, mediaItems, startIndex, startPositionMs, trace)
+            }
+        }
+
+        /**
+         * #174 — selecting a Profiles row is the profile switch itself, and never a media request.
+         *
+         * Android Auto turns a tap on a playable row into `playFromMediaId`, which Media3 delivers to
+         * [onSetMediaItems]. A profile is not audio, so [ProfileRowSelection] never answers with media: no set,
+         * no prepare and no Play follow, which keeps the tap from starting or replacing a book (PRODUCT_SPEC
+         * 6.5.3: a switch pauses, it never plays).
+         *
+         * The switch is the one the row's media-item command already runs, so the lock policy, flush/pause
+         * and the browse invalidation that follows are not re-implemented for the tap. A refusal reaches the
+         * car as the session error the command would have returned.
+         */
+        private fun selectProfileFromRow(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            profileId: ProfileId,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            if (!session.mayBrowse(controller)) {
+                denied(controller, "onSetMediaItems")
+                return ProfileRowSelection.refused()
+            }
+            return ProfileRowSelection.answer(future { switchProfileFromCar(profileId) }) { result ->
+                // PRODUCT_SPEC 14.5 — the outcome code only: which profile was chosen is not a log fact.
+                logger.info(
+                    LogCategory.Playback,
+                    "A car selected a profile row",
+                    LogField.Public("controller", controller.packageName),
+                    LogField.Public("resultCode", result.resultCode),
+                )
+                result.sessionError?.let { error -> session.sendError(controller, error) }
             }
         }
 
@@ -3337,18 +3378,34 @@ class PlaybackService : MediaLibraryService() {
         }
 
         /**
-         * PD-001 / AUTH-005 — switch the profile named by a media-item command.
+         * PD-001 / AUTH-005 / #174 — switch to the profile a car selected, by its row or by its media-item
+         * command.
          *
-         * The command carries only the opaque media id Media3 supplied for the selected row. The domain use
-         * case remains the lock/flush/pause/context owner; the car never receives a credential-entry surface.
+         * Both carry only the opaque media id Media3 supplied for the selected row. The domain use case
+         * remains the lock/flush/pause/context owner; the car never receives a credential-entry surface.
+         *
+         * One switch at a time, and selecting the profile already in use does nothing. A host can deliver a
+         * double tap as two requests: serialised, the second finds the first one's profile active instead of
+         * racing it (PRODUCT_SPEC 6.5, "atomically"), and the no-op keeps a stray tap from re-arming — and so
+         * interrupting — the book that profile is already playing (product priority 1).
          */
-        private suspend fun switchProfileFromCar(args: Bundle): SessionResult {
-            val profileId = AutoLibrary.profileIdOf(args.getString(MediaConstants.EXTRA_KEY_MEDIA_ID))
-                ?: return SessionResult(
+        private suspend fun switchProfileFromCar(profileId: ProfileId?): SessionResult {
+            if (profileId == null) {
+                return SessionResult(
                     SessionError(SessionError.ERROR_BAD_VALUE, getString(R.string.car_profile_unavailable)),
                 )
+            }
+            return carProfileSwitch.withLock {
+                if (auto.isActiveProfile(profileId)) {
+                    SessionResult(SessionResult.RESULT_SUCCESS)
+                } else {
+                    switchTo(profileId)
+                }
+            }
+        }
 
-            return when (val result = switchProfile(profileId)) {
+        private suspend fun switchTo(profileId: ProfileId): SessionResult =
+            when (val result = switchProfile(profileId)) {
                 is AppResult.Success -> {
                     if (result.value == SessionStatus.Active) {
                         // The correctness-critical flush/switch above is awaited. Step 6 remains a courtesy,
@@ -3372,7 +3429,6 @@ class PlaybackService : MediaLibraryService() {
                     SessionResult(SessionError(code, message))
                 }
             }
-        }
 
         /**
          * Executes only commands already granted to library-capable controllers in [onConnect]. The explicit
@@ -3411,7 +3467,9 @@ class PlaybackService : MediaLibraryService() {
                         .nextHeadset(audioOutputs.outputs.value, audioOutputs.selectedId.value)
                         ?.let(audioOutputs::select)
 
-                AutoLibrary.ACTION_SWITCH_PROFILE -> return future { switchProfileFromCar(args) }
+                AutoLibrary.ACTION_SWITCH_PROFILE -> return future {
+                    switchProfileFromCar(AutoLibrary.profileIdOf(args.getString(MediaConstants.EXTRA_KEY_MEDIA_ID)))
+                }
 
                 else -> return Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             }

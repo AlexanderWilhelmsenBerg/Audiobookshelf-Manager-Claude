@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import androidx.media3.common.MediaItem
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import org.junit.Test
@@ -89,6 +90,25 @@ class AutoLibraryTest {
         assertNull(AutoLibrary.profileIdOf("book/prf_ada"))
     }
 
+    /**
+     * #174 — a selected Profiles row reaches the service as a one-item set-media request, and only that is a
+     * profile selection. Anything else stays an ordinary media request, so a book can never become a switch.
+     */
+    @Test
+    fun `only a one-row request for a profile id is a profile selection`() {
+        assertEquals(ProfileId("prf_ada"), AutoLibrary.profileSelectionOf(listOf(row("profile/prf_ada"))))
+
+        assertNull(AutoLibrary.profileSelectionOf(emptyList()))
+        assertNull(AutoLibrary.profileSelectionOf(listOf(row("book/tidewatch"))))
+        assertNull(AutoLibrary.profileSelectionOf(listOf(row("at/tidewatch/600000"))))
+        assertNull(AutoLibrary.profileSelectionOf(listOf(row("profile/"))))
+        assertNull(AutoLibrary.profileSelectionOf(listOf(row(""))), "a spoken request carries no media id")
+        assertNull(
+            AutoLibrary.profileSelectionOf(listOf(row("profile/prf_ada"), row("book/tidewatch"))),
+            "a profile id inside a longer list is not a selection",
+        )
+    }
+
     @Test
     fun `retired browse destinations stay non-playable protocol ids`() {
         assertNull(AutoLibrary.resolve(AutoLibrary.TAB_LIBRARY))
@@ -135,4 +155,6 @@ class AutoLibraryTest {
         assertNull(AutoLibrary.resolve("at//600000"))
         assertNull(AutoLibrary.resolve("something-else"))
     }
+
+    private fun row(mediaId: String): MediaItem = MediaItem.Builder().setMediaId(mediaId).build()
 }

@@ -33,10 +33,16 @@ profiles if practical: one unlocked and one passcode-protected.
 ### Profiles — #65
 
 - Open Profiles. Confirm all saved profiles are recognisable and profile A is clearly marked active.
+- **#174:** selecting any profile row must never open a child view — in particular not an empty one. A profile
+  row is an action: selecting it *is* the switch. Note what the host shows right after the selection (it may
+  stay on Profiles or move to its player view); either is acceptable, an empty browse page is not.
+- With A playing, select A itself. Nothing may change: no empty view, no switch, and A's book keeps playing.
 - Select locked profile B. It must **not** expose B's library. The car should report that B must be unlocked in
   BookWave on the phone.
-- Unlock B on the phone, return to Android Auto and select B again. The switch should succeed; playback remains
-  paused, the outgoing position is preserved, and B's remembered book may be restored only in a paused state.
+- Unlock B on the phone, return to Android Auto and select B again — **with the phone app not opened since the
+  car connected**, which is the case #174 fixed. The switch should succeed; playback pauses, the outgoing
+  position is preserved, and B's remembered book may be restored only in a paused state. B's book must not start
+  on its own.
 - Browse Continue/Series/Authors after the switch. No profile-A title or old subscribed Series/Author child may
   remain visible. This is the physical proof of #10's hard profile-boundary invalidation.
 

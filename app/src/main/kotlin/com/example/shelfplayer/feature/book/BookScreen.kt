@@ -696,8 +696,15 @@ private fun Section(titleRes: Int, modifier: Modifier = Modifier, content: @Comp
 private fun FactStrip(book: Book, downloadState: DownloadButtonState, modifier: Modifier = Modifier) {
     val availability = when (downloadState) {
         DownloadButtonState.NotDownloaded -> R.string.book_not_downloaded
+
         DownloadButtonState.OnDevice -> R.string.book_downloaded_on_device
-        is DownloadButtonState.Downloading, DownloadButtonState.Failed -> R.string.book_download_partial
+
+        // #202 — Starting says what Downloading will say a moment later, so the strip does not flicker.
+        DownloadButtonState.Starting,
+        is DownloadButtonState.Downloading,
+        DownloadButtonState.Failed,
+        -> R.string.book_download_partial
+
         DownloadButtonState.Downloaded -> R.string.book_downloaded
     }
     val facts = buildList {

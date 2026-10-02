@@ -419,6 +419,7 @@
     <string name="book_section_about">Om boken</string>
     <string name="book_download">Last ned</string>
     <string name="book_download_use_device_copy">Bruk den nedlastede kopien</string>
+    <string name="book_download_starting">Starter nedlastingen</string>
     <string name="book_download_cancel">Avbryt nedlastingen</string>
     <string name="book_download_remove">Fjern nedlastingen</string>
     <string name="book_download_retry">Prøv nedlastingen på nytt</string>
