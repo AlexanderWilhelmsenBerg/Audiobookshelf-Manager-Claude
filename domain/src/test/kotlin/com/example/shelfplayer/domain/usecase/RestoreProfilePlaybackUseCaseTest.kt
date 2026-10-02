@@ -91,6 +91,49 @@ class RestoreProfilePlaybackUseCaseTest {
         assertTrue(player.played.isEmpty(), "restoring a profile must still remain paused")
     }
 
+    /** Owner-approved: the incoming profile resumes by Android Auto's rule, so server progress is enough. */
+    @Test
+    fun `without a remembered book the newest unfinished Continue book is armed`() = runTest {
+        val library = FakeLibraryRepository(
+            listOf(
+                playedBook("older", at = "2026-08-01T10:00:00Z"),
+                playedBook("newest", at = "2026-09-12T10:00:00Z"),
+                playedBook("newest-but-done", at = "2026-09-30T10:00:00Z", finished = true),
+            ),
+        )
+
+        useCase(library)(TEST_PROFILE)
+
+        assertEquals(listOf(LibraryItemId("newest")), player.armed)
+        assertTrue(player.played.isEmpty(), "a fallback candidate is armed, never played")
+    }
+
+    @Test
+    fun `a finished remembered book falls back to the newest unfinished Continue book`() = runTest {
+        val library = FakeLibraryRepository(
+            listOf(
+                playedBook("done", at = "2026-09-30T10:00:00Z", finished = true),
+                playedBook("other", at = "2026-08-01T10:00:00Z"),
+            ),
+        )
+
+        useCase(library, rememberedId = LibraryItemId("done"))(TEST_PROFILE)
+
+        assertEquals(listOf(LibraryItemId("other")), player.armed)
+    }
+
+    @Test
+    fun `only finished or unplayed books means nothing is armed`() = runTest {
+        val library = FakeLibraryRepository(
+            listOf(playedBook("done", at = "2026-09-30T10:00:00Z", finished = true), book("untouched")),
+        )
+
+        useCase(library)(TEST_PROFILE)
+
+        assertTrue(player.armed.isEmpty())
+        assertTrue(player.played.isEmpty())
+    }
+
     /** An account with nothing played is silent rather than a failure — there is nothing wrong. */
     @Test
     fun `an account with an empty library restores nothing and does not fail`() = runTest {

@@ -4,7 +4,7 @@ import com.example.shelfplayer.core.common.log.LogCategory
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.model.ProfileId
-import com.example.shelfplayer.domain.library.rememberedBook
+import com.example.shelfplayer.domain.library.resumeCandidate
 import com.example.shelfplayer.domain.playback.StartupPlayer
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.RememberedBookRepository
@@ -46,16 +46,22 @@ class RestoreProfilePlaybackUseCase @Inject constructor(
 ) {
 
     /**
-     * Arms [profileId]'s locally remembered unfinished book, or does nothing when it has none.
+     * Arms [profileId]'s resume candidate, or does nothing when it has none.
+     *
+     * The incoming profile's "last player state" is resolved with the same rule as Android Auto's resume
+     * ([resumeCandidate], issue #185; owner-approved): the device-local remembered unfinished book first,
+     * otherwise the newest unfinished Continue-listening book from server progress. A profile with server
+     * progress but no remembered book is therefore not left with an empty player or an empty car session.
+     * It still only arms; nothing here can play.
      *
      * Silent about failure by design. This is a courtesy performed after an action that has already
      * succeeded; a listener who has just switched account does not need to be told that the book they were
      * not asking for could not be loaded (product priority 1 — nothing here may interrupt).
      */
     suspend operator fun invoke(profileId: ProfileId) {
-        val rememberedId = rememberedBooks.rememberedBook(profileId) ?: return
+        val rememberedId = rememberedBooks.rememberedBook(profileId)
         val books = library.observeAccessibleBooks(profileId).first()
-        val book = rememberedBook(books, rememberedId) ?: return
+        val book = resumeCandidate(books, rememberedId) ?: return
         logger.info(LogCategory.Playback, "The account that was switched to had its last book restored, paused")
         player.arm(book.id)
     }
