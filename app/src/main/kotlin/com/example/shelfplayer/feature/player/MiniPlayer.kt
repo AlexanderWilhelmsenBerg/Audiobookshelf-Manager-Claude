@@ -1,10 +1,10 @@
 package com.example.shelfplayer.feature.player
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
@@ -22,10 +22,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Bedtime
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,13 +38,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -59,7 +59,6 @@ import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.PlaybackUiState
 import com.example.shelfplayer.ui.glass.LocalGlassHazeState
 import com.example.shelfplayer.ui.glass.systemGlass
-import kotlin.time.Duration
 
 /**
  * PRODUCT_SPEC PLAY-001 — what is playing, on every screen.
@@ -71,19 +70,18 @@ import kotlin.time.Duration
  *
  * ### The accessibility bits are not decoration
  *
- * The transport button's content description changes with the state, because "Play" on a button that
- * pauses is what a screen-reader user hears instead of what happens. The title is a polite live region
- * so that a book starting is announced without interrupting whatever is being read.
+ * The Play/Pause description follows playback state, and the timer announces whether it is inactive or
+ * how long remains. The title is a polite live region so a book starting is announced without interrupting
+ * whatever is being read. The compact hierarchy deliberately contains only identity, Sleep Timer and
+ * Play/Pause; richer transport remains in the full player and system media controls.
  */
 @Composable
 fun MiniPlayer(
     state: PlaybackUiState,
     timer: SleepTimerState,
     onTogglePlayPause: () -> Unit,
-    onStop: () -> Unit,
     onOpenSleepTimer: () -> Unit,
     onExpand: () -> Unit,
-    skips: SkipControls,
     modifier: Modifier = Modifier,
     /**
      * Called with how much of the window the bar covers, **excluding** the system navigation bar.
@@ -99,28 +97,20 @@ fun MiniPlayer(
 ) {
     val activeTimerLabel = stringResource(R.string.sleep_timer_active, timer.remaining.asShortLabel())
     val openLabel = stringResource(R.string.player_open)
-    val backSeconds = skips.intervals.back.inWholeSeconds.toInt()
-    val forwardSeconds = skips.intervals.forward.inWholeSeconds.toInt()
     val hazeState = LocalGlassHazeState.current
     val systemBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val density = LocalDensity.current
     AnimatedVisibility(
         visible = state.bookId != null,
         modifier = modifier.fillMaxWidth(),
-        enter = expandVertically(
-            expandFrom = Alignment.Bottom,
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessMediumLow,
-            ),
-        ),
-        exit = shrinkVertically(
-            shrinkTowards = Alignment.Bottom,
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMedium,
-            ),
-        ),
+        enter = slideInVertically(
+            initialOffsetY = { height -> height },
+            animationSpec = PlayerMotion.standard(),
+        ) + fadeIn(animationSpec = PlayerMotion.standard()),
+        exit = slideOutVertically(
+            targetOffsetY = { height -> height },
+            animationSpec = PlayerMotion.standard(),
+        ) + fadeOut(animationSpec = PlayerMotion.standard()),
     ) {
         Surface(
             modifier = Modifier
@@ -194,8 +184,8 @@ fun MiniPlayer(
                     //
                     // Not `clickable` on the `Surface`: a clickable container **merges** its descendants'
                     // semantics, so the buttons inside would stop being separate nodes — a screen reader
-                    // would find one control where there are five, and a tap on the pause icon would fire
-                    // the container's click instead of the button's.
+                    // would find one merged control instead of identity plus the two direct actions, and a
+                    // tap on the pause icon could fire the container's click instead of the button's.
                     Row(
                         modifier = Modifier
                             .weight(1f)
@@ -243,24 +233,10 @@ fun MiniPlayer(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Clip,
-                                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                         }
-                    }
-                    // PRODUCT_SPEC PLAY-007 — the two skips a listener reaches for without looking, at the
-                    // configured intervals. The glyph drops its number rather than printing a wrong one.
-                    MiniPlayerButton(onClick = skips.onBack) {
-                        Icon(
-                            imageVector = SkipIcons.back(skips.intervals.back),
-                            contentDescription = pluralStringResource(
-                                R.plurals.player_skip_back,
-                                backSeconds,
-                                backSeconds,
-                            ),
-                            modifier = Modifier.size(TRANSPORT_ICON_SIZE),
-                        )
                     }
                     // PRODUCT_SPEC PLAY-008 — the remaining time doubles as the control's label, so a
                     // listener can see the timer is running without opening anything.
@@ -268,7 +244,7 @@ fun MiniPlayer(
                         if (timer.isActive) {
                             Text(
                                 text = timer.remaining.asCountdownLabel(),
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                                 modifier = Modifier.semantics {
                                     contentDescription = activeTimerLabel
                                 },
@@ -281,33 +257,11 @@ fun MiniPlayer(
                             )
                         }
                     }
-                    MiniPlayerButton(onClick = onTogglePlayPause) {
-                        Icon(
-                            imageVector = if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = stringResource(
-                                if (state.isPlaying) R.string.player_pause else R.string.player_resume,
-                            ),
-                            modifier = Modifier.size(PLAY_ICON_SIZE),
-                        )
-                    }
-                    MiniPlayerButton(onClick = skips.onForward) {
-                        Icon(
-                            imageVector = SkipIcons.forward(skips.intervals.forward),
-                            contentDescription = pluralStringResource(
-                                R.plurals.player_skip_forward,
-                                forwardSeconds,
-                                forwardSeconds,
-                            ),
-                            modifier = Modifier.size(TRANSPORT_ICON_SIZE),
-                        )
-                    }
-                    MiniPlayerButton(onClick = onStop) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = stringResource(R.string.player_stop),
-                            modifier = Modifier.size(TRANSPORT_ICON_SIZE),
-                        )
-                    }
+                    MiniPlayerPlayPauseButton(
+                        state = state,
+                        onClick = onTogglePlayPause,
+                        modifier = Modifier.padding(end = MINI_PLAYER_END_INSET),
+                    )
                 }
                 LinearProgressIndicator(
                     progress = { state.fractionComplete },
@@ -316,47 +270,41 @@ fun MiniPlayer(
                         .fillMaxWidth()
                         .height(PROGRESS_HEIGHT),
                 )
-                // Always drawn. A previous version hid these above a font scale of 1.3, on the grounds
-                // that they shared the top strip with the title and a clock nobody can read is worth less
-                // than the title it sits on. The device disagreed — *"the progress timers went away"* —
-                // and the premise was wrong anyway: the bar measures 72dp, 70dp and 74dp at scales 1.0,
-                // 1.3 and 2.0, so there was never the dramatic growth the threshold was protecting.
-                // Long text is made readable by scrolling it instead; see the title and author above.
-                MiniPlayerTimeLabels(
-                    state = state,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .padding(
-                            start = ARTWORK_SIZE + TIME_LABEL_HORIZONTAL_INSET,
-                            top = TIME_LABEL_TOP_INSET,
-                            end = TIME_LABEL_HORIZONTAL_INSET,
-                        ),
-                )
             }
         }
     }
 }
 
 @Composable
-private fun MiniPlayerTimeLabels(state: PlaybackUiState, modifier: Modifier = Modifier) {
-    val elapsed = state.position.coerceAtLeast(Duration.ZERO)
-    val remaining = (state.duration - elapsed).coerceAtLeast(Duration.ZERO)
-    Box(modifier = modifier) {
-        Text(
-            text = elapsed.asChapterClock(),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            modifier = Modifier.align(Alignment.TopStart),
-        )
-        Text(
-            text = "-${remaining.asChapterClock()}",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            modifier = Modifier.align(Alignment.TopEnd),
-        )
+private fun MiniPlayerPlayPauseButton(state: PlaybackUiState, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val label = when {
+        state.isLoading -> stringResource(R.string.player_starting)
+        state.isPlaying -> stringResource(R.string.player_pause)
+        else -> stringResource(R.string.player_resume)
+    }
+    IconButton(
+        onClick = onClick,
+        modifier = modifier
+            .size(CONTROL_SIZE)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.primary),
+    ) {
+        if (state.isLoading) {
+            CircularProgressIndicator(
+                color = MaterialTheme.colorScheme.onPrimary,
+                strokeWidth = 2.dp,
+                modifier = Modifier
+                    .size(22.dp)
+                    .semantics { contentDescription = label },
+            )
+        } else {
+            Icon(
+                imageVector = if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = label,
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.size(PLAY_ICON_SIZE),
+            )
+        }
     }
 }
 
@@ -449,7 +397,6 @@ private val ARTWORK_SIZE = 46.dp
 private val CONTROL_SIZE = 48.dp
 private val TRANSPORT_ICON_SIZE = 28.dp
 private val PLAY_ICON_SIZE = 34.dp
+private val MINI_PLAYER_END_INSET = 8.dp
 private val PROGRESS_HEIGHT = 2.dp
-private val TIME_LABEL_HORIZONTAL_INSET = 6.dp
-private val TIME_LABEL_TOP_INSET = 3.dp
 private const val GLASS_ARTWORK_ALPHA = 0.72f

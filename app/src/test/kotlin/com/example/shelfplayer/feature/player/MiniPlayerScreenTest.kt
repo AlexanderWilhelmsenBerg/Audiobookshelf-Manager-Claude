@@ -18,7 +18,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Dp
 import com.example.shelfplayer.core.model.LibraryItemId
-import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.PlaybackUiState
@@ -49,39 +48,30 @@ class MiniPlayerScreenTest {
     val composeRule = createComposeRule()
 
     /**
-     * **The elapsed and remaining clock is drawn at a large font scale too.**
+     * Hallmark #96 — the compact player spends its scarce width on identity and direct actions.
      *
-     * A previous version hid it above a font scale of 1.3, reasoning that it shared the top strip with
-     * the title and that a clock nobody can read is worth less than the title it sits on. The device
-     * disagreed — *"the progress timers went away"* — and the premise did not survive measurement either:
-     * the bar comes out within a few dp of its floor across the whole font range, so the room the
-     * threshold was protecting was never in short supply. Long text scrolls instead of being cut off.
-     *
-     * At 2.0 rather than at 1.3, so the assertion covers the far end rather than the boundary the
-     * threshold happened to sit on.
+     * Elapsed/remaining book clocks remain in the full player; the mini player keeps only the thin visual
+     * progress indicator so long titles and large text do not compete with two permanent clock labels.
      */
     @Test
     @Config(sdk = [34], qualifiers = "w360dp-h740dp", fontScale = 2.0f)
-    fun `the clock is still drawn at twice the font size`() {
+    fun `the compact player does not reserve book clock labels at large text`() {
         composeRule.setContent {
             Box(modifier = Modifier.fillMaxSize()) {
                 MiniPlayer(
                     state = playing(),
                     timer = SleepTimerState.Idle,
                     onTogglePlayPause = {},
-                    onStop = {},
                     onOpenSleepTimer = {},
                     onExpand = {},
-                    skips = SkipControls(SkipIntervals.Default, {}, {}),
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
         }
 
-        // Thirty minutes into a two-hour book: elapsed on the left, remaining on the right with its sign.
-        // Exact matches, because "30:00" is also a substring of "-1:30:00" and would find both.
-        composeRule.onNodeWithText("30:00").assertExists()
-        composeRule.onNodeWithText("-1:30:00").assertExists()
+        composeRule.onNodeWithText("30:00").assertDoesNotExist()
+        composeRule.onNodeWithText("-1:30:00").assertDoesNotExist()
+        composeRule.onNodeWithText("The Tidewatch Cycle").assertIsDisplayed()
     }
 
     /**
@@ -97,10 +87,8 @@ class MiniPlayerScreenTest {
                 state = PlaybackUiState.Idle,
                 timer = SleepTimerState.Idle,
                 onTogglePlayPause = {},
-                onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                skips = SkipControls.Inert,
             )
         }
 
@@ -167,10 +155,8 @@ class MiniPlayerScreenTest {
                 state = playing(),
                 timer = SleepTimerState.Idle,
                 onTogglePlayPause = {},
-                onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                skips = SkipControls.Inert,
             )
         }
 
@@ -191,10 +177,8 @@ class MiniPlayerScreenTest {
                 state = playing(),
                 timer = SleepTimerState.Idle,
                 onTogglePlayPause = {},
-                onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                skips = SkipControls.Inert,
             )
         }
 
@@ -209,10 +193,8 @@ class MiniPlayerScreenTest {
                 state = playing(isPlaying = false),
                 timer = SleepTimerState.Idle,
                 onTogglePlayPause = {},
-                onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                skips = SkipControls.Inert,
             )
         }
 
@@ -235,10 +217,8 @@ class MiniPlayerScreenTest {
                 state = playing(),
                 timer = SleepTimerState.Idle,
                 onTogglePlayPause = { toggles++ },
-                onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = { expands++ },
-                skips = SkipControls.Inert,
             )
         }
 
@@ -251,80 +231,24 @@ class MiniPlayerScreenTest {
         assertEquals(1, expands, "the button's press did not also open the player")
     }
 
-    /** PRODUCT_SPEC PLAY-007 — both skips report their direction. */
+    /** Hallmark #96 — richer transport remains in the full player rather than consuming compact width. */
     @Test
-    fun `the skip controls report their direction`() {
-        val skips = mutableListOf<String>()
+    fun `the compact player omits skip and stop controls`() {
         composeRule.setContent {
             MiniPlayer(
                 state = playing(),
                 timer = SleepTimerState.Idle,
                 onTogglePlayPause = {},
-                onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                skips = SkipControls(
-                    intervals = SkipIntervals.Default,
-                    onBack = { skips += "back" },
-                    onForward = { skips += "forward" },
-                ),
             )
         }
 
-        composeRule.onNodeWithContentDescription("Back 30 seconds").performClick()
-        composeRule.onNodeWithContentDescription("Forward 30 seconds").performClick()
-
-        assertEquals(listOf("back", "forward"), skips)
-    }
-
-    /**
-     * PRODUCT_SPEC PLAY-007 — the labels follow the configured interval.
-     *
-     * The number is the part a screen reader announces and, where Material has a glyph for it, the part
-     * drawn on the button. A control that says thirty and jumps forty-five is worse than one with no
-     * number: the user has no reason to distrust it.
-     */
-    @Test
-    fun `the skip labels follow the configured interval`() {
-        composeRule.setContent {
-            MiniPlayer(
-                state = playing(),
-                timer = SleepTimerState.Idle,
-                onTogglePlayPause = {},
-                onStop = {},
-                onOpenSleepTimer = {},
-                onExpand = {},
-                skips = SkipControls.Inert.copy(
-                    intervals = SkipIntervals.of(back = 10.seconds, forward = 45.seconds),
-                ),
-            )
-        }
-
-        composeRule.onNodeWithContentDescription("Back 10 seconds").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Forward 45 seconds").assertIsDisplayed()
-    }
-
-    @Test
-    fun `the transport control and the stop control report to the caller`() {
-        var toggles = 0
-        var stops = 0
-        composeRule.setContent {
-            MiniPlayer(
-                state = playing(),
-                timer = SleepTimerState.Idle,
-                onTogglePlayPause = { toggles++ },
-                onStop = { stops++ },
-                onOpenSleepTimer = {},
-                onExpand = {},
-                skips = SkipControls.Inert,
-            )
-        }
-
-        composeRule.onNodeWithContentDescription("Pause").performClick()
-        composeRule.onNodeWithContentDescription("Stop playback").performClick()
-
-        assertEquals(1, toggles)
-        assertEquals(1, stops)
+        composeRule.onNodeWithContentDescription("Back 30 seconds").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Forward 30 seconds").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Stop playback").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Pause").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Set a sleep timer").assertIsDisplayed()
     }
 
     /** A book starting is announced politely rather than interrupting whatever is being read. */
@@ -335,10 +259,8 @@ class MiniPlayerScreenTest {
                 state = playing(),
                 timer = SleepTimerState.Idle,
                 onTogglePlayPause = {},
-                onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                skips = SkipControls.Inert,
             )
         }
 
@@ -365,10 +287,8 @@ class MiniPlayerScreenTest {
                     isFading = false,
                 ),
                 onTogglePlayPause = {},
-                onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                skips = SkipControls.Inert,
             )
         }
 
@@ -392,10 +312,8 @@ class MiniPlayerScreenTest {
                     isFading = false,
                 ),
                 onTogglePlayPause = {},
-                onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                skips = SkipControls.Inert,
             )
         }
 
@@ -410,10 +328,8 @@ class MiniPlayerScreenTest {
                 state = playing(),
                 timer = SleepTimerState.Idle,
                 onTogglePlayPause = {},
-                onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                skips = SkipControls.Inert,
             )
         }
 
@@ -428,10 +344,8 @@ class MiniPlayerScreenTest {
                 state = playing(position = 5.minutes, duration = Duration.ZERO),
                 timer = SleepTimerState.Idle,
                 onTogglePlayPause = {},
-                onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                skips = SkipControls.Inert,
             )
         }
 
@@ -453,10 +367,8 @@ class MiniPlayerScreenTest {
                 state = playing(),
                 timer = SleepTimerState.Idle,
                 onTogglePlayPause = {},
-                onStop = {},
                 onOpenSleepTimer = {},
                 onExpand = {},
-                skips = SkipControls.Inert,
                 onHeightMeasured = onHeightMeasured,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )

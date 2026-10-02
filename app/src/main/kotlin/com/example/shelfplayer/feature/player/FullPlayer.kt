@@ -2,9 +2,9 @@ package com.example.shelfplayer.feature.player
 
 import android.content.Intent
 import android.provider.Settings
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,13 +26,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +47,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -69,6 +76,8 @@ import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.domain.playback.ChapterProgress
 import com.example.shelfplayer.playback.PlaybackUiState
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.collect
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -84,7 +93,8 @@ import kotlin.time.Duration.Companion.milliseconds
  *    background gives the artwork something to sit against and stops the screen reading as a form.
  *  - **The artwork is the biggest thing on screen**, because it is how a listener recognises where they
  *    are before reading a word.
- *  - **Title and author are centred beneath it and are not controls.** They label the picture above them.
+ *  - **Title, author and chapter form a left-aligned editorial block.** They identify the book while the
+ *    mechanical transport remains centred below.
  *  - **The scrubber sits directly above the transport**, elapsed left, remaining right. That pair is what
  *    a listener actually reads: how far in, and how much is left.
  *  - **Transport is one large primary button flanked by two skips**, and nothing else shares the row. The
@@ -94,10 +104,10 @@ import kotlin.time.Duration.Companion.milliseconds
  *
  * ### Why an overlay rather than a navigation destination
  *
- * The two forms are one thing in two sizes rather than two screens. As an overlay with a [BackHandler]
- * that collapses it, back shows the bar and the screen underneath keeps its scroll position — which a
- * destination would have to restore. It also means the player cannot end up in the back stack twice,
- * which is the usual bug with a player reachable from several screens.
+ * The two forms are one thing in two sizes rather than two screens. As an overlay with a
+ * [PredictiveBackHandler] that collapses it, Back reveals the bar and the screen underneath keeps its
+ * scroll position — which a destination would have to restore. It also means the player cannot end up in
+ * the back stack twice, which is the usual bug with a player reachable from several screens.
  */
 @Composable
 fun FullPlayer(
@@ -109,9 +119,41 @@ fun FullPlayer(
     /** PRODUCT_SPEC PLAY-002 — the output chooser. Inert by default so a preview needs no audio devices. */
     outputs: OutputControls = OutputControls.Inert,
     isNotificationBlocked: Boolean = false,
+    /** False while a player-owned modal surface should consume Back before the player itself. */
+    backEnabled: Boolean = true,
 ) {
-    BackHandler(onBack = actions.onCollapse)
-    Surface(modifier = modifier.fillMaxSize()) {
+    var isMoreMenuOpen by remember { mutableStateOf(false) }
+    var isOutputMenuOpen by remember { mutableStateOf(false) }
+    val predictiveBackProgress = remember { Animatable(0f) }
+
+    LaunchedEffect(outputs.outputs.isEmpty()) {
+        if (outputs.outputs.isEmpty()) isOutputMenuOpen = false
+    }
+
+    PredictiveBackHandler(enabled = backEnabled && !isMoreMenuOpen && !isOutputMenuOpen) { progress ->
+        try {
+            progress.collect { backEvent ->
+                predictiveBackProgress.snapTo(backEvent.progress.coerceIn(0f, 1f))
+            }
+            predictiveBackProgress.snapTo(1f)
+            actions.onCollapse()
+        } catch (_: CancellationException) {
+            predictiveBackProgress.animateTo(
+                targetValue = 0f,
+                animationSpec = PlayerMotion.predictiveCancel(),
+            )
+        }
+    }
+
+    Surface(
+        modifier = modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                val progress = predictiveBackProgress.value
+                translationY = size.height * progress
+                alpha = 1f - (progress * PREDICTIVE_BACK_FADE_FRACTION)
+            },
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -121,7 +163,11 @@ fun FullPlayer(
         ) {
             TopBar(
                 outputs = outputs,
-                onCollapse = actions.onCollapse,
+                actions = actions,
+                isOutputMenuOpen = isOutputMenuOpen,
+                onOutputMenuOpenChange = { isOutputMenuOpen = it },
+                isMoreMenuOpen = isMoreMenuOpen,
+                onMoreMenuOpenChange = { isMoreMenuOpen = it },
             )
 
             // PRODUCT_SPEC PLAY-001 — the requirement is a notification with transport controls, and on
@@ -220,25 +266,10 @@ private fun ColumnScope.PlayerControls(
     skips: SkipControls,
     pushesToBottom: Boolean,
 ) {
-    Spacer(modifier = Modifier.height(28.dp))
+    Spacer(modifier = Modifier.height(20.dp))
     NowPlaying(state = state)
 
-    Spacer(modifier = Modifier.height(4.dp))
-    // PRODUCT_SPEC PLAY-003 — which chapter, under the title it belongs to.
-    //
-    // Rendered as an empty line when a book has no chapters rather than omitted, so the transport
-    // does not shift up and down between books.
-    Text(
-        text = state.currentChapter?.title.orEmpty(),
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        maxLines = 1,
-        minLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        textAlign = TextAlign.Center,
-        modifier = Modifier.fillMaxWidth(),
-    )
-
+    Spacer(modifier = Modifier.height(8.dp))
     // Only where this column owns the slack. In the one-column arrangement the artwork above is the
     // weighted child, and a second weighted sibling would split the leftover with it — halving the cover
     // and putting the gap back between the title and the seek bar.
@@ -357,7 +388,7 @@ private fun PlaybackFailedNotice(onRetry: () -> Unit, modifier: Modifier = Modif
 @Composable
 private fun SpeedAction(speed: PlaybackSpeed, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val label = stringResource(R.string.player_speed_value, speed.label())
-    IconButton(onClick = onClick, modifier = modifier) {
+    IconButton(onClick = onClick, modifier = modifier.size(48.dp)) {
         if (speed.isDefault) {
             Icon(
                 imageVector = Icons.Filled.Speed,
@@ -375,9 +406,17 @@ private fun SpeedAction(speed: PlaybackSpeed, onClick: () -> Unit, modifier: Mod
 }
 
 @Composable
-private fun TopBar(outputs: OutputControls, onCollapse: () -> Unit, modifier: Modifier = Modifier) {
+private fun TopBar(
+    outputs: OutputControls,
+    actions: PlayerActions,
+    isOutputMenuOpen: Boolean,
+    onOutputMenuOpenChange: (Boolean) -> Unit,
+    isMoreMenuOpen: Boolean,
+    onMoreMenuOpenChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onCollapse) {
+        IconButton(onClick = actions.onCollapse) {
             Icon(
                 // A chevron down, not a back arrow: the gesture puts the player away into the bar rather
                 // than returning to some previous screen.
@@ -386,11 +425,46 @@ private fun TopBar(outputs: OutputControls, onCollapse: () -> Unit, modifier: Mo
             )
         }
         Spacer(modifier = Modifier.weight(WEIGHT_FILL))
-        // PRODUCT_SPEC PLAY-002 — here rather than in the secondary row, which is already five controls
-        // wide: a sixth would squeeze them the way the 88 dp play button once did, and an accessibility run
-        // has already caught that row laying out four pixels tall at a doubled font scale. The top-right is
-        // also where a listener looks for an output control, because that is where every other app puts one.
-        AudioOutputAction(controls = outputs)
+        // PRODUCT_SPEC PLAY-002 — output selection remains a top-level player utility. Its popup reports
+        // whether it is open so player-level Back yields to the modal before collapsing the overlay.
+        AudioOutputAction(
+            controls = outputs,
+            expanded = isOutputMenuOpen,
+            onExpandedChange = onOutputMenuOpenChange,
+        )
+        Box {
+            IconButton(onClick = { onMoreMenuOpenChange(true) }) {
+                Icon(
+                    imageVector = Icons.Filled.MoreVert,
+                    contentDescription = stringResource(R.string.player_more_actions),
+                )
+            }
+            DropdownMenu(
+                expanded = isMoreMenuOpen,
+                onDismissRequest = { onMoreMenuOpenChange(false) },
+            ) {
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(R.string.player_bookmarks)) },
+                    leadingIcon = {
+                        Icon(imageVector = Icons.Filled.Bookmark, contentDescription = null)
+                    },
+                    onClick = {
+                        onMoreMenuOpenChange(false)
+                        actions.onOpenBookmarks()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(R.string.player_bookmark_add)) },
+                    leadingIcon = {
+                        Icon(imageVector = Icons.Filled.BookmarkAdd, contentDescription = null)
+                    },
+                    onClick = {
+                        onMoreMenuOpenChange(false)
+                        actions.onAddBookmark()
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -435,27 +509,40 @@ private fun PlayerArtwork(state: PlaybackUiState, modifier: Modifier = Modifier)
 private fun NowPlaying(state: PlaybackUiState, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
             text = state.title,
             style = MaterialTheme.typography.headlineSmall,
-            minLines = 2,
+            minLines = 1,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
+            textAlign = TextAlign.Start,
             modifier = Modifier.fillMaxWidth(),
         )
-        Text(
-            text = state.author.orEmpty(),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        state.author?.takeIf { it.isNotBlank() }?.let { author ->
+            Text(
+                text = author,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        state.currentChapter?.title?.takeIf { it.isNotBlank() }?.let { chapter ->
+            Text(
+                text = chapter,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 
@@ -480,6 +567,13 @@ private fun SeekBar(state: PlaybackUiState, onSeekTo: (Duration) -> Unit, modifi
         (inProgress * totalMs).toLong().milliseconds
     }
 
+    val shownRemaining = (state.duration - shownPosition).coerceAtLeast(Duration.ZERO)
+    val bookProgressDescription = stringResource(
+        R.string.player_book_progress,
+        shownPosition.asChapterClock(),
+        shownRemaining.asChapterClock(),
+    )
+
     Column(modifier = modifier.fillMaxWidth()) {
         ThinSlider(
             fraction = (inProgress ?: state.fractionComplete).coerceIn(0f, 1f),
@@ -492,15 +586,15 @@ private fun SeekBar(state: PlaybackUiState, onSeekTo: (Duration) -> Unit, modifi
             // nothing is worse than one that is plainly not ready.
             enabled = totalMs > 0,
             color = MaterialTheme.colorScheme.primary,
+            contentDescription = bookProgressDescription,
         )
         Row(modifier = Modifier.fillMaxWidth()) {
-            TimeLabel(text = shownPosition.asChapterClock())
+            TimeLabel(
+                text = stringResource(R.string.player_book_position, shownPosition.asChapterClock()),
+            )
             Spacer(modifier = Modifier.weight(WEIGHT_FILL))
             TimeLabel(
-                text = stringResource(
-                    R.string.player_remaining,
-                    (state.duration - shownPosition).coerceAtLeast(Duration.ZERO).asChapterClock(),
-                ),
+                text = stringResource(R.string.player_remaining, shownRemaining.asChapterClock()),
             )
         }
 
@@ -637,7 +731,7 @@ private fun ThinSlider(
 private fun TimeLabel(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
-        style = MaterialTheme.typography.labelMedium,
+        style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier,
     )
@@ -721,19 +815,11 @@ private fun SkipButton(icon: ImageVector, description: String, onClick: () -> Un
 }
 
 /**
- * The controls used once a session rather than once a minute.
+ * Audiobook actions used less often than the primary transport.
  *
- * Bookmark carries **two** actions, which is the only control here that does: a tap opens the list, and a
- * long press keeps the current spot without opening anything. That is deliberate rather than clever — a
- * listener presses it because they just heard something, and a sheet between the button and the bookmark is
- * a sheet that loses the moment. Both are announced, so the long press is not a secret (PRODUCT_SPEC 21).
- *
- * Speed shows its own value, because "1.5×" on the button is the fastest way to answer "why does this
- * sound odd".
- *
- * It takes the whole [PlayerActions] bundle rather than six lambdas — the row grew past detekt's parameter
- * limit as bookmarks arrived, and threading each callback individually through a private composable was
- * repeating the bundle by hand.
+ * History is deliberately first and visually strongest. Sleep Timer and Speed stay direct; Chapters joins
+ * the row only when chapter metadata exists. Bookmark actions remain supported in the top-bar overflow,
+ * which keeps them reachable without giving them equal permanent weight.
  */
 @Composable
 private fun SecondaryRow(
@@ -747,57 +833,27 @@ private fun SecondaryRow(
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SpeedAction(speed = state.speed, onClick = actions.onOpenSpeed)
-        SecondaryAction(
-            icon = Icons.AutoMirrored.Filled.MenuBook,
-            description = stringResource(R.string.player_chapters),
-            // PRODUCT_SPEC LIB-004 — disabled on a book with no chapter metadata, which is common in a
-            // self-hosted library. A sheet that opens onto nothing is worse than a control that is
-            // plainly unavailable.
-            enabled = state.chapters.isNotEmpty(),
-            onClick = actions.onOpenChapters,
-        )
-        // PRODUCT_SPEC PLAY-003 — the jumps this book has seen, and the way back from any of them. Next to
-        // Chapters because both answer "where am I and where else could I be".
-        SecondaryAction(
-            icon = Icons.Filled.History,
-            description = stringResource(R.string.player_history),
-            enabled = true,
+        // History is the audiobook navigation action the listener reaches for most often, so it is first
+        // and receives the only filled treatment in this secondary row.
+        FilledTonalIconButton(
             onClick = actions.onOpenHistory,
-        )
-        // PRODUCT_SPEC 11.1 — a tap opens the list, a long press keeps this spot. See the note above.
-        BookmarkAction(onOpenBookmarks = actions.onOpenBookmarks, onAddBookmark = actions.onAddBookmark)
+            modifier = Modifier.size(48.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.History,
+                contentDescription = stringResource(R.string.player_history),
+            )
+        }
         SleepTimerAction(timer = timer, onClick = actions.onOpenSleepTimer)
-    }
-}
-
-/**
- * PRODUCT_SPEC 11.1 / 21 — the one control with two actions, and both are announced.
- *
- * `combinedClickable` rather than a second `IconButton`, because the row is already five controls wide on a
- * phone and a sixth would squeeze them the way the 88 dp play button once did. `onLongClickLabel` is what
- * keeps the long press from being a secret: a screen reader offers it as a named action, and the
- * accessibility services surface it in their action menu.
- */
-@Composable
-private fun BookmarkAction(onOpenBookmarks: () -> Unit, onAddBookmark: () -> Unit, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .combinedClickable(
-                onClick = onOpenBookmarks,
-                onClickLabel = stringResource(R.string.player_bookmarks),
-                onLongClick = onAddBookmark,
-                onLongClickLabel = stringResource(R.string.player_bookmark_add),
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = Icons.Filled.Bookmark,
-            contentDescription = stringResource(R.string.player_bookmarks),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        SpeedAction(speed = state.speed, onClick = actions.onOpenSpeed)
+        if (state.chapters.isNotEmpty()) {
+            SecondaryAction(
+                icon = Icons.AutoMirrored.Filled.MenuBook,
+                description = stringResource(R.string.player_chapters),
+                enabled = true,
+                onClick = actions.onOpenChapters,
+            )
+        }
     }
 }
 
@@ -809,7 +865,7 @@ private fun SecondaryAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    IconButton(onClick = onClick, enabled = enabled, modifier = modifier) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = modifier.size(48.dp)) {
         Icon(
             imageVector = icon,
             contentDescription = description,
@@ -834,12 +890,14 @@ private fun SleepTimerAction(timer: SleepTimerState, onClick: () -> Unit, modifi
     }
     IconButton(
         onClick = onClick,
-        modifier = modifier.semantics { contentDescription = description },
+        modifier = modifier
+            .size(48.dp)
+            .semantics { contentDescription = description },
     ) {
         if (timer.isActive) {
             Text(
                 text = timer.remaining.asCountdownLabel(),
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                 color = MaterialTheme.colorScheme.primary,
             )
         } else {
@@ -853,6 +911,7 @@ private fun SleepTimerAction(timer: SleepTimerState, onClick: () -> Unit, modifi
 }
 
 private const val WEIGHT_FILL = 1f
+private const val PREDICTIVE_BACK_FADE_FRACTION = 0.12f
 
 /** Both bars. Thin, because Material's sixteen-dp default is a stripe rather than a scrubber. */
 private val TRACK_HEIGHT = 4.dp

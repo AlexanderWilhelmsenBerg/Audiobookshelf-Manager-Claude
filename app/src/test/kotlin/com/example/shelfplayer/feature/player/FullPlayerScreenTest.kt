@@ -1,5 +1,7 @@
 package com.example.shelfplayer.feature.player
 
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
@@ -7,6 +9,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ServerId
@@ -37,6 +40,95 @@ class FullPlayerScreenTest {
 
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun `primary transport and History remain directly reachable`() {
+        var historyOpens = 0
+        render(
+            state = playing(position = 35.minutes),
+            onOpenHistory = { historyOpens += 1 },
+        )
+
+        composeRule.onNodeWithContentDescription("Back 30 seconds").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Pause").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Forward 30 seconds").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("History").assertIsDisplayed().performClick()
+
+        assertEquals(1, historyOpens)
+    }
+
+    @Test
+    fun `Bookmarks and Add Bookmark remain reachable from player actions`() {
+        var bookmarkOpens = 0
+        var bookmarkAdds = 0
+        render(
+            state = playing(position = 35.minutes),
+            onOpenBookmarks = { bookmarkOpens += 1 },
+            onAddBookmark = { bookmarkAdds += 1 },
+        )
+
+        composeRule.onNodeWithContentDescription("More player actions").performClick()
+        composeRule.onNodeWithText("Bookmarks").assertIsDisplayed().performClick()
+        assertEquals(1, bookmarkOpens)
+
+        composeRule.onNodeWithContentDescription("More player actions").performClick()
+        composeRule.onNodeWithText("Bookmark this spot").assertIsDisplayed().performClick()
+        assertEquals(1, bookmarkAdds)
+    }
+
+    @Test
+    fun `Chapters are direct when chapter metadata exists`() {
+        render(playing(position = 35.minutes))
+
+        composeRule.onNodeWithContentDescription("Chapters").assertIsDisplayed()
+    }
+
+    @Test
+    fun `book and chapter progress have distinct spoken identities`() {
+        render(playing(position = 35.minutes))
+
+        composeRule
+            .onNodeWithContentDescription("Book position: 35:00 elapsed, 1:25:00 remaining")
+            .assertIsDisplayed()
+        composeRule
+            .onNodeWithContentDescription("The Flood, 15:00 left in this chapter")
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun `ordinary Android Back collapses through the same player action`() {
+        var collapses = 0
+        var dispatcher: OnBackPressedDispatcher? = null
+
+        composeRule.setContent {
+            dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+            FullPlayer(
+                state = playing(position = 35.minutes),
+                timer = SleepTimerState.Idle,
+                actions = inertActions(onCollapse = { collapses += 1 }),
+            )
+        }
+
+        composeRule.runOnIdle {
+            checkNotNull(dispatcher).onBackPressed()
+        }
+        composeRule.waitUntil { collapses == 1 }
+
+        assertEquals(1, collapses)
+    }
+
+    @Test
+    fun `toolbar collapse reports through the one collapse action`() {
+        var collapses = 0
+        render(
+            state = playing(position = 35.minutes),
+            onCollapse = { collapses += 1 },
+        )
+
+        composeRule.onNodeWithContentDescription("Close the player").performClick()
+
+        assertEquals(1, collapses)
+    }
 
     /** Thirty-five minutes in is five minutes into the second of three chapters, which runs to fifty. */
     @Test
@@ -74,10 +166,11 @@ class FullPlayerScreenTest {
      * Nothing is drawn at all. An empty bar that will never move reads as a book that is still loading.
      */
     @Test
-    fun `a book with no chapters has no chapter bar`() {
+    fun `a book with no chapters has no chapter bar or direct Chapters action`() {
         render(playing(position = 35.minutes, chapters = emptyList()))
 
         composeRule.onNodeWithText("Chapter 1 of 1").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Chapters").assertDoesNotExist()
     }
 
     /**
@@ -112,22 +205,47 @@ class FullPlayerScreenTest {
         assertEquals(1.hours, seeked)
     }
 
-    private fun render(state: PlaybackUiState, onSeekTo: (Duration) -> Unit = {}) {
+    private fun render(
+        state: PlaybackUiState,
+        onSeekTo: (Duration) -> Unit = {},
+        onOpenHistory: () -> Unit = {},
+        onOpenBookmarks: () -> Unit = {},
+        onAddBookmark: () -> Unit = {},
+        onCollapse: () -> Unit = {},
+    ) {
         composeRule.setContent {
             FullPlayer(
                 state = state,
                 timer = SleepTimerState.Idle,
-                actions = PlayerActions(
-                    onTogglePlayPause = {},
+                actions = inertActions(
                     onSeekTo = onSeekTo,
-                    onOpenSpeed = {},
-                    onOpenSleepTimer = {},
-                    onOpenChapters = {},
-                    onCollapse = {},
+                    onOpenHistory = onOpenHistory,
+                    onOpenBookmarks = onOpenBookmarks,
+                    onAddBookmark = onAddBookmark,
+                    onCollapse = onCollapse,
                 ),
+                backEnabled = false,
             )
         }
     }
+
+    private fun inertActions(
+        onSeekTo: (Duration) -> Unit = {},
+        onOpenHistory: () -> Unit = {},
+        onOpenBookmarks: () -> Unit = {},
+        onAddBookmark: () -> Unit = {},
+        onCollapse: () -> Unit = {},
+    ) = PlayerActions(
+        onTogglePlayPause = {},
+        onSeekTo = onSeekTo,
+        onOpenSpeed = {},
+        onOpenSleepTimer = {},
+        onOpenChapters = {},
+        onOpenHistory = onOpenHistory,
+        onOpenBookmarks = onOpenBookmarks,
+        onAddBookmark = onAddBookmark,
+        onCollapse = onCollapse,
+    )
 
     private fun playing(position: Duration, chapters: List<Chapter> = CHAPTERS) = PlaybackUiState(
         bookId = BOOK,

@@ -293,7 +293,6 @@
     <string name="player_play">Play</string>
     <string name="player_resume">Resume</string>
     <string name="player_pause">Pause</string>
-    <string name="player_stop">Stop playback</string>
     <!-- Shown on the book screen while the server is being asked to open a session. -->
     <string name="player_collapse">Close the player</string>
 
@@ -311,6 +310,8 @@
     <string name="player_output_playing_here">%1$s — playing here</string>
     <!-- %1$s is a remaining time such as "1:04:12". -->
     <string name="player_remaining">−%1$s</string>
+    <string name="player_book_position">Book · %1$s</string>
+    <string name="player_book_progress">Book position: %1$s elapsed, %2$s remaining</string>
     <!-- %1$d minutes, %2$02d seconds. -->
     <string name="player_clock">%1$d:%2$02d</string>
     <!-- %1$d hours, %2$02d minutes, %3$02d seconds. -->
@@ -415,6 +416,7 @@
     <string name="player_failed">Playback stopped. The server or the connection may be unavailable.</string>
     <string name="player_failed_retry">Try again</string>
     <string name="player_open">Open the player</string>
+    <string name="player_more_actions">More player actions</string>
     <string name="player_starting">Starting…</string>
     <!-- %1$s is the position a book will resume from, such as "2 h 14 min". -->
     <string name="player_resume_at">Resume at %1$s</string>

@@ -9,9 +9,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +31,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -53,6 +59,7 @@ import com.example.shelfplayer.feature.player.MINI_PLAYER_MIN_HEIGHT
 import com.example.shelfplayer.feature.player.MiniPlayer
 import com.example.shelfplayer.feature.player.OutputControls
 import com.example.shelfplayer.feature.player.PlayerActions
+import com.example.shelfplayer.feature.player.PlayerMotion
 import com.example.shelfplayer.feature.player.PlayerViewModel
 import com.example.shelfplayer.feature.player.RewindNotice
 import com.example.shelfplayer.feature.player.SkipControls
@@ -263,6 +270,24 @@ private fun ShelfPlayerContent(
     var isSpeedSheetOpen by remember { mutableStateOf(false) }
     var isHistorySheetOpen by remember { mutableStateOf(false) }
     var isBookmarkSheetOpen by remember { mutableStateOf(false) }
+    val isPlayerModalOpen = isAnyPlayerModalOpen(
+        isTimerSheetOpen = isTimerSheetOpen,
+        isChapterSheetOpen = isChapterSheetOpen,
+        isSpeedSheetOpen = isSpeedSheetOpen,
+        isHistorySheetOpen = isHistorySheetOpen,
+        isBookmarkSheetOpen = isBookmarkSheetOpen,
+    )
+    val isPlayerOverlayVisible = shouldShowPlayerOverlay(
+        isExpanded = isExpanded,
+        hasBook = playback.bookId != null,
+    )
+    val playerOverlayVisibility = remember { MutableTransitionState(false) }.apply {
+        targetState = isPlayerOverlayVisible
+    }
+    val isPlayerOverlayComposed = isOverlayTransitionComposed(
+        currentState = playerOverlayVisibility.currentState,
+        targetState = playerOverlayVisibility.targetState,
+    )
     val hazeState = remember { HazeState() }
     /*
      * What the mini player is actually covering, as the bar itself measured it.
@@ -276,11 +301,8 @@ private fun ShelfPlayerContent(
      */
     var playerHeight by remember { mutableStateOf(MINI_PLAYER_MIN_HEIGHT) }
     val playerChromeInset by animateDpAsState(
-        targetValue = if (playback.bookId != null) playerHeight else 0.dp,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
+        targetValue = playerChromeInset(hasBook = playback.bookId != null, playerHeight = playerHeight),
+        animationSpec = PlayerMotion.standard(),
         label = "mini-player-inset",
     )
     NotificationPermission(hasPlayback = playback.bookId != null)
@@ -305,7 +327,11 @@ private fun ShelfPlayerContent(
         LocalBackdropScroll provides backdropScroll,
         LocalPlayerChromeBottomInset provides playerChromeInset,
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .playerOverlaySemantics(isPlayerOverlayComposed),
+        ) {
             /*
              * Drawn first and measured to the window, so it is behind the graph rather than inside it.
              *
@@ -313,13 +339,11 @@ private fun ShelfPlayerContent(
              * artwork or the accent gradient — is what the glass refracts. Putting it on the artwork
              * alone would leave the gradient case with nothing behind the cards again.
              */
-            Box(
-                modifier = Modifier
-                    .appBackdrop(flat = flatBackdrop, theme = backgroundTheme)
-                    .hazeSource(state = backdropHaze),
-            ) {
-                if (backgroundTheme != null) BackdropArtwork(theme = backgroundTheme)
-            }
+            PlayerBackdrop(
+                flatBackdrop = flatBackdrop,
+                backgroundTheme = backgroundTheme,
+                backdropHaze = backdropHaze,
+            )
             ShelfPlayerNavHost(
                 startDestination = startDestination,
                 onBookPlaySelected = playerViewModel::onPlayFromShelf,
@@ -334,10 +358,8 @@ private fun ShelfPlayerContent(
                 state = playback,
                 timer = timer,
                 onTogglePlayPause = playerViewModel::onTogglePlayPause,
-                onStop = playerViewModel::onStop,
                 onOpenSleepTimer = { isTimerSheetOpen = true },
                 onExpand = playerViewModel::onExpand,
-                skips = skipControls,
                 onHeightMeasured = { measured -> playerHeight = measured },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
@@ -349,7 +371,18 @@ private fun ShelfPlayerContent(
     // Drawn after the chrome rather than instead of it, so collapsing reveals the screen the listener
     // was on with its scroll intact. A book that stopped while the player was open collapses it: an
     // expanded player showing nothing has no content and no obvious way out.
-    if (isExpanded && playback.bookId != null) {
+    AnimatedVisibility(
+        visibleState = playerOverlayVisibility,
+        modifier = Modifier.fillMaxSize(),
+        enter = slideInVertically(
+            initialOffsetY = { height -> height },
+            animationSpec = PlayerMotion.largeEnter(),
+        ) + fadeIn(animationSpec = PlayerMotion.largeEnter()),
+        exit = slideOutVertically(
+            targetOffsetY = { height -> height },
+            animationSpec = PlayerMotion.largeExit(),
+        ) + fadeOut(animationSpec = PlayerMotion.largeExit()),
+    ) {
         FullPlayer(
             state = playback,
             timer = timer,
@@ -379,6 +412,7 @@ private fun ShelfPlayerContent(
                 onOpenBookmarks = { isBookmarkSheetOpen = true },
                 onAddBookmark = playerViewModel::onAddBookmark,
             ),
+            backEnabled = isPlayerOverlayVisible && !isPlayerModalOpen,
         )
     }
 
@@ -463,6 +497,39 @@ private fun ShelfPlayerContent(
         )
     }
 }
+
+@Composable
+private fun PlayerBackdrop(flatBackdrop: Boolean, backgroundTheme: BackgroundTheme?, backdropHaze: HazeState) {
+    Box(
+        modifier = Modifier
+            .appBackdrop(flat = flatBackdrop, theme = backgroundTheme)
+            .hazeSource(state = backdropHaze),
+    ) {
+        if (backgroundTheme != null) BackdropArtwork(theme = backgroundTheme)
+    }
+}
+
+private fun isAnyPlayerModalOpen(
+    isTimerSheetOpen: Boolean,
+    isChapterSheetOpen: Boolean,
+    isSpeedSheetOpen: Boolean,
+    isHistorySheetOpen: Boolean,
+    isBookmarkSheetOpen: Boolean,
+): Boolean = isTimerSheetOpen ||
+    isChapterSheetOpen ||
+    isSpeedSheetOpen ||
+    isHistorySheetOpen ||
+    isBookmarkSheetOpen
+
+private fun shouldShowPlayerOverlay(isExpanded: Boolean, hasBook: Boolean): Boolean = isExpanded && hasBook
+
+private fun isOverlayTransitionComposed(currentState: Boolean, targetState: Boolean): Boolean =
+    currentState || targetState
+
+private fun playerChromeInset(hasBook: Boolean, playerHeight: Dp): Dp = if (hasBook) playerHeight else 0.dp
+
+private fun Modifier.playerOverlaySemantics(isPlayerOverlayComposed: Boolean): Modifier =
+    if (isPlayerOverlayComposed) this.clearAndSetSemantics { } else this
 
 /**
  * PRODUCT_SPEC PLAY-004 — "app background transition when possible".
