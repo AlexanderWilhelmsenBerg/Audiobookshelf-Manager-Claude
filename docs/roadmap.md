@@ -1,7 +1,7 @@
 # BookWave roadmap
 
 **Classification:** Active plan — canonical sequencing authority.
-**Reconciled:** 2026-10-02 against GitHub main `c6b52b22` and open PR #205 (`fee78e12`).
+**Reconciled:** 2026-10-02 against GitHub main `756d521e`, including merged PR #205.
 
 This is the only document that answers what BookWave should work on next. `PRODUCT_SPEC.md` supplies
 requirement IDs, `product-decisions.md` owns settled product choices, and accepted ADRs own architecture.
@@ -15,9 +15,9 @@ Merged code, automated verification and physical acceptance are separate statuse
 
 ## 1. Playback and Android Auto acceptance
 
-- Review PR #205's idle car restore, remembered-book observation, resume-tile invalidation and paused
-  profile-switch fallback. GitHub verification is green; it remains open, outside this main snapshot.
-  Do not recreate its changes or merge without the owner's explicit merge request.
+- PR #205's idle car restore, remembered-book observation, resume-tile invalidation and paused
+  profile-switch fallback are merged. The follow-up profile-identity guard rejects a suspended restore
+  after switching unlocked profiles; retain the remaining bookkeeping integration gap in R-115.
 - Accept #128/#100 (headset continuity/route ownership), #185 (idle restore), #126/#196 (output state/Queue),
   #130 (phone/car controls), and #99/#191 (browse/profile invalidation). Principal implementations already
   exist on main. PR #205 adds follow-up tests and behavior.

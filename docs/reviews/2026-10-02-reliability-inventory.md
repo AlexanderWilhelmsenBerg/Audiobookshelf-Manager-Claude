@@ -53,7 +53,11 @@ individual recommendation is absent from code. Grouped rows enumerate all 44 ope
 | #194, #195 | Umbrella audits; player/download findings partly addressed. | Track residual findings in child slices; section 17.2, LIB-002, SET-002. |
 | #196 | Queue suppression: Forgejo PR #67. | Absent Queue on projected host; no History replacement; PLAY-001, PD-001. |
 
-## PR #205 source review
+## PR #205 source review and merge follow-up
+
+PR #205 merged as `756d521e` on 2026-10-02 and has been integrated into the reliability branch.
+The review below describes its pre-merge evidence; the follow-up tests now demonstrate and guard the
+unlocked-profile race described below.
 
 Reviewed the production diff, restorer tests, profile-restore tests and repository observation changes.
 GitHub reported Preflight and verification SUCCESS at `fee78e12`; APK dispatch was skipped. No reviews or
@@ -66,12 +70,12 @@ The controller's arm guard precedes book-change callbacks and item installation.
 Remaining evidence gaps:
 
 - The controller arm guard has a source-wiring assertion, not a behavioral controller test.
-- Switching between two unlocked profiles during suspended restore is not covered by the new restorer
-  tests. Existing guards check lock state and queue emptiness, not profile identity. This is an inherited
-  boundary concern, not a new regression proven by this review; exercise it before accepting isolation.
+- Follow-up: three suspended-restore tests failed on the merged behavior when changing unlocked profiles
+  during holder/candidate/queue lookup. The restorer now compares the requesting profile with the current
+  profile before lookup and installation. A missing active profile resolves no candidate or metadata.
 - The service's `openQueue` calls `bookChanges.onBookOpened` before the restorer's final supersession check.
   A side-effect-free test lambda does not prove that a superseded real open leaves sleep/session bookkeeping
   untouched. Add integration evidence at that seam in the playback lane.
 - Profile-switch fallback remains broader than cold-start restore by design.
 
-No merge or public review submission was performed. Hardware-dependent issue closure remains pending.
+No public review submission was performed. Hardware-dependent issue closure remains pending.

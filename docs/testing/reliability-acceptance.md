@@ -1,7 +1,7 @@
 # Reliability acceptance
 
 **Classification:** Acceptance checklist, not a second roadmap.
-**Baseline:** main `c6b52b22`; record the exact candidate commit when executing.
+**Baseline:** main `756d521e` plus the reliability follow-ups; record the exact candidate commit when executing.
 
 ## Evidence record
 
@@ -66,3 +66,19 @@ not replace these manual scenarios. Keep unavailable and failed checks explicit.
 - Device, projected Android Auto, removable storage and soak: not run; no device attached.
 
 Local logs are under ignored `build/reliability-evidence/`; the full-gate log is `build/reliability-verify.log`.
+
+### PR #205 merge follow-up — 2026-10-02
+
+- Integrated main `756d521e` while preserving the download privacy fix and Windows test/build corrections.
+- Three new tests failed on the merged restorer: unlocked-profile switch during held metadata resolution,
+  candidate resolution and queue opening. Each uses deferred gates to suspend the operation before switching.
+- The fix captures the requesting profile and checks it before lookup and after candidate/queue resolution.
+  The service supplies the identity through AutoLibrary's existing profile repository. A missing-profile
+  test rejects all restore modes without lookup. `IdleResumeWiringTest` checks the service binding.
+- Focused verification: all 16 restorer tests and four service-wiring tests passed. The forced full rebuild
+  found Detekt's return-count limit; moving the common entry guard into `restore` corrected that finding.
+  Final `ktlintFormat verifyDebug '-Pshelfplayer.warningsAsErrors=true' --max-workers=4` passed in 3m 47s
+  (129 tasks executed, 1,155 up-to-date after the forced rebuild). Logs: `car-profile-before.log`, `car-profile-after.log`,
+  `car-profile-verify.log` and `car-profile-verify-final.log` under `build/reliability-evidence/`.
+- This does not retire R-115's queue-opening bookkeeping or away-and-back profile generation concerns.
+  No hardware acceptance or issue closure is claimed.

@@ -6,6 +6,14 @@ giving it a section of its own.
 
 ## Unreleased
 
+### Android Auto restore profile isolation (AUTH-002, PLAY-001, #185)
+
+- Suspended idle restoration discards the outgoing profile's metadata/queue when another unlocked profile
+  becomes active. Candidate resolution cannot open a queue after that switch, and no active profile means
+  no restore lookup. Existing Arm, ArmAndPlay and Never behavior is preserved for the same profile.
+- Three regression tests reproduce the former behavior using suspended lookups and a real ExoPlayer.
+  Queue-opening bookkeeping and physical car acceptance remain tracked in R-115.
+
 ### Reliability reconciliation and download privacy (DL-003, AUTH-002)
 
 - Device-wide download rows match visible library metadata by server and item together. A same-ID book on

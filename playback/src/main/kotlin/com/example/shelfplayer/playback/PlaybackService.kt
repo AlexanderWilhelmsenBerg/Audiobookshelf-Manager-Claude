@@ -3233,6 +3233,7 @@ class PlaybackService : MediaLibraryService() {
         }
 
         private fun carPostConnectRestorer(trace: AutoTrace?) = CarPostConnectRestorer(
+            activeProfileId = auto::activeProfileId,
             isProfileLocked = lock::isActiveProfileLocked,
             lastPlayedBookId = { auto.lastPlayedAfter(::refreshResumeAccount)?.id },
             heldResume = { auto.heldResumeAfter(::refreshResumeAccount) },

@@ -85,13 +85,17 @@ and device acceptance are recorded separately in `testing/reliability-acceptance
 
 ### R-115 — suspended restore integration needs profile and bookkeeping evidence
 
-The source review of PR #205 (`fee78e12`) found an inherited acceptance gap: the extracted car restorer checks
-lock state and player emptiness after suspensions, but its tests do not change between two unlocked profiles.
-Its real service `openQueue` also invokes `bookChanges.onBookOpened` before the final supersession check;
-the side-effect-free test lambda cannot prove that discarded opens preserve current sleep/session state.
-This is not a newly demonstrated regression. Playback & Lifecycle should add suspended-open integration
-tests for both seams and run the corresponding cases in `testing/reliability-acceptance.md` before claiming
-complete profile/restore acceptance. Keep it separate from the download identity fix.
+After PR #205 merged (`756d521e`), three tests reproduced stale installs or queue lookup when the active
+unlocked profile changed during holder resolution, candidate resolution or queue opening. The restorer now
+captures profile identity and rechecks it before lookup and after those operations. Tests use actual
+coroutine suspension and ExoPlayer; the original implementation failed all three.
+
+The remaining gap is the service's `openQueue`, which invokes `bookChanges.onBookOpened` before the final
+supersession check. Rejecting the returned queue does not prove that a discarded open preserves current
+sleep/session bookkeeping. Add integration evidence and repair that boundary before claiming complete
+profile/restore acceptance. Switching away and back during a single suspended operation also needs a
+generation-based check; comparing profile IDs alone cannot detect that sequence. Physical checks remain in
+`testing/reliability-acceptance.md`.
 
 | # | Risk | If it bites | Retired by |
 | --- | --- | --- | --- |
