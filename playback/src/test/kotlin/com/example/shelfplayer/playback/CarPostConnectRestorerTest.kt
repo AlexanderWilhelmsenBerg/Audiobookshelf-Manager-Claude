@@ -63,7 +63,7 @@ class CarPostConnectRestorerTest {
 
     @Test
     fun `Never policy installs the holder without preparing or playing`() = runBlocking {
-        restorer().apply(AutoStartAction.None, player)
+        restorer().restore(AutoStartAction.None, player)
 
         assertEquals(1, player.mediaItemCount)
         assertEquals("held", player.currentMediaItem?.mediaId)
@@ -78,7 +78,7 @@ class CarPostConnectRestorerTest {
         player.setMediaItem(item("existing"))
 
         for (action in listOf(AutoStartAction.None, AutoStartAction.Arm, AutoStartAction.ArmAndPlay)) {
-            restorer().apply(action, player)
+            restorer().restore(action, player)
         }
 
         assertEquals(1, player.mediaItemCount)
@@ -92,7 +92,7 @@ class CarPostConnectRestorerTest {
         locked = true
 
         for (action in AutoStartAction.entries) {
-            restorer().apply(action, player)
+            restorer().restore(action, player)
         }
 
         assertEquals(0, player.mediaItemCount)
@@ -101,7 +101,7 @@ class CarPostConnectRestorerTest {
 
     @Test
     fun `Arm installs and prepares without playing`() = runBlocking {
-        restorer().apply(AutoStartAction.Arm, player)
+        restorer().restore(AutoStartAction.Arm, player)
 
         assertEquals("queued", player.currentMediaItem?.mediaId)
         assertEquals(QUEUE_START_MS, player.currentPosition)
@@ -111,7 +111,7 @@ class CarPostConnectRestorerTest {
 
     @Test
     fun `ArmAndPlay installs prepares and plays`() = runBlocking {
-        restorer().apply(AutoStartAction.ArmAndPlay, player)
+        restorer().restore(AutoStartAction.ArmAndPlay, player)
 
         assertEquals("queued", player.currentMediaItem?.mediaId)
         assertTrue(player.playbackState != Player.STATE_IDLE)
@@ -120,7 +120,7 @@ class CarPostConnectRestorerTest {
 
     @Test
     fun `Suppressed installs nothing`() = runBlocking {
-        restorer().apply(AutoStartAction.Suppressed, player)
+        restorer().restore(AutoStartAction.Suppressed, player)
 
         assertEquals(0, player.mediaItemCount)
         assertEquals(0, openedQueues)
@@ -128,8 +128,8 @@ class CarPostConnectRestorerTest {
 
     @Test
     fun `no resumable book installs nothing`() = runBlocking {
-        restorer(lastPlayed = { null }, heldResume = { null }).apply(AutoStartAction.Arm, player)
-        restorer(lastPlayed = { null }, heldResume = { null }).apply(AutoStartAction.None, player)
+        restorer(lastPlayed = { null }, heldResume = { null }).restore(AutoStartAction.Arm, player)
+        restorer(lastPlayed = { null }, heldResume = { null }).restore(AutoStartAction.None, player)
 
         assertEquals(0, player.mediaItemCount)
     }
@@ -144,7 +144,7 @@ class CarPostConnectRestorerTest {
             },
         )
 
-        late.apply(AutoStartAction.Arm, player)
+        late.restore(AutoStartAction.Arm, player)
 
         assertTrue(refreshed)
         assertEquals("queued", player.currentMediaItem?.mediaId)
@@ -160,7 +160,7 @@ class CarPostConnectRestorerTest {
             },
         )
 
-        late.apply(AutoStartAction.None, player)
+        late.restore(AutoStartAction.None, player)
 
         assertTrue(refreshed)
         assertEquals("held", player.currentMediaItem?.mediaId)
@@ -175,7 +175,7 @@ class CarPostConnectRestorerTest {
             },
         )
 
-        racing.apply(AutoStartAction.ArmAndPlay, player)
+        racing.restore(AutoStartAction.ArmAndPlay, player)
 
         assertEquals("raced", player.currentMediaItem?.mediaId)
         assertEquals(1, player.mediaItemCount)
@@ -191,7 +191,7 @@ class CarPostConnectRestorerTest {
             },
         )
 
-        racing.apply(AutoStartAction.None, player)
+        racing.restore(AutoStartAction.None, player)
 
         assertEquals("raced", player.currentMediaItem?.mediaId)
         assertEquals(1, player.mediaItemCount)
@@ -206,7 +206,7 @@ class CarPostConnectRestorerTest {
             },
         )
 
-        racing.apply(AutoStartAction.ArmAndPlay, player)
+        racing.restore(AutoStartAction.ArmAndPlay, player)
 
         assertEquals(0, player.mediaItemCount)
         assertFalse(player.playWhenReady)
@@ -217,6 +217,6 @@ class CarPostConnectRestorerTest {
         const val HELD_START_MS = 4_000L
         const val QUEUE_START_MS = 9_000L
 
-        fun item(id: String): MediaItem = MediaItem.Builder().setMediaId(id).build()
+        fun item(id: String): MediaItem = MediaItem.Builder().setMediaId(id).setUri("https://books.example/$id").build()
     }
 }

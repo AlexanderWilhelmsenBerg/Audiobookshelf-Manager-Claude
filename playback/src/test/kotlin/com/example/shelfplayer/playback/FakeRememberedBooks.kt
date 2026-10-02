@@ -7,6 +7,7 @@ import com.example.shelfplayer.domain.repository.RememberedBookRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 
 internal class FakeRememberedBooks(remembered: LibraryItemId? = null, profileId: ProfileId = DEFAULT_PROFILE) :
     RememberedBookRepository {
@@ -22,12 +23,12 @@ internal class FakeRememberedBooks(remembered: LibraryItemId? = null, profileId:
         state.map { values -> values[profileId] }
 
     override suspend fun remember(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> {
-        state.value += (profileId to bookId)
+        state.update { values -> values + (profileId to bookId) }
         return AppResult.Success(Unit)
     }
 
     override suspend fun forget(profileId: ProfileId): AppResult<Unit> {
-        state.value -= profileId
+        state.update { values -> values - profileId }
         return AppResult.Success(Unit)
     }
 

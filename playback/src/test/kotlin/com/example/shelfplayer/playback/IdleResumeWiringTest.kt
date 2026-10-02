@@ -22,7 +22,7 @@ class IdleResumeWiringTest {
 
         // The service delegates the whole post-connect install to the restorer, whose behaviour
         // CarPostConnectRestorerTest proves against a real player.
-        assertTrue("carPostConnectRestorer(trace).apply(action, current)" in postConnect)
+        assertTrue("carPostConnectRestorer(trace).restore(action, current)" in postConnect)
         assertTrue("auto.heldResumeAfter(::refreshResumeAccount)" in postConnect)
         assertTrue("AutoStartAction.None -> holdLastBook(current)" in restorer)
         assertTrue("current.setMediaItem(held.item, held.startPositionMs)" in restorer)

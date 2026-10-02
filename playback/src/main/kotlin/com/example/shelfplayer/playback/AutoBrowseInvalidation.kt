@@ -117,11 +117,11 @@ internal class AutoBrowseInvalidationTracker {
  *
  * #10's invariant remains intact: there is one [accessibleBooks] subscription for the active profile
  * generation, and every library-backed parent decision in one emitted snapshot comes from that same immutable
- * [List]; the device-local remembered book joins the same snapshot so a change of the resume tile's book
- * within one profile invalidates [AutoLibrary.RECENT_ROOT]. #65 adds the saved-profile presentation facts to
- * the same snapshot rather than creating a second
- * invalidation loop for the Profiles destination. Lock eligibility is point-read when rows/actions are served so
- * the security decision cannot be made stale by a cached presentation token.
+ * [List]. The device-local remembered book joins the same snapshot, so a change of the resume tile's book
+ * within one profile invalidates [AutoLibrary.RECENT_ROOT]. #65 adds the saved-profile presentation facts
+ * to the same snapshot rather than creating a second invalidation loop for the Profiles destination. Lock
+ * eligibility is point-read when rows/actions are served so the security decision cannot be made stale by
+ * a cached presentation token.
  */
 internal class AutoBrowseSnapshotSource(
     private val activeProfiles: Flow<ProfileId?>,

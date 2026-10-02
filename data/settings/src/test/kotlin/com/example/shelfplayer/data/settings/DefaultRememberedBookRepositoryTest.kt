@@ -3,6 +3,7 @@ package com.example.shelfplayer.data.settings
 import android.content.Context
 import androidx.datastore.core.DataStoreFactory
 import androidx.test.core.app.ApplicationProvider
+import app.cash.turbine.test
 import com.example.shelfplayer.core.common.log.DefaultRedactor
 import com.example.shelfplayer.core.common.log.RedactingLogger
 import com.example.shelfplayer.core.common.log.RedactionPolicy
@@ -16,7 +17,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -97,19 +97,23 @@ class DefaultRememberedBookRepositoryTest {
 
     @Test
     fun `observing emits the current identity then each change of that profile only`() = runTest {
-        val seen = mutableListOf<LibraryItemId?>()
-        val job = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            repository.observeRememberedBook(PROFILE_A).collect { seen += it }
+        repository.observeRememberedBook(PROFILE_A).test {
+            assertNull(awaitItem())
+
+            repository.remember(PROFILE_A, BOOK_A)
+            assertEquals(BOOK_A, awaitItem())
+
+            // Another profile's write and a repeat of the same value must not emit; the next awaited item
+            // is therefore the real change, and a leaked duplicate would fail this assertion.
+            repository.remember(PROFILE_B, BOOK_B)
+            repository.remember(PROFILE_A, BOOK_A)
+            repository.remember(PROFILE_A, BOOK_B)
+            assertEquals(BOOK_B, awaitItem())
+
+            repository.forget(PROFILE_A)
+            assertNull(awaitItem())
+            cancelAndIgnoreRemainingEvents()
         }
-
-        repository.remember(PROFILE_A, BOOK_A)
-        repository.remember(PROFILE_B, BOOK_B)
-        repository.remember(PROFILE_A, BOOK_A)
-        repository.remember(PROFILE_A, BOOK_B)
-        repository.forget(PROFILE_A)
-        job.cancel()
-
-        assertEquals(listOf(null, BOOK_A, BOOK_B, null), seen)
     }
 
     private companion object {

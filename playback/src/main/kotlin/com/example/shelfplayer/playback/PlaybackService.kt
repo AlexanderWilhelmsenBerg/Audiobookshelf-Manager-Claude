@@ -3213,7 +3213,7 @@ class PlaybackService : MediaLibraryService() {
                 trace,
                 listOf(LogField.Public("action", actionName)) + AndroidAutoDiagnostics.playerFields(current),
             )
-            carPostConnectRestorer(trace).apply(action, current)
+            carPostConnectRestorer(trace).restore(action, current)
             logAuto(
                 "Android Auto post-connect async work completed",
                 trace,

@@ -17,7 +17,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
  *   driver or phone may have changed state while a network read was in flight.
  */
 internal class CarPostConnectRestorer(
-    private val isProfileLocked: () -> Boolean,
+    private val isProfileLocked: suspend () -> Boolean,
     /** The last played book id, after one allowed account refresh when the cache was empty. */
     private val lastPlayedBookId: suspend () -> LibraryItemId?,
     /** The metadata-only holder for the resume candidate, after one allowed account refresh. */
@@ -33,8 +33,8 @@ internal class CarPostConnectRestorer(
         fun installing(direction: String, item: MediaItem, extraFields: List<LogField>)
     }
 
-    /** Applies the policy [action] to [current]. */
-    suspend fun apply(action: AutoStartAction, current: Player) {
+    /** Applies the policy [action] to [current]. Named `restore` so it never reads as the scope function. */
+    suspend fun restore(action: AutoStartAction, current: Player) {
         when (action) {
             AutoStartAction.ArmAndPlay -> startLastBook(current, play = true)
 
@@ -110,5 +110,5 @@ internal class CarPostConnectRestorer(
         observer.note("A car connected and the last book was held for display", current)
     }
 
-    private fun superseded(current: Player): Boolean = isProfileLocked() || current.mediaItemCount > 0
+    private suspend fun superseded(current: Player): Boolean = isProfileLocked() || current.mediaItemCount > 0
 }
