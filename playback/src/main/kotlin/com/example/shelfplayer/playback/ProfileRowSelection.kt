@@ -1,5 +1,7 @@
 package com.example.shelfplayer.playback
 
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
@@ -19,6 +21,7 @@ import com.google.common.util.concurrent.MoreExecutors
  * Outside the service so that contract is tested against the pinned Media3 version rather than assumed:
  * see `ProfileRowSelectionTest`.
  */
+@OptIn(UnstableApi::class)
 internal object ProfileRowSelection {
 
     /**

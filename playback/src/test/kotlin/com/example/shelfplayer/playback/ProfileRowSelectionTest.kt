@@ -2,8 +2,10 @@ package com.example.shelfplayer.playback
 
 import android.content.Context
 import android.os.Looper
+import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaController
 import androidx.media3.session.MediaSession
@@ -33,6 +35,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.fail
 
 /**
  * #174 — selecting an Android Auto Profiles row switches profile and is never answered with media.
@@ -45,6 +48,7 @@ import kotlin.test.assertTrue
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 @LooperMode(LooperMode.Mode.PAUSED)
+@OptIn(UnstableApi::class)
 class ProfileRowSelectionTest {
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
@@ -90,8 +94,7 @@ class ProfileRowSelectionTest {
         val answer = ProfileRowSelection.answer(threw) { result -> reported += result }
 
         assertTrue(reported.isEmpty())
-        assertTrue(answer.isDone)
-        assertFailsWith<ExecutionException> { answer.get() }
+        assertIs<IllegalStateException>(failureOf(answer), "the switch's own failure is what Media3 sees")
     }
 
     @Test
@@ -152,9 +155,17 @@ class ProfileRowSelectionTest {
     }
 
     private fun assertNotMedia(answer: ListenableFuture<MediaSession.MediaItemsWithStartPosition>) {
-        assertTrue(answer.isDone)
-        val failure = assertFailsWith<ExecutionException> { answer.get() }
-        assertIs<UnsupportedOperationException>(failure.cause, "Media3 reports this cause as not supported")
+        assertIs<UnsupportedOperationException>(failureOf(answer), "Media3 reports this cause as not supported")
+    }
+
+    /** Why [answer] failed. An answer that completed with media fails the test, naming what it handed back. */
+    private fun failureOf(answer: ListenableFuture<MediaSession.MediaItemsWithStartPosition>): Throwable? {
+        assertTrue(answer.isDone, "the answer must be complete once the switch has finished")
+        val failure = assertFailsWith<ExecutionException> {
+            val media = answer.get()
+            fail("A profile row was answered with media: ${media.mediaItems.map { item -> item.mediaId }}")
+        }
+        return failure.cause
     }
 
     /** As in `ExistingSessionAttachmentTest`: pump the main looper while a suspending Media3 call runs. */
