@@ -84,6 +84,19 @@ class CarProfileSelectionWiringTest {
         )
     }
 
+    /** A display-only holder carries a cached position; the hand-over must never journal it as progress. */
+    @Test
+    fun `the hand-over never records the idle-session holder's position`() {
+        val flush = controllerSource()
+            .substringAfter("private suspend fun stopAndFlush(")
+            .substringBefore("private suspend fun attachForHandOver()")
+
+        val guard = flush.indexOf("!MediaItems.isResumePlaceholder(item)")
+        val record = flush.indexOf("playbackRepository.recordPosition(")
+        assertTrue(guard >= 0, "the holder must be excluded from the flush")
+        assertTrue(record > guard, "the exclusion must guard the write")
+    }
+
     private fun serviceSource(): String =
         File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt").readText()
 

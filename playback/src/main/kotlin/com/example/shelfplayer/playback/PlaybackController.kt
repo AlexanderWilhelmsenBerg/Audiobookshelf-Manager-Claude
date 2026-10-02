@@ -457,7 +457,9 @@ class PlaybackController @Inject constructor(
         // hears the switch take effect immediately rather than after a database write.
         media.pause()
         val item = media.currentMediaItem
-        if (item != null && media.currentPosition > 0) {
+        // The idle-session holder (#185) is display-only: its position is the cached one from when it was
+        // installed, so writing it would mark a stale position unsynced and could move server progress back.
+        if (item != null && !MediaItems.isResumePlaceholder(item) && media.currentPosition > 0) {
             // Awaited. This is the step 6.5 puts before the context change, and the only way to put it
             // there is to be here when it finishes.
             playbackRepository.recordPosition(
