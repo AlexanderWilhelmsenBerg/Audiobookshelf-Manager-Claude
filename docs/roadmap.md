@@ -40,6 +40,9 @@ reason to defer #6. Retest the reported headset Previous/Back failure on current
 reproduces, map the system/headset action to BookWave's configured relative seek-back policy without
 changing notification/Android Auto slot policy or inventing a second seek owner.
 
+**Status:** the mapping is implemented (#197, `ResumeFreshnessPlayer` + `RelativeSeekCommands`); a physical
+headset retest is pending.
+
 Physical headset acceptance is required because a JVM test can prove command mapping but not which transport
 command a particular headset actually sends.
 

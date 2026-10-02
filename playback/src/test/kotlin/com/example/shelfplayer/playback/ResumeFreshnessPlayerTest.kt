@@ -3,6 +3,7 @@ package com.example.shelfplayer.playback
 import android.os.Looper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
@@ -13,6 +14,7 @@ import java.lang.reflect.Proxy
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /** Issue #91 — direct coverage of the Media3 forwarding boundary controllers actually call. */
 @RunWith(RobolectricTestRunner::class)
@@ -116,6 +118,7 @@ class ResumeFreshnessPlayerTest {
             onPlayWhenReadyRequest = { requested ->
                 if (requested) graceAuthorized = false
             },
+            skipIntervals = { SkipIntervals(back = 30.seconds, forward = 30.seconds) },
         )
 
         val play = player.handleSetPlayWhenReady(true)
@@ -207,12 +210,97 @@ class ResumeFreshnessPlayerTest {
         assertEquals(listOf("delegate:play=true"), delegate.events)
     }
 
+    @Test
+    fun `headset Previous seeks back by the configured interval and never restarts the book`() {
+        val delegate = RecordingDelegate(mediaItemCount = 1, playWhenReady = true, currentPosition = 109_662_699L)
+        val player = forwarding(
+            delegate = delegate,
+            invalidate = { origin -> delegate.events += "invalidate:$origin" },
+            skipIntervals = { SkipIntervals(back = 30.seconds, forward = 30.seconds) },
+        )
+
+        await(player.handleSeek(0, 0L, Player.COMMAND_SEEK_TO_PREVIOUS))
+
+        assertEquals(listOf(109_632_699L), delegate.seekPositions)
+        assertTrue(delegate.relativeCalls.isEmpty(), "seekToPrevious must never reach the delegate")
+        assertEquals(ResumeInvalidation.Seek, invalidationBefore(delegate.events, "delegate:seek"))
+    }
+
+    @Test
+    fun `Previous near the start clamps to zero`() {
+        val delegate = RecordingDelegate(mediaItemCount = 1, playWhenReady = true, currentPosition = 10_000L)
+        val player = forwarding(delegate = delegate)
+
+        await(player.handleSeek(0, 0L, Player.COMMAND_SEEK_TO_PREVIOUS))
+
+        assertEquals(listOf(0L), delegate.seekPositions)
+    }
+
+    @Test
+    fun `skip interval is read at press time`() {
+        val delegate = RecordingDelegate(mediaItemCount = 1, playWhenReady = true, currentPosition = 600_000L)
+        var skips = SkipIntervals(back = 30.seconds, forward = 30.seconds)
+        val player = forwarding(delegate = delegate, skipIntervals = { skips })
+
+        await(player.handleSeek(0, 0L, Player.COMMAND_SEEK_TO_PREVIOUS))
+        skips = SkipIntervals(back = 10.seconds, forward = 30.seconds)
+        delegate.currentPosition = 600_000L
+        await(player.handleSeek(0, 0L, Player.COMMAND_SEEK_TO_PREVIOUS))
+
+        assertEquals(listOf(570_000L, 590_000L), delegate.seekPositions)
+    }
+
+    @Test
+    fun `SeekBack and SeekForward use their own intervals`() {
+        val delegate = RecordingDelegate(mediaItemCount = 1, playWhenReady = true, currentPosition = 100_000L)
+        val player = forwarding(
+            delegate = delegate,
+            skipIntervals = { SkipIntervals(back = 15.seconds, forward = 45.seconds) },
+        )
+
+        await(player.handleSeek(0, 0L, Player.COMMAND_SEEK_BACK))
+        await(player.handleSeek(0, 0L, Player.COMMAND_SEEK_FORWARD))
+
+        assertEquals(listOf(85_000L, 145_000L), delegate.seekPositions)
+    }
+
+    @Test
+    fun `SeekToNext jumps forward by the configured interval`() {
+        val delegate = RecordingDelegate(mediaItemCount = 1, playWhenReady = true, currentPosition = 100_000L)
+        val player = forwarding(delegate = delegate)
+
+        await(player.handleSeek(0, 0L, Player.COMMAND_SEEK_TO_NEXT))
+
+        assertEquals(listOf(130_000L), delegate.seekPositions)
+    }
+
+    @Test
+    fun `absolute seek in the current item is forwarded unchanged`() {
+        val delegate = RecordingDelegate(mediaItemCount = 1, playWhenReady = true, currentPosition = 100_000L)
+        val player = forwarding(delegate = delegate)
+
+        await(player.handleSeek(0, 1_000L, Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM))
+
+        assertEquals(listOf(1_000L), delegate.seekPositions)
+    }
+
+    @Test
+    fun `Previous on an empty player synthesizes no seek position`() {
+        val delegate = RecordingDelegate(mediaItemCount = 0, playWhenReady = false, currentPosition = 50_000L)
+        val player = forwarding(delegate = delegate)
+
+        await(player.handleSeek(0, 0L, Player.COMMAND_SEEK_TO_PREVIOUS))
+
+        assertTrue(delegate.seekPositions.isEmpty(), "no seek position may be synthesized for an empty player")
+    }
+
     private fun forwarding(
         delegate: RecordingDelegate,
         prepare: () -> Unit = {},
         consumeFreshStart: () -> Boolean = { false },
         invalidate: (ResumeInvalidation) -> Unit = {},
         onPlayWhenReadyRequest: (Boolean) -> Unit = {},
+        skipIntervals: () -> SkipIntervals = { SkipIntervals(back = 30.seconds, forward = 30.seconds) },
     ) = ResumeFreshnessPlayer(
         delegate = delegate.player,
         preparePlay = {
@@ -222,6 +310,7 @@ class ResumeFreshnessPlayerTest {
         consumeFreshStart = consumeFreshStart,
         invalidate = invalidate,
         onPlayWhenReadyRequest = onPlayWhenReadyRequest,
+        skipIntervals = skipIntervals,
     )
 
     private fun await(future: ListenableFuture<*>) {
@@ -236,8 +325,14 @@ class ResumeFreshnessPlayerTest {
         return ResumeInvalidation.valueOf(value)
     }
 
-    private class RecordingDelegate(private var mediaItemCount: Int, private var playWhenReady: Boolean) {
+    private class RecordingDelegate(
+        private var mediaItemCount: Int,
+        private var playWhenReady: Boolean,
+        var currentPosition: Long = 0L,
+    ) {
         val events = mutableListOf<String>()
+        val seekPositions = mutableListOf<Long>()
+        val relativeCalls = mutableListOf<String>()
 
         val player: Player = Proxy.newProxyInstance(
             Player::class.java.classLoader,
@@ -250,6 +345,10 @@ class ResumeFreshnessPlayerTest {
 
                 "getPlayWhenReady" -> playWhenReady
 
+                "getCurrentPosition" -> currentPosition
+
+                "getCurrentMediaItemIndex" -> 0
+
                 "setPlayWhenReady" -> {
                     playWhenReady = args?.firstOrNull() as? Boolean ?: false
                     record("delegate:play=$playWhenReady")
@@ -257,7 +356,13 @@ class ResumeFreshnessPlayerTest {
                 }
 
                 "seekTo" -> {
+                    args?.filterIsInstance<Long>()?.firstOrNull()?.let { seekPositions += it }
                     record("delegate:seek")
+                    Unit
+                }
+
+                "seekToPrevious", "seekToNext", "seekBack", "seekForward" -> {
+                    relativeCalls += method.name
                     Unit
                 }
 

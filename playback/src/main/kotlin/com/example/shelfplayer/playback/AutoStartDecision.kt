@@ -24,7 +24,8 @@ import java.time.Instant
  *
  * The reason is what arming does: it makes no sound, and it puts the locked account's book title, author
  * and cover on the lock screen, one press of a headset button away from audio. That press cannot be
- * intercepted — there is no `onPlayerCommandRequest` and no `ForwardingPlayer` in this app — so an armed
+ * intercepted — there is no `onPlayerCommandRequest` and no lock-aware forwarding player in this app
+ * (`ResumeFreshnessPlayer` decides freshness, not the lock) — so an armed
  * locked profile is a lock with a hole in it that the lock screen advertises. Product priority 4 decides it
  * where the specification is silent.
  *

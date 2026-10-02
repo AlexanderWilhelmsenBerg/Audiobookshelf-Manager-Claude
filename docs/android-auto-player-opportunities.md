@@ -71,8 +71,9 @@ back"* — so the shipped layout is:
 **This is a real trade, not a free win.** PLAY-007's skips leave the compact bar on the car *and* on the
 phone, which reads the same single layout — `docs/risks.md` R-109 records what it costs and that the owner
 accepted it. One invariant is asserted rather than assumed: some button always holds `SLOT_BACK`, because if
-it is ever vacated Media3 stops clearing `ACTION_SKIP_TO_PREVIOUS`, nothing here intercepts it, and a head
-unit's *previous* restarts the book.
+it is ever vacated Media3 stops clearing `ACTION_SKIP_TO_PREVIOUS`. `SLOT_BACK` occupancy still keeps Previous
+off the car/phone surface, and `ResumeFreshnessPlayer` now maps Previous/SeekBack/SeekForward to the
+configured relative skip as a second line of defence (#197).
 
 **What still needs a car.** Only whether the head unit draws what it is now unambiguously sent. Photograph
 the minimised bar in the same run as R-107.
