@@ -81,6 +81,7 @@ class AutoLibrary @Inject constructor(
         savedProfiles = profiles.observeProfiles(),
         savedServers = profiles.observeServers(),
         accessibleBooks = library::observeAccessibleBooks,
+        rememberedBook = rememberedBooks::observeRememberedBook,
         build = AutoBrowseSnapshotBuilder::build,
     ).snapshots()
 

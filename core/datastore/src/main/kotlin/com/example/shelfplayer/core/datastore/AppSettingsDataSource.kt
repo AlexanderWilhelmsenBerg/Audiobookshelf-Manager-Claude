@@ -31,6 +31,7 @@ import com.example.shelfplayer.core.model.settings.ProfilePreferences
 import com.example.shelfplayer.core.model.settings.TextContrast
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
@@ -131,6 +132,16 @@ class AppSettingsDataSource @Inject constructor(
             ?.rememberedBookId
             ?.takeIf(String::isNotBlank)
             ?.let(::LibraryItemId)
+
+    /** Same value as [rememberedBook], emitted again only when it actually changes. */
+    fun observeRememberedBook(profileId: ProfileId): Flow<LibraryItemId?> = settings
+        .map { current ->
+            current.profileSettingsMap[profileId.value]
+                ?.rememberedBookId
+                ?.takeIf(String::isNotBlank)
+                ?.let(::LibraryItemId)
+        }
+        .distinctUntilChanged()
 
     /** BW-PLAY-01 — records only the opaque book id; title, cover and progress stay in their own stores. */
     suspend fun setRememberedBook(profileId: ProfileId, bookId: LibraryItemId) {

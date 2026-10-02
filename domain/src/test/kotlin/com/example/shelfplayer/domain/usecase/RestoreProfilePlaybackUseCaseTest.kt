@@ -15,6 +15,8 @@ import com.example.shelfplayer.domain.TEST_SERVER
 import com.example.shelfplayer.domain.book
 import com.example.shelfplayer.domain.playback.StartupPlayer
 import com.example.shelfplayer.domain.repository.RememberedBookRepository
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import java.time.Instant
@@ -142,6 +144,8 @@ class RestoreProfilePlaybackUseCaseTest {
 
     private class FakeRememberedBooks(private val rememberedId: LibraryItemId?) : RememberedBookRepository {
         override suspend fun rememberedBook(profileId: ProfileId): LibraryItemId? = rememberedId
+
+        override fun observeRememberedBook(profileId: ProfileId): Flow<LibraryItemId?> = flowOf(rememberedId)
 
         override suspend fun remember(profileId: ProfileId, bookId: LibraryItemId): AppResult<Unit> =
             AppResult.Success(Unit)

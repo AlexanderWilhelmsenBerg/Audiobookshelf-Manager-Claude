@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -92,6 +93,23 @@ class DefaultRememberedBookRepositoryTest {
         repository.forget(PROFILE_A)
 
         assertNull(repository.rememberedBook(PROFILE_A))
+    }
+
+    @Test
+    fun `observing emits the current identity then each change of that profile only`() = runTest {
+        val seen = mutableListOf<LibraryItemId?>()
+        val job = backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            repository.observeRememberedBook(PROFILE_A).collect { seen += it }
+        }
+
+        repository.remember(PROFILE_A, BOOK_A)
+        repository.remember(PROFILE_B, BOOK_B)
+        repository.remember(PROFILE_A, BOOK_A)
+        repository.remember(PROFILE_A, BOOK_B)
+        repository.forget(PROFILE_A)
+        job.cancel()
+
+        assertEquals(listOf(null, BOOK_A, BOOK_B, null), seen)
     }
 
     private companion object {
