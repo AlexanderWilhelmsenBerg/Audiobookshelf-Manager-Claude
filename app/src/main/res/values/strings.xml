@@ -560,6 +560,7 @@
     -->
     <string name="book_download">Download</string>
     <string name="book_download_use_device_copy">Use the downloaded copy</string>
+    <string name="book_download_starting">Starting the download</string>
     <string name="book_download_cancel">Cancel the download</string>
     <string name="book_download_remove">Remove the download</string>
     <string name="book_download_retry">Retry the download</string>

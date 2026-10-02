@@ -6,6 +6,26 @@ giving it a section of its own.
 
 ## Unreleased
 
+### Android Auto profile switching and instant download feedback (PD-001, AUTH-002, AUTH-005, DL-001)
+
+- **Selecting a profile in Android Auto switches to it (#174).** Profile rows were browsable containers
+  with no children, so selecting one opened an empty view and the switch was reachable only through a
+  browse action most hosts do not draw. Rows are now playable action rows: selecting one runs the existing
+  `SwitchProfileUseCase` path (lock policy, flush, pause, browse-tree invalidation) and always answers
+  Media3 with a failed set-media future, which Media3 treats as "leave the player alone" — a profile row
+  never sets, prepares or plays media. Selecting the active profile is a no-op, car selections are
+  serialised, and a refused switch (for example a locked profile) is sent to the car as a session error.
+- **A profile switch made from the car now pauses and flushes the outgoing book.** The hand-over used the
+  phone UI's media controller and did nothing when the phone app had not attached one — which is the
+  normal state while only Android Auto is connected — so the outgoing book kept playing and the incoming
+  book could start by itself. The hand-over now attaches to the already-live session by its direct token
+  first, which never starts the service.
+- **The Download button answers the tap immediately (#202).** It now shows a *Starting the download* state
+  (indeterminate ring, disabled) from the tap itself, instead of looking untouched while permission, the
+  book's files and free space are checked. The manifest's own state still wins as soon as it exists, a
+  refusal reverts the button with its reason, and a second tap cannot repeat the request or be read as
+  cancel. The checks themselves are unchanged.
+
 ### Library presentation and guided genre repair (LIB-002, MGR-008, SET-003)
 
 - **Cover-led Home, Series, Authors and Genres surfaces.** Home shelf cards now expose a labelled

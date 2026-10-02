@@ -431,34 +431,55 @@ class PlaybackController @Inject constructor(
      * "Optional continue playing across profile switch is not supported in version 1." The incoming account
      * gets a stopped player, and the listener presses play.
      *
-     * Doing nothing when no controller was ever built is correct rather than lazy: no controller means the
-     * service was never started, which means nothing is loaded and there is no position to lose.
+     * ### A session the phone never attached to is still handed over (#174)
+     *
+     * No controller does **not** mean nothing is loaded. Android Auto starts the service and plays through
+     * it without the phone UI ever building a controller, and a switch made from the car's Profiles list is
+     * exactly that case. Skipping it there left the outgoing book playing — and the incoming book, armed
+     * onto a player still set to play, started on its own. So a live session is attached to first, by its
+     * direct token: that never starts the service, and with no live session there is genuinely nothing
+     * loaded and nothing to lose.
      */
     suspend fun handOver(outgoing: ProfileId) {
+        attachForHandOver()
         withContext(mainDispatcher) {
-            val media = controller ?: return@withContext
-            // Paused first. The flush that follows reads a position that has stopped moving, and a listener
-            // hears the switch take effect immediately rather than after a database write.
-            media.pause()
-            val item = media.currentMediaItem
-            if (item != null && media.currentPosition > 0) {
-                // Awaited. This is the step 6.5 puts before the context change, and the only way to put it
-                // there is to be here when it finishes.
-                playbackRepository.recordPosition(
-                    bookId = MediaItems.bookIdOf(item),
-                    position = media.bookPosition(),
-                    duration = media.bookDuration(),
-                    // The outgoing profile by name, not by lookup: `setActiveProfile` may already be queued
-                    // behind this call, and the item's own owner is the same answer read a different way.
-                    owner = MediaItems.ownerOf(item) ?: outgoing,
-                )
-            }
-            media.stop()
-            media.clearMediaItems()
+            controller?.let { media -> stopAndFlush(media, outgoing) }
+            // The connection itself, so the incoming account does not inherit a controller aimed at a session
+            // opened as somebody else. On the main thread like every MediaController call: a car switch
+            // reaches here from a background dispatcher, and Media3 rejects `release()` off its own looper.
+            release()
         }
-        // The connection itself, so the incoming account does not inherit a controller aimed at a session
-        // opened as somebody else.
-        release()
+    }
+
+    /** [handOver]'s pause, flush and clear, on the main thread. */
+    private suspend fun stopAndFlush(media: MediaController, outgoing: ProfileId) {
+        // Paused first. The flush that follows reads a position that has stopped moving, and a listener
+        // hears the switch take effect immediately rather than after a database write.
+        media.pause()
+        val item = media.currentMediaItem
+        // The idle-session holder (#185) is display-only: its position is the cached one from when it was
+        // installed, so writing it would mark a stale position unsynced and could move server progress back.
+        if (item != null && !MediaItems.isResumePlaceholder(item) && media.currentPosition > 0) {
+            // Awaited. This is the step 6.5 puts before the context change, and the only way to put it
+            // there is to be here when it finishes.
+            playbackRepository.recordPosition(
+                bookId = MediaItems.bookIdOf(item),
+                position = media.bookPosition(),
+                duration = media.bookDuration(),
+                // The outgoing profile by name, not by lookup: `setActiveProfile` may already be queued
+                // behind this call, and the item's own owner is the same answer read a different way.
+                owner = MediaItems.ownerOf(item) ?: outgoing,
+            )
+        }
+        media.stop()
+        media.clearMediaItems()
+    }
+
+    /** #174 — attaches to the live session for [handOver] only when no controller exists; never starts one. */
+    private suspend fun attachForHandOver() {
+        val token = liveSession.currentToken() ?: return
+        val isAttached = withContext(mainDispatcher) { controller != null }
+        if (!isAttached) attachToExistingSession(token)
     }
 
     /**

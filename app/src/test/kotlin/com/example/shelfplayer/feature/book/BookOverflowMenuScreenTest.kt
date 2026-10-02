@@ -278,6 +278,22 @@ class BookOverflowMenuScreenTest {
             .assertIsDisplayed()
     }
 
+    /**
+     * #202 — the tap is answered on the spot, and the answer cannot be tapped into a second request or read
+     * as *cancel*: there is nothing on the device yet to cancel.
+     */
+    @Test
+    fun `a download being started says so at once and takes no further tap`() {
+        val taps = mutableListOf<DownloadButtonState>()
+        render(download = DownloadButtonState.Starting, onDownloadClicked = { taps += it })
+
+        composeRule.onNodeWithContentDescription("Starting the download").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Cancel the download").assertDoesNotExist()
+        composeRule.onNodeWithTag(BOOK_DOWNLOAD_BUTTON).assertIsNotEnabled().performClick()
+
+        assertEquals(emptyList<DownloadButtonState>(), taps)
+    }
+
     /** A stopped download says so, rather than looking like one that was never started. */
     @Test
     fun `a failed download offers a retry`() {

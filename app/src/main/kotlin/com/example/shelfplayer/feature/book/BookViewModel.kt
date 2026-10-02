@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import kotlin.time.Duration
 
@@ -87,6 +88,9 @@ class BookViewModel @Inject constructor(
             initialValue = BookUiState.Loading,
         )
 
+    /** #202 — a Download tap still on its way to a manifest. Declared before [menu], which reads it. */
+    private val downloadStart = DownloadStartTracker()
+
     /**
      * PRODUCT_SPEC PLAY-003 / 11.1 — what the overflow menu's sheets need beyond the book itself.
      *
@@ -106,8 +110,11 @@ class BookViewModel @Inject constructor(
             val manifest = if (profile == null) flowOf(null) else downloads.observe(profile.serverId, bookId)
             // Connectivity joins the pair rather than becoming a sixth source — `combine`'s typed overloads
             // stop at five, and MGR-005 needs the grant and the connection together anyway: either one
-            // missing means the same thing to the menu.
-            manifest.combine(server.network.isOnline) { offline, isOnline -> Account(profile, offline, isOnline) }
+            // missing means the same thing to the menu. #202's pending tap joins for the same reason: it is
+            // read only against the manifest it is waiting for.
+            combine(manifest, server.network.isOnline, downloadStart.isStarting) { offline, isOnline, isStarting ->
+                Account(profile, offline, isOnline, isStarting)
+            }
         },
         uiState,
     ) { entries, chapters, servers, account, state ->
@@ -157,7 +164,7 @@ class BookViewModel @Inject constructor(
             // PRODUCT_SPEC MGR-007 — absent rather than greyed for a non-administrator, like every other
             // action on this menu whose permission will never arrive by waiting.
             canEmbedMetadata = embedBlock == null,
-            download = downloadStateOf(offline, profile?.id),
+            download = downloadStateOf(offline, profile?.id).whileStarting(account.isStartingDownload),
             // ADR note in `BookOverflowMenu`: the web client's own route, not an API endpoint.
             webUrl = book?.let { loaded ->
                 servers.firstOrNull { it.id == loaded.serverId }
@@ -362,17 +369,51 @@ class BookViewModel @Inject constructor(
      * they already have. Removing is the destructive one and the screen confirms it first.
      */
     fun onDownloadClicked(state: DownloadButtonState) {
-        viewModelScope.launch {
-            when (state) {
-                is DownloadButtonState.NotDownloaded,
-                is DownloadButtonState.OnDevice,
-                is DownloadButtonState.Failed,
-                -> report(downloadBook(bookId))
+        when (state) {
+            is DownloadButtonState.NotDownloaded,
+            is DownloadButtonState.OnDevice,
+            is DownloadButtonState.Failed,
+            -> startDownload()
 
-                is DownloadButtonState.Downloading -> report(server.removeDownload.cancel(bookId))
-
-                is DownloadButtonState.Downloaded -> Unit
+            is DownloadButtonState.Downloading -> viewModelScope.launch {
+                report(server.removeDownload.cancel(bookId))
             }
+
+            // #202 — the first tap's request is still running, and a second would only repeat it.
+            is DownloadButtonState.Starting,
+            is DownloadButtonState.Downloaded,
+            -> Unit
+        }
+    }
+
+    /**
+     * #202 — PRODUCT_SPEC DL-001's Download, answered on the frame of the tap.
+     *
+     * [DownloadBookUseCase] checks the account's permission, the book's files and the free space before it
+     * writes anything, and asking the platform for allocatable space alone can take a noticeable time. The
+     * button used to show nothing until all of that had finished; [DownloadStartTracker] now shows
+     * [DownloadButtonState.Starting] from the tap itself. None of the checks is skipped or reordered: this is
+     * presentation only, and the manifest stays the only source of what is actually on the device.
+     */
+    private fun startDownload() {
+        downloadStart.start(
+            scope = viewModelScope,
+            request = { downloadBook(bookId) },
+            onResult = ::report,
+            awaitShown = ::awaitDownloadOnScreen,
+        )
+    }
+
+    /**
+     * Waits until [menu] — the state the screen renders — reflects the written download.
+     *
+     * Bounded, because a success means the manifest has already been written: if this screen's view of it
+     * never catches up (the active profile changed while the request ran), the button must not keep
+     * spinning.
+     */
+    private suspend fun awaitDownloadOnScreen() {
+        withTimeoutOrNull(START_EVIDENCE_TIMEOUT_MILLIS) {
+            menu.first { state -> state.download !is DownloadButtonState.Starting }
         }
     }
 
@@ -398,6 +439,9 @@ class BookViewModel @Inject constructor(
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
+
+        /** #202 — how long a successful Download may wait for the screen to show it before letting go. */
+        const val START_EVIDENCE_TIMEOUT_MILLIS = 5_000L
     }
 }
 
@@ -459,11 +503,15 @@ sealed interface EmbedStatus {
     data object Unknown : EmbedStatus
 }
 
-/** The active profile, its download manifest and whether the device can reach the server. */
+/**
+ * The active profile, its download manifest, whether the device can reach the server, and whether a Download
+ * tap is still waiting for that manifest (#202).
+ */
 private data class Account(
     val profile: com.example.shelfplayer.core.model.Profile?,
     val offline: OfflineBook?,
     val isOnline: Boolean,
+    val isStartingDownload: Boolean,
 )
 
 data class BookMenuState(
