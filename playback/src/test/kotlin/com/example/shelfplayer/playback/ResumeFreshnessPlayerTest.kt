@@ -291,7 +291,7 @@ class ResumeFreshnessPlayerTest {
 
         await(player.handleSeek(0, 0L, Player.COMMAND_SEEK_TO_PREVIOUS))
 
-        assertTrue(delegate.seekPositions.none { it == 20_000L }, "no position derived from the current one")
+        assertTrue(delegate.seekPositions.isEmpty(), "no seek position may be synthesized for an empty player")
     }
 
     private fun forwarding(

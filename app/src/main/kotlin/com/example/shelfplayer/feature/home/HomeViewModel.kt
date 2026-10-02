@@ -415,9 +415,8 @@ class HomeViewModel @Inject constructor(
         val state = uiState.value
         val profileId = state.profile?.id ?: return
 
-        // PRODUCT_SPEC SYNC-002 — realtime is process-owned by ForegroundRealtimeSyncCoordinator, not by Home.
-
         // PRODUCT_SPEC LIB-001 / AUTH-004 — the cheap half, every time the screen appears.
+        // (Realtime, SYNC-002, is process-owned by ForegroundRealtimeSyncCoordinator, not by Home.)
         //
         // One request that brings back positions played elsewhere, a grant changed on the server, and
         // whether the account is still enabled. It is not bounded by `syncAttemptedFor` because it is
