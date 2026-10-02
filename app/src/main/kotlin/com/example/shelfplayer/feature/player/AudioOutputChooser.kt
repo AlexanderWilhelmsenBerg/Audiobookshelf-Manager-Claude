@@ -15,10 +15,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -47,12 +43,18 @@ import com.example.shelfplayer.core.model.playback.DeviceKind
  * the choice alone would be a tick that lies; showing the route alone would lose what was asked for.
  */
 @Composable
-internal fun AudioOutputAction(controls: OutputControls, modifier: Modifier = Modifier) {
+internal fun AudioOutputAction(
+    controls: OutputControls,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     if (controls.outputs.isEmpty()) return
-    var expanded by rememberSaveable { mutableStateOf(false) }
     val active = controls.outputs.firstOrNull(AudioOutput::isActive)
     Box(modifier = modifier) {
-        IconButton(onClick = { expanded = true }) {
+        IconButton(
+            onClick = { onExpandedChange(true) },
+        ) {
             Icon(
                 imageVector = Icons.Filled.BluetoothAudio,
                 // Names the current destination rather than the control, so a screen reader announces where
@@ -63,7 +65,10 @@ internal fun AudioOutputAction(controls: OutputControls, modifier: Modifier = Mo
                 ),
             )
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { onExpandedChange(false) },
+        ) {
             OutputRow(
                 label = stringResource(R.string.player_output_automatic),
                 icon = Icons.Filled.Audiotrack,
@@ -71,7 +76,7 @@ internal fun AudioOutputAction(controls: OutputControls, modifier: Modifier = Mo
                 isRouted = false,
                 onClick = {
                     controls.onSelect(null)
-                    expanded = false
+                    onExpandedChange(false)
                 },
             )
             controls.outputs.forEach { output ->
@@ -82,7 +87,7 @@ internal fun AudioOutputAction(controls: OutputControls, modifier: Modifier = Mo
                     isRouted = output.isActive,
                     onClick = {
                         controls.onSelect(output.id)
-                        expanded = false
+                        onExpandedChange(false)
                     },
                 )
             }

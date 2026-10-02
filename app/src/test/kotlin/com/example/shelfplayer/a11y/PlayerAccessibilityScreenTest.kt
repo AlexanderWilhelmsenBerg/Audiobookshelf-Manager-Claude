@@ -25,7 +25,6 @@ import com.example.shelfplayer.feature.home.homeShelves
 import com.example.shelfplayer.feature.player.FullPlayer
 import com.example.shelfplayer.feature.player.MiniPlayer
 import com.example.shelfplayer.feature.player.PlayerActions
-import com.example.shelfplayer.feature.player.SkipControls
 import com.example.shelfplayer.playback.PlaybackUiState
 import org.junit.Rule
 import org.junit.Test
@@ -122,7 +121,7 @@ class PlayerAccessibilityScreenTest {
     }
 
     /**
-     * The mini player is four controls in a strip 64dp tall, which is where a too-small target hides.
+     * The mini player keeps only the two direct actions that earn permanent compact width.
      *
      * It is also the only player surface present on every screen, so a defect here is a defect everywhere.
      */
@@ -191,7 +190,6 @@ class PlayerAccessibilityScreenTest {
                         onOpenChapters = {},
                         onCollapse = {},
                     ),
-                    skips = SkipControls.Inert,
                 )
             }
         }
@@ -214,10 +212,8 @@ class PlayerAccessibilityScreenTest {
                     state = playback(),
                     timer = SleepTimerState.Idle,
                     onTogglePlayPause = {},
-                    onStop = {},
                     onOpenSleepTimer = {},
                     onExpand = {},
-                    skips = SkipControls.Inert,
                 )
             }
         }

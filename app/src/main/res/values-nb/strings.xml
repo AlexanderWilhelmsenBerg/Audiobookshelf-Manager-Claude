@@ -245,13 +245,14 @@
     <string name="player_play">Spill av</string>
     <string name="player_resume">Fortsett</string>
     <string name="player_pause">Pause</string>
-    <string name="player_stop">Stopp avspilling</string>
     <string name="player_collapse">Lukk spilleren</string>
     <string name="player_output_current">Lydutgang: %1$s</string>
     <string name="player_output_automatic">Automatisk</string>
     <string name="player_output_selected">Valgt</string>
     <string name="player_output_playing_here">%1$s — spilles her</string>
     <string name="player_remaining">−%1$s</string>
+    <string name="player_book_position">Bok · %1$s</string>
+    <string name="player_book_progress">Bokposisjon: %1$s avspilt, %2$s gjenstår</string>
     <string name="player_clock">%1$d:%2$02d</string>
     <string name="player_clock_hours">%1$d:%2$02d:%3$02d</string>
     <plurals name="player_skip_back">
@@ -312,6 +313,7 @@
     <string name="player_failed">Avspillingen stoppet. Tjeneren eller tilkoblingen kan være utilgjengelig.</string>
     <string name="player_failed_retry">Prøv igjen</string>
     <string name="player_open">Åpne spilleren</string>
+    <string name="player_more_actions">Flere spillerhandlinger</string>
     <string name="player_starting">Starter …</string>
     <!-- %1$s er posisjonen boken fortsetter fra, for eksempel "2 t 14 min". -->
     <string name="player_resume_at">Fortsett fra %1$s</string>
