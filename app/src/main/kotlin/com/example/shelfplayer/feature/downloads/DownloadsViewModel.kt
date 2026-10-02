@@ -191,11 +191,13 @@ class DownloadsViewModel @Inject constructor(
         visibleBooks,
         transientPresentation,
     ) { stored, totalBytes, visible, transient ->
-        val byId = visible.books.associateBy(Book::id)
+        // DL-003 / PRODUCT_SPEC 5.2: item IDs are server-local. A visible book on another server is not
+        // permission to label this physical copy or expose its failure details.
+        val byKey = visible.books.associateBy { DownloadExecutionKey(it.serverId, it.id) }
         DownloadsUiState(
             books = stored.map { copy ->
                 copy.toRow(
-                    book = byId[copy.itemId],
+                    book = byKey[DownloadExecutionKey(copy.serverId, copy.itemId)],
                     activeProfileId = visible.profileId,
                     execution = transient.executions[DownloadExecutionKey(copy.serverId, copy.itemId)],
                     partialBytes = transient.partialBytes[DownloadExecutionKey(copy.serverId, copy.itemId)] ?: 0L,

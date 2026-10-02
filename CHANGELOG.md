@@ -6,6 +6,17 @@ giving it a section of its own.
 
 ## Unreleased
 
+### Reliability reconciliation and download privacy (DL-003, AUTH-002)
+
+- Device-wide download rows match visible library metadata by server and item together. A same-ID book on
+  another server cannot reveal a hidden copy's failure detail or label it with the visible book's metadata.
+- The roadmap now reflects merged download, sleep, CI and car work using current GitHub issue numbers;
+  physical acceptance remains separate from implementation. The dated inventory covers all 44 open issues.
+- Windows verification includes the pinned protoc 4.36.1 binary's SHA-256, checked against a direct Maven
+  Central download. Strict dependency verification remains enabled; no dependency version changed.
+- Appearance persistence tests now use Robolectric like the repository tests, a stable DataStore file and
+  scope cleanup. This fixes Windows fixture failures without changing production appearance behavior.
+
 ### Headset Previous seeks back (PLAY-007)
 
 - **Headset/steering-wheel Previous no longer restarts the book.** It now jumps back by the configured skip

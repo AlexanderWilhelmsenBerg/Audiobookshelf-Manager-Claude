@@ -1,5 +1,11 @@
 # Android Auto combined drive acceptance — PD-001 / #65
 
+**2026-10-02 tracker mapping:** the section labels below retain their historical Forgejo numbers.
+Use GitHub #191 for #65, #99 for #10, #126 for #34, #196 for #35, #128 for #36, and #197/PR #204 for
+headset #6. GitHub PR #205 adds follow-up tests and profile-switch restore behavior but is still open.
+Record the tested APK commit; do not assume that an open PR is installed. Additional cases are in
+[reliability acceptance](testing/reliability-acceptance.md).
+
 This is the compact physical check for the next real-car run. It combines the still-device-bound evidence for
 #65 with #10, #34, #35, #36 and #6 so one drive can settle the surface without turning the trip into a test lab.
 
