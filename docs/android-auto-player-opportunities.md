@@ -209,7 +209,7 @@ History list. Chapters-as-queue is a separate theoretical design and is not part
 
 The API readings above do not prove a particular head unit's rendering. The 2026-09-19 physical re-test did:
 this projected host rendered neither History metadata link and still showed the standard queue, while the
-Car action still failed to show selected after a Car press. PR #61 now treats those as two separate platform
+Car action still failed to show selected after a Car press. PR #67 now treats those as two separate platform
 adaptations: preserve and republish explicit Car intent for #34, and suppress the unsupported queue surface
 for #35. #34 and #35 remain open until that new behavior is re-tested on the same head unit. This project's own record is that the car keeps finding what the documents do not say —
 R-10 covers exactly that gap, and ADR-0029 §8's original "nothing else on the player can show it" conclusion
