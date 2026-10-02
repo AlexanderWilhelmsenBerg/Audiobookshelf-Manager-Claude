@@ -2829,7 +2829,13 @@ class PlaybackService : MediaLibraryService() {
                 denied(controller, "onSetMediaItems")
                 return ProfileRowSelection.refused()
             }
-            return ProfileRowSelection.answer(future { switchProfileFromCar(profileId) }) { result ->
+            return ProfileRowSelection.answer(
+                switched = future { switchProfileFromCar(profileId) },
+                whenSwitchThrows = {
+                    val message = getString(R.string.car_profile_switch_failed)
+                    SessionResult(SessionError(SessionError.ERROR_UNKNOWN, message))
+                },
+            ) { result ->
                 // PRODUCT_SPEC 14.5 — the outcome code only: which profile was chosen is not a log fact.
                 logger.info(
                     LogCategory.Playback,

@@ -34,7 +34,9 @@ class CarProfileSelectionWiringTest {
 
         assertTrue("session.mayBrowse(controller)" in select, "only a library-capable controller may switch")
         assertTrue("ProfileRowSelection.refused()" in select)
-        assertTrue("ProfileRowSelection.answer(future { switchProfileFromCar(profileId) })" in select)
+        assertTrue("ProfileRowSelection.answer(" in select)
+        assertTrue("switched = future { switchProfileFromCar(profileId) }" in select)
+        assertTrue("whenSwitchThrows = {" in select, "a throwing switch must still reach the car")
         assertFalse("MediaItemsWithStartPosition(" in select, "a profile row must never be answered with media")
     }
 
@@ -62,6 +64,24 @@ class CarProfileSelectionWiringTest {
         val pause = handOver.indexOf("media.pause()")
         assertTrue(attach >= 0, "a car-only session must still be handed over")
         assertTrue(pause > attach, "the attach must happen before the pause and flush it enables")
+    }
+
+    /**
+     * A car switch reaches `handOver` on a background dispatcher, and Media3 throws when a controller is
+     * released off its application looper — which made every car switch fail before the profile changed.
+     */
+    @Test
+    fun `the hand-over releases its controller on the main thread`() {
+        val handOver = controllerSource()
+            .substringAfter("suspend fun handOver(outgoing: ProfileId)")
+            .substringBefore("private suspend fun stopAndFlush(")
+        val onMain = handOver.substringAfter("withContext(mainDispatcher) {", missingDelimiterValue = "")
+
+        assertTrue("release()" in onMain, "release() must run inside the main-thread block")
+        assertTrue(
+            "release()" !in handOver.substringBefore("withContext(mainDispatcher) {"),
+            "nothing may release the controller before switching to the main thread",
+        )
     }
 
     private fun serviceSource(): String =

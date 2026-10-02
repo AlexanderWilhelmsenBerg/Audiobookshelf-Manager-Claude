@@ -61,7 +61,9 @@ class ProfileRowSelectionTest {
         val switched = SessionResult(SessionResult.RESULT_SUCCESS)
         val reported = mutableListOf<SessionResult>()
 
-        val answer = ProfileRowSelection.answer(Futures.immediateFuture(switched)) { result -> reported += result }
+        val answer = ProfileRowSelection.answer(Futures.immediateFuture(switched), ::unexpectedThrow) { result ->
+            reported += result
+        }
 
         assertEquals(listOf(switched), reported)
         assertNotMedia(answer)
@@ -75,7 +77,7 @@ class ProfileRowSelectionTest {
         val pending = SettableFuture.create<SessionResult>()
         val reported = mutableListOf<SessionResult>()
 
-        val answer = ProfileRowSelection.answer(pending) { result -> reported += result }
+        val answer = ProfileRowSelection.answer(pending, ::unexpectedThrow) { result -> reported += result }
 
         assertFalse(answer.isDone, "the request is not answered before the switch has finished")
         assertTrue(reported.isEmpty())
@@ -87,14 +89,15 @@ class ProfileRowSelectionTest {
     }
 
     @Test
-    fun `a switch that throws is still never answered with media`() {
+    fun `a switch that throws is reported to the car and still never answered with media`() {
         val reported = mutableListOf<SessionResult>()
         val threw = Futures.immediateFailedFuture<SessionResult>(IllegalStateException("the switch threw"))
+        val failed = SessionResult(SessionError(SessionError.ERROR_UNKNOWN, "BookWave could not switch profiles."))
 
-        val answer = ProfileRowSelection.answer(threw) { result -> reported += result }
+        val answer = ProfileRowSelection.answer(threw, { failed }) { result -> reported += result }
 
-        assertTrue(reported.isEmpty())
-        assertIs<IllegalStateException>(failureOf(answer), "the switch's own failure is what Media3 sees")
+        assertEquals(listOf(failed), reported, "a throw must not leave the car in silence")
+        assertNotMedia(answer)
     }
 
     @Test
@@ -119,7 +122,7 @@ class ProfileRowSelectionTest {
                     ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
                         asked.incrementAndGet()
                         val switched = Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
-                        return ProfileRowSelection.answer(switched) {}
+                        return ProfileRowSelection.answer(switched, ::unexpectedThrow) {}
                     }
                 },
             )
@@ -167,6 +170,8 @@ class ProfileRowSelectionTest {
         }
         return failure.cause
     }
+
+    private fun unexpectedThrow(): SessionResult = fail("the switch was not expected to throw")
 
     /** As in `ExistingSessionAttachmentTest`: pump the main looper while a suspending Media3 call runs. */
     private fun awaitMainLooper(message: String, condition: () -> Boolean) {

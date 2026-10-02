@@ -443,29 +443,34 @@ class PlaybackController @Inject constructor(
     suspend fun handOver(outgoing: ProfileId) {
         attachForHandOver()
         withContext(mainDispatcher) {
-            val media = controller ?: return@withContext
-            // Paused first. The flush that follows reads a position that has stopped moving, and a listener
-            // hears the switch take effect immediately rather than after a database write.
-            media.pause()
-            val item = media.currentMediaItem
-            if (item != null && media.currentPosition > 0) {
-                // Awaited. This is the step 6.5 puts before the context change, and the only way to put it
-                // there is to be here when it finishes.
-                playbackRepository.recordPosition(
-                    bookId = MediaItems.bookIdOf(item),
-                    position = media.bookPosition(),
-                    duration = media.bookDuration(),
-                    // The outgoing profile by name, not by lookup: `setActiveProfile` may already be queued
-                    // behind this call, and the item's own owner is the same answer read a different way.
-                    owner = MediaItems.ownerOf(item) ?: outgoing,
-                )
-            }
-            media.stop()
-            media.clearMediaItems()
+            controller?.let { media -> stopAndFlush(media, outgoing) }
+            // The connection itself, so the incoming account does not inherit a controller aimed at a session
+            // opened as somebody else. On the main thread like every MediaController call: a car switch
+            // reaches here from a background dispatcher, and Media3 rejects `release()` off its own looper.
+            release()
         }
-        // The connection itself, so the incoming account does not inherit a controller aimed at a session
-        // opened as somebody else.
-        release()
+    }
+
+    /** [handOver]'s pause, flush and clear, on the main thread. */
+    private suspend fun stopAndFlush(media: MediaController, outgoing: ProfileId) {
+        // Paused first. The flush that follows reads a position that has stopped moving, and a listener
+        // hears the switch take effect immediately rather than after a database write.
+        media.pause()
+        val item = media.currentMediaItem
+        if (item != null && media.currentPosition > 0) {
+            // Awaited. This is the step 6.5 puts before the context change, and the only way to put it
+            // there is to be here when it finishes.
+            playbackRepository.recordPosition(
+                bookId = MediaItems.bookIdOf(item),
+                position = media.bookPosition(),
+                duration = media.bookDuration(),
+                // The outgoing profile by name, not by lookup: `setActiveProfile` may already be queued
+                // behind this call, and the item's own owner is the same answer read a different way.
+                owner = MediaItems.ownerOf(item) ?: outgoing,
+            )
+        }
+        media.stop()
+        media.clearMediaItems()
     }
 
     /** #174 — attaches to the live session for [handOver] only when no controller exists; never starts one. */

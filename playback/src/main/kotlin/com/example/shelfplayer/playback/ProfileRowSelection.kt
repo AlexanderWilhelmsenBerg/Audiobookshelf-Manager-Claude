@@ -27,20 +27,30 @@ internal object ProfileRowSelection {
     /**
      * Waits for [switched], hands its result to [onSwitched], then declines the media request.
      *
-     * [onSwitched] runs before the answer completes, so a refusal reaches the car before Media3 moves on.
+     * [onSwitched] runs before the answer completes, so a refusal reaches the car before Media3 moves on. A
+     * switch that throws is reported too, as [whenSwitchThrows]: the legacy session ignores a failed answer,
+     * so without it a car would be left in silence.
      */
     fun answer(
         switched: ListenableFuture<SessionResult>,
+        whenSwitchThrows: () -> SessionResult,
         onSwitched: (SessionResult) -> Unit,
-    ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> =
-        Futures.transformAsync<SessionResult, MediaSession.MediaItemsWithStartPosition>(
+    ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+        val reported = Futures.catching(
             switched,
+            Exception::class.java,
+            { whenSwitchThrows() },
+            MoreExecutors.directExecutor(),
+        )
+        return Futures.transformAsync<SessionResult, MediaSession.MediaItemsWithStartPosition>(
+            reported,
             { result ->
                 onSwitched(result)
                 refused()
             },
             MoreExecutors.directExecutor(),
         )
+    }
 
     /** The same answer for a selection that is refused before any switch runs. */
     fun refused(): ListenableFuture<MediaSession.MediaItemsWithStartPosition> =
