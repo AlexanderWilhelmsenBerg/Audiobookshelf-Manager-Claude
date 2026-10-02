@@ -5,6 +5,7 @@ import androidx.media3.common.ForwardingSimpleBasePlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.google.common.util.concurrent.ListenableFuture
 
 /**
@@ -17,6 +18,9 @@ import com.google.common.util.concurrent.ListenableFuture
  * A server `/play` that was opened specifically for an immediate start already chose the authoritative
  * position. [consumeFreshStart] lets exactly that first Play pass through without asking the server the same
  * question again. Arm-only sessions never receive such a token, so their later Play enters [preparePlay].
+ *
+ * [handleSeek] also maps relative/transport seeks (Previous, Next, SeekBack, SeekForward) to the configured
+ * skip interval (#197, see [RelativeSeekCommands]).
  *
  * Explicit movement invalidates before forwarding. That ordering is what stops a delayed REST answer from
  * undoing a seek, Stop, book replacement or Pause that happened after the Play request began.
@@ -32,6 +36,7 @@ internal class ResumeFreshnessPlayer(
     private val consumeFreshStart: () -> Boolean,
     private val invalidate: (ResumeInvalidation) -> Unit,
     private val onPlayWhenReadyRequest: (Boolean) -> Unit,
+    private val skipIntervals: () -> SkipIntervals,
 ) : ForwardingSimpleBasePlayer(delegate) {
 
     public override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
@@ -55,7 +60,16 @@ internal class ResumeFreshnessPlayer(
 
     public override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
         invalidate(ResumeInvalidation.Seek)
-        return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
+        val target = relativeTarget(seekCommand)
+            ?: return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
+        return super.handleSeek(delegate.currentMediaItemIndex, target, Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+    }
+
+    /** #197 — a relative command becomes an absolute position in the single book window; null if not relative. */
+    private fun relativeTarget(seekCommand: Int): Long? {
+        if (delegate.mediaItemCount == 0) return null
+        val delta = RelativeSeekCommands.deltaFor(seekCommand, skipIntervals()) ?: return null
+        return (delegate.currentPosition + delta.inWholeMilliseconds).coerceAtLeast(0L)
     }
 
     public override fun handleSetMediaItems(

@@ -6,6 +6,14 @@ giving it a section of its own.
 
 ## Unreleased
 
+### Headset Previous seeks back (PLAY-007)
+
+- **Headset/steering-wheel Previous no longer restarts the book.** It now jumps back by the configured skip
+  interval instead of seeking to the start. Headset/legacy Rewind and Fast-forward
+  (`KEYCODE_MEDIA_REWIND` / `KEYCODE_MEDIA_FAST_FORWARD`, legacy `onRewind`/`onFastForward`) used to jump by
+  ExoPlayer's defaults (5 s back / 15 s forward, since the app never sets increments) and now use the
+  configured skip interval too (#197).
+
 ### Android Auto profile switching and instant download feedback (PD-001, AUTH-002, AUTH-005, DL-001)
 
 - **Selecting a profile in Android Auto switches to it (#174).** Profile rows were browsable containers

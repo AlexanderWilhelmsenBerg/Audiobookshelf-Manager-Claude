@@ -21,9 +21,8 @@ import javax.inject.Inject
  * around unsynced local progress, stale timestamps and profile visibility.
  *
  * The socket's contribution is latency. A pushed progress row is not permission to seek the live player.
- * The process-foreground owner is the only production caller allowed to collect the socket; the operator
- * entry point remains temporarily as a compatibility seam for the old Home wiring and deliberately opens
- * no connection. That makes screen lifetime unable to create a second collector while #133 moves ownership.
+ * The process-foreground owner (`ForegroundRealtimeSyncCoordinator`) is the only caller allowed to collect the
+ * socket, through [observeForeground]; no screen can create a second collector (#133).
  */
 class ObserveRealtimeUpdatesUseCase @Inject constructor(
     private val realtime: RealtimeUpdates,
@@ -31,16 +30,6 @@ class ObserveRealtimeUpdatesUseCase @Inject constructor(
     private val logger: Logger,
     private val progressEvidence: RealtimeProgressEvidenceStore = RealtimeProgressEvidenceStore(),
 ) {
-    /**
-     * Compatibility entry point for the former Home-owned collector.
-     *
-     * Home may still call this until that constructor/call-site cleanup lands with its next owned change,
-     * but it no longer owns synchronization and therefore must not open a socket.
-     */
-    operator fun invoke(profileId: ProfileId) {
-        logger.info(LogCategory.Sync, "Screen realtime request ignored; process owner is authoritative")
-    }
-
     /** The one process-foreground collection path. Cancelling this call closes the underlying socket. */
     suspend fun observeForeground(profileId: ProfileId) {
         realtime.events(profileId).collect { event ->

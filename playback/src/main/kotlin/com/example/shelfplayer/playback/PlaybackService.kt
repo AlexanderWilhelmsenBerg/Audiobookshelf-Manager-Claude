@@ -389,6 +389,8 @@ class PlaybackService : MediaLibraryService() {
                 }
                 continuityPlayAwaiting = null
             },
+            // #197 — headset Previous/Back become the configured relative skip.
+            skipIntervals = { skips },
         )
         // Issue #91 — controllers see the forwarding player; service-owned timers/sync/routing below keep
         // the raw ExoPlayer so internal atomic operations cannot recursively enter the external Play gate.
