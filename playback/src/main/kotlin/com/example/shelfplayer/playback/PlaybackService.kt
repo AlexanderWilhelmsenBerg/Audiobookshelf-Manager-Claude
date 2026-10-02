@@ -1614,6 +1614,31 @@ class PlaybackService : MediaLibraryService() {
         resumeAfterCarContinuity(target, heldHeadset)
     }
 
+    /** Applies the cancellation side effects of a [CarContinuityPlayPrecheck]; true only for Proceed. */
+    private fun applyContinuityPrecheck(
+        precheck: CarContinuityPlayPrecheck,
+        target: CarArrivalResumeGate.Target,
+    ): Boolean {
+        when (precheck) {
+            CarContinuityPlayPrecheck.NoPlayer -> carContinuity.cancelPending()
+
+            CarContinuityPlayPrecheck.EmptyQueue -> carContinuity.cancelAll()
+
+            CarContinuityPlayPrecheck.AlreadyPlaying -> {
+                carContinuity.cancelPending()
+                continuityPlayAwaiting = null
+                logAuto(
+                    "Car lifecycle continuity skipped Play because playback intent was already active",
+                    fields = listOf(LogField.Public("phase", target.phase.name)) + carSnapshotFields(),
+                )
+            }
+
+            CarContinuityPlayPrecheck.Proceed -> return true
+        }
+        continuityPlayAwaiting = null
+        return false
+    }
+
     /**
      * Issues one Play only after the exact target is secured and the final generation/intent guard passes.
      *
@@ -1621,25 +1646,14 @@ class PlaybackService : MediaLibraryService() {
      * onIsPlayingChanged, which is the first service callback that can truthfully make that claim.
      */
     private fun resumeAfterCarContinuity(target: CarArrivalResumeGate.Target, heldHeadset: String?) {
-        val current = player ?: run {
-            carContinuity.cancelPending()
-            continuityPlayAwaiting = null
-            return
-        }
-        if (current.mediaItemCount == 0) {
-            carContinuity.cancelAll()
-            continuityPlayAwaiting = null
-            return
-        }
-        if (current.playWhenReady) {
-            carContinuity.cancelPending()
-            continuityPlayAwaiting = null
-            logAuto(
-                "Car lifecycle continuity skipped Play because playback intent was already active",
-                fields = listOf(LogField.Public("phase", target.phase.name)) + carSnapshotFields(),
-            )
-            return
-        }
+        val current = player
+        val precheck = CarContinuityPlayPrecheck.decide(
+            hasPlayer = current != null,
+            mediaItemCount = current?.mediaItemCount ?: 0,
+            playWhenReady = current?.playWhenReady == true,
+        )
+        if (!applyContinuityPrecheck(precheck, target)) return
+        checkNotNull(current) { "Proceed implies a player" }
 
         val result = carContinuity.consumeRecovery(
             target = target,
@@ -3199,18 +3213,7 @@ class PlaybackService : MediaLibraryService() {
                 trace,
                 listOf(LogField.Public("action", actionName)) + AndroidAutoDiagnostics.playerFields(current),
             )
-            when (action) {
-                AutoStartAction.ArmAndPlay -> startLastBook(current, play = true, trace = trace)
-
-                AutoStartAction.Arm -> startLastBook(current, play = false, trace = trace)
-
-                AutoStartAction.Suppressed ->
-                    logAuto("A car connected while the account was locked; nothing started", trace)
-
-                // "Never react" means no audio/session side effect. Issue #88 still publishes the last
-                // identity so Android Auto is not left in STATE_NONE with an empty playback surface.
-                AutoStartAction.None -> holdLastBook(current, trace)
-            }
+            carPostConnectRestorer(trace).apply(action, current)
             logAuto(
                 "Android Auto post-connect async work completed",
                 trace,
@@ -3227,87 +3230,31 @@ class PlaybackService : MediaLibraryService() {
             )
         }
 
-        /** Loads the last played book, playing it or leaving it paused. Silent when there is nothing to load. */
-        private suspend fun startLastBook(current: ExoPlayer, play: Boolean, trace: AutoTrace?) {
-            val book = auto.lastPlayedAfter(::refreshResumeAccount)
-            if (book == null) {
-                logAuto("Android Auto post-connect found no resumable book", trace)
-                return
-            }
-            if (lock.isActiveProfileLocked() || current.mediaItemCount > 0) {
-                logAuto(
-                    "Android Auto post-connect playable install was superseded",
-                    trace,
-                    AndroidAutoDiagnostics.playerFields(current),
-                )
-                return
-            }
-            val queue = openQueue(book.id, startAt = null)
-            if (queue == null) {
-                logAuto("Android Auto post-connect could not open the resume queue", trace)
-                return
-            }
-            if (lock.isActiveProfileLocked() || current.mediaItemCount > 0) {
-                logAuto(
-                    "Android Auto post-connect playable queue was superseded",
-                    trace,
-                    AndroidAutoDiagnostics.playerFields(current),
-                )
-                return
-            }
-            logAutoItems(
-                trace = trace,
-                callback = "onPostConnect",
-                direction = "installing",
-                items = listOf(queue.item),
-                extraFields = listOf(
-                    LogField.Public("mode", if (play) "play" else "arm"),
-                    LogField.Millis("startAt", queue.startPositionMs),
-                ),
-            )
-            current.setMediaItem(queue.item, queue.startPositionMs)
-            current.prepare()
-            if (play) current.play()
-        }
+        private fun carPostConnectRestorer(trace: AutoTrace?) = CarPostConnectRestorer(
+            isProfileLocked = lock::isActiveProfileLocked,
+            lastPlayedBookId = { auto.lastPlayedAfter(::refreshResumeAccount)?.id },
+            heldResume = { auto.heldResumeAfter(::refreshResumeAccount) },
+            openQueue = { bookId -> openQueue(bookId, startAt = null) },
+            observer = object : CarPostConnectRestorer.Observer {
+                override fun note(message: String, player: Player?) {
+                    if (player == null) {
+                        logAuto(message, trace)
+                    } else {
+                        logAuto(message, trace, AndroidAutoDiagnostics.playerFields(player))
+                    }
+                }
 
-        /**
-         * Issue #88 — gives a Never-policy car a current book without opening /play or preparing audio.
-         *
-         * The second lock/emptiness check is after the possible account reconcile: the driver or phone may
-         * have changed state while that network read was suspended.
-         */
-        private suspend fun holdLastBook(current: ExoPlayer, trace: AutoTrace?) {
-            if (lock.isActiveProfileLocked()) {
-                logAuto("Android Auto held resume was suppressed while locked", trace)
-                return
-            }
-            val held = auto.heldResumeAfter(::refreshResumeAccount)
-            if (held == null) {
-                logAuto("Android Auto held resume candidate was empty", trace)
-                return
-            }
-            if (lock.isActiveProfileLocked() || current.mediaItemCount > 0) {
-                logAuto(
-                    "Android Auto held resume install was superseded",
-                    trace,
-                    AndroidAutoDiagnostics.playerFields(current),
-                )
-                return
-            }
-            logAutoItems(
-                trace = trace,
-                callback = "onPostConnect",
-                direction = "installing-holder",
-                items = listOf(held.item),
-                extraFields = listOf(LogField.Millis("startAt", held.startPositionMs)),
-            )
-            current.setMediaItem(held.item, held.startPositionMs)
-            logAuto(
-                "A car connected and the last book was held for display",
-                trace,
-                AndroidAutoDiagnostics.playerFields(current),
-            )
-        }
+                override fun installing(direction: String, item: MediaItem, extraFields: List<LogField>) {
+                    logAutoItems(
+                        trace = trace,
+                        callback = "onPostConnect",
+                        direction = direction,
+                        items = listOf(item),
+                        extraFields = extraFields,
+                    )
+                }
+            },
+        )
 
         private suspend fun refreshResumeAccount() {
             val trace = activeAutoTrace

@@ -17,10 +17,15 @@ class IdleResumeWiringTest {
         val source = serviceSource()
         val postConnect = source
             .substringAfter("override fun onPostConnect")
-            .substringBefore("private suspend fun startLastBook")
+            .substringBefore("private suspend fun refreshResumeAccount")
+        val restorer = restorerSource()
 
-        assertTrue("AutoStartAction.None -> holdLastBook(current, trace)" in postConnect)
-        assertTrue("current.setMediaItem(held.item, held.startPositionMs)" in source)
+        // The service delegates the whole post-connect install to the restorer, whose behaviour
+        // CarPostConnectRestorerTest proves against a real player.
+        assertTrue("carPostConnectRestorer(trace).apply(action, current)" in postConnect)
+        assertTrue("auto.heldResumeAfter(::refreshResumeAccount)" in postConnect)
+        assertTrue("AutoStartAction.None -> holdLastBook(current)" in restorer)
+        assertTrue("current.setMediaItem(held.item, held.startPositionMs)" in restorer)
     }
 
     @Test
@@ -48,6 +53,9 @@ class IdleResumeWiringTest {
         assertTrue("MediaItems.isResumePlaceholder(item)" in snapshot)
         assertTrue("return null" in snapshot)
     }
+
+    private fun restorerSource(): String =
+        File("src/main/kotlin/com/example/shelfplayer/playback/CarPostConnectRestorer.kt").readText()
 
     private fun serviceSource(): String =
         File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt").readText()
