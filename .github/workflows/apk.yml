@@ -8,8 +8,8 @@ run-name: "Build APK · ${{ github.ref_name }}"
 # Verified PR handoff: PR CI sends repository_dispatch only after a requested Standard/Intensive run passes;
 # this trusted workflow revalidates the exact same-repository PR head before exposing signing secrets.
 #
-# Debug signing remains stable through BOOKWAVE_DEBUG_KEYSTORE_BASE64, so downloaded debug APKs can upgrade
-# one another in place without uninstalling BookWave.
+# Debug and release builds use the same protected BOOKWAVE_SIGNING_* identity, matching the proven
+# Forgejo path. Downloaded debug APKs therefore upgrade one another in place without certificate drift.
 
 on:
   workflow_dispatch:
@@ -241,46 +241,49 @@ jobs:
         with:
           cache-provider: enhanced
 
+      - name: Stage shared BookWave signing keystore
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_SIGNING_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "${KEYSTORE_BASE64:-}" ] || missing+=("BOOKWAVE_SIGNING_KEYSTORE_BASE64")
+          [ -n "${STORE_PASSWORD:-}" ] || missing+=("BOOKWAVE_SIGNING_STORE_PASSWORD")
+          [ -n "${KEY_ALIAS:-}" ] || missing+=("BOOKWAVE_SIGNING_KEY_ALIAS")
+          [ -n "${KEY_PASSWORD:-}" ] || missing+=("BOOKWAVE_SIGNING_KEY_PASSWORD")
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "::error::Build APK requires one stable BOOKWAVE_SIGNING_* identity for both debug and release."
+            printf '::error::Missing secret: %s\n' "${missing[@]}"
+            exit 1
+          fi
+
+          path="$RUNNER_TEMP/bookwave-signing.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$path"
+          chmod 600 "$path"
+          test -s "$path" || { echo "::error::Decoded signing keystore is empty."; exit 1; }
+
+          signer="$(keytool -list -v -keystore "$path" -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" \
+            | sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test -n "$signer" || { echo "::error::Could not read the signing certificate fingerprint."; exit 1; }
+
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+          echo "signer=$signer" >> "$GITHUB_OUTPUT"
+          echo "Signing identity: ${signer:0:16}…"
+
       # Off by default so a quick device build is quick. On when you want the APK to carry the same
       # guarantee a merged commit does.
       - name: Verify debug
         if: ${{ needs.source.outputs.run_checks == 'true' }}
+        env:
+          BOOKWAVE_DEBUG_KEYSTORE: ${{ steps.keystore.outputs.path }}
+          BOOKWAVE_DEBUG_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
+          BOOKWAVE_DEBUG_KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
+          BOOKWAVE_DEBUG_KEY_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_KEY_PASSWORD }}
         run: ./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true
-
-      # Debug APKs use one stable public debug identity so every downloaded test build can upgrade
-      # the previous one in place. The release upload key is deliberately unavailable on this path.
-      - name: Stage the stable debug keystore
-        if: ${{ needs.source.outputs.variant == 'debug' }}
-        env:
-          DEBUG_KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_DEBUG_KEYSTORE_BASE64 }}
-        run: |
-          set -euo pipefail
-          if [ -z "${DEBUG_KEYSTORE_BASE64:-}" ]; then
-            echo "::error::BOOKWAVE_DEBUG_KEYSTORE_BASE64 is required for a stable debug APK."
-            exit 1
-          fi
-          mkdir -p "$HOME/.bookwave"
-          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$HOME/.bookwave/debug.keystore"
-          chmod 600 "$HOME/.bookwave/debug.keystore"
-          echo "Restored the stable BookWave debug keystore."
-
-      - name: Stage the release signing keystore
-        id: keystore
-        if: ${{ needs.source.outputs.variant == 'release' }}
-        env:
-          KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_SIGNING_KEYSTORE_BASE64 }}
-        run: |
-          set -euo pipefail
-          # The emptiness test is inside the script rather than in the step's `if`: a step's own `env`
-          # block is not in scope for its own `if` expression, so `env.KEYSTORE_BASE64 != ''` there is
-          # always true and would decode an empty secret into an empty keystore — which reaches Gradle
-          # as a *partly* configured signing setup and fails the build for the wrong reason.
-          if [ -z "${KEYSTORE_BASE64:-}" ]; then
-            echo "No signing keystore secret set; the release APK will be unsigned."
-            exit 0
-          fi
-          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
-          echo "path=$RUNNER_TEMP/upload.jks" >> "$GITHUB_OUTPUT"
 
       - name: Assemble debug
         if: ${{ needs.source.outputs.variant == 'debug' }}
@@ -289,6 +292,10 @@ jobs:
           BOOKWAVE_COMMIT: ${{ needs.source.outputs.sha }}
           BOOKWAVE_BRANCH: ${{ needs.source.outputs.branch }}
           BOOKWAVE_RUN_NUMBER: ${{ github.run_number }}
+          BOOKWAVE_DEBUG_KEYSTORE: ${{ steps.keystore.outputs.path }}
+          BOOKWAVE_DEBUG_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
+          BOOKWAVE_DEBUG_KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
+          BOOKWAVE_DEBUG_KEY_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_KEY_PASSWORD }}
         run: ./gradlew :app:assembleDebug
 
       - name: Assemble release
