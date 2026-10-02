@@ -1,0 +1,136 @@
+name: Build BookWave CI image
+
+run-name: "CI image · ${{ github.event_name == 'push' && github.sha || inputs.image_tag }}"
+
+on:
+  push:
+    paths:
+      - 'ci/bookwave-ci/**'
+      - '.github/workflows/build-ci-image.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the validated image to GitHub Container Registry'
+        type: boolean
+        default: true
+      image_tag:
+        description: 'Human-readable tag to publish alongside the source-SHA tag'
+        type: string
+        required: true
+        default: 'android36-jdk17-v1'
+
+concurrency:
+  group: build-bookwave-ci-image
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build, verify and publish CI image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Resolve image identity
+        id: image
+        env:
+          REQUESTED_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          tag="${REQUESTED_TAG:-android36-jdk17-v1}"
+          if ! [[ "$tag" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+            echo "::error::Invalid OCI tag: $tag"
+            exit 1
+          fi
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          image="ghcr.io/$owner/bookwave-ci"
+          sha_tag="sha-${GITHUB_SHA:0:12}"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=$sha_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        run: |
+          set -euo pipefail
+          docker build --pull \
+            --file ci/bookwave-ci/Dockerfile \
+            --build-arg "SOURCE_REVISION=$GITHUB_SHA" \
+            --tag bookwave-ci:validation \
+            .
+
+      - name: Verify image contract
+        run: |
+          set -euo pipefail
+          docker run --rm bookwave-ci:validation bookwave-ci-verify
+          docker run --rm bookwave-ci:validation bash -c 'node --version && java -version && sdkmanager --version && gitleaks version'
+
+      - name: Log in to GHCR
+        if: ${{ github.event_name == 'push' || inputs.publish }}
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Publish validated image
+        id: publish
+        if: ${{ github.event_name == 'push' || inputs.publish }}
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          HUMAN_TAG: ${{ steps.image.outputs.tag }}
+          SHA_TAG: ${{ steps.image.outputs.sha_tag }}
+        run: |
+          set -euo pipefail
+
+          # Branches publish only their immutable source tag so a CI-image change can prove itself before
+          # merge. Only main (or an explicit manual publish) may move the human-readable stable tag.
+          docker tag bookwave-ci:validation "$IMAGE:$SHA_TAG"
+          docker push "$IMAGE:$SHA_TAG"
+
+          if [ "$GITHUB_REF" = "refs/heads/main" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            docker tag bookwave-ci:validation "$IMAGE:$HUMAN_TAG"
+            docker push "$IMAGE:$HUMAN_TAG"
+            echo "human_tag_published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "human_tag_published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          docker pull "$IMAGE:$SHA_TAG" >/dev/null
+          digest="$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:$SHA_TAG")"
+          test -n "$digest" || { echo "::error::Could not resolve pushed image digest."; exit 1; }
+          echo "reference=$digest" >> "$GITHUB_OUTPUT"
+          echo "Published immutable source image $digest"
+
+      - name: Summary
+        if: always()
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          HUMAN_TAG: ${{ steps.image.outputs.tag }}
+          SHA_TAG: ${{ steps.image.outputs.sha_tag }}
+          REFERENCE: ${{ steps.publish.outputs.reference }}
+        run: |
+          {
+            echo '### BookWave CI image'
+            echo
+            echo "- Source: \`$GITHUB_SHA\`"
+            echo "- Image: \`$IMAGE\`"
+            if [ "${{ steps.publish.outputs.human_tag_published }}" = "true" ]; then
+              echo "- Human tag: \`$HUMAN_TAG\` (published)"
+            else
+              echo "- Human tag: \`$HUMAN_TAG\` (unchanged; branch candidate)"
+            fi
+            echo "- Source tag: \`$SHA_TAG\`"
+            echo "- Android platform/build-tools: \`36 / 36.0.0\`"
+            echo "- JDK / Node: \`17 / 22\`"
+            if [ -n "${REFERENCE:-}" ]; then
+              echo "- Immutable reference: \`$REFERENCE\`"
+            else
+              echo '- Published: no (validation-only run)'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

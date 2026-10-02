@@ -1,88 +1,19 @@
 name: Build APK
 
-run-name: "${{ inputs.pull_request != 'Use selected branch/ref' && format('Build {0} APK · {1}', inputs.variant, inputs.pull_request) || format('Build {0} APK · {1}', inputs.variant, github.ref_name) }}"
+run-name: "Build APK · ${{ github.ref_name }}"
 
-# An APK on demand, so a device test never waits for somebody to run a build by hand.
+# Canonical BookWave APK producer.
 #
-# ## How to get one
+# Manual: use GitHub's native "Use workflow from" selector, choose debug/release and optional verification.
+# Verified PR handoff: PR CI sends repository_dispatch only after a requested Standard/Intensive run passes;
+# this trusted workflow revalidates the exact same-repository PR head before exposing signing secrets.
 #
-# GitHub → Actions → **Build APK** → *Run workflow*. Leave **Use workflow from** on `main`, choose an open
-# pull request from the generated **Pull request** dropdown, pick debug or release, and run it. Each option
-# shows both identities used during testing, for example `#86 — feature/appearance-inline-expand`.
-#
-# The workflow extracts only the PR number from that label and resolves the PR again through GitHub before
-# checkout. The displayed branch is therefore context for the tester, not trusted input. The exact current
-# head SHA is what gets compiled. Choose **Use selected branch/ref** only for a deliberate non-PR build.
-#
-# The companion `sync-apk-pr-options.yml` workflow regenerates this static choice list whenever PRs are
-# opened, closed or reopened. Fork PRs are intentionally omitted because this workflow can access signing
-# secrets and refuses cross-repository source.
-#
-# When the build finishes, the APK is on the run's summary page under **Artifacts**. Phones can download it
-# directly from that page.
-#
-# ## Why `workflow_dispatch` only
-#
-# Not on every push: this repository already runs `verifyDebug` on every pull request and the full release
-# gate on `main`, and an APK built for a commit nobody asked about is 27 MB of storage and three minutes of
-# runner for an artefact that expires unread. Asking for one is a deliberate act, so the trigger is too.
-#
-# ## Release depends on four repository secrets; debug depends on one of its own
-#
-# `PRODUCT_SPEC 15` and ADR-0024 keep key material out of the *repository* — Play App Signing holds the
-# key that matters, and what a maintainer needs here is an **upload** key.
-#
-# **Release**: with the secrets set, the APK is signed and installs. Without them it is unsigned, useful
-# for inspecting what R8 emitted and impossible to install.
-#
-# **Debug is signed by its own key and by nothing else.** The four secrets below configure the *release*
-# build; they used to configure the debug build too, which made a debug APK's signature depend on whether
-# they happened to be set — so a run with them and a run without them produced two differently-signed debug
-# APKs and every switch cost the tester an uninstall. `DebugSigning.kt` owns the debug key now.
-#
-# On a runner that key has nothing to adopt (`~/.android/debug.keystore` does not exist on a fresh
-# machine), so the build generates one — a **different** one on every run, which is the same
-# `INSTALL_FAILED_UPDATE_INCOMPATIBLE` by a different route. Set `BOOKWAVE_DEBUG_KEYSTORE_BASE64` to stop
-# that: it is restored to the fixed path the build reads, so every APK this workflow produces carries the
-# same signature and `adb install -r` upgrades in place, keeping the sign-in, passcode, progress and
-# downloaded books.
-#
-# To make one: build once locally, then `base64 -w0 ~/.bookwave/debug.keystore`. It is not a secret in any
-# meaningful sense — it holds Android's public debug credentials — but it is stored as one because that is
-# the mechanism GitHub gives for putting a file on a runner.
-#
-# The run summary prints the signer's fingerprint, read back out of the artefact rather than assumed.
-#
-#   BOOKWAVE_DEBUG_KEYSTORE_BASE64     base64 of ~/.bookwave/debug.keystore — optional. Without it the
-#                                      workflow falls back to the upload keystore below, so one key signs
-#                                      both; with neither, every debug APK needs an uninstall first.
-#   BOOKWAVE_SIGNING_KEYSTORE_BASE64   base64 of the upload keystore (`base64 -w0 upload.jks`)
-#   BOOKWAVE_SIGNING_STORE_PASSWORD
-#   BOOKWAVE_SIGNING_KEY_ALIAS
-#   BOOKWAVE_SIGNING_KEY_PASSWORD
-#   LOOPBOUND_READ_TOKEN               fine-grained token for Loopbound, Contents: Read only
-#
-# The keystore is written to the runner's temp directory, never into the checkout — the build refuses a
-# keystore inside the repository outright, which is `ReleaseSigning.kt`'s second refusal.
-#
-# **This workflow is `workflow_dispatch` only, which is what makes signing here legitimate.**
-# `PRODUCT_SPEC 18` forbids signing in a workflow triggered by a push; asking for a signed build is a
-# deliberate act by somebody with write access, and `main.yml` — which *is* push-triggered — is left
-# unsigned.
+# Debug signing remains stable through BOOKWAVE_DEBUG_KEYSTORE_BASE64, so downloaded debug APKs can upgrade
+# one another in place without uninstalling BookWave.
+
 on:
   workflow_dispatch:
     inputs:
-      pull_request:
-        description: 'Open pull request to build'
-        type: choice
-        required: true
-        default: 'Use selected branch/ref'
-        options:
-          # BEGIN GENERATED OPEN PR OPTIONS
-          - "#200 — mcp/hallmark-slice-1-player"
-          - "#173 — sync/github-ci-core-parity"
-          - "Use selected branch/ref"
-          # END GENERATED OPEN PR OPTIONS
       variant:
         description: 'Which build to produce'
         type: choice
@@ -91,7 +22,7 @@ on:
           - debug
           - release
       run_checks:
-        description: 'Run verifyDebug before building (slower, but the APK is then known-good)'
+        description: 'Run verifyDebug before building'
         type: boolean
         default: false
       include_loopbound:
@@ -103,25 +34,112 @@ on:
         type: string
         required: true
         default: 'main'
+  repository_dispatch:
+    types: [build_verified_apk]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.pull_request == 'Use selected branch/ref' && github.ref || inputs.pull_request }}-${{ inputs.variant }}
+  group: build-apk-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
-  # Read-only. A requested PR is resolved to its exact head SHA and branch name before checkout; the
-  # selected-ref fallback also preserves the convenience of discovering whether that branch belongs to an
-  # open PR.
   pull-requests: read
 
 env:
   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -Dorg.gradle.daemon=false
 
 jobs:
+  source:
+    name: Resolve APK source
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      pr: ${{ steps.source.outputs.pr }}
+      branch: ${{ steps.source.outputs.branch }}
+      sha: ${{ steps.source.outputs.sha }}
+      variant: ${{ steps.source.outputs.variant }}
+      run_checks: ${{ steps.source.outputs.run_checks }}
+      include_loopbound: ${{ steps.source.outputs.include_loopbound }}
+      loopbound_ref: ${{ steps.source.outputs.loopbound_ref }}
+    steps:
+      - name: Resolve and validate source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          VERIFIED_SHA: ${{ github.event.client_payload.source_sha }}
+          VERIFIED_BRANCH: ${{ github.event.client_payload.source_branch }}
+          VERIFIED_PR: ${{ github.event.client_payload.pr_number }}
+          MANUAL_VARIANT: ${{ inputs.variant }}
+          MANUAL_RUN_CHECKS: ${{ inputs.run_checks }}
+          MANUAL_INCLUDE_LOOPBOUND: ${{ inputs.include_loopbound }}
+          MANUAL_LOOPBOUND_REF: ${{ inputs.loopbound_ref }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "repository_dispatch" ]; then
+            SHA="${VERIFIED_SHA,,}"
+            BRANCH="$VERIFIED_BRANCH"
+            NUMBER="$VERIFIED_PR"
+            VARIANT=debug
+            RUN_CHECKS=false
+            INCLUDE_LOOPBOUND=true
+            LOOPBOUND_REF=main
+
+            if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::Verified dispatch must contain a full commit SHA."
+              exit 1
+            fi
+            if ! [[ "$NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Verified dispatch must contain a PR number."
+              exit 1
+            fi
+
+            IFS=$'\t' read -r PR_SHA PR_BRANCH CROSS_REPO <<< "$(
+              gh pr view "$NUMBER" --repo "$GITHUB_REPOSITORY" \
+                --json headRefOid,headRefName,isCrossRepository \
+                --jq '[.headRefOid, .headRefName, .isCrossRepository] | @tsv'
+            )"
+            if [ "$CROSS_REPO" = "true" ]; then
+              echo "::error::Signed APK builds are not allowed from fork PRs."
+              exit 1
+            fi
+            if [ "${PR_SHA,,}" != "$SHA" ]; then
+              echo "::error::PR #$NUMBER moved after verification: expected $SHA, current head is $PR_SHA."
+              exit 1
+            fi
+            if [ "$PR_BRANCH" != "$BRANCH" ]; then
+              echo "::error::Verified branch '$BRANCH' no longer matches PR #$NUMBER branch '$PR_BRANCH'."
+              exit 1
+            fi
+            echo "Verified CI handoff: PR #$NUMBER · $BRANCH @ ${SHA:0:8}"
+          else
+            SHA="$GITHUB_SHA"
+            BRANCH="$GITHUB_REF_NAME"
+            NUMBER="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" \
+              --state open --limit 1 --json number --jq '.[0].number // empty')"
+            VARIANT="${MANUAL_VARIANT:-debug}"
+            RUN_CHECKS="${MANUAL_RUN_CHECKS:-false}"
+            INCLUDE_LOOPBOUND="${MANUAL_INCLUDE_LOOPBOUND:-true}"
+            LOOPBOUND_REF="${MANUAL_LOOPBOUND_REF:-main}"
+            echo "Manual build: $BRANCH @ ${SHA:0:8}; PR ${NUMBER:-none}."
+          fi
+
+          case "$VARIANT" in debug|release) ;; *) echo "::error::Unsupported APK variant: $VARIANT"; exit 1 ;; esac
+          {
+            echo "pr=${NUMBER:-}"
+            echo "branch=$BRANCH"
+            echo "sha=$SHA"
+            echo "variant=$VARIANT"
+            echo "run_checks=$RUN_CHECKS"
+            echo "include_loopbound=$INCLUDE_LOOPBOUND"
+            echo "loopbound_ref=$LOOPBOUND_REF"
+          } >> "$GITHUB_OUTPUT"
+
   loopbound:
     name: Loopbound web bundle
-    if: ${{ inputs.include_loopbound }}
+    needs: source
+    if: ${{ needs.source.outputs.include_loopbound == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -142,7 +160,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: AlexanderWilhelmsenBerg/Loopbound
-          ref: ${{ inputs.loopbound_ref }}
+          ref: ${{ needs.source.outputs.loopbound_ref }}
           token: ${{ secrets.LOOPBOUND_READ_TOKEN }}
           persist-credentials: false
 
@@ -164,7 +182,7 @@ jobs:
           test -f dist/index.html
           printf '%s\n' "$LOOPBOUND_SHA" > dist/BOOKWAVE_LOOPBOUND_VERSION
           echo "sha=$LOOPBOUND_SHA" >> "$GITHUB_OUTPUT"
-          echo "Built Loopbound ${LOOPBOUND_SHA:0:8} from ${{ inputs.loopbound_ref }}."
+          echo "Built Loopbound ${LOOPBOUND_SHA:0:8} from ${{ needs.source.outputs.loopbound_ref }}."
 
       - name: Upload compiled Loopbound bundle
         uses: actions/upload-artifact@v7
@@ -175,69 +193,28 @@ jobs:
           retention-days: 1
 
   apk:
-    name: ${{ inputs.variant }} APK
-    needs: [loopbound]
-    if: ${{ always() && (needs.loopbound.result == 'success' || needs.loopbound.result == 'skipped') }}
+    name: ${{ needs.source.outputs.variant }} APK
+    needs: [source, loopbound]
+    if: ${{ always() && needs.source.result == 'success' && (needs.loopbound.result == 'success' || needs.loopbound.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Resolve build source
-        id: source
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REQUESTED_PR: ${{ inputs.pull_request }}
-        run: |
-          set -euo pipefail
-
-          if [ "${REQUESTED_PR:-Use selected branch/ref}" != "Use selected branch/ref" ]; then
-            NUMBER_PART="${REQUESTED_PR%% *}"
-            REQUESTED_PR_NUMBER="${NUMBER_PART#\#}"
-            if ! [[ "$REQUESTED_PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
-              echo "::error::Invalid pull request selection: $REQUESTED_PR"
-              exit 1
-            fi
-
-            IFS=$'\t' read -r NUMBER BRANCH SHA CROSS_REPO <<< "$(
-              gh pr view "$REQUESTED_PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
-                --json number,headRefName,headRefOid,isCrossRepository \
-                --jq '[.number, .headRefName, .headRefOid, .isCrossRepository] | @tsv'
-            )"
-
-            # This workflow has access to repository signing secrets. Never run arbitrary code from a fork
-            # under that trust merely because somebody selected its PR in a privileged manual action.
-            if [ "$CROSS_REPO" = "true" ]; then
-              echo "::error::PR #$NUMBER comes from a fork. Build it without signing secrets instead."
-              exit 1
-            fi
-
-            echo "pr=$NUMBER" >> "$GITHUB_OUTPUT"
-            echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
-            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-            echo "Resolved PR #$NUMBER -> $BRANCH @ ${SHA:0:8}"
-          else
-            NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$GITHUB_REF_NAME" \
-              --state open --limit 1 --json number --jq '.[0].number // empty')
-            echo "pr=${NUMBER:-}" >> "$GITHUB_OUTPUT"
-            echo "branch=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
-            echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-            echo "Using selected ref $GITHUB_REF_NAME @ ${GITHUB_SHA:0:8}; PR ${NUMBER:-none}."
-          fi
-
       - uses: actions/checkout@v7
         with:
           # A PR build checks out the immutable head SHA resolved above. The workflow definition still comes
           # from `main`, but the source being compiled is exactly the PR revision named in the run.
-          ref: ${{ steps.source.outputs.sha }}
+          ref: ${{ needs.source.outputs.sha }}
+          persist-credentials: false
 
       - name: Download compiled Loopbound bundle
-        if: ${{ inputs.include_loopbound }}
+        if: ${{ needs.source.outputs.include_loopbound == 'true' }}
         uses: actions/download-artifact@v8
         with:
           name: loopbound-web-${{ github.run_id }}
           path: app/src/main/assets/loopbound
 
       - name: Verify staged Loopbound bundle
-        if: ${{ inputs.include_loopbound }}
+        if: ${{ needs.source.outputs.include_loopbound == 'true' }}
         env:
           EXPECTED_LOOPBOUND_SHA: ${{ needs.loopbound.outputs.sha }}
         run: |
@@ -262,43 +239,34 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          cache-provider: basic
+          cache-provider: enhanced
 
       # Off by default so a quick device build is quick. On when you want the APK to carry the same
       # guarantee a merged commit does.
       - name: Verify debug
-        if: ${{ inputs.run_checks }}
+        if: ${{ needs.source.outputs.run_checks == 'true' }}
         run: ./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true
 
-      # Restored to the fixed path `DebugSigning.kt` reads, so a debug APK from this workflow carries the
-      # same signature as the last one. Skipped when the secret is absent, which leaves the build to
-      # generate a fresh key — installable, but not *upgradable* over the previous run's APK.
-      - name: Stage the debug keystore
-        id: debugkey
+      # Debug APKs use one stable public debug identity so every downloaded test build can upgrade
+      # the previous one in place. The release upload key is deliberately unavailable on this path.
+      - name: Stage the stable debug keystore
+        if: ${{ needs.source.outputs.variant == 'debug' }}
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_DEBUG_KEYSTORE_BASE64 }}
-          UPLOAD_KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_SIGNING_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.bookwave"
-          if [ -n "${DEBUG_KEYSTORE_BASE64:-}" ]; then
-            printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$HOME/.bookwave/debug.keystore"
-            echo "source=debug-secret" >> "$GITHUB_OUTPUT"
-            echo "Restored the shared debug keystore from BOOKWAVE_DEBUG_KEYSTORE_BASE64."
-          elif [ -n "${UPLOAD_KEYSTORE_BASE64:-}" ]; then
-            # No debug keystore of its own, but there is an upload key. Use it for debug too, with its own
-            # credentials — a deliberate fallback rather than the invisible coupling this replaced, and the
-            # only way one key can sign both without a second secret.
-            printf '%s' "$UPLOAD_KEYSTORE_BASE64" | base64 -d > "$HOME/.bookwave/debug.keystore"
-            echo "source=upload-key" >> "$GITHUB_OUTPUT"
-            echo "No debug keystore secret; using the upload key for debug as well, so both are stable."
-          else
-            echo "source=generated" >> "$GITHUB_OUTPUT"
-            echo "No keystore secrets at all; this build's debug key will be newly generated and thrown away."
+          if [ -z "${DEBUG_KEYSTORE_BASE64:-}" ]; then
+            echo "::error::BOOKWAVE_DEBUG_KEYSTORE_BASE64 is required for a stable debug APK."
+            exit 1
           fi
+          mkdir -p "$HOME/.bookwave"
+          printf '%s' "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$HOME/.bookwave/debug.keystore"
+          chmod 600 "$HOME/.bookwave/debug.keystore"
+          echo "Restored the stable BookWave debug keystore."
 
-      - name: Stage the signing keystore
+      - name: Stage the release signing keystore
         id: keystore
+        if: ${{ needs.source.outputs.variant == 'release' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.BOOKWAVE_SIGNING_KEYSTORE_BASE64 }}
         run: |
@@ -314,24 +282,27 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           echo "path=$RUNNER_TEMP/upload.jks" >> "$GITHUB_OUTPUT"
 
-      - name: Assemble
+      - name: Assemble debug
+        if: ${{ needs.source.outputs.variant == 'debug' }}
         env:
-          BOOKWAVE_PR: ${{ steps.source.outputs.pr }}
-          BOOKWAVE_COMMIT: ${{ steps.source.outputs.sha }}
-          BOOKWAVE_BRANCH: ${{ steps.source.outputs.branch }}
-          # The monotonic half of the version code. Per-workflow, so it counts every run of *this* file
-          # and nothing else; renaming this file restarts it, which is why `BASE_VERSION_CODE` exists.
+          BOOKWAVE_PR: ${{ needs.source.outputs.pr }}
+          BOOKWAVE_COMMIT: ${{ needs.source.outputs.sha }}
+          BOOKWAVE_BRANCH: ${{ needs.source.outputs.branch }}
+          BOOKWAVE_RUN_NUMBER: ${{ github.run_number }}
+        run: ./gradlew :app:assembleDebug
+
+      - name: Assemble release
+        if: ${{ needs.source.outputs.variant == 'release' }}
+        env:
+          BOOKWAVE_PR: ${{ needs.source.outputs.pr }}
+          BOOKWAVE_COMMIT: ${{ needs.source.outputs.sha }}
+          BOOKWAVE_BRANCH: ${{ needs.source.outputs.branch }}
           BOOKWAVE_RUN_NUMBER: ${{ github.run_number }}
           BOOKWAVE_SIGNING_STORE_FILE: ${{ steps.keystore.outputs.path }}
           BOOKWAVE_SIGNING_STORE_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_STORE_PASSWORD }}
           BOOKWAVE_SIGNING_KEY_ALIAS: ${{ secrets.BOOKWAVE_SIGNING_KEY_ALIAS }}
           BOOKWAVE_SIGNING_KEY_PASSWORD: ${{ secrets.BOOKWAVE_SIGNING_KEY_PASSWORD }}
-          # Only when the debug keystore *is* the upload keystore — otherwise the build uses Android's own
-          # public debug credentials, which is what the generated and the shared-secret cases both hold.
-          BOOKWAVE_DEBUG_STORE_PASSWORD: ${{ steps.debugkey.outputs.source == 'upload-key' && secrets.BOOKWAVE_SIGNING_STORE_PASSWORD || '' }}
-          BOOKWAVE_DEBUG_KEY_ALIAS: ${{ steps.debugkey.outputs.source == 'upload-key' && secrets.BOOKWAVE_SIGNING_KEY_ALIAS || '' }}
-          BOOKWAVE_DEBUG_KEY_PASSWORD: ${{ steps.debugkey.outputs.source == 'upload-key' && secrets.BOOKWAVE_SIGNING_KEY_PASSWORD || '' }}
-        run: ./gradlew :app:assemble${{ inputs.variant == 'release' && 'Release' || 'Debug' }}
+        run: ./gradlew :app:assembleRelease
 
       # The version is read back out of the built APK rather than out of the build script, because the
       # artefact's name should describe the bytes attached to it. R-04 is exactly this failure: a
@@ -343,10 +314,10 @@ jobs:
       - name: Read the built version
         id: version
         env:
-          PR_NUMBER: ${{ steps.source.outputs.pr }}
-          SOURCE_SHA: ${{ steps.source.outputs.sha }}
-          SOURCE_BRANCH: ${{ steps.source.outputs.branch }}
-          INCLUDE_LOOPBOUND: ${{ inputs.include_loopbound }}
+          PR_NUMBER: ${{ needs.source.outputs.pr }}
+          SOURCE_SHA: ${{ needs.source.outputs.sha }}
+          SOURCE_BRANCH: ${{ needs.source.outputs.branch }}
+          INCLUDE_LOOPBOUND: ${{ needs.source.outputs.include_loopbound }}
           LOOPBOUND_SHA: ${{ needs.loopbound.outputs.sha }}
         run: |
           set -euo pipefail
@@ -374,7 +345,7 @@ jobs:
             else
               echo "| Loopbound | not bundled |"
             fi
-            echo "| Checks | ${{ inputs.run_checks && 'verifyDebug passed' || 'not run — assembled only' }} |"
+            echo "| Checks | ${{ needs.source.outputs.run_checks == 'true' && 'verifyDebug passed' || 'not run — assembled only' }} |"
             echo
             # Asked of the artefact rather than inferred from whether a secret was set: the point is to
             # tell somebody whether the file they are about to download will install, and — for debug —
@@ -410,7 +381,7 @@ jobs:
       # upload-artifact v7 can upload one file directly instead of wrapping it in a ZIP. Give the
       # debug APK a descriptive filename first because direct uploads use the filename as the artifact name.
       - name: Prepare the debug APK for direct download
-        if: ${{ inputs.variant == 'debug' }}
+        if: ${{ needs.source.outputs.variant == 'debug' }}
         id: debug_artifact
         env:
           SOURCE_APK: ${{ steps.version.outputs.apk }}
@@ -422,7 +393,7 @@ jobs:
           echo "apk=$TARGET" >> "$GITHUB_OUTPUT"
 
       - name: Upload the debug APK
-        if: ${{ inputs.variant == 'debug' }}
+        if: ${{ needs.source.outputs.variant == 'debug' }}
         uses: actions/upload-artifact@v7
         with:
           path: ${{ steps.debug_artifact.outputs.apk }}
@@ -433,7 +404,7 @@ jobs:
           retention-days: 30
 
       - name: Upload the release APK
-        if: ${{ inputs.variant == 'release' }}
+        if: ${{ needs.source.outputs.variant == 'release' }}
         uses: actions/upload-artifact@v7
         with:
           name: bookwave-release-${{ steps.version.outputs.label }}
@@ -444,7 +415,7 @@ jobs:
       # R8's mapping is the only thing that makes a release stack trace readable, and it is regenerated on
       # every build — so an APK kept without its mapping is an APK whose crashes cannot be read.
       - name: Upload the R8 mapping
-        if: ${{ inputs.variant == 'release' }}
+        if: ${{ needs.source.outputs.variant == 'release' }}
         uses: actions/upload-artifact@v7
         with:
           name: bookwave-release-mapping-${{ steps.version.outputs.label }}

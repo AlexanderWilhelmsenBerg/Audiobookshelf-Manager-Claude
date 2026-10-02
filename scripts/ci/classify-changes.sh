@@ -21,7 +21,7 @@ dependency_inputs_changed=false
 while IFS= read -r path; do
   [ -n "$path" ] || continue
   case "$path" in
-    .forgejo/workflows/*|.forgejo/ci/*|scripts/ci/*|scripts/codex/*)
+    .github/workflows/*|ci/*|.forgejo/workflows/*|.forgejo/ci/*|scripts/ci/*|scripts/codex/*)
       ci_infra_changed=true
       ;;
   esac
