@@ -34,7 +34,13 @@ class ClassifyChangesTest(unittest.TestCase):
             )
 
     def test_workflow_is_ci_only(self):
-        out = self.classify(".forgejo/workflows/pull-request.yml")
+        out = self.classify(".github/workflows/pull-request.yml")
+        self.assertIn("build_changed=false", out)
+        self.assertIn("ci_infra_changed=true", out)
+        self.assertIn("dependency_inputs_changed=false", out)
+
+    def test_ci_image_is_ci_only(self):
+        out = self.classify("ci/bookwave-ci/Dockerfile")
         self.assertIn("build_changed=false", out)
         self.assertIn("ci_infra_changed=true", out)
         self.assertIn("dependency_inputs_changed=false", out)

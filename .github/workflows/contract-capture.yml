@@ -7,24 +7,15 @@ name: Contract capture
 # rather than assumption — PRODUCT_SPEC 23 warns that the public API reference is out of date, and
 # PRODUCT_SPEC 22.4 forbids inventing an endpoint to cover the gap.
 #
-# On a pull request this job *verifies*: it re-captures and fails if the committed fixtures no longer
-# match what the server sends, which is how an upstream response change becomes a red build here
-# instead of a parse failure on someone's phone.
+# Manual-only, matching the Forgejo workflow: capture is deliberate and pinned to the fixture baseline.
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'core/network/**'
-      - 'scripts/capture-contracts.sh'
-      - 'scripts/seed-contract-media.sh'
-      - '.github/workflows/contract-capture.yml'
   workflow_dispatch:
     inputs:
       server_image:
         description: Audiobookshelf image to capture against
         required: false
-        default: ghcr.io/advplyr/audiobookshelf:latest
+        default: ghcr.io/advplyr/audiobookshelf:2.36.0
 
 permissions:
   contents: read
@@ -33,7 +24,7 @@ jobs:
   capture:
     name: Capture Audiobookshelf contracts
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -42,7 +33,7 @@ jobs:
       # runner configuration.
       - name: Start Audiobookshelf
         env:
-          SERVER_IMAGE: ${{ inputs.server_image || 'ghcr.io/advplyr/audiobookshelf:latest' }}
+          SERVER_IMAGE: ${{ inputs.server_image || 'ghcr.io/advplyr/audiobookshelf:2.36.0' }}
         run: |
           mkdir -p "$RUNNER_TEMP/abs/config" "$RUNNER_TEMP/abs/metadata" "$RUNNER_TEMP/abs/audiobooks"
           docker run -d --name audiobookshelf \

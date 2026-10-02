@@ -53,14 +53,11 @@ def main() -> int:
     log_paths = sys.argv[1:] or ["ci-diagnostics/gradle-verify.log"]
     log = "\n".join(_read(path) for path in log_paths)
     metrics = {
-        "schema_version": 1,
-        "run_id": os.getenv("FORGEJO_RUN_ID"),
-        "commit": os.getenv("BOOKWAVE_CI_SHA") or os.getenv("FORGEJO_SHA"),
+        "schema_version": 2,
+        "run_id": os.getenv("GITHUB_RUN_ID") or os.getenv("FORGEJO_RUN_ID"),
+        "commit": os.getenv("BOOKWAVE_CI_SHA") or os.getenv("GITHUB_SHA") or os.getenv("FORGEJO_SHA"),
         "depth": os.getenv("BOOKWAVE_CI_DEPTH", "unknown"),
-        "profile": os.getenv("BOOKWAVE_CI_PROFILE", "unknown"),
-        "workers": int(os.getenv("GRADLE_MAX_WORKERS", "0") or 0),
-        "cache_hit": os.getenv("BOOKWAVE_CACHE_HIT", ""),
-        "cache_matched_key": os.getenv("BOOKWAVE_CACHE_KEY", ""),
+        "runner_cpus": os.cpu_count(),
         "gradle_tasks": _task_counts(log),
         "tests": _tests(),
     }
