@@ -1,6 +1,6 @@
 name: CI · PR verification
 
-run-name: "CI · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.ref_name }} · ${{ github.event_name == 'pull_request' && 'quick' || inputs.depth }}"
+run-name: "CI · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.ref_name }} · ${{ github.event_name == 'pull_request' && 'standard' || inputs.depth }}"
 
 # GitHub-native BookWave pull-request gate, carrying forward the proven Forgejo CI quality model.
 #
@@ -12,8 +12,8 @@ run-name: "CI · ${{ github.event_name == 'pull_request' && format('PR #{0}', gi
 # - pin reusable actions and downloaded security tooling immutably.
 #
 # Reliability model:
-# - automatic pull-request events run Quick only;
-# - Quick fails before the expensive Android regression graph;
+# - automatic pull-request events run Standard;
+# - Quick remains available as a manual smoke test;
 # - Standard keeps the complete verifyDebug evidence without packaging an APK;
 # - --rerun-tasks follows build/classpath changes, not workflow-only edits;
 # - an optional debug APK is dispatched through the dedicated trusted Build APK workflow only after Standard/Intensive passes.
@@ -23,11 +23,6 @@ on:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
-      pr_number:
-        description: 'GitHub PR number to verify (optional; selected branch/ref is used when omitted)'
-        required: false
-        type: string
-        default: ''
       depth:
         description: 'Verification depth'
         type: choice
@@ -98,7 +93,6 @@ jobs:
         id: metadata
         env:
           GH_TOKEN: ${{ github.token }}
-          REQUESTED_PR: ${{ inputs.pr_number }}
           REQUESTED_DEPTH: ${{ inputs.depth }}
           REQUESTED_PROFILING: ${{ inputs.profiling }}
           REQUESTED_BUILD_APK: ${{ inputs.build_apk }}
@@ -120,12 +114,12 @@ jobs:
             pr_head="$EVENT_HEAD_SHA"
             pr_branch="$EVENT_HEAD_BRANCH"
             checkout_repository="$EVENT_HEAD_REPOSITORY"
-            depth="quick"
+            depth="standard"
             profiling="false"
             build_apk="false"
             cache_write=false
           else
-            requested_pr="$REQUESTED_PR"
+            requested_pr=""
             depth="${REQUESTED_DEPTH:-standard}"
             profiling="${REQUESTED_PROFILING:-false}"
             build_apk="${REQUESTED_BUILD_APK:-false}"
@@ -136,10 +130,6 @@ jobs:
             checkout_repository="$GITHUB_REPOSITORY"
 
             if [ "${REQUESTED_SEED_MAIN_CACHE:-false}" = "true" ]; then
-              if [ -n "$requested_pr" ]; then
-                echo "::error::seed_main_cache cannot be combined with a PR number."
-                exit 1
-              fi
               pr_head="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
               pr_branch=main
               checkout_repository="$GITHUB_REPOSITORY"
@@ -148,17 +138,37 @@ jobs:
               build_apk=false
               cache_write=true
               echo "Trusted main cache seed requested at $pr_head."
-            elif [ -n "$requested_pr" ]; then
-              if ! [[ "$requested_pr" =~ ^[1-9][0-9]*$ ]]; then
-                echo "::error::PR number must be a positive integer when supplied: $requested_pr"
+            else
+              pr_matches="$(gh api --method GET "repos/$GITHUB_REPOSITORY/pulls" \
+                -f state=open \
+                -f head="$GITHUB_REPOSITORY_OWNER:$SELECTED_BRANCH" \
+                -f per_page=2)"
+              match_count="$(printf '%s' "$pr_matches" | jq 'length')"
+
+              if [ "$match_count" -gt 1 ]; then
+                echo "::error::Selected branch '$SELECTED_BRANCH' maps to multiple open PRs; close or retarget the duplicates first."
                 exit 1
-              fi
-              pr_json="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$requested_pr")"
-              pr_values="$(printf '%s' "$pr_json" | jq -r '[.title, .head.sha, .head.ref, .head.repo.full_name] | @tsv')"
-              IFS=$'\t' read -r pr_title pr_head pr_branch checkout_repository <<<"$pr_values"
-              if [ -z "$pr_title" ] || [ -z "$pr_head" ] || [ -z "$pr_branch" ] || [ -z "$checkout_repository" ]; then
-                echo "::error::GitHub did not return complete metadata for PR #$requested_pr."
-                exit 1
+              elif [ "$match_count" -eq 1 ]; then
+                pr_values="$(printf '%s' "$pr_matches" | jq -r '.[0] | [.number, .title, .head.sha, .head.ref, .head.repo.full_name] | @tsv')"
+                IFS=$'\t' read -r requested_pr pr_title discovered_sha discovered_branch discovered_repo <<<"$pr_values"
+
+                if [ "$discovered_sha" != "$SELECTED_SHA" ]; then
+                  echo "::error::Selected branch moved while the workflow was being dispatched."
+                  echo "selected_sha=$SELECTED_SHA"
+                  echo "current_pr_head=$discovered_sha"
+                  exit 1
+                fi
+                if [ "$discovered_branch" != "$SELECTED_BRANCH" ] || [ "$discovered_repo" != "$GITHUB_REPOSITORY" ]; then
+                  echo "::error::Selected branch does not resolve to a same-repository PR head."
+                  exit 1
+                fi
+
+                pr_head="$discovered_sha"
+                pr_branch="$discovered_branch"
+                checkout_repository="$discovered_repo"
+                echo "GitHub branch selector resolved $SELECTED_BRANCH to PR #$requested_pr."
+              else
+                echo "GitHub branch selector resolved $SELECTED_BRANCH as a branch-only validation target."
               fi
             fi
           fi

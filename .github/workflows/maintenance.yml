@@ -1,27 +1,36 @@
-name: Contract capture
+name: Maintenance
 
-# PRODUCT_SPEC 18 ("server contract tests when fixture container is available") and 22.5.
-#
-# Runs a real Audiobookshelf server and records what it actually answers. The committed fixtures in
-# `core/network/src/test/resources/contracts/` are the output of this job, which makes them evidence
-# rather than assumption — PRODUCT_SPEC 23 warns that the public API reference is out of date, and
-# PRODUCT_SPEC 22.4 forbids inventing an endpoint to cover the gap.
-#
-# Manual-only, matching the Forgejo workflow: capture is deliberate and pinned to the fixture baseline.
+run-name: "Maintenance · ${{ inputs.task }}"
 
+# Rare/manual repository maintenance lives here so the Actions sidebar stays focused on
+# the four operational workflows: PR CI, Main, Build APK and Build BookWave CI image.
 on:
   workflow_dispatch:
     inputs:
+      task:
+        description: Maintenance task
+        type: choice
+        required: true
+        default: contract-capture
+        options:
+          - contract-capture
+          - codex-compatibility
+          - cleanup-retired-workflows
       server_image:
-        description: Audiobookshelf image to capture against
+        description: Audiobookshelf image for contract capture
         required: false
         default: ghcr.io/advplyr/audiobookshelf:2.36.0
+      cleanup_dry_run:
+        description: List retired workflows without disabling them
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 jobs:
   capture:
+    if: ${{ inputs.task == 'contract-capture' }}
     name: Capture Audiobookshelf contracts
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -189,3 +198,110 @@ jobs:
       - name: Server log on failure
         if: failure()
         run: docker logs audiobookshelf 2>&1 | tail -100
+  codex-bootstrap:
+    if: ${{ inputs.task == 'codex-compatibility' }}
+    name: JDK 21 Codex bootstrap + verifyDebug
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up verified Codex JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      # The workflow asks the bootstrap for its cheap maintenance path, then runs the real gate itself.
+      # This distinguishes "environment could not be prepared" from "BookWave failed verification" and
+      # avoids running verifyDebug twice.
+      - name: Prepare Codex environment
+        env:
+          BOOKWAVE_CODEX_PREWARM: light
+        run: bash scripts/codex/setup.sh
+
+      - name: Show prepared tool versions
+        run: |
+          java -version
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --version
+          "$HOME/.local/bin/gitleaks" version
+          ./gradlew --version
+
+      - name: Verify BookWave on JDK 21
+        run: ./gradlew verifyDebug --continue -Pshelfplayer.warningsAsErrors=true
+
+      - name: Room schema is committed and current
+        if: always()
+        run: |
+          changes="$(git status --porcelain -- core/database/schemas)"
+          if [ -n "$changes" ]; then
+            echo "::error::Codex verification changed committed Room schemas."
+            echo "$changes"
+            exit 1
+          fi
+
+
+  cleanup-retired-workflows:
+    if: ${{ inputs.task == 'cleanup-retired-workflows' }}
+    name: Disable retired workflow identities
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Disable workflow identities whose files no longer exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.cleanup_dry_run }}
+        run: |
+          set -euo pipefail
+
+          disabled=0
+          candidates=0
+
+          while IFS=$'\t' read -r id path name state; do
+            case "$path" in
+              .github/workflows/*.yml|.github/workflows/*.yaml)
+                ;;
+              *)
+                # Keep GitHub-managed workflows such as Dependabot's dependency graph.
+                continue
+                ;;
+            esac
+
+            if [ -f "$path" ] || [ "$state" != "active" ]; then
+              continue
+            fi
+
+            candidates=$((candidates + 1))
+            echo "retired: $name ($id) -> $path"
+
+            if [ "$DRY_RUN" != "true" ]; then
+              gh api --method PUT \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/$id/disable"
+              disabled=$((disabled + 1))
+            fi
+          done < <(
+            gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/actions/workflows?per_page=100" \
+              --jq '.workflows[] | [.id, .path, .name, .state] | @tsv'
+          )
+
+          {
+            echo "### Retired workflow cleanup"
+            echo
+            echo "- Candidates: $candidates"
+            echo "- Disabled: $disabled"
+            echo "- Dry run: $DRY_RUN"
+          } >> "$GITHUB_STEP_SUMMARY"
+

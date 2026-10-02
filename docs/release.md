@@ -303,8 +303,8 @@ consumed by a secret-bearing signing job and avoids branch caches consuming runn
 valid and fall back to a normal cold Gradle run; the cache is a performance layer, never a correctness
 prerequisite.
 
-The `.github/workflows/*` workflows remain the GitHub fallback while the Forgejo migration settles.
-`.github/workflows/contract-capture.yml` captures response shapes from a real server on demand
+GitHub Actions under `.github/workflows/` are the authoritative BookWave CI and release workflows.
+`.github/workflows/maintenance.yml` (`contract-capture` task) captures response shapes from a real server on demand
 (`PRODUCT_SPEC 22.5`).
 
 `verifyDebug` itself fans out to every module: ktlint, detekt with type resolution, Android Lint with

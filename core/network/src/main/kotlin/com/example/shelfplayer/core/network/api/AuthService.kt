@@ -13,7 +13,7 @@ import retrofit2.http.Query
  * The authentication endpoints, verified against Audiobookshelf 2.36.0 on 2026-08-05.
  *
  * None of these appear in the project's published `openapi.json`. They are recorded in
- * `docs/api-compatibility.md` and captured by `.github/workflows/contract-capture.yml`
+ * `docs/api-compatibility.md` and captured by `.github/workflows/maintenance.yml` (`contract-capture` task)
  * (PRODUCT_SPEC 22.4, 22.5, 22.19).
  *
  * Every call returns `Response<T>` rather than `T` so the status code reaches

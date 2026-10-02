@@ -149,9 +149,7 @@ contract.
 | Android command-line tools | build 15859902 + pinned SHA-256 | build 15859902 | Current on Android Developers download page. |
 | Android platform/build packages | API 36 + Build Tools 36.0.0; platform-tools via SDK Manager | API 37 exists; Platform Tools release notes list 37.0.1 | API 37 is ADR-blocked; platform/security tooling reconciliation belongs in Phase 8. |
 
-`contract-capture.yml` deliberately uses the moving `ghcr.io/advplyr/audiobookshelf:latest` image when
-recapturing fixtures. That is test-fixture infrastructure, not a BookWave app dependency pin, and must not
-be confused with the catalog's no-dynamic-version rule.
+`maintenance.yml`'s `contract-capture` task defaults to the verified `ghcr.io/advplyr/audiobookshelf:2.36.0` fixture baseline. A different image can be selected explicitly for compatibility investigation without changing the app dependency catalog.
 
 ## Already-current stable dependencies
 
