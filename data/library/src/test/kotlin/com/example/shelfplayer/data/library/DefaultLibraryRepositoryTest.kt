@@ -20,6 +20,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.SeriesSequence
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncStatus
+import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.library.Author
 import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.Library
@@ -47,6 +48,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 
 /**
  * The Phase 0 exit criterion, executable: the fake gateway's library lands in Room and comes back
@@ -705,6 +709,67 @@ class DefaultLibraryRepositoryTest {
         assertEquals(before, after)
     }
 
+    /**
+     * Issue #133 / LIB-001 — remote-progress conflict rules, through the real repository and Room.
+     * (The local-unsynced-beats-remote rule is covered in DefaultPlaybackRepositoryTest.)
+     */
+    @Test
+    fun `a newer remote position is accepted on a clean row`() = runTest {
+        repository.refresh(fixtureProfile)
+        val before = voyageProgress()
+
+        val result = writeRemote(before.updatedAt.plusSeconds(60), 99.minutes)
+
+        assertEquals(1, assertIs<AppResult.Success<Int>>(result).value)
+        val after = voyageProgress()
+        assertEquals(99.minutes, after.position)
+        assertEquals(before.updatedAt.plusSeconds(60), after.updatedAt)
+    }
+
+    @Test
+    fun `an equal or older remote position is rejected`() = runTest {
+        repository.refresh(fixtureProfile)
+        val before = voyageProgress()
+
+        val equal = writeRemote(before.updatedAt, 99.minutes)
+        val older = writeRemote(before.updatedAt.minusSeconds(60), 1.minutes)
+
+        assertEquals(0, assertIs<AppResult.Success<Int>>(equal).value)
+        assertEquals(0, assertIs<AppResult.Success<Int>>(older).value)
+        assertEquals(before, voyageProgress())
+    }
+
+    @Test
+    fun `a remote position for a book the profile cannot see is not written`() = runTest {
+        repository.refresh(fixtureProfile)
+        val ghost = LibraryItemId("book-not-in-any-granted-library")
+
+        val result = repository.writeProgress(
+            fixtureProfile,
+            listOf(remote(Instant.ofEpochMilli(1_000), 5.minutes).copy(bookId = ghost)),
+        )
+
+        assertEquals(0, assertIs<AppResult.Success<Int>>(result).value)
+        assertEquals(
+            0,
+            database.progressDao().findProgressFor(fixtureProfile.value).count { it.bookKey.endsWith(ghost.value) },
+        )
+    }
+
+    private suspend fun voyageProgress() =
+        checkNotNull(repository.observeBook(fixtureProfile, VOYAGE).first()?.progress) { "fixture has progress" }
+
+    private suspend fun writeRemote(updatedAt: Instant, position: Duration) =
+        repository.writeProgress(fixtureProfile, listOf(remote(updatedAt, position)))
+
+    private fun remote(updatedAt: Instant, position: Duration) = AccountProgress(
+        bookId = VOYAGE,
+        position = position,
+        duration = 11.hours,
+        isFinished = false,
+        updatedAt = updatedAt,
+    )
+
     /** PRODUCT_SPEC 14.5 — a sync log line never names a library or a book. */
     @Test
     fun `refresh logging contains no media titles`() = runTest {
@@ -713,5 +778,9 @@ class DefaultLibraryRepositoryTest {
         assertFalse(sink.text.contains("Salt Harbour"))
         assertFalse(sink.text.contains("Fiction"))
         assertTrue(sink.text.contains("Library refresh completed"))
+    }
+
+    private companion object {
+        val VOYAGE = LibraryItemId("book-voyage-1")
     }
 }
