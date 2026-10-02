@@ -35,7 +35,7 @@ Two sources, and the difference between them matters when reading anything below
    series, authors, podcasts, notifications and email, and declares `BearerAuth`. It documents
    **31 paths** and contains **no authentication endpoint at all** — no login, no `/api/me`, no
    playback session, no media progress.
-2. **Responses captured from a running server** by `.github/workflows/contract-capture.yml`. This is
+2. **Responses captured from a running server** by `.github/workflows/maintenance.yml` (`contract-capture` task). This is
    the authority wherever the two disagree, and the only source for anything in the first list's gap.
 
 Nothing here is derived by reading the server's source for its own sake, and no Audiobookshelf code

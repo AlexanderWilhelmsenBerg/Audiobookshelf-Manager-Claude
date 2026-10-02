@@ -26,11 +26,9 @@ license review, and this project has not chosen a license yet (`PRODUCT_SPEC 24.
 
 **Contracts are captured from a running Audiobookshelf server, and the capture is automated.**
 
-`.github/workflows/contract-capture.yml` starts the official server image, drives it with
+`.github/workflows/maintenance.yml` (`contract-capture` task) starts the official server image, drives it with
 `scripts/capture-contracts.sh`, and records what it actually answers. The fixtures committed under
-`core/network/src/test/resources/contracts/` are that output. On a pull request the job re-captures
-and fails if the committed fixtures no longer match, so an upstream response change becomes a red
-build here rather than a parse failure on a user's device.
+`core/network/src/test/resources/contracts/` are that output. Capture is deliberately manual: when an API shape or supported server baseline changes, the task re-captures and fails if the committed fixtures no longer match, so drift is reviewed before the app relies on it.
 
 Where the published specification and a captured response disagree, **the capture wins**, and the
 disagreement is recorded in `docs/api-compatibility.md`.
@@ -55,11 +53,7 @@ Ids and timestamps are replaced with stable placeholders. Without that, every ca
 from the last and the drift check would produce noise instead of signal — and a check that cries wolf
 is one people learn to ignore.
 
-The capture runs against `latest` by default, so a server release can turn this job red without any
-change on our side. That is deliberate here, and the opposite of the reasoning that disabled
-`OldTargetApi` in the lint configuration: a *toolchain* advisory firing on someone else's release is
-noise, but a *contract* changing under us is the single thing this job exists to detect. The
-`workflow_dispatch` input pins a specific image when a particular version needs reproducing.
+The capture defaults to the verified Audiobookshelf 2.36.0 baseline. The `workflow_dispatch` input can deliberately select another image when a newer or older server contract needs to be investigated; changing that baseline is therefore an explicit evidence update rather than background drift.
 
 The job cannot run in every environment. Container registry blob hosts are blocked by egress policy
 in the authoring sandbox, so capture happens in CI. This is why the fixtures are committed rather
