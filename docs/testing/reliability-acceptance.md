@@ -149,3 +149,16 @@ Local logs are under ignored `build/reliability-evidence/`; the full-gate log is
   storage, download process restart/shared-copy and two-hour soak acceptance remain pending. Record the
   final merged APK commit and device/host versions before those checks; do not close their issues from this
   automated evidence. The Silo pilot remains deferred for separate implications research.
+
+### Historical #36 / GitHub #128 verification handoff — 2026-10-03
+
+- The actual monitor/provider/broadcast-to-service regression failed three of five cases on main
+  `3e699786`; retaining the existing positive lifecycle latch passed all five, and the broader 68-case
+  continuity suite passed. Confirmed exit cleans up once; Unknown alone neither departs nor reconnects.
+- Integration source `297965b3` passed the forced formatter/full warnings-as-errors gate in 6m 59s with all
+  1,119 tasks executed. App 521 and playback 516 debug tests passed without failures/errors. Initial
+  fixture lint and isolated local SDK-path/cache findings were corrected; failed logs remain available.
+- The [focused review](../reviews/2026-10-03-issue-128-continuity-review.md) records eight automated-check
+  entries (the first now passed) and 26 granular phone/Auto cases; the [register](roadmap-verification-register.md)
+  logs the wider functional/release checks and exact APK handoff. All current physical cases remain pending
+  until the owner supplies the phone and relevant headset/host. Keep #128 open for that evidence.

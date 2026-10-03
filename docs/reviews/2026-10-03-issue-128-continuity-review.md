@@ -106,7 +106,7 @@ suite does not silently check them off.
 
 | ID | Test to execute/add | Required result |
 | --- | --- | --- |
-| AUTO-36-01 | Run all nine suites above, formatter and the combined warnings-as-errors `verifyDebug` gate. | All 68 focused cases and the combined gate pass; inspect reports, not only exit status. |
+| AUTO-36-01 | Run all nine suites above, formatter and the combined warnings-as-errors `verifyDebug` gate. | **PASS, 2026-10-03:** 68 focused cases and forced combined gate passed; execution record below. Current-head CI remains required before merge. |
 | AUTO-36-02 | Extend the actual provider harness with empty cursor, missing column, invalid raw value, SecurityException and IllegalArgumentException. Include a later valid read after each. | Each failure is Unknown, produces diagnostic reason without private data, grants no exit/Play, and does not erase the last positive lifecycle. |
 | AUTO-36-03 | Supersede a suspended provider read and stop/restart the monitor while it is pending. | Old reads cannot publish into a newer observer/service lifetime; receiver/read resources retire. |
 | AUTO-36-04 | Run production MediaSession/forwarding-player Pause while focus has already paused the raw player; then deliver arrival/departure and route return. | Duplicate Pause cancels all continuity, and no raw Play is issued. Repeat with newer Play/Stop, book change and profile switch. |
@@ -175,3 +175,17 @@ this new provider-lifecycle regression/evidence in the shared risk and acceptanc
 The combined drive checklist also still describes GitHub PR #205 as open although it merged on 2026-10-02.
 Keep it aligned with the exact tested APK and the central verification register. No physical acceptance has
 been upgraded to complete by this review.
+
+## Integration execution record
+
+The integration source at `297965b3` passed `ktlintFormat verifyDebug
+-Pshelfplayer.warningsAsErrors=true --rerun-tasks --max-workers=4` in **6m 59s**, with all **1,119 tasks
+executed**. App 521 and playback 516 debug tests had zero failures/errors. Production `onCreate` still starts
+the real monitor with `::onCarProjectionUpdate`; the regression reaches that same callback.
+
+The initial full run found type-aware fixture lint (`ArrayPrimitive` and `NullableToStringCall`) beyond the
+focused static-analysis task. Replacing the cursor's primitive array with a list and the nullable fake-class
+name with its Java name preserved the regression assertions. A separate local SDK-path escaping error and
+stale lint report were corrected in the isolated worktree; the forced gate then rebuilt every task. Failed
+and successful logs are retained under ignored `build/verification-handoff/` (`verify-first.log`,
+`verify-second.log`, `verify-stale-lint.log`, `verify-complete.log`). No phone/DHU/real headset was used.
