@@ -1,8 +1,8 @@
 # BookWave roadmap
 
 **Classification:** Active plan — canonical sequencing authority.
-**Reconciled:** 2026-10-03 against GitHub main `3e699786`, including merged PRs #205–#216,
-plus the focused #128 projection-read follow-up in this revision.
+**Reconciled:** 2026-10-03 against GitHub main `b7266a3d`, including merged PRs #205–#217,
+plus the reproduced R-122 shared-transfer ownership correction in this revision.
 
 This is the only document that answers what BookWave should work on next. `PRODUCT_SPEC.md` supplies
 requirement IDs, `product-decisions.md` owns settled product choices, and accepted ADRs own architecture.
@@ -78,8 +78,10 @@ also has real-Git fixtures for stacked PRs, published-schema edits/deletions and
 **Integration evidence:** #214 supplied the shared coverage/app-unit prerequisite for #212/#215/#216;
 #211 supplied #213's phone presentation change. The combined candidate `c6236833` passed the forced
 `ktlintFormat verifyDebug -Pshelfplayer.warningsAsErrors=true --rerun-tasks --max-workers=4` gate in
-7m 21s, with all 1,119 tasks executed. This revision retains the same code, tests and workflows; the
-subsequent differences are documentation. Current-head PR and post-merge main checks remain authoritative.
+7m 21s, with all 1,119 tasks executed. #217's projection-lifecycle correction then passed the forced full
+gate in 6m 59s and merged; main `b7266a3d` passed trusted debug seed, release/security and signed APK runs.
+The R-122 correction adds its own [regression and full-gate evidence](reviews/2026-10-03-shared-download-ownership.md).
+Current-head PR and post-merge main checks remain authoritative.
 Silo remains deferred, and physical acceptance remains open.
 
 ## 2. Verify the merged download reliability lane
@@ -110,8 +112,8 @@ actual ViewModel scenarios that fail when the observer projection is removed. Th
 | --- | --- | --- |
 | R-120 asynchronous cancel / new-claim race | Reproduce late writes and a new claim arriving during removal on a slow disk. | Do not introduce a cross-WorkManager lock without evidence. |
 | R-121 last-profile orphan copy | Separately scope the owner decision and space-recovery UX. | Unclaimed-copy cleanup remains outside the Phase 3 downloads work. |
-| R-122 shared transfer's original profile | Reproduce A stopping, B retaining a claim, then A signing out/being removed. | Do not choose re-enqueue versus claim resolution from source inference alone. |
-| R-123 resume without ETag | Exercise Pause/Resume with a no-ETag fixture and verify the truthful percent restart. | Preserve committed media; never resume bytes without a validator merely to keep percent monotonic. |
+| R-122 shared transfer's original profile | Four downloader regressions reproduced the gap. Current eligible claimants now authorize each file/cover; run the [device matrix](reviews/2026-10-03-shared-download-ownership.md). | Keep the same WorkManager request/network constraints; no active-profile fallback or blind account retry. Physical acceptance remains pending. |
+| R-123 resume without ETag | Safe completed restart/committed-file retention passes. Next reproduce AUTO-DL-12-01's second cancellation before the old part size, then verify screen/notification percent and process restart on the phone. | Preserve committed media and absent-volume progress; never resume bytes without a validator merely to keep percent monotonic. |
 
 Fix reproducible gaps in these paths. Do not build another execution adapter, persist WorkManager state into
 Room or reopen settled physical-copy ownership. Verify server-and-item identity at the storage/active-profile

@@ -91,6 +91,11 @@ state and repository semantics remain below the UI.
 A future recovery UX must not collapse WorkManager execution state and durable file/manifest state into one
 enum merely for display convenience.
 
+`DownloadClaimAccess` in `:domain` authorizes each file/artwork request from the shared manifest's current
+claims, saved profile grants and `BookAssetSource` visibility. `BookDownloader` invokes it at the transfer
+boundary; WorkManager's captured profile stays a preferred owner rather than mutable active-profile state.
+The policy never replans the manifest, changes network constraints or creates another durable owner.
+
 ## How important rules are enforced
 
 | Rule | Enforcement |

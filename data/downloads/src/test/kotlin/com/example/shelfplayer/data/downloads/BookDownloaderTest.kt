@@ -12,11 +12,14 @@ import com.example.shelfplayer.core.database.entity.ServerEntity
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.ProfileRole
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.DownloadPaths
 import com.example.shelfplayer.core.model.download.DownloadProgress
 import com.example.shelfplayer.core.model.download.DownloadState
+import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.OfflineFile
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
 import com.example.shelfplayer.core.model.getOrNull
@@ -24,8 +27,13 @@ import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
+import com.example.shelfplayer.domain.download.BookAssetSource
+import com.example.shelfplayer.domain.download.BookAssets
+import com.example.shelfplayer.domain.download.DownloadClaimAccess
+import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -103,6 +111,14 @@ class BookDownloaderTest {
             storage = storage,
             copyLocks = copyLocks,
             logger = logger,
+            claimAccess = DownloadClaimAccess(
+                repository,
+                fixtureProfiles(),
+                object : BookAssetSource {
+                    override suspend fun assetsFor(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookAssets> =
+                        AppResult.Success(BookAssets(files(), coverUrl = null, estimatedBytes = 300))
+                },
+            ),
         )
         seedAccounts()
     }
@@ -127,6 +143,113 @@ class BookDownloaderTest {
         assertEquals(3, api.fetched.size, "one request per file")
         assertEquals(listOf("file-1", "file-2", "file-3"), api.fetched, "in playback order")
         done.files.forEach { file -> assertTrue(File(java.net.URI(file.uri)).exists(), file.uri) }
+    }
+
+    /** R-122: queued work still carries Ada's id after her claim and profile disappear. */
+    @Test
+    fun `shared transfer survives removal of its original profile`() = runTest {
+        repository.request(SERVER, BOOK, ADA, files())
+        repository.request(SERVER, BOOK, GRACE, files())
+        assertEquals(false, downloader.remove(ADA, SERVER, BOOK).getOrNull())
+        database.profileDao().deleteProfile(ADA.value)
+        api.credentialErrors = mapOf(ADA to AppError.Authentication())
+
+        val done = assertIs<AppResult.Success<OfflineBook>>(downloader.download(ADA, SERVER, BOOK))
+
+        assertTrue(done.value.isComplete)
+        assertEquals(listOf(GRACE, GRACE, GRACE), api.fileProfiles)
+        assertEquals(listOf(GRACE), api.coverProfiles)
+        assertEquals(setOf(GRACE), repository.observe(SERVER, BOOK).first()?.requestedBy)
+    }
+
+    @Test
+    fun `shared transfer changes owner between files after the original profile is removed`() = runTest {
+        repository.request(SERVER, BOOK, ADA, files())
+        repository.request(SERVER, BOOK, GRACE, files())
+        api.afterWrite = {
+            downloader.remove(ADA, SERVER, BOOK)
+            database.profileDao().deleteProfile(ADA.value)
+            api.credentialErrors = mapOf(ADA to AppError.Authentication())
+        }
+
+        assertIs<AppResult.Success<*>>(downloader.download(ADA, SERVER, BOOK))
+
+        assertEquals(listOf(ADA, GRACE, GRACE), api.fileProfiles)
+        assertEquals(listOf(GRACE), api.coverProfiles)
+        assertTrue(repository.observe(SERVER, BOOK).first()?.isComplete == true)
+    }
+
+    @Test
+    fun `shared transfer can use another claimant after authentication expires during a request`() = runTest {
+        repository.request(SERVER, BOOK, ADA, files())
+        repository.request(SERVER, BOOK, GRACE, files())
+        api.credentialErrors = mapOf(ADA to AppError.Authentication())
+
+        assertIs<AppResult.Success<*>>(downloader.download(ADA, SERVER, BOOK))
+
+        assertEquals(listOf(ADA, GRACE, GRACE, GRACE), api.fileProfiles)
+        assertEquals(setOf(ADA, GRACE), repository.observe(SERVER, BOOK).first()?.requestedBy)
+    }
+
+    @Test
+    fun `unclaimed queued work cannot fetch more media`() = runTest {
+        repository.request(SERVER, BOOK, ADA, files())
+        repository.release(SERVER, BOOK, ADA)
+
+        assertIs<AppResult.Failure>(downloader.download(ADA, SERVER, BOOK))
+
+        assertTrue(api.fileProfiles.isEmpty())
+        assertTrue(api.coverProfiles.isEmpty())
+        assertTrue(partsIn(itemDirectory()).isEmpty())
+    }
+
+    @Test
+    fun `replacement owner resumes validated partial bytes and keeps committed audio`() = runTest {
+        val committed = interruptedSharedTransfer()
+        val partial = assertNotNull(repository.observe(SERVER, BOOK).first()).files[1]
+        repository.updateFile(SERVER, BOOK, partial.copy(eTag = "\"file-2\""))
+        api.honorRanges = true
+
+        val done = assertIs<AppResult.Success<OfflineBook>>(downloader.download(ADA, SERVER, BOOK)).value
+
+        assertEquals(committed.uri, done.files[0].uri)
+        assertEquals(8, File(java.net.URI(done.files[0].uri)).length())
+        assertEquals(4, api.resumeOffsets.last { it.first == "file-2" }.second)
+        assertEquals("\"file-2\"", api.validators.last { it.first == "file-2" }.second)
+        assertEquals(8, File(java.net.URI(done.files[1].uri)).length())
+        assertEquals(listOf("file-1", "file-2", "file-2", "file-3"), api.fetched)
+        assertEquals(listOf(ADA, ADA, GRACE, GRACE), api.fileProfiles)
+    }
+
+    @Test
+    fun `replacement owner restarts an unvalidated part without discarding committed audio`() = runTest {
+        val committed = interruptedSharedTransfer()
+        api.honorRanges = true
+
+        val done = assertIs<AppResult.Success<OfflineBook>>(downloader.download(ADA, SERVER, BOOK)).value
+
+        assertEquals(committed.uri, done.files[0].uri)
+        assertEquals(0, api.resumeOffsets.last { it.first == "file-2" }.second)
+        assertNull(api.validators.last { it.first == "file-2" }.second)
+        assertEquals(8, File(java.net.URI(done.files[1].uri)).length(), "replacement body is not appended")
+        assertEquals(listOf("file-1", "file-2", "file-2", "file-3"), api.fetched)
+    }
+
+    private suspend fun interruptedSharedTransfer(): OfflineFile {
+        repository.request(SERVER, BOOK, ADA, files())
+        repository.request(SERVER, BOOK, GRACE, files())
+        api.truncateOn = "file-2"
+        assertIs<AppResult.Failure>(downloader.download(ADA, SERVER, BOOK))
+        repository.markPaused(SERVER, BOOK)
+        val stored = assertNotNull(repository.observe(SERVER, BOOK).first())
+        assertEquals(4, stored.files[1].downloadedBytes)
+        assertEquals(DownloadState.Complete, stored.files[0].state)
+        downloader.remove(ADA, SERVER, BOOK)
+        database.profileDao().deleteProfile(ADA.value)
+        api.credentialErrors = mapOf(ADA to AppError.Authentication())
+        api.truncateOn = null
+        repository.markQueued(SERVER, BOOK)
+        return stored.files[0]
     }
 
     /**
@@ -339,6 +462,29 @@ class BookDownloaderTest {
         DownloadPaths.itemDirectory(SERVER.value, BOOK.value).joinToString(File.separator),
     )
 
+    private fun fixtureProfiles(): ProfileRepository = object : ProfileRepository {
+        override fun observeProfiles() = database.profileDao().observeProfiles().map { rows ->
+            rows.map { row ->
+                Profile(
+                    id = ProfileId(row.profileId),
+                    serverId = ServerId(row.serverId),
+                    username = row.username,
+                    displayName = row.displayName,
+                    role = ProfileRole.Listener,
+                    requiresReauthentication = row.requiresReauthentication,
+                    lastUsedAt = null,
+                    isFixture = row.isFixture,
+                    canDownload = row.canDownload,
+                )
+            }
+        }
+        override fun observeServers(): Nothing = error("Transfer does not resolve a server through the UI")
+        override fun observeActiveProfile(): Nothing = error("Transfer must not read the active profile")
+        override suspend fun activeProfileId(): Nothing = error("Transfer must not read the active profile")
+        override suspend fun setActiveProfile(profileId: ProfileId): Nothing =
+            error("Transfer must not switch profiles")
+    }
+
     private fun partsIn(directory: File) = directory.listFiles().orEmpty().filter { DownloadPaths.isPart(it.name) }
 
     private fun files(sizes: List<Long> = listOf(100, 100, 100)) = sizes.mapIndexed { index, size ->
@@ -359,8 +505,14 @@ class BookDownloaderTest {
     /** Writes a body the size the caller asked for, records what it was asked for, and can be told to fail. */
     private class ScriptedDownloadApi : DownloadApi {
         val fetched = mutableListOf<String>()
+        val fileProfiles = mutableListOf<ProfileId>()
+        val coverProfiles = mutableListOf<ProfileId>()
+        val resumeOffsets = mutableListOf<Pair<String, Long>>()
+        val validators = mutableListOf<Pair<String, String?>>()
+        var honorRanges = false
+        var credentialErrors: Map<ProfileId, AppError> = emptyMap()
         var failOn: String? = null
-        var afterWrite: (() -> Unit)? = null
+        var afterWrite: (suspend () -> Unit)? = null
         var bodyBytesByFile: Map<String, Int> = emptyMap()
 
         /** Writes bytes and *then* fails, which is how a real dropped connection leaves a `.part` behind. */
@@ -375,22 +527,28 @@ class BookDownloaderTest {
             validator: String?,
             onProgress: (Long) -> Unit,
         ): AppResult<FileTransfer> {
+            fileProfiles += profileId
+            credentialErrors[profileId]?.let { return AppResult.Failure(it) }
             fetched += fileId
+            resumeOffsets += fileId to resumeFrom
+            validators += fileId to validator
             if (fileId == failOn) return AppResult.Failure(AppError.Network())
             if (fileId == truncateOn) {
                 sink(false).use { stream -> stream.write(ByteArray(BODY_BYTES / 2)) }
                 return AppResult.Failure(AppError.Network())
             }
             val body = ByteArray(bodyBytesByFile[fileId] ?: BODY_BYTES) { 'a'.code.toByte() }
-            sink(false).use { stream -> stream.write(body) }
-            onProgress(body.size.toLong())
+            val resumed = honorRanges && resumeFrom > 0 && validator != null
+            val remaining = if (resumed) body.copyOfRange(resumeFrom.toInt(), body.size) else body
+            sink(resumed).use { stream -> stream.write(remaining) }
+            onProgress(if (resumed) resumeFrom + remaining.size else body.size.toLong())
             afterWrite?.invoke()
             afterWrite = null
             return AppResult.Success(
                 FileTransfer(
-                    bytesWritten = body.size.toLong(),
+                    bytesWritten = remaining.size.toLong(),
                     totalBytes = body.size.toLong(),
-                    wasResumed = false,
+                    wasResumed = resumed,
                     eTag = "\"$fileId\"",
                     lastModified = null,
                     contentType = "audio/mpeg",
@@ -403,12 +561,20 @@ class BookDownloaderTest {
             bookId: LibraryItemId,
             sink: () -> OutputStream,
         ): AppResult<String?> {
+            coverProfiles += profileId
+            credentialErrors[profileId]?.let { return AppResult.Failure(it) }
             sink().use { stream -> stream.write(ByteArray(COVER_BYTES)) }
             return AppResult.Success("image/webp")
         }
 
         fun reset() {
             fetched.clear()
+            fileProfiles.clear()
+            coverProfiles.clear()
+            resumeOffsets.clear()
+            validators.clear()
+            honorRanges = false
+            credentialErrors = emptyMap()
             failOn = null
             truncateOn = null
             afterWrite = null

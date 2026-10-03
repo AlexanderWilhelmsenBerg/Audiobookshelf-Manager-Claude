@@ -16,6 +16,7 @@ import com.example.shelfplayer.core.model.download.OfflineBook
 import com.example.shelfplayer.core.model.download.OfflineFile
 import com.example.shelfplayer.core.model.isFailure
 import com.example.shelfplayer.core.network.gateway.DownloadApi
+import com.example.shelfplayer.domain.download.DownloadClaimAccess
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import kotlinx.coroutines.flow.first
@@ -54,6 +55,7 @@ class BookDownloader @Inject constructor(
     private val storage: DownloadStorage,
     private val copyLocks: DownloadCopyLocks,
     private val logger: Logger,
+    private val claimAccess: DownloadClaimAccess,
 ) : OfflineFiles {
 
     /**
@@ -82,18 +84,21 @@ class BookDownloader @Inject constructor(
         }
 
         val weights = Weights(manifest.files)
+        val rejectedOwners = mutableSetOf<ProfileId>()
         onProgress(weights.progressOf(manifest.files))
 
         manifest.files.filter { it.state != DownloadState.Complete }.forEach { file ->
-            val fetched = fileDownloader.download(
-                profileId = profileId,
-                serverId = serverId,
-                itemId = itemId,
-                file = file,
-                storageVolumeUuid = manifest.storageVolumeUuid,
-                committedUris = manifest.files.map(OfflineFile::uri),
-            ) { bytes ->
-                onProgress(weights.progressWith(file, bytes))
+            val fetched = claimAccess.withOwner(manifest, profileId, rejectedOwners, file.remoteFileId) { owner ->
+                fileDownloader.download(
+                    profileId = owner,
+                    serverId = serverId,
+                    itemId = itemId,
+                    file = file,
+                    storageVolumeUuid = manifest.storageVolumeUuid,
+                    committedUris = manifest.files.map(OfflineFile::uri),
+                ) { bytes ->
+                    onProgress(weights.progressWith(file, bytes))
+                }
             }
             if (fetched.isFailure()) {
                 logger.warn(
@@ -116,10 +121,8 @@ class BookDownloader @Inject constructor(
             itemId,
             coverUri = manifest.coverUri ?: fetchCover(
                 profileId = profileId,
-                serverId = serverId,
-                itemId = itemId,
-                storageVolumeUuid = manifest.storageVolumeUuid,
-                committedUris = manifest.files.map(OfflineFile::uri),
+                manifest = manifest,
+                rejectedOwners = rejectedOwners,
             ),
         )
         if (completed is AppResult.Success) {
@@ -152,24 +155,23 @@ class BookDownloader @Inject constructor(
      */
     private suspend fun fetchCover(
         profileId: ProfileId,
-        serverId: ServerId,
-        itemId: LibraryItemId,
-        storageVolumeUuid: String?,
-        committedUris: List<String>,
+        manifest: OfflineBook,
+        rejectedOwners: MutableSet<ProfileId>,
     ): String? {
         var destination: File? = null
-        val fetched = downloads.fetchCover(profileId, itemId) {
-            // The type is not known until the response arrives, and the name depends on it — so the file is
-            // named inside the sink, which is the first moment both facts exist.
-            storage.coverFor(
-                serverId = serverId.value,
-                itemId = itemId.value,
-                mimeType = null,
-                volumeUuid = storageVolumeUuid,
-                committedUris = committedUris,
-            )?.also { destination = it }
-                ?.outputStream()
-                ?: throw java.io.IOException("Download storage unavailable")
+        val fetched = claimAccess.withOwner(manifest, profileId, rejectedOwners) { owner ->
+            downloads.fetchCover(owner, manifest.itemId) {
+                // Open the destination only when a successful response arrives.
+                storage.coverFor(
+                    serverId = manifest.serverId.value,
+                    itemId = manifest.itemId.value,
+                    mimeType = null,
+                    volumeUuid = manifest.storageVolumeUuid,
+                    committedUris = manifest.files.map(OfflineFile::uri),
+                )?.also { destination = it }
+                    ?.outputStream()
+                    ?: throw java.io.IOException("Download storage unavailable")
+            }
         }
         return when (fetched) {
             is AppResult.Success -> destination?.toURI()?.toString()

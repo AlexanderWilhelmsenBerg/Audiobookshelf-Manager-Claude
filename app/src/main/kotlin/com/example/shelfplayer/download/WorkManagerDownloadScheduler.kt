@@ -32,6 +32,8 @@ import javax.inject.Singleton
  * WorkManager separates enqueue time from execution time, so the request stores all three facts needed to
  * perform the transfer later: the profile that authorized it, the server, and the item. The work name stays
  * per (server, item), because multiple profile claims intentionally share one physical downloaded copy.
+ * The captured profile is the preferred owner; the downloader reauthorizes current same-server claimants
+ * at execution without replacing this request or relaxing its captured network constraints.
  */
 @Singleton
 class WorkManagerDownloadScheduler @Inject constructor(
