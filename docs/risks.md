@@ -75,6 +75,28 @@ nobody later mistakes a source-derived fixture for a captured one.
 
 ## 4. Data and account safety
 
+### R-114 — device-wide download metadata must include server identity
+
+The 2026-10-02 reliability pass reproduced a DownloadsViewModel join by item ID alone. With the same ID on
+two servers, the active profile's book could label the other server's physical copy and permit its failure
+summary through the visibility filter. The regression failed against main before the fix. The join now uses
+`DownloadExecutionKey(serverId, itemId)`; the generic physical row and byte count remain visible. Full gate
+and device acceptance are recorded separately in `testing/reliability-acceptance.md`.
+
+### R-115 — suspended restore integration needs profile and bookkeeping evidence
+
+After PR #205 merged (`756d521e`), three tests reproduced stale installs or queue lookup when the active
+unlocked profile changed during holder resolution, candidate resolution or queue opening. The restorer now
+captures profile identity and rechecks it before lookup and after those operations. Tests use actual
+coroutine suspension and ExoPlayer; the original implementation failed all three.
+
+The remaining gap is the service's `openQueue`, which invokes `bookChanges.onBookOpened` before the final
+supersession check. Rejecting the returned queue does not prove that a discarded open preserves current
+sleep/session bookkeeping. Add integration evidence and repair that boundary before claiming complete
+profile/restore acceptance. Switching away and back during a single suspended operation also needs a
+generation-based check; comparing profile IDs alone cannot detect that sequence. Physical checks remain in
+`testing/reliability-acceptance.md`.
+
 | # | Risk | If it bites | Retired by |
 | --- | --- | --- | --- |
 | R-17 | **`accountType` defaults to `''` for any install that upgraded through migration 18**, until a sign-in or a permission refresh rewrites it — and `ProfileRole.ofAccountType("")` is `Listener`. | Nothing today: the UI gates on the `role` column, which sign-in writes. It stays a loaded gun for the next reader, because gating on `accountType` instead would silently demote every upgraded admin until their next refresh — the exact shape of the defect that hid the account-management row on a device. | **Named in a test rather than left in prose:** `version 18 leaves the account type empty, which is the least privileged role` asserts the default, the mapping, and that `role` is the column a permission check should read. A backfill on first launch would retire it entirely. |

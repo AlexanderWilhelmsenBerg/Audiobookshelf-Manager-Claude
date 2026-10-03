@@ -7,6 +7,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.test.core.app.ApplicationProvider
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Test
@@ -31,6 +34,7 @@ class CarPostConnectRestorerTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val player: ExoPlayer = ExoPlayer.Builder(context).build()
     private var locked = false
+    private var activeProfile: ProfileId? = ProfileId("first")
     private val held = AutoLibrary.HeldResume(item("held"), HELD_START_MS)
     private val queue = MediaItems.Queue(item("queued"), QUEUE_START_MS)
     private var openedQueues = 0
@@ -49,6 +53,7 @@ class CarPostConnectRestorerTest {
             queue
         },
     ) = CarPostConnectRestorer(
+        activeProfileId = { activeProfile },
         isProfileLocked = { locked },
         lastPlayedBookId = lastPlayed,
         heldResume = heldResume,
@@ -207,6 +212,80 @@ class CarPostConnectRestorerTest {
         )
 
         racing.restore(AutoStartAction.ArmAndPlay, player)
+
+        assertEquals(0, player.mediaItemCount)
+        assertFalse(player.playWhenReady)
+    }
+
+    @Test
+    fun `no active profile resolves no metadata or queue`() = runBlocking {
+        activeProfile = null
+        val absent = restorer(
+            lastPlayed = { error("no candidate lookup without a profile") },
+            heldResume = { error("no metadata lookup without a profile") },
+        )
+
+        for (action in AutoStartAction.entries) absent.restore(action, player)
+
+        assertEquals(0, player.mediaItemCount)
+        assertEquals(0, openedQueues)
+    }
+
+    @Test
+    fun `switching unlocked profiles during holder resolution discards the old metadata`() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        val restore = launch {
+            restorer(heldResume = {
+                entered.complete(Unit)
+                resume.await()
+                held
+            }).restore(AutoStartAction.None, player)
+        }
+        entered.await()
+        activeProfile = ProfileId("second")
+        resume.complete(Unit)
+        restore.join()
+
+        assertEquals(0, player.mediaItemCount)
+        assertEquals(0, openedQueues)
+    }
+
+    @Test
+    fun `switching unlocked profiles during candidate resolution does not open a queue`() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        val restore = launch {
+            restorer(lastPlayed = {
+                entered.complete(Unit)
+                resume.await()
+                BOOK
+            }).restore(AutoStartAction.Arm, player)
+        }
+        entered.await()
+        activeProfile = ProfileId("second")
+        resume.complete(Unit)
+        restore.join()
+
+        assertEquals(0, openedQueues)
+        assertEquals(0, player.mediaItemCount)
+    }
+
+    @Test
+    fun `switching unlocked profiles during queue opening does not install or play`() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        val restore = launch {
+            restorer(openQueue = {
+                entered.complete(Unit)
+                resume.await()
+                queue
+            }).restore(AutoStartAction.ArmAndPlay, player)
+        }
+        entered.await()
+        activeProfile = ProfileId("second")
+        resume.complete(Unit)
+        restore.join()
 
         assertEquals(0, player.mediaItemCount)
         assertFalse(player.playWhenReady)

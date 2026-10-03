@@ -20,26 +20,39 @@ import com.example.shelfplayer.data.settings.DefaultAppearanceRepository
 import com.example.shelfplayer.domain.settings.BackgroundThemeCatalog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
 
 /** PRODUCT_SPEC SET-002 — appearance writes still reach one real DataStore through the repository boundary. */
 @OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class AppearanceViewModelTest {
 
     @get:Rule
     val folder = TemporaryFolder()
 
     private val dispatcher = StandardTestDispatcher()
+    private val storeScope = CoroutineScope(dispatcher)
 
     @get:Rule
     val mainDispatcher = MainDispatcherRule(dispatcher)
+
+    @After
+    fun tearDown() {
+        storeScope.cancel()
+    }
 
     @Test
     fun `choosing a pack stores the pack and adopts its accent`() = runTest(dispatcher) {
@@ -148,27 +161,33 @@ class AppearanceViewModelTest {
         assertEquals(AppTheme.Amoled.key, stored.appThemeKey)
     }
 
-    private fun settings() = AppSettingsDataSource(
-        dataStore = DataStoreFactory.create(
-            serializer = AppSettingsSerializer(),
-            scope = CoroutineScope(dispatcher),
-            produceFile = { folder.newFile("appearance-${counter++}.pb") },
-        ),
-        logger = SilentLogger,
-    )
+    private fun settings(): AppSettingsDataSource {
+        // DataStore may resolve the file more than once. Every access must use the same backing store.
+        val storeFile = folder.newFile("appearance-${counter++}.pb")
+        return AppSettingsDataSource(
+            dataStore = DataStoreFactory.create(
+                serializer = AppSettingsSerializer(),
+                scope = storeScope,
+                produceFile = { storeFile },
+            ),
+            logger = FailOnErrorLogger,
+        )
+    }
 
     private fun viewModel(settings: AppSettingsDataSource): AppearanceViewModel {
         val catalog = object : BackgroundThemeCatalog {
             override suspend fun themes(): List<BackgroundTheme> = listOf(TEAL, NEBULA)
             override suspend fun theme(id: String): BackgroundTheme? = themes().firstOrNull { it.id == id }
         }
-        return AppearanceViewModel(DefaultAppearanceRepository(settings, catalog, SilentLogger))
+        return AppearanceViewModel(DefaultAppearanceRepository(settings, catalog, FailOnErrorLogger))
     }
 
     private var counter = 0
 
-    private object SilentLogger : Logger {
-        override fun log(event: LogEvent) = Unit
+    private object FailOnErrorLogger : Logger {
+        override fun log(event: LogEvent) {
+            event.throwable?.let { throw AssertionError(event.message, it) }
+        }
     }
 
     private companion object {

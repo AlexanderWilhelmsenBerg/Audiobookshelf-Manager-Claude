@@ -6,6 +6,25 @@ giving it a section of its own.
 
 ## Unreleased
 
+### Android Auto restore profile isolation (AUTH-002, PLAY-001, #185)
+
+- Suspended idle restoration discards the outgoing profile's metadata/queue when another unlocked profile
+  becomes active. Candidate resolution cannot open a queue after that switch, and no active profile means
+  no restore lookup. Existing Arm, ArmAndPlay and Never behavior is preserved for the same profile.
+- Three regression tests reproduce the former behavior using suspended lookups and a real ExoPlayer.
+  Queue-opening bookkeeping and physical car acceptance remain tracked in R-115.
+
+### Reliability reconciliation and download privacy (DL-003, AUTH-002)
+
+- Device-wide download rows match visible library metadata by server and item together. A same-ID book on
+  another server cannot reveal a hidden copy's failure detail or label it with the visible book's metadata.
+- The roadmap now reflects merged download, sleep, CI and car work using current GitHub issue numbers;
+  physical acceptance remains separate from implementation. The dated inventory covers all 44 open issues.
+- Windows verification includes the pinned protoc 4.36.1 binary's SHA-256, checked against a direct Maven
+  Central download. Strict dependency verification remains enabled; no dependency version changed.
+- Appearance persistence tests now use Robolectric like the repository tests, a stable DataStore file and
+  scope cleanup. This fixes Windows fixture failures without changing production appearance behavior.
+
 ### Resume tile invalidation, profile-switch restore and test hardening (#99, #185, #128, #133, #100)
 
 - **The Android Auto resume tile now refreshes within a profile (#99/#185).** The remembered book was not

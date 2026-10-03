@@ -24,7 +24,8 @@ class IdleResumeWiringTest {
         // CarPostConnectRestorerTest proves against a real player.
         assertTrue("carPostConnectRestorer(trace).restore(action, current)" in postConnect)
         assertTrue("auto.heldResumeAfter(::refreshResumeAccount)" in postConnect)
-        assertTrue("AutoStartAction.None -> holdLastBook(current)" in restorer)
+        assertTrue("activeProfileId = auto::activeProfileId" in postConnect)
+        assertTrue("AutoStartAction.None -> holdLastBook(current, profileId)" in restorer)
         assertTrue("current.setMediaItem(held.item, held.startPositionMs)" in restorer)
     }
 

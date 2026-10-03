@@ -52,5 +52,5 @@ Every planning or investigation document should be readable as one of these stat
 The live implementation sequence exists **only** in [`roadmap.md`](roadmap.md). Do not copy its numbered
 queue into this index: completed PRs move quickly, and a duplicated snapshot becomes stale documentation.
 
-Use the roadmap for active ordering, Forgejo issues/PRs for execution state, and historical documents only as
+Use the roadmap for active ordering, GitHub issues/PRs for execution state, and historical documents only as
 evidence of what was true at their stated snapshot date.

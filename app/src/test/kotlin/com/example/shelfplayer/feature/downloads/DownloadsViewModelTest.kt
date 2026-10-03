@@ -108,6 +108,30 @@ class DownloadsViewModelTest {
         }
     }
 
+    @Test
+    fun `matching item id on another server does not authorize download metadata`() = runTest {
+        val visible = offlineBook("shared-id")
+        val hidden = visible.copy(
+            serverId = ServerId("other-server"),
+            state = DownloadState.Failed,
+            failureSummary = "Private media could not be downloaded",
+            requestedBy = setOf(ProfileId("other-profile")),
+        )
+        downloads.emit(listOf(visible, hidden))
+        library.emit(listOf(book("shared-id", "Visible book")))
+
+        viewModel().uiState.test {
+            val state = awaitItem().takeIf { it.isLoaded } ?: awaitItem()
+            val visibleRow = state.books.single { it.serverId == SERVER }
+            val hiddenRow = state.books.single { it.serverId == hidden.serverId }
+            assertEquals("Visible book", visibleRow.title)
+            assertNull(hiddenRow.title)
+            assertNull(hiddenRow.author)
+            assertNull(hiddenRow.failureSummary)
+            assertEquals(DownloadRecoveryState.Failed, hiddenRow.recoveryState)
+        }
+    }
+
     /**
      * Decision 6 and 5.2 at once. The row exists — it is using space on this device, which is a fact about
      * the device — and it has no name, because naming it would show one profile another's library.

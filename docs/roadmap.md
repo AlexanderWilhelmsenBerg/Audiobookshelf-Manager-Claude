@@ -1,189 +1,98 @@
 # BookWave roadmap
 
 **Classification:** Active plan — canonical sequencing authority.
+**Reconciled:** 2026-10-02 against GitHub main `756d521e`, including merged PR #205.
 
-This is the only document that answers **“what should BookWave work on next?”** `docs/product-decisions.md`
-records definitive owner-approved product/UX decisions but does not set sequencing. Detailed issue bodies,
-accepted ADRs, architecture documents, risks, reviews and experiments supply evidence and implementation
-detail, but do not independently change sequence.
+This is the only document that answers what BookWave should work on next. `PRODUCT_SPEC.md` supplies
+requirement IDs, `product-decisions.md` owns settled product choices, and accepted ADRs own architecture.
+GitHub is authoritative following the 2026-10-01 cutover. Unqualified issue/PR numbers below refer to GitHub;
+historical Forgejo numbers are explicitly labelled.
 
-This roadmap describes work that is still open on current `main`. Completed PRs and issues are retained only as historical boundaries where they explain why an owner or experiment must not be recreated.
+The owner selected reliability first. Preserve playback continuity, progress, profile privacy and offline
+media before adding surfaces or platforms. An open issue is not proof that implementation is missing.
+See [the issue inventory](reviews/2026-10-02-reliability-inventory.md) for all 44 open issues and evidence.
+Merged code, automated verification and physical acceptance are separate statuses.
 
-## How to use this roadmap
+## 1. Playback and Android Auto acceptance
 
-For each active major item, follow the linked issue for implementation detail and use this document for ordering. The roadmap records the user value, owner/boundary, prerequisites, non-goals, expected automated proof, required device/platform evidence, and approximate effort/risk.
+- PR #205's idle car restore, remembered-book observation, resume-tile invalidation and paused
+  profile-switch fallback are merged. The follow-up profile-identity guard rejects a suspended restore
+  after switching unlocked profiles; retain the remaining bookkeeping integration gap in R-115.
+- Accept #128/#100 (headset continuity/route ownership), #185 (idle restore), #126/#196 (output state/Queue),
+  #130 (phone/car controls), and #99/#191 (browse/profile invalidation). Principal implementations already
+  exist on main. PR #205 adds follow-up tests and behavior.
+- Use [the combined drive checklist](android-auto-pd001-drive-acceptance.md) and
+  [browse invalidation checks](android-auto-browse-invalidation-acceptance.md). Include headset Previous,
+  Rewind and Fast-forward from merged PR #204. Record the APK commit and device/host versions.
+- Preserve PD-001's **Continue → Series → Authors → Profiles** root. History is absent from car browse;
+  #196 requires the standard Queue affordance to be absent, not replaced by History.
+- Reproduce failures on the candidate build before changing routing. Explicit selection wins over inferred
+  routes; a merely connected headset is not heard-route evidence; a deliberately paused book stays paused.
 
-BookWave correctness work follows these standing rules:
+**Owners:** Android System & Auto and Playback & Lifecycle, with Test & Acceptance review.
+**Requirements:** PLAY-001/002/004/007, ROUTE-001/002, AUTH-002, LIB-002/003, specification 5.2 and 6.5.
+**Gate:** physical headset/car evidence remains required; JVM tests cannot close this gate.
 
-- preserve one owner for each cross-surface correctness policy;
-- do not make Android Auto, widgets, notifications or other system surfaces invent their own playback truth;
-- keep device-local remembered-book identity separate from resume-position freshness and from server-derived library progress;
-- prefer measured platform evidence over speculative routing or host workarounds;
-- keep Android correctness and ownership contracts ahead of iOS expansion;
-- when an issue body names an already-merged prerequisite, treat the merge as satisfied rather than preserving a stale blocker.
+## 2. Verify the merged download reliability lane
 
-## Now — Android correctness on current `main`
+Forgejo PR #94 (`8ea2122f`) already merged the former implementation queue:
 
-The foreground realtime and recent-book hydration slices that previously led this roadmap are already on
-`main`: Forgejo PR #5 implemented issue #40, and PR #57 implemented and closed issue #41. Issue #40 is
-still open in the tracker even though its implementation merged; that tracker state is stale and must not
-cause the foreground-sync work to be recreated.
+| GitHub issue | Implemented behavior | Remaining acceptance |
+| --- | --- | --- |
+| #108 | State-owned Pause / Resume / Retry, originally Forgejo PR #55 | Failure/restart actions preserve partial bytes. |
+| #109 | Aggregate WorkManager waiting/retry observation | Constrained/retrying work recovers across process restart. |
+| #112 | Confirmed partial-data discard, separate from Retry | Confirmation preserves committed media; ordinary Retry is non-destructive. |
+| #120 | Active queue, live progress and notification navigation | Independent transfers, state transitions and denied notification permission. |
+| #110 | Volume identity, conservative verifier and storage projection | Card removal/reinsertion and disclosed internal fallback without redownload. |
+| #111 | Shared copy, profile claims and device pin | Last-claim removal, shared-copy retention and metadata redaction. PD-003 settles ownership. |
 
-The one remaining active Android correctness item is below. Forgejo #34, #35 and #10 (GitHub #126, #196 and
-#99) have merged — see "Merged implementation awaiting physical/device acceptance"; an open pull request
-was never completion, and neither is a merged one without the device/host evidence recorded there.
+Fix reproducible gaps in these paths. Do not build another execution adapter, persist WorkManager state into
+Room or reopen settled physical-copy ownership. Verify server-and-item identity at the storage/active-profile
+join: identical item IDs across servers are not authorization.
 
-### 1. Issue #6 — retest headset Back/Previous on the current media-button layout
+Use [reliability acceptance](testing/reliability-acceptance.md). Keep physical checks pending when hardware
+is unavailable; do not close issues solely because code merged. This lane can proceed independently while
+car acceptance awaits hardware.
 
-Issue #38 is complete through Forgejo PR #56, so the prerequisite media-button layout change is no longer a
-reason to defer #6. Retest the reported headset Previous/Back failure on current `main` first. If it still
-reproduces, map the system/headset action to BookWave's configured relative seek-back policy without
-changing notification/Android Auto slot policy or inventing a second seek owner.
+**Owner:** Offline & Downloads. **Requirements:** DL-001/002/003/004/006, AUTH-002, specification 5.2, PD-003.
 
-**Status:** the mapping is implemented (#197, `ResumeFreshnessPlayer` + `RelativeSeekCommands`); a physical
-headset retest is pending.
+## 3. Remaining Android work
 
-Physical headset acceptance is required because a JVM test can prove command mapping but not which transport
-command a particular headset actually sends.
+- **Accessibility/UI:** reconcile #194/#195 findings into concrete child slices. PR #200 already changed
+  mini/full players and motion (#182/#183 and part of #177/#178). Assess residual criteria rather than
+  reapplying earlier designs. Prioritize contrast, clipping, player clearance and recovery before polish;
+  require narrow/wide, 2.0 font scale, TalkBack and reduced-motion evidence.
+- **#190 WebView flicker:** run its provider/version, opaque-background and Haze-isolation matrix on an
+  affected device before choosing a permanent mitigation. The upstream explanation remains a hypothesis.
+- **#188 CI:** tiers landed in Forgejo PR #91, then GitHub PRs #173/#201. Audit remaining coverage/telemetry
+  requirements against current workflows. Retain full Standard regression acceptance; Quick alone is not a
+  merge gate. Local `verifyDebug` still includes assembly.
+- **#124/#189 sleep:** schedule and countdown/grace/sensitivity landed in Forgejo PRs #63/#84/#93. Use
+  `device-test-sleep-schedule.md` and PD-002 for remaining notification, sensor and lifecycle acceptance.
+- **#101:** keep display-only series formatting cleanup separate; preserve primary selection and ordering.
 
-## Merged implementation awaiting physical/device acceptance
+## 4. System surfaces, then iOS
 
-These are **not active implementation slices** unless acceptance fails. Their code has merged; what remains
-is evidence that automated tests cannot supply:
+After Android correctness acceptance, implement #114's typed action contract using existing remembered-book
+and resume-freshness owners. Validate exported parameters, profile access and lock behavior; no arbitrary
+media URLs, credentials or unrestricted item execution.
 
-- **#36 / Forgejo PR #60 — car-arrival headset continuity:** issue closed and the narrow
-  audio-focus-loss-to-first-car-bind gate is on `main`. `docs/risks.md` R-106 remains the acceptance
-  boundary until the repeat physical headset + car drive passes. Do not broaden it into generic
-  resume-after-focus-loss behavior.
-- **#38 / Forgejo PR #56 — phone/car media-button priority:** issue closed and the state-dependent layout is
-  on `main`; phone notification plus DHU/real-car rendering remains device/host evidence. **Deliberate
-  exception (GitHub #130):** while a sleep timer is running it takes the compact forward slot. This
-  is intended, not a defect.
-- **#34 and #35 / Forgejo PR #67 (GitHub #126 and #196) — Android Auto Car selected state and History
-  affordance:** implemented; physical acceptance pending. Car is preserved as its own explicit destination
-  and the player-side History metadata is dropped while Media3's media-notification controller is denied
-  `COMMAND_GET_TIMELINE`, so the host's standard Queue button should disappear. `docs/risks.md` R-107 and
-  R-110 are the acceptance boundary: re-run the projected-host drive and verify Car renders selected and
-  Queue is absent.
-- **#10 / Forgejo PR #69 (GitHub #99) — shape-aware Android Auto browse invalidation:** implemented;
-  physical acceptance pending. One profile-bound snapshot per sweep, including the resume tile's
-  remembered book, drives invalidation; DHU/real-host evidence must still verify the visible refresh,
-  including the resume tile after a different book is played within one profile.
-- **#7 / Forgejo PR #58 — shake-to-extend lifecycle:** issue closed and the lifecycle/settings race is fixed;
-  deliberate-shake behavior still requires real accelerometer checks in foreground, background and screen-off
-  playback.
+Then implement #117 (widget) and #118 (Quick Settings) as projections, followed by #116's opt-in headset
+automation. #119 first evaluates Garmin's Control Phone path; custom work needs a demonstrated gap.
 
-## Download reliability and recovery lane
+Keep #121–#123 last: selective portable model/domain seams, native iOS shell/authentication, cached library,
+native Apple playback, progress correctness, then offline transfers. Live Activity and CarPlay follow proven
+native playback. No wholesale KMP conversion or shared UI is implied.
 
-BW-DL-03 / **#18 is complete through Forgejo PR #55**. Do not recreate its Pause / Resume / Retry action
-mapping. The remaining sequence starts from the transient execution-state projection:
+Dependency work follows `latest-stable-upgrade-plan.md` separately. Phases 4/5 are at their documented
+compatible frontier; Phase 6 is next in that lane, and ADR-0011 still gates the build-platform upgrade.
 
-1. **#19 — project WorkManager waiting/retry state into Downloads UX.** Distinguish automatic retry/waiting
-   from terminal failure while keeping WorkManager as transient execution truth. #18 is satisfied.
-2. **#22 — explicit discard-partial recovery.** Eligible after completed #18 and may proceed independently of
-   #19. It is secondary, destructive and confirmed; Retry/Resume preserves partials by default.
-3. **#29 — live queue/progress in Downloads and notifications.** Follow #19 so screen and notification states
-   share the same truthful execution/presentation model.
-4. **#20 — removable/secondary storage correctness.** Keep after the core recovery/execution model; physical
-   removable-storage evidence is required.
-5. **#21 — device-wide destructive removal semantics.** Do only after the physical-copy/profile-owner product
-   decision is explicit.
+## Verification and status discipline
 
-This lane may proceed independently when it does not collide with playback/service ownership work.
-
-## Android system surfaces
-
-Start these after the active Android correctness work above so each surface delegates to settled owners
-rather than copying playback policy.
-
-1. **#23 — semantic Android action contract.** Define stable actions/deep links that delegate Continue/resume
-   to the existing remembered-book and resume-freshness owners. No credentials/server addresses in external
-   intents.
-2. **#26 — home-screen widget** and **#27 — Quick Settings tile.** Build as projections/controllers over #23;
-   neither gets an independent socket or resume algorithm.
-3. **#25 — wired/Bluetooth headset automation.** Follow #23 and current routing ownership; physical headset
-   acceptance is required.
-4. **Forgejo PR #63 / #33 — scheduled automatic sleep.** Implementation is ready for review around the
-   existing sleep-timer owner: local same-day/overnight windows, persisted manual-cancel suppression,
-   explicit-replay handling after natural expiry, deterministic timezone/DST policy, full-player projection,
-   and expanded/compact media-control projection. A schedule-created timer still active at the window end is
-   cancelled without pausing playback; manual timers remain independent. Physical notification, screen-off,
-   Bluetooth and process/service acceptance remains required before the Android surface is considered proven.
-5. **#28 — Garmin evaluation/custom surface.** First validate the built-in Control Phone path. Add custom
-   Garmin work only for a demonstrated gap.
-
-## Maintenance and non-sequencing backlog
-
-- **#12** remains open low-risk display cleanup: centralize the existing `Series #sequence` label formatting
-  without changing series ownership or ordering.
-- **#42 / BW-DEP-01** is the Forgejo migration issue for the staged dependency program. The tracker currently
-  shows it closed even though the migration plan is not complete. Treat
-  `docs/latest-stable-upgrade-plan.md` as the detailed execution plan: Phases 4 and 5 are complete at the
-  current compatible frontier, **Phase 6 is the next executable dependency lane**, and the Gradle 9 / AGP 9 /
-  API 37 foundation remains gated by ADR-0011. Dependency novelty does not outrank the correctness sequence
-  above.
-- **#47–#50** are open UI/design audit or proposal work. Their source findings are useful evidence, but they
-  do not independently change this roadmap's ordering and several explicitly require rendered/device
-  validation before implementation scope is treated as settled.
-
-Tracker inconsistencies are not sequencing authority. In particular, #40 is still open despite merged PR #5,
-while #42 is closed despite an incomplete staged migration. Reconcile those tracker states separately rather
-than making roadmap readers infer work from open/closed badges alone.
-
-## Historical boundaries — completed, not active work
-
-These entries exist to prevent completed ownership work from being recreated:
-
-- **Forgejo PR #5 / issue #40 — merged:** one foreground realtime progress owner now lives at application
-  foreground lifecycle scope. The still-open issue is tracker drift, not active implementation.
-- **Forgejo PR #55 / issue #18 — merged/closed:** Pause / Resume / Retry download row actions are settled.
-- **Forgejo PR #56 / issue #38 — merged/closed:** phone skips versus car-bound output-action priority follows
-  actual car-controller binding.
-- **Forgejo PR #57 / issue #41 — merged/closed:** bounded recent-book hydration runs before ordinary full
-  expansion without replacing the authoritative refresh.
-- **Forgejo PR #58 / issue #7 — merged/closed:** shake-to-extend registration now follows active-timer +
-  persisted-setting state; physical sensor acceptance remains separate.
-- **Forgejo PR #59 / issue #11 — merged/closed:** generation-bound route-heard ownership replaced the
-  `HeadsetHold` inference stack. Do not reintroduce sticky inferred ownership.
-- **Forgejo PR #60 / issue #36 — merged/closed:** measured car-arrival audio-focus loss has a narrow continuity
-  gate tied to #11 ownership; generic focus-loss resumption remains out of scope.
-- **Pre-migration GitHub PR #78 — merged:** Android Auto/routing finalization and ADR-0029. The retired
-  whole-list output cycle and secondary-slot experiment are historical evidence, not future roadmap items.
-- **Pre-migration GitHub PR #93 — merged:** one shared resume-freshness owner. Do not create parallel
-  phone/headset/Android Auto position policy.
-- **Pre-migration GitHub PR #131 — merged:** established the staged latest-stable dependency plan.
-- **Pre-migration GitHub PR #136 / current Forgejo issue #17 — completed:** safe download recovery
-  presentation state is the foundation for the remaining download lane.
-- **Pre-migration GitHub PR #137 — merged:** Phase 0 dependency compatibility inventory only; it is historical
-  measurement evidence, not a second live version ledger.
-- **Pre-migration GitHub PR #149 / current Forgejo issue #24 — completed:** one durable per-profile,
-  device-local remembered audiobook identity owns which book this device remembers.
-- **Pre-migration GitHub PR #144 and #153 / current Forgejo issue #39 — completed documentation boundaries:**
-  earlier roadmap reconciliation snapshots are history; this file remains the live sequencing authority.
-
-## Last — iOS, deliberately after Android correctness
-
-Do not pull iOS work forward to avoid Android lifecycle, routing, library or download correctness. Shared code
-is justified only where it preserves a proven behavioral contract without forcing shared UI or platform
-adapters.
-
-1. **#30 — staged iOS foundation and selective KMP boundary.** Prove narrow portable model/pure-domain seams;
-   no wholesale KMP conversion and no shared UI.
-2. **Native iOS shell and authentication.** SwiftUI shell, Audiobookshelf sign-in, secure credentials and
-   profile/account switching; no playback yet.
-3. **Read-only library.** Books, authors, series, shelves, details, search, artwork and useful caching.
-4. **Native Apple playback.** AVFoundation/native Apple audio session, background audio, Now Playing/remote
-   commands, chapters/seek/speed/interruption handling.
-5. **Progress/session correctness.** Port BookWave's proven ownership, acknowledged progress, sync, resume
-   freshness, intentional rewind and offline behavior as product contracts rather than Android implementation
-   details.
-6. **Downloads/offline.** Native iOS storage/background transfer while preserving authorization versus
-   physical-file ownership semantics.
-7. **Apple system integrations.** App Intents/Shortcuts, WidgetKit, Spotlight/Siri-facing actions where useful,
-   all delegating to native/shared owners.
-8. **#32 — purposeful Live Activity only where it solves a distinct user problem.** Ordinary audiobook
-   playback already has system Now Playing.
-9. **#31 — CarPlay only after native playback and progress correctness are proven.** Build a platform-native
-   CarPlay product surface; do not mechanically reproduce Android Auto.
-10. **Parity and polish.** Pursue value-based parity, accessibility, performance and platform fit only after
-    the native correctness layers are trustworthy.
+- Work one requirement group at a time; add policy/contract tests first and inspect production callers.
+- Prove regression tests fail without their fix; run formatter and
+  `verifyDebug -Pshelfplayer.warningsAsErrors=true`, with `--rerun-tasks` for classpath changes.
+- Record automated, source-review and device evidence separately, including failed/unavailable checks.
+- Update roadmap, relevant risks, compatibility docs and issue status together. Preserve historical provenance.
+- PR #93 owns resume freshness; PR #149 owns remembered identity; Forgejo PR #57 owns recent-book hydration
+  (#134). These are not new implementation tasks.

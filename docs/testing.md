@@ -29,6 +29,10 @@ This tier never runs in CI and no other module currently has an `androidTest` so
 
 ### The manual tier
 
+The [reliability checklist](testing/reliability-acceptance.md) covers the current car, profile and download
+follow-ups. It distinguishes merged implementation from pending device acceptance and links the combined
+Android Auto drive checklist. Use the roadmap for current issue ordering.
+
 `docs/device-test-0.9.14.md` is the current hardware test, and `scripts/device-test/` holds its commands,
 one script per section. Nothing there installs a tool or touches a server —
 `scripts/check-local-environment.sh --install` remains the only script in the repository that installs
