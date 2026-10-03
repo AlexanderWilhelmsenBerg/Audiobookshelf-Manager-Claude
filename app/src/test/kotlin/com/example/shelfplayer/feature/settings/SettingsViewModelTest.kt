@@ -587,12 +587,7 @@ internal class FakeSessionSync : SessionSyncRepository {
     }
 
     override suspend fun openSession(
-        bookId: com.example.shelfplayer.core.model.LibraryItemId,
-        remoteSessionId: String?,
-        title: String,
-        author: String?,
-        position: kotlin.time.Duration,
-        duration: kotlin.time.Duration,
+        session: com.example.shelfplayer.core.model.library.PlaybackSession,
         startedAt: java.time.Instant,
     ): AppResult<String> = AppResult.Success("session-1")
 

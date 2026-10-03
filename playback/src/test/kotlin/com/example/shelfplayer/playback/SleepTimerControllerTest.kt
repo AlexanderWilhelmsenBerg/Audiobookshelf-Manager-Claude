@@ -1515,12 +1515,7 @@ class SleepTimerControllerTest {
 
     private class FakeSessionSyncRepository : SessionSyncRepository {
         override suspend fun openSession(
-            bookId: LibraryItemId,
-            remoteSessionId: String?,
-            title: String,
-            author: String?,
-            position: Duration,
-            duration: Duration,
+            session: com.example.shelfplayer.core.model.library.PlaybackSession,
             startedAt: Instant,
         ): AppResult<String> = AppResult.Success("session")
 

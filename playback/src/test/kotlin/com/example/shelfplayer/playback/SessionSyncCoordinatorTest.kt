@@ -20,6 +20,7 @@ import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -41,6 +42,68 @@ import kotlin.time.Duration.Companion.seconds
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class SessionSyncCoordinatorTest {
+
+    @Test
+    fun `a superseded prepared session does not open a row or publish bookkeeping`() = runTest {
+        val repository = RecordingSessionSyncRepository()
+        val coordinator = coordinator(repository)
+        var published = false
+
+        val accepted = coordinator.acceptSession(session(LibraryItemId("old")), { false }) { published = true }
+
+        assertFalse(accepted)
+        assertFalse(published)
+        assertEquals(0, repository.openCalls)
+    }
+
+    @Test
+    fun `supersession during durable open cannot publish or replace the live session`() = runTest {
+        val repository = BlockingSessionSyncRepository()
+        val coordinator = coordinator(repository)
+        val book = LibraryItemId("book-a")
+        coordinator.attach(playerFor(book, position = 42.minutes))
+        repository.allowNextOpen()
+        coordinator.onSessionOpened(session(book))
+        repository.started.receive()
+        var current = true
+        var published = false
+        val accepting = async(start = CoroutineStart.UNDISPATCHED) {
+            coordinator.acceptSession(session(LibraryItemId("book-b")), { current }) { published = true }
+        }
+        repository.started.receive()
+        current = false
+        repository.allowNextOpen()
+
+        assertFalse(accepting.await())
+        assertFalse(published)
+        coordinator.sync(SyncTrigger.Paused)
+        assertEquals("local-book-a", repository.lastSyncedSession)
+        assertEquals(0, repository.closeCalls)
+        coordinator.attach(null)
+    }
+
+    @Test
+    fun `cancelling a prepared durable open keeps the existing live session`() = runTest {
+        val repository = BlockingSessionSyncRepository()
+        val coordinator = coordinator(repository)
+        val book = LibraryItemId("book-a")
+        coordinator.attach(playerFor(book))
+        repository.allowNextOpen()
+        coordinator.onSessionOpened(session(book))
+        repository.started.receive()
+        val accepting = async(start = CoroutineStart.UNDISPATCHED) {
+            coordinator.acceptSession(session(LibraryItemId("book-b")), { true }) { error("cancelled open published") }
+        }
+        repository.started.receive()
+
+        accepting.cancelAndJoin()
+        coordinator.sync(SyncTrigger.Paused)
+
+        assertTrue(accepting.isCancelled)
+        assertEquals("local-book-a", repository.lastSyncedSession)
+        assertEquals(0, repository.closeCalls)
+        coordinator.attach(null)
+    }
 
     @Test
     fun `opening a session does not return before its outbox row exists`() = runTest {
@@ -222,24 +285,18 @@ class SessionSyncCoordinatorTest {
         val started = Channel<LibraryItemId>(Channel.UNLIMITED)
         val opened = mutableListOf<LibraryItemId>()
         private val permits = Channel<Unit>(Channel.UNLIMITED)
+        var lastSyncedSession: String? = null
+        var closeCalls = 0
 
         fun allowNextOpen() {
             permits.trySend(Unit).getOrThrow()
         }
 
-        override suspend fun openSession(
-            bookId: LibraryItemId,
-            remoteSessionId: String?,
-            title: String,
-            author: String?,
-            position: Duration,
-            duration: Duration,
-            startedAt: Instant,
-        ): AppResult<String> {
-            started.send(bookId)
+        override suspend fun openSession(session: PlaybackSession, startedAt: Instant): AppResult<String> {
+            started.send(session.bookId)
             permits.receive()
-            opened += bookId
-            return AppResult.Success("local-${bookId.value}")
+            opened += session.bookId
+            return AppResult.Success("local-${session.bookId.value}")
         }
 
         override suspend fun syncOpenSession(
@@ -247,14 +304,20 @@ class SessionSyncCoordinatorTest {
             progress: SessionProgress,
             updatedAt: Instant,
             trigger: SyncTrigger,
-        ): AppResult<SyncOutcome> = AppResult.Success(SyncOutcome.Accepted)
+        ): AppResult<SyncOutcome> {
+            lastSyncedSession = sessionId
+            return AppResult.Success(SyncOutcome.Accepted)
+        }
 
         override suspend fun closeSession(
             sessionId: String,
             progress: SessionProgress,
             updatedAt: Instant,
             trigger: SyncTrigger,
-        ): AppResult<SyncOutcome> = AppResult.Success(SyncOutcome.Accepted)
+        ): AppResult<SyncOutcome> {
+            closeCalls += 1
+            return AppResult.Success(SyncOutcome.Accepted)
+        }
 
         override suspend fun drainOutbox(): AppResult<Int> = AppResult.Success(0)
 
@@ -262,6 +325,7 @@ class SessionSyncCoordinatorTest {
     }
 
     private class RecordingSessionSyncRepository : SessionSyncRepository {
+        var openCalls = 0
         var syncCalls: Int = 0
             private set
         var closeCalls: Int = 0
@@ -271,15 +335,10 @@ class SessionSyncCoordinatorTest {
         var lastCloseTrigger: SyncTrigger? = null
             private set
 
-        override suspend fun openSession(
-            bookId: LibraryItemId,
-            remoteSessionId: String?,
-            title: String,
-            author: String?,
-            position: Duration,
-            duration: Duration,
-            startedAt: Instant,
-        ): AppResult<String> = AppResult.Success("local-${bookId.value}")
+        override suspend fun openSession(session: PlaybackSession, startedAt: Instant): AppResult<String> {
+            openCalls += 1
+            return AppResult.Success("local-${session.bookId.value}")
+        }
 
         override suspend fun syncOpenSession(
             sessionId: String,

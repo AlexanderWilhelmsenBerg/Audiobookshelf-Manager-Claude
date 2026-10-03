@@ -5,6 +5,7 @@ import androidx.media3.common.Player
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.library.PlaybackSession
 
 /**
  * Issue #88 / #185 — installs the last book into an idle player once a car controller is connected.
@@ -19,14 +20,21 @@ import com.example.shelfplayer.core.model.ProfileId
  */
 internal class CarPostConnectRestorer(
     private val activeProfileId: suspend () -> ProfileId?,
+    private val profileGeneration: () -> Long,
+    private val isRequestCurrent: () -> Boolean = { true },
     private val isProfileLocked: suspend () -> Boolean,
     /** The last played book id, after one allowed account refresh when the cache was empty. */
     private val lastPlayedBookId: suspend () -> LibraryItemId?,
     /** The metadata-only holder for the resume candidate, after one allowed account refresh. */
     private val heldResume: suspend () -> AutoLibrary.HeldResume?,
-    private val openQueue: suspend (LibraryItemId) -> MediaItems.Queue?,
+    private val openQueue: suspend (LibraryItemId) -> Prepared?,
+    private val acceptQueue: suspend (Prepared, suspend () -> Boolean, () -> Unit) -> Boolean,
     private val observer: Observer,
 ) {
+    data class Prepared(val session: PlaybackSession, val queue: MediaItems.Queue)
+
+    private data class Claim(val profileId: ProfileId, val profileGeneration: Long)
+
     /** Diagnostics seam; implementations must not affect behaviour. */
     interface Observer {
         /** [player] is null for messages that never carried player fields. */
@@ -37,42 +45,50 @@ internal class CarPostConnectRestorer(
 
     /** Applies the policy [action] to [current]. Named `restore` so it never reads as the scope function. */
     suspend fun restore(action: AutoStartAction, current: Player) {
+        val generation = profileGeneration()
         val profileId = activeProfileId() ?: return
-        if (superseded(current, profileId)) return
+        val claim = Claim(profileId, generation)
+        if (superseded(current, claim)) return
         when (action) {
-            AutoStartAction.ArmAndPlay -> startLastBook(current, profileId, play = true)
+            AutoStartAction.ArmAndPlay -> startLastBook(current, claim, play = true)
 
-            AutoStartAction.Arm -> startLastBook(current, profileId, play = false)
+            AutoStartAction.Arm -> startLastBook(current, claim, play = false)
 
             AutoStartAction.Suppressed ->
                 observer.note("A car connected while the account was locked; nothing started", null)
 
             // "Never react" means no audio/session side effect. Issue #88 still publishes the last
             // identity so Android Auto is not left in STATE_NONE with an empty playback surface.
-            AutoStartAction.None -> holdLastBook(current, profileId)
+            AutoStartAction.None -> holdLastBook(current, claim)
         }
     }
 
     /** Loads the last played book, playing it or leaving it paused. Silent when there is nothing to load. */
-    private suspend fun startLastBook(current: Player, profileId: ProfileId, play: Boolean) {
+    private suspend fun startLastBook(current: Player, claim: Claim, play: Boolean) {
         val bookId = lastPlayedBookId()
         if (bookId == null) {
             observer.note("Android Auto post-connect found no resumable book", null)
             return
         }
-        if (superseded(current, profileId)) {
+        if (superseded(current, claim)) {
             observer.note("Android Auto post-connect playable install was superseded", current)
             return
         }
-        val queue = openQueue(bookId)
-        if (queue == null) {
+        val prepared = openQueue(bookId)
+        if (prepared == null) {
             observer.note("Android Auto post-connect could not open the resume queue", null)
             return
         }
-        if (superseded(current, profileId)) {
+        if (prepared.session.profileId != claim.profileId || superseded(current, claim)) {
             observer.note("Android Auto post-connect playable queue was superseded", current)
             return
         }
+        acceptQueue(prepared, { !superseded(current, claim) }) {
+            install(current, prepared.queue, play)
+        }
+    }
+
+    private fun install(current: Player, queue: MediaItems.Queue, play: Boolean) {
         observer.installing(
             direction = "installing",
             item = queue.item,
@@ -91,13 +107,13 @@ internal class CarPostConnectRestorer(
      *
      * The second profile/lock/emptiness check is after the possible account reconcile.
      */
-    private suspend fun holdLastBook(current: Player, profileId: ProfileId) {
+    private suspend fun holdLastBook(current: Player, claim: Claim) {
         val held = heldResume()
         if (held == null) {
             observer.note("Android Auto held resume candidate was empty", null)
             return
         }
-        if (superseded(current, profileId)) {
+        if (superseded(current, claim)) {
             observer.note("Android Auto held resume install was superseded", current)
             return
         }
@@ -110,6 +126,10 @@ internal class CarPostConnectRestorer(
         observer.note("A car connected and the last book was held for display", current)
     }
 
-    private suspend fun superseded(current: Player, profileId: ProfileId): Boolean =
-        isProfileLocked() || activeProfileId() != profileId || current.mediaItemCount > 0
+    private suspend fun superseded(current: Player, claim: Claim): Boolean {
+        // Check the lock after the identity lookup, which can suspend while the profile becomes locked.
+        val validProfile = activeProfileId() == claim.profileId && !isProfileLocked()
+        val validRequest = profileGeneration() == claim.profileGeneration && isRequestCurrent()
+        return !validProfile || !validRequest || current.mediaItemCount > 0
+    }
 }

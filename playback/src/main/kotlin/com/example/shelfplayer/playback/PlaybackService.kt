@@ -2423,7 +2423,14 @@ class PlaybackService : MediaLibraryService() {
      * has a separate Media3 loaded-item Play after installation. That loaded Play must pass through the
      * shared freshness coordinator because a newly opened `/play` position can still be stale.
      */
-    private suspend fun openQueue(bookId: LibraryItemId, startAt: Duration?): MediaItems.Queue? =
+    private suspend fun openQueue(bookId: LibraryItemId, startAt: Duration?): MediaItems.Queue? {
+        val prepared = prepareQueue(bookId, startAt) ?: return null
+        bookChanges.onBookOpened(prepared.session)
+        return prepared.queue
+    }
+
+    /** Resolves media without publishing a book change; car restore owns a later guarded acceptance. */
+    private suspend fun prepareQueue(bookId: LibraryItemId, startAt: Duration?): CarPostConnectRestorer.Prepared? =
         when (val opened = openPlaybackSession(bookId)) {
             is AppResult.Failure -> {
                 logger.warn(
@@ -2437,13 +2444,13 @@ class PlaybackService : MediaLibraryService() {
 
             is AppResult.Success -> {
                 val playbackSession = opened.value
-                bookChanges.onBookOpened(playbackSession)
                 val queue = MediaItems.queueFor(playbackSession)
-                if (startAt == null) {
+                val positioned = if (startAt == null) {
                     queue
                 } else {
                     queue.copy(startPositionMs = startAt.inWholeMilliseconds.coerceAtLeast(0))
                 }
+                CarPostConnectRestorer.Prepared(playbackSession, positioned)
             }
         }
 
@@ -3256,32 +3263,40 @@ class PlaybackService : MediaLibraryService() {
             )
         }
 
-        private fun carPostConnectRestorer(trace: AutoTrace?) = CarPostConnectRestorer(
-            activeProfileId = auto::activeProfileId,
-            isProfileLocked = lock::isActiveProfileLocked,
-            lastPlayedBookId = { auto.lastPlayedAfter(::refreshResumeAccount)?.id },
-            heldResume = { auto.heldResumeAfter(::refreshResumeAccount) },
-            openQueue = { bookId -> openQueue(bookId, startAt = null) },
-            observer = object : CarPostConnectRestorer.Observer {
-                override fun note(message: String, player: Player?) {
-                    if (player == null) {
-                        logAuto(message, trace)
-                    } else {
-                        logAuto(message, trace, AndroidAutoDiagnostics.playerFields(player))
+        private fun carPostConnectRestorer(trace: AutoTrace?): CarPostConnectRestorer {
+            val requestGeneration = resumeFreshness.currentRequestGeneration()
+            return CarPostConnectRestorer(
+                activeProfileId = auto::activeProfileId,
+                profileGeneration = auto::activeProfileGeneration,
+                isRequestCurrent = { resumeFreshness.currentRequestGeneration() == requestGeneration },
+                isProfileLocked = lock::isActiveProfileLocked,
+                lastPlayedBookId = { auto.lastPlayedAfter(::refreshResumeAccount)?.id },
+                heldResume = { auto.heldResumeAfter(::refreshResumeAccount) },
+                openQueue = { bookId -> prepareQueue(bookId, startAt = null) },
+                acceptQueue = { prepared, authorized, install ->
+                    bookChanges.acceptBook(prepared.session, authorized, install)
+                },
+                observer = object : CarPostConnectRestorer.Observer {
+                    override fun note(message: String, player: Player?) {
+                        if (player == null) {
+                            logAuto(message, trace)
+                        } else {
+                            logAuto(message, trace, AndroidAutoDiagnostics.playerFields(player))
+                        }
                     }
-                }
 
-                override fun installing(direction: String, item: MediaItem, extraFields: List<LogField>) {
-                    logAutoItems(
-                        trace = trace,
-                        callback = "onPostConnect",
-                        direction = direction,
-                        items = listOf(item),
-                        extraFields = extraFields,
-                    )
-                }
-            },
-        )
+                    override fun installing(direction: String, item: MediaItem, extraFields: List<LogField>) {
+                        logAutoItems(
+                            trace = trace,
+                            callback = "onPostConnect",
+                            direction = direction,
+                            items = listOf(item),
+                            extraFields = extraFields,
+                        )
+                    }
+                },
+            )
+        }
 
         private suspend fun refreshResumeAccount() {
             val trace = activeAutoTrace

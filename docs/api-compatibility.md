@@ -452,6 +452,11 @@ nothing in the app may compute a global position from `startOffset`.**
 
 ### `POST /api/session/{id}/sync` and `/close` — 200, and nothing else
 
+AUTH-002 / R-115 (2026-10-03): car queue preparation uses the existing captured `/play` contract. Guarded
+local acceptance changes no HTTP fields or endpoints. Local outbox creation retains the session's captured
+profile; a superseded prepared queue cannot become live playback or timer state. A server session already
+opened during preparation is not evidence that its queue was installed or that audio played.
+
 Both answer **`200` with an empty `text/plain` body**. No JSON, no echo of the accepted position, no
 session state.
 

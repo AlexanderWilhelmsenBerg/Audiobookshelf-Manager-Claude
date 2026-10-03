@@ -94,12 +94,23 @@ unlocked profile changed during holder resolution, candidate resolution or queue
 captures profile identity and rechecks it before lookup and after those operations. Tests use actual
 coroutine suspension and ExoPlayer; the original implementation failed all three.
 
-The remaining gap is the service's `openQueue`, which invokes `bookChanges.onBookOpened` before the final
-supersession check. Rejecting the returned queue does not prove that a discarded open preserves current
-sleep/session bookkeeping. Add integration evidence and repair that boundary before claiming complete
-profile/restore acceptance. Switching away and back during a single suspended operation also needs a
-generation-based check; comparing profile IDs alone cannot detect that sequence. Physical checks remain in
-`testing/reliability-acceptance.md`.
+The 2026-10-03 follow-up separates queue preparation from guarded acceptance. Profile selection mutations
+advance a process-local token in the settings owner, including clearing selection, so A → B → A cannot hide
+behind a conflated Flow. The service also supplies the existing resume-freshness command generation. A
+superseded candidate cannot publish a timer, baseline, live session or player item.
+
+Session storage uses the profile captured in `PlaybackSession`, not a later active-profile lookup. The
+session mutex rechecks authority before/after durable opening and after closing the outgoing session. Live
+book/timer/session publication and player installation run without suspension on Main. A rejected open
+during local storage leaves the previous live session and timer intact; regression tests exercise real
+coroutine suspension, BookChanges and ExoPlayer. The lock is checked after the final identity lookup so
+locking during that suspension also prevents installation.
+
+A server `/play` already opened during preparation cannot be undone by rejecting its queue. A durable open
+that is subsequently superseded can leave a zero-listening outbox row for its captured owner; it never becomes
+the live session. An outgoing close already sent before later supersession also remains an honest snapshot.
+These limits and real car/profile acceptance remain explicit in `testing/reliability-acceptance.md`; the
+automated fixes do not claim complete physical acceptance.
 
 ### R-120 — remove and claim race windows remain, because `cancelUniqueWork` is asynchronous
 

@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.library.PlaybackSession
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -20,6 +21,8 @@ import org.robolectric.annotation.LooperMode
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 
 /**
  * Issue #88 / #185 — behavioural proof of the idle Android Auto restore, against a real ExoPlayer.
@@ -35,6 +38,7 @@ class CarPostConnectRestorerTest {
     private val player: ExoPlayer = ExoPlayer.Builder(context).build()
     private var locked = false
     private var activeProfile: ProfileId? = ProfileId("first")
+    private var profileGeneration = 0L
     private val held = AutoLibrary.HeldResume(item("held"), HELD_START_MS)
     private val queue = MediaItems.Queue(item("queued"), QUEUE_START_MS)
     private var openedQueues = 0
@@ -48,16 +52,30 @@ class CarPostConnectRestorerTest {
     private fun restorer(
         lastPlayed: suspend () -> LibraryItemId? = { BOOK },
         heldResume: suspend () -> AutoLibrary.HeldResume? = { held },
+        isRequestCurrent: () -> Boolean = { true },
+        activeProfileLookup: suspend () -> ProfileId? = { activeProfile },
+        beforeAcceptance: () -> Unit = {},
         openQueue: suspend (LibraryItemId) -> MediaItems.Queue? = {
             openedQueues++
             queue
         },
     ) = CarPostConnectRestorer(
-        activeProfileId = { activeProfile },
+        activeProfileId = activeProfileLookup,
+        profileGeneration = { profileGeneration },
+        isRequestCurrent = isRequestCurrent,
         isProfileLocked = { locked },
         lastPlayedBookId = lastPlayed,
         heldResume = heldResume,
-        openQueue = openQueue,
+        openQueue = { bookId -> openQueue(bookId)?.let { CarPostConnectRestorer.Prepared(session(), it) } },
+        acceptQueue = { _, authorized, install ->
+            beforeAcceptance()
+            if (authorized()) {
+                install()
+                true
+            } else {
+                false
+            }
+        },
         observer = quiet,
     )
 
@@ -290,6 +308,126 @@ class CarPostConnectRestorerTest {
         assertEquals(0, player.mediaItemCount)
         assertFalse(player.playWhenReady)
     }
+
+    @Test
+    fun `switching away and back during holder resolution discards the old request`() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        val restore = launch {
+            restorer(heldResume = {
+                entered.complete(Unit)
+                resume.await()
+                held
+            }).restore(AutoStartAction.None, player)
+        }
+        entered.await()
+        switchAwayAndBack()
+        resume.complete(Unit)
+        restore.join()
+
+        assertEquals(0, player.mediaItemCount)
+    }
+
+    @Test
+    fun `switching away and back during candidate resolution cannot open a queue`() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        val restore = launch {
+            restorer(lastPlayed = {
+                entered.complete(Unit)
+                resume.await()
+                BOOK
+            }).restore(AutoStartAction.Arm, player)
+        }
+        entered.await()
+        switchAwayAndBack()
+        resume.complete(Unit)
+        restore.join()
+
+        assertEquals(0, openedQueues)
+        assertEquals(0, player.mediaItemCount)
+    }
+
+    @Test
+    fun `switching away and back during queue preparation cannot install or play`() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        val restore = launch {
+            restorer(openQueue = {
+                entered.complete(Unit)
+                resume.await()
+                queue
+            }).restore(AutoStartAction.ArmAndPlay, player)
+        }
+        entered.await()
+        switchAwayAndBack()
+        resume.complete(Unit)
+        restore.join()
+
+        assertEquals(0, player.mediaItemCount)
+        assertFalse(player.playWhenReady)
+    }
+
+    private fun switchAwayAndBack() {
+        activeProfile = ProfileId("second")
+        profileGeneration += 1
+        activeProfile = ProfileId("first")
+        profileGeneration += 1
+    }
+
+    @Test
+    fun `locking while final profile lookup is suspended prevents install`() = runBlocking {
+        var accepting = false
+        val entered = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        val restore = launch {
+            restorer(
+                activeProfileLookup = {
+                    if (accepting) {
+                        entered.complete(Unit)
+                        resume.await()
+                    }
+                    activeProfile
+                },
+                beforeAcceptance = { accepting = true },
+            ).restore(AutoStartAction.ArmAndPlay, player)
+        }
+        entered.await()
+        locked = true
+        resume.complete(Unit)
+        restore.join()
+
+        assertEquals(0, player.mediaItemCount)
+        assertFalse(player.playWhenReady)
+    }
+
+    @Test
+    fun `a newer transport command during queue preparation keeps an idle player silent`() = runBlocking {
+        var requestCurrent = true
+        restorer(
+            isRequestCurrent = { requestCurrent },
+            openQueue = {
+                requestCurrent = false
+                queue
+            },
+        ).restore(AutoStartAction.ArmAndPlay, player)
+
+        assertEquals(0, player.mediaItemCount)
+        assertFalse(player.playWhenReady)
+    }
+
+    private fun session() = PlaybackSession(
+        id = "remote-test",
+        profileId = ProfileId("first"),
+        bookId = BOOK,
+        title = "Test book",
+        author = null,
+        coverUrl = null,
+        startAt = Duration.ZERO,
+        duration = 1.hours,
+        tracks = emptyList(),
+        chapters = emptyList(),
+    )
 
     private companion object {
         val BOOK = LibraryItemId("tidewatch")

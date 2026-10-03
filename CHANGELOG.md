@@ -44,6 +44,11 @@ giving it a section of its own.
 
 ### Android Auto restore profile isolation (AUTH-002, PLAY-001, #185)
 
+- Switching away from a profile and back while idle restore is suspended now invalidates the old request,
+  even when an observer only sees the final profile. Newer transport commands also supersede that request.
+- Car queue preparation no longer changes the live sleep timer or session before acceptance. Book state and
+  the player install share a guarded Main-thread commit; local session rows retain their captured profile.
+
 - Suspended idle restoration discards the outgoing profile's metadata/queue when another unlocked profile
   becomes active. Candidate resolution cannot open a queue after that switch, and no active profile means
   no restore lookup. Existing Arm, ArmAndPlay and Never behavior is preserved for the same profile.

@@ -144,6 +144,31 @@ class DefaultSessionSyncRepositoryTest {
 
     /** PRODUCT_SPEC PLAY-005 — "every offline listening session has a UUIDv4 identifier". */
     @Test
+    fun `durable open uses the captured profile instead of the current selection`() = runTest {
+        val other = ProfileId("profile-2")
+        val saved = requireNotNull(database.profileDao().findProfile(profileId.value))
+        database.profileDao().upsertProfile(saved.copy(profileId = other.value))
+        settings.setActiveProfile(other)
+
+        val id = assertIs<AppResult.Success<String>>(open()).value
+        val row = requireNotNull(database.sessionOutboxDao().find(id))
+
+        assertEquals(profileId.value, row.profileId)
+        assertEquals(saved.serverId, row.serverId)
+    }
+
+    @Test
+    fun `profile repository exposes settings mutation generation without a flow collector`() = runTest {
+        val profiles = DefaultProfileRepository(database.profileDao(), settings, UnconfinedTestDispatcher())
+        val before = profiles.activeProfileGeneration()
+        settings.clearActiveProfile()
+        settings.setActiveProfile(profileId)
+
+        assertEquals(profileId, profiles.activeProfileId())
+        assertTrue(profiles.activeProfileGeneration() > before)
+    }
+
+    @Test
     fun `an opened session gets a version 4 uuid of our own`() = runTest {
         val sessionId = assertIs<AppResult.Success<String>>(open()).value
 
@@ -800,12 +825,18 @@ class DefaultSessionSyncRepositoryTest {
         }
 
     private suspend fun open(remoteSessionId: String? = "remote-1") = repository.openSession(
-        bookId = LibraryItemId("book-1"),
-        remoteSessionId = remoteSessionId,
-        title = BOOK_TITLE,
-        author = BOOK_AUTHOR,
-        position = 0.seconds,
-        duration = 6.hours,
+        session = PlaybackSession(
+            id = remoteSessionId.orEmpty(),
+            profileId = profileId,
+            bookId = LibraryItemId("book-1"),
+            title = BOOK_TITLE,
+            author = BOOK_AUTHOR,
+            coverUrl = null,
+            startAt = 0.seconds,
+            duration = 6.hours,
+            tracks = emptyList(),
+            chapters = emptyList(),
+        ),
         startedAt = clock.now(),
     )
 
