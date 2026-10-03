@@ -42,3 +42,18 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.turbine)
 }
+
+/*
+ * PRODUCT_SPEC 17.3 — the root coverage gate measures the debug variant only (docs/architecture/build.md).
+ *
+ * Kover's built-in total variant merges every build variant, which dragged `testReleaseUnitTest` and the
+ * release and benchmark Kover artefacts into every pull request. The custom `gate` variant is what the
+ * root `koverVerifyGate` aggregates.
+ */
+kover {
+    currentProject {
+        createVariant("gate") {
+            add("debug")
+        }
+    }
+}

@@ -19,3 +19,16 @@ dependencies {
     testImplementation(projects.core.testing)
     testImplementation(libs.turbine)
 }
+
+/*
+ * PRODUCT_SPEC 17.3 — contributes to the root `gate` coverage variant (see the root build file). A JVM
+ * module has a single `jvm` variant, so this adds no release work; it exists because a custom variant in
+ * the root aggregate must exist under the same name in every project it aggregates.
+ */
+kover {
+    currentProject {
+        createVariant("gate") {
+            add("jvm")
+        }
+    }
+}
