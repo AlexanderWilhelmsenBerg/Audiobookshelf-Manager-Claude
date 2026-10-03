@@ -6,6 +6,14 @@ giving it a section of its own.
 
 ## Unreleased
 
+### Shared download survives its original profile leaving (DL-001, DL-003, AUTH-002, PD-004)
+
+- A remaining entitled claimant can continue a shared file/artwork transfer after the original profile
+  leaves or loses access. Each request checks the same server/item, claim, current download grant and
+  catalogue/file visibility; the UI's active profile is never a credential fallback.
+- A denied account is not retried on later files in the same run. Existing WorkManager constraints,
+  committed files and validator-guarded partial downloads are preserved. Phone acceptance remains pending.
+
 ### Android Auto continuity across unreadable connection state (PLAY-002, ROUTE-002, #128)
 
 - A temporary unreadable projection state no longer prevents cleanup on confirmed car disconnection or

@@ -120,11 +120,19 @@ overnight, civil-clock and lifecycle steps rather than replacing them.
 | D-08 | Download to card, remove/reinsert intact or changed card, permission loss and low space. | Unavailable is distinct from corrupt; preserve bytes/manifest; intact card re-verifies without redownload; truthful disclosed fallback and conservative deletion. #110. |
 | D-09 | Upgrade existing downloads/database and legacy/unknown volume ownership. | Preserve data/schema and claims; migrations succeed; no destructive migration or guessed volume ownership. |
 | D-10 | Slow-disk removal/cancel late writes and new claim during removal. | Reproduce and record R-120 before choosing additional locking; no claim or valid media is lost. |
-| D-11 | Shared transfer after original profile signs out/is removed. | Reproduce R-122; retaining B still sees truthful transfer/result. Decide any corrective ownership policy from evidence. |
+| D-11 | Shared transfer after original profile signs out/is removed. | Four real downloader regressions reproduced R-122; current eligible claims now authorize file/cover requests. Run every [DEV-DL-11 case](../reviews/2026-10-03-shared-download-ownership.md); hardware results remain NOT RUN. |
 | D-12 | Pause/resume from no-ETag server, changed validator, interrupted/invalid/partial response. | Never resume bytes without a validator; truthful restart percent; no corrupt committed copy. R-123. |
 | D-13 | Last claim belonged to a removed profile. | Record retained orphan/space behavior; R-121 cleanup and recovery UX remain separately scoped. |
 | D-14 | Long throttled transfer on Android 15+ approaching dataSync timeout. | Record timeout/stopped reason, scheduling and partial-data recovery; R-118 remains investigation until exercised. |
 | D-15 | Smart next-book, metered/charging/storage constraints, completion verification and retention cleanup. | Policy respects settings, accessible next item and physical-copy ownership; completion is atomic and verified. DL-002/005/006. |
+
+The [shared-transfer review](../reviews/2026-10-03-shared-download-ownership.md) logs the 16 access-policy
+cases, all 17 downloader cases (including six new regressions), and granular D-11/D-12 device steps.
+Validated owner-change resume and no-ETag restart passed with real Room/filesystem fixtures. This does not
+prove physical WorkManager restart, network metering, permission revocation or visible progress.
+Its forced full formatter/verification gate passed in 7m 30s with all 1,119 tasks executed and 2,133 tests,
+zero failures/errors. Use the final current-head CI/APK record for the device run; AUTO-DL-12-01 remains a
+separate unexecuted second-cancellation reproduction.
 
 ## UI, security, compatibility and release function — device/server cases NOT RUN
 

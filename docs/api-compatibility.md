@@ -1618,3 +1618,13 @@ continuity cases passed. No Audiobookshelf endpoint, response field, permission,
 The interoperability boundary remains host-dependent. API 26/31/34/36, projected/Automotive/provider fallback,
 exact headset routing and audible continuity require the [review matrix](reviews/2026-10-03-issue-128-continuity-review.md)
 and [verification register](testing/roadmap-verification-register.md). Physical acceptance is pending.
+
+## Shared download credential handoff — 2026-10-03
+
+R-122's correction reuses the existing captured item-file and cover endpoints, `ProfileConnectionResolver`,
+manifest claims and catalogue visibility. No endpoint, response field, Room schema, credential format or
+dependency changes. A new request can use another current entitled same-server claimant after the preferred
+account leaves or receives an authentication/authorization failure; it never uses the UI's active profile.
+The existing Range/If-Range, length/container verification and non-destructive failure rules still apply.
+Real server permission/reauthentication and device acceptance are logged in the
+[shared-transfer matrix](reviews/2026-10-03-shared-download-ownership.md) and remain pending.

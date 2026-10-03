@@ -18,6 +18,8 @@ import javax.inject.Inject
  *
  * The active profile is resolved once at the start and that same identity owns the claim, asset lookup and
  * persistent WorkManager request. A later profile switch must not change who authorized already queued work.
+ * At execution, DownloadClaimAccess may use another currently entitled claimant of the same shared copy if
+ * the original owner leaves or loses access; the UI's active profile is never a credential fallback.
  */
 class DownloadBookUseCase @Inject constructor(
     private val profiles: ProfileRepository,

@@ -570,6 +570,10 @@ Associated manifest and cover are stored alongside or in Room using stable ident
 - Device-wide download rows resolve visible metadata by both server ID and item ID. A matching item ID on
   another server never authorizes title, author, or failure-detail disclosure.
 - Removing a download from a profile removes only that profile's reference; physical media is deleted only when no profile references it.
+- A shared queued/running transfer can continue under a remaining entitled profile when its original
+  credential owner leaves or loses access. Recheck the same server/item claim, authentication, download
+  permission and catalogue/file visibility before each new file or cover request; never substitute the
+  UI's active profile or relax the job's network constraints. Do not blindly retry a denied account.
 - Logging out does not delete downloads unless chosen.
 - Removing a server connection presents choices: keep orphaned local media, export later, or delete.
 

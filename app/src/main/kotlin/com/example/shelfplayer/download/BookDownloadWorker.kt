@@ -27,9 +27,10 @@ import kotlinx.coroutines.launch
 /**
  * PRODUCT_SPEC DL-001 / §12 — one book's transfer, as work that survives the screen.
  *
- * The profile that authorized the transfer is part of [inputData]. A worker can start after a process
- * restart or profile switch, so reading the currently active profile here would let mutable UI state change
- * the credentials of already queued work.
+ * The profile that authorized the transfer is part of [inputData], as a preferred credential owner. A worker
+ * can start after a process restart or profile switch, so it never reads the currently active profile.
+ * BookDownloader rechecks the shared copy's current entitled claimants at each file/artwork request: if the
+ * original owner leaves, a remaining claimant can continue without changing this job's network constraints.
  */
 @HiltWorker
 class BookDownloadWorker @AssistedInject constructor(

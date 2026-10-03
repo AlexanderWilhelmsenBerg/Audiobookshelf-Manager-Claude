@@ -134,15 +134,23 @@ Phase 3 downloads work): `OfflineFiles.removeUnclaimed` taking the same per-copy
 "Remove from device" row action with a confirmation that states the bytes freed; or have profile removal list
 the downloads only that profile claims and ask what to do with them.
 
-### R-122 — a shared transfer keeps running under the profile that enqueued it
+### R-122 — shared-transfer credential ownership corrected; device acceptance pending
 
-`WorkManagerDownloadScheduler.enqueue` stores the enqueuing profile's id in the job's input data
-(`KEY_PROFILE_ID`) and `BookDownloadWorker` hands it to `downloader.download`. Since PR #209, profile A can stop
-while profile B still claims the book, and the transfer continues, still under A's job data. If A is later signed
-out or removed, the transfer may fail on authentication or on the profile lookup, although B is entitled to it.
-Not reproduced; derived from reading the worker. **Proposed, not implemented:** when a claim is released and
-others remain, re-enqueue the work under a remaining claimant (with `ExistingWorkPolicy` chosen so the `.part`
-resumes), or resolve the profile from the claims at run time instead of from job data.
+Four `BookDownloaderTest` regressions reproduced failure after the original profile was removed before
+execution or between files, after an authentication failure with B still claiming, and unauthorized fetching
+with no remaining claim. `DownloadClaimAccess` now resolves a current same-server claimant for each file and
+cover. It rechecks authentication, download permission, claim and catalogue/file visibility after the asset
+lookup. The queued owner is preferred while eligible; the UI's active profile is never a fallback.
+
+Only account authentication/authorization failures may try another eligible claimant, once per account for
+the book run. Network/storage/compatibility failures and cancellation retain their ordinary behavior.
+WorkManager identity and network constraints stay unchanged; committed audio and validated partial bytes
+survive the handoff. A part without an ETag restarts safely instead of appending unvalidated bytes.
+
+An already authorized HTTP body is not revoked mid-transfer. Claim/profile removal after the last local
+check remains a race boundary, and R-120's asynchronous cancellation still needs physical reproduction.
+The [review and granular device matrix](reviews/2026-10-03-shared-download-ownership.md) keep process restart,
+real authentication/permission responses, audible playback and screen/notification acceptance pending.
 
 ### R-123 — the recorded Paused percent can drop on resume when the server gave no ETag
 

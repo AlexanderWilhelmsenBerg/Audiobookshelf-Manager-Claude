@@ -17,7 +17,9 @@ import com.example.shelfplayer.core.model.download.OfflineFile
  *
  * It is deliberately not `LibraryRepository.observeTracks`. The download path wants a snapshot, once, of the
  * files it is about to fetch — a `Flow` would invite a downloader that re-plans mid-transfer, and a sync
- * arriving halfway through a book is not a reason to change what is being downloaded.
+ * arriving halfway through a book is not a reason to change what is being downloaded. DownloadClaimAccess
+ * may repeat this lookup to check current entitlement and file visibility at request boundaries; it never
+ * uses that answer to replace the recorded manifest or reorder a transfer.
  */
 interface BookAssetSource {
 

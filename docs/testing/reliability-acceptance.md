@@ -1,7 +1,8 @@
 # Reliability acceptance
 
 **Classification:** Acceptance checklist, not a second roadmap.
-**Baseline:** main `3e699786` includes #211–#216; record the exact candidate APK commit when executing.
+**Baseline:** main `b7266a3d` includes #211–#217; this revision adds the R-122 correction.
+Record the exact candidate APK commit when executing.
 
 ## Evidence record
 
@@ -46,6 +47,7 @@ continuity and Previous. Extend it with:
 | Download to card, remove while stopped, reopen | Storage unavailable, not corrupt; preserve bytes/manifest; disclose new-download fallback. | #110 |
 | Reinsert intact card | Reverify without redownload; preserve selected-card preference. | #110 |
 | A/B claim same copy; A removes, then B removes | Retain bytes after A; delete after final claim; coherent device pin. | #111 |
+| Original transfer owner leaves, expires or loses permission while B still claims | Current eligible same-server claimant continues at the next request boundary; no active-profile fallback, blind account retry or relaxed network constraints. Run every DEV-DL-11 case in the [review](../reviews/2026-10-03-shared-download-ownership.md). | R-122, DL-001/003 |
 | Hidden stored copy, including matching item ID on another server | Generic row; no hidden title, author or failure detail. | #111, section 5.2 |
 | Upgrade existing downloads | Preserve schema/data; unknown legacy volume ownership stays conservative. | #110/#111 |
 
@@ -162,3 +164,17 @@ Local logs are under ignored `build/reliability-evidence/`; the full-gate log is
   entries (the first now passed) and 26 granular phone/Auto cases; the [register](roadmap-verification-register.md)
   logs the wider functional/release checks and exact APK handoff. All current physical cases remain pending
   until the owner supplies the phone and relevant headset/host. Keep #128 open for that evidence.
+
+### Shared-transfer credential ownership — 2026-10-03
+
+- R-122 was reproduced with four failures in the 15-case real downloader/Room/filesystem fixture. The
+  correction passes all 17 downloader cases, all 16 access-policy cases and all 77 download-module cases.
+  Current same-server claims, authentication/grants and catalogue/file visibility authorize each request;
+  no active-profile fallback or WorkManager/network-constraint rewrite occurs.
+- Validated partial resume and safe no-ETag restart retain the committed first file. Policy coverage is
+  38/38 lines and 40/42 branches. Initial loop/nesting/test-shadow analysis findings were corrected; final
+  forced formatter/`verifyDebug` warnings-as-errors passed in 7m 30s, all 1,119 tasks executed, 2,133 tests,
+  zero failures/errors. All failed and passed logs are retained under ignored `build/shared-download-evidence/`.
+- The [review](../reviews/2026-10-03-shared-download-ownership.md) records every automated case, 12 granular
+  phone cases and the next R-123 second-cancellation fixture. Device/server authentication, process restart,
+  notifications, metering, card storage and audible playback remain NOT RUN; no hardware issue is closed.
