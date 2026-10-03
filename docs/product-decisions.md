@@ -298,7 +298,7 @@ manifest unchanged, so the book looked stuck.
 **Scope:** Series detail and playback History (LIB-003/004, PLAY-003/004)
 **Source:** Owner's screenshot and requested fixes in this chat.
 
-Series rows must show complete wrapped metadata and identify finished books with a checkmark and text,
+Series rows must show complete wrapped metadata and identify finished books with Finished text and a subtle green glow inside the card border,
 alongside in-progress/not-started state. The next book's full title stays readable outside a short Continue
 button. Details and explicit Play keep separate actions; ordering and cached repository state remain authoritative.
 

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -16,6 +15,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
@@ -25,6 +31,7 @@ import com.example.shelfplayer.feature.browse.BookCover
 import com.example.shelfplayer.feature.browse.BookProgressLine
 import com.example.shelfplayer.feature.browse.readable
 import com.example.shelfplayer.ui.glass.GlassCard
+import com.example.shelfplayer.ui.glass.GlassDefaults
 import kotlin.time.Duration
 
 /**
@@ -41,7 +48,15 @@ internal fun SeriesBookCard(
     modifier: Modifier = Modifier,
     membership: SeriesMembership? = book.seriesMemberships.firstOrNull(),
 ) {
-    GlassCard(onClick = onClick, modifier = modifier.fillMaxWidth()) {
+    val completionColor = if (MaterialTheme.colorScheme.surface.luminance() < DARK_SURFACE_LUMINANCE) {
+        CompletedEdgeDark
+    } else {
+        CompletedEdgeLight
+    }
+    val cardModifier = modifier.fillMaxWidth().let { card ->
+        if (book.progress?.isFinished == true) card.completedInnerEdge(completionColor) else card
+    }
+    GlassCard(onClick = onClick, modifier = cardModifier) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(CARD_PADDING),
             verticalArrangement = Arrangement.spacedBy(SECTION_GAP),
@@ -99,29 +114,34 @@ internal fun SeriesBookCard(
 private fun ListeningState(book: Book, modifier: Modifier = Modifier) {
     val progress = book.progress
     val finished = progress?.isFinished == true
-    Row(
+    Text(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(TEXT_GAP),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (finished) {
-            Icon(
-                imageVector = Icons.Filled.CheckCircle,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(STATE_ICON_SIZE),
-            )
-        }
-        Text(
-            text = stringResource(
-                when {
-                    finished -> R.string.book_finished
-                    progress != null && progress.position > Duration.ZERO -> R.string.series_book_in_progress
-                    else -> R.string.series_book_not_started
-                },
-            ),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurface,
+        text = stringResource(
+            when {
+                finished -> R.string.book_finished
+                progress != null && progress.position > Duration.ZERO -> R.string.series_book_in_progress
+                else -> R.string.series_book_not_started
+            },
+        ),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+}
+
+/** Owner-approved completion cue: fade inward, keeping every stroke inside the card's rounded boundary. */
+private fun Modifier.completedInnerEdge(color: Color): Modifier = drawWithContent {
+    drawContent()
+    val cornerRadius = GlassDefaults.CardCornerRadius.toPx()
+    val stepWidth = GLOW_STEP_WIDTH.toPx()
+    for (step in GLOW_STEPS downTo 1) {
+        val strokeWidth = stepWidth * step
+        val inset = strokeWidth / 2f
+        drawRoundRect(
+            color = color.copy(alpha = GLOW_EDGE_ALPHA / (step * step)),
+            topLeft = Offset(inset, inset),
+            size = Size(size.width - strokeWidth, size.height - strokeWidth),
+            cornerRadius = CornerRadius((cornerRadius - inset).coerceAtLeast(0f)),
+            style = Stroke(width = strokeWidth),
         )
     }
 }
@@ -130,4 +150,11 @@ private val CARD_PADDING = 12.dp
 private val SECTION_GAP = 12.dp
 private val TEXT_GAP = 4.dp
 private val COVER_SIZE = 72.dp
-private val STATE_ICON_SIZE = 20.dp
+private val GLOW_STEP_WIDTH = 1.dp
+private const val GLOW_STEPS = 6
+private const val GLOW_EDGE_ALPHA = 0.45f
+private const val DARK_SURFACE_LUMINANCE = 0.5f
+
+/** Stable green status roles, matching the app's existing light/dark reachability color family. */
+private val CompletedEdgeLight = Color(0xFF15803D)
+private val CompletedEdgeDark = Color(0xFF6EE7A0)

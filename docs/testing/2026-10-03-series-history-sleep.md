@@ -35,7 +35,7 @@ and redacted/private evidence for each case using the [verification register](ro
 
 | Case | Procedure and pass condition |
 | --- | --- |
-| FIX-D01 | Cached series with finished/in-progress/not-started books, long metadata and multiple memberships: visible textual states/checkmark; correct selected sequence; full metadata; details/Play act separately. |
+| FIX-D01 | Cached series with finished/in-progress/not-started books, long metadata and multiple memberships: visible textual states and subtle green inside border on completed cards; correct selected sequence; full metadata; details/Play act separately. |
 | FIX-D02 | Series portrait/landscape, 100/130/200% text, English/Norwegian, missing cover, last row above mini-player; light/dark/AMOLED/dynamic/artwork appearance and TalkBack. Nothing clips; effective contrast and minimum controls remain usable. |
 | FIX-D03 | Open/scroll series and History during active playback and without internet. Audio/position continuity survives navigation; repository state remains available. |
 | FIX-D04 | Offline local listening at least two minutes with History closed and Activity backgrounded: rolling checkpoint advances within five seconds, one row per event interval, correct date/time/position/percent. Force-stop, cold open and explicit Resume; compare saved position, with no more than ten seconds lost. Repeat process kill and phone restart separately; do not confuse graceful pause with abrupt loss. |
@@ -104,3 +104,9 @@ Cleanup at 20:48:03 UTC: returning through the original 20:27 History marker res
 pre-test book position **64,025,977 ms**, with playback PAUSED. Test listening and chapter seeks are
 not left as the listener's current position. Font scale 1.0, density 450, automatic rotation 1,
 Wi-Fi/data enabled and Normal sensitivity are restored; no active sleep timer remains.
+
+## Completion cue refinement — 2026-10-04
+
+The user requested removal of the completed checkmark after reviewing the phone rows. Finished text remains; completed cards now use a subtle green glow inside their border. The earlier phone checkmark observations above apply to APK 2177 only. Physical acceptance of the revised glow, light/dark appearance, TalkBack and remaining layout cases is **NOT RUN**, as requested; retain these in the missing-test matrix and proceed with the roadmap. Native rendering verification is recorded in the Hallmark review.
+
+Refinement validation: three completion guards failed against the old card; restored refinement passed all 24 series tests. Regenerated native images were inspected. Formatter and full verifyDebug with warnings-as-errors passed in 1m 50s; initial test-only Lint findings were fixed. No dependency/classpath changes.

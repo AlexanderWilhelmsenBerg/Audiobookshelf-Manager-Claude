@@ -330,7 +330,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - The smart downloader uses a selected primary series; when none is selected, it uses the first server-provided ordered series and records that choice.
 - Series order and next-book information remain available offline for downloaded books.
 - Series detail rows grow with wrapped title, author, selected series/sequence and progress. Each book has
-  an explicit Finished icon/text or In progress / Not started label; large text must not hide metadata.
+  an explicit Finished text label and subtle green glow along the inside card border, or an In progress /
+  Not started label; large text must not hide metadata.
 
 ### LIB-004 Book details
 

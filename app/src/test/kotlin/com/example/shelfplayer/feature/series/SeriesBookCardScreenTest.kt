@@ -2,7 +2,10 @@ package com.example.shelfplayer.feature.series
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.view.View
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
@@ -15,7 +18,10 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.core.graphics.createBitmap
+import androidx.core.graphics.get
 import com.example.shelfplayer.core.designsystem.theme.ShelfPlayerTheme
 import com.example.shelfplayer.core.model.AuthorId
 import com.example.shelfplayer.core.model.LibraryId
@@ -38,6 +44,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.time.Instant
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.hours
@@ -144,6 +151,66 @@ class SeriesBookCardScreenTest {
     }
 
     @Test
+    fun `finished text aligns with metadata without a leading completed checkmark`() {
+        render(book().copy(progress = progress(finished = true)))
+        val finished = compose.onNodeWithText("Finished", useUnmergedTree = true).getBoundsInRoot()
+        val membership = compose.onNodeWithText("$SERIES, book 12", useUnmergedTree = true).getBoundsInRoot()
+        assertEquals(membership.left, finished.left, "a completed checkmark must not precede Finished")
+    }
+
+    @Test
+    fun `completed light card glows inward without an outside halo`() = assertFinishedGlow(darkTheme = false)
+
+    @Test
+    fun `completed dark card glows inward without an outside halo`() = assertFinishedGlow(darkTheme = true)
+
+    @Test
+    fun `in progress card has no green completion edge`() {
+        render(book().copy(progress = progress(finished = false)), framePadding = FRAME_PADDING)
+        val bounds = compose.onNodeWithTag("series-book").getBoundsInRoot()
+        val image = captureView()
+        val density = renderedView.resources.displayMetrics.density
+        val x = ((bounds.left.value + EDGE_SAMPLE_INSET) * density).toInt()
+        val y = ((bounds.top.value + bounds.bottom.value) / 2f * density).toInt()
+        assertFalse(image[x, y].isCompletionGreen(), "unfinished card looks completed")
+    }
+
+    private fun assertFinishedGlow(darkTheme: Boolean) {
+        render(book().copy(progress = progress(finished = true)), darkTheme, FRAME_PADDING)
+        compose.onNodeWithText("Finished", useUnmergedTree = true).assertExists()
+        val bounds = compose.onNodeWithTag("series-book").getBoundsInRoot()
+        val image = captureView()
+        val density = renderedView.resources.displayMetrics.density
+        val left = (bounds.left.value * density).toInt()
+        val y = ((bounds.top.value + bounds.bottom.value) / 2f * density).toInt()
+        assertTrue(
+            image[left + (EDGE_SAMPLE_INSET * density).toInt(), y].isCompletionGreen(),
+            "completed card needs a visible green inner edge on its actual rendered surface",
+        )
+        assertFalse(
+            image[left + (FRAME_PADDING.value * density).toInt(), y].isCompletionGreen(),
+            "the glow should fade before reaching metadata",
+        )
+        assertEquals(
+            image[left - (OUTSIDE_FAR_INSET * density).toInt(), y],
+            image[left - (OUTSIDE_NEAR_INSET * density).toInt(), y],
+            "the completed-card glow must not spread outside its border",
+        )
+    }
+
+    private fun Int.isCompletionGreen(): Boolean = Color.green(this) - Color.red(this) > MIN_GREEN_OVER_RED &&
+        Color.green(this) - Color.blue(this) > MIN_GREEN_OVER_BLUE
+
+    private fun captureView(): Bitmap {
+        lateinit var image: Bitmap
+        compose.runOnIdle {
+            image = createBitmap(renderedView.width, renderedView.height, Bitmap.Config.ARGB_8888)
+            renderedView.draw(Canvas(image))
+        }
+        return image
+    }
+
+    @Test
     @Config(fontScale = 2.0f)
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
     fun `native render of finished row preserves readable complete metadata`() {
@@ -179,12 +246,19 @@ class SeriesBookCardScreenTest {
         }
     }
 
-    private fun render(book: Book) {
+    private fun render(book: Book, darkTheme: Boolean = false, framePadding: Dp = 0.dp) {
         compose.setContent {
-            ShelfPlayerTheme(darkTheme = false, dynamicColor = false) {
+            ShelfPlayerTheme(darkTheme = darkTheme, dynamicColor = false) {
                 renderedView = LocalView.current
                 Surface {
-                    SeriesBookCard(book = book, onClick = {}, onPlay = {}, modifier = Modifier.testTag("series-book"))
+                    Box(modifier = Modifier.padding(framePadding)) {
+                        SeriesBookCard(
+                            book = book,
+                            onClick = {},
+                            onPlay = {},
+                            modifier = Modifier.testTag("series-book"),
+                        )
+                    }
                 }
             }
         }
@@ -224,5 +298,11 @@ class SeriesBookCardScreenTest {
         const val AUTHOR = "Alexandra Example and Benjamin Example"
         const val SERIES = "The Long Northern Journey"
         const val PIXEL_ROUNDING_TOLERANCE = 1f
+        val FRAME_PADDING = 8.dp
+        const val EDGE_SAMPLE_INSET = 1f
+        const val OUTSIDE_NEAR_INSET = 2f
+        const val OUTSIDE_FAR_INSET = 6f
+        const val MIN_GREEN_OVER_RED = 15
+        const val MIN_GREEN_OVER_BLUE = 8
     }
 }
