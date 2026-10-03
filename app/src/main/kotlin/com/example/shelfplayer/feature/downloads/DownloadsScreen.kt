@@ -279,9 +279,9 @@ fun DownloadsScreen(
  *
  * ### And what removing the card costs
  *
- * Books on a card that is taken out fail the start-up check and offer a re-download — the same handling any
- * unreadable local file gets (PLAY-003). Nothing is deleted on the strength of an absent volume, which is
- * why this can be a plain radio list and not a warning dialog.
+ * An absent card is shown as storage unavailable; nothing is marked failed or deleted. The books come back
+ * when the card does, and nothing is deleted on the strength of an absent volume, which is why this can be a
+ * plain radio list and not a warning dialog.
  */
 @Composable
 private fun StorageVolumePicker(volumes: List<StorageVolumeOption>, selected: String, onChosen: (String) -> Unit) {

@@ -53,6 +53,10 @@ JVM-only.
 | R-11 | **Process death and low storage are untested.** PRODUCT_SPEC 17.3 allows at most 10 s of progress loss after a forced kill; nothing measures it. | Product priority 2 is "do not lose progress", and its acceptance number has never been checked. | `adb shell am kill` plus a stopwatch, once, on a device. Cheap to do and impossible to claim without doing. |
 | R-12 | **The release build is assembled but never executed.** `main.yml` runs `assembleRelease`, so R8 and resource shrinking run — and nothing installs or launches the result. | R8 breaks reflection-shaped code. Room, kotlinx.serialization and protobuf-lite have keep rules; Hilt, Media3, WorkManager and Coil rely on their libraries' own consumer rules. A missing rule is a release-only crash with a minified stack trace. | Launching the release APK once by hand, and ideally a smoke test on it in CI after R-07. |
 | R-39 | **Closed on hardware 2026-08-23 for the ordinary Keystore/store half; open for key invalidation and biometric UI.** The 27 connected tests passed against a real AndroidKeyStore: round trip, IV variation, tamper rejection, deleted-key recovery, staged store behavior, and persistent rate limiting. | Permanent key invalidation/enrollment changes still fail closed and could lock out an owner; the system biometric window can still be broken despite correct policy code. | Exercise enrollment/key invalidation plus the biometric prompt with a person. The app-switcher thumbnail also remains unsuppressed on every level. |
+| R-116 | **Removable-storage behaviour has never run on hardware** (#110, DL-002/003). Volume identity, the conservative verifier, the Unavailable/Unknown row states and the fallback disclosure are covered by JVM tests only. | A real card can unmount in ways a fake volume cannot — slow remount, a different volume UUID after reformat, a card present but not yet readable — and the verifier's rule that an unreadable volume is never downgraded was written against a model of that. | `testing/reliability-acceptance.md` rows "Download to card, remove while stopped, reopen" and "Reinsert intact card": download to the card, remove it while stopped, reopen (Storage unavailable, nothing marked failed or deleted, fallback disclosed), reinsert (re-verified without redownload, selected-card preference unchanged), and an upgrade from legacy rows with `null` volume (Unknown, never downgraded). Record the device and Android version. |
+| R-117 | **Several simultaneous downloads and their foreground notifications are untested on a device.** Each `BookDownloadWorker` calls `setForeground` with its own per-book notification id, and WorkManager promotes one worker at a time as the foreground service; how the others' notifications behave while not promoted has not been observed. Ids are `4200 +` a masked hash of the unique-work name (`DownloadNotificationFactory`), so they can never equal Media3's `DefaultMediaNotificationProvider.DEFAULT_NOTIFICATION_ID` (1001) and cannot stop or replace the playback notification; two books colliding with each other is possible in principle (a 30-bit hash) and unchecked. | Product priority 1 is not interrupting playback. A download notification that replaced or cancelled the playback one, or a notification that outlived its worker, would be user-visible and would not appear in any JVM test. | Two downloads started together while a book plays: independent notifications, playback notification untouched, each cleared on completion, Stop and Pause. |
+| R-118 | **Android 15 and later limit `dataSync` foreground services to about six hours in a 24-hour period.** Downloads declare `FOREGROUND_SERVICE_TYPE_DATA_SYNC`. A very large library over a slow link could reach the limit, after which the system calls the service's timeout callback. **Investigation only; nothing here has been tried.** | The transfer would stop part-way. If WorkManager reschedules it the `.part` resumes (with an ETag, see R-123); if it does not, the book sits in a state the app may report as Failed or Waiting without a cause. | Read the platform timeout contract and WorkManager's handling of it (`onTimeout`/`onStopped` reason) against the pinned versions before deciding; then one long throttled download on an Android 15+ device. Do not assume the behaviour. |
+| R-119 | **PR #209's Book-screen download controls need a physical device.** Not run: TalkBack hears the percent once (the visible text is semantics-cleared on purpose) and the Pause / Stop / Keep prompt buttons are reachable at 200% font; pause mid-file, kill the app, relaunch — Paused with a truthful percent and Resume continues from the `.part`; two profiles sharing an in-flight book — A stops, B's transfer continues; a shared copy offers no Pause (PD-004); Retry after a failure never sits disabled and never shows Failed while WorkManager runs it. | Robolectric cannot prove what TalkBack speaks or that a killed process reconstructs the same state. The Pause-while-sharing refusal is a data-safety rule (it must not stop another profile's transfer), so it is worth seeing once. | One pass of the above on a device with two profiles, recorded with the APK commit. |
 
 ---
 
@@ -96,6 +100,47 @@ sleep/session bookkeeping. Add integration evidence and repair that boundary bef
 profile/restore acceptance. Switching away and back during a single suspended operation also needs a
 generation-based check; comparing profile IDs alone cannot detect that sequence. Physical checks remain in
 `testing/reliability-acceptance.md`.
+
+### R-120 — remove and claim race windows remain, because `cancelUniqueWork` is asynchronous
+
+`WorkManagerDownloadScheduler.cancel` calls `cancelUniqueWork`, which returns before the worker has stopped.
+Two windows follow. First, a transfer that is removed while running can write a few more bytes after the
+manifest and files have been deleted; those bytes are not tracked by anything and are swept by
+`OfflineFiles.sweepOrphans()` at the next start-up (`ShelfPlayerApplication`). Second, `RemoveDownloadUseCase`
+reads the claims, decides the copy has no other claimant, then cancels; a brand-new claim by another profile
+landing between that read and the cancel could have its transfer cancelled. The window is tiny and the result is
+a stopped download the user can resume, not lost data. Neither is closed by a lock that spans WorkManager,
+which would be a larger change than the risk justifies; both need a device with a slow disk to observe at all.
+
+### R-121 — a copy whose last claim belonged to a removed profile cannot be reclaimed in the app
+
+`download_requests` has a cascading foreign key to the profile, so removing a profile deletes its claim rows. If
+that profile held the only claim on a copy, the bytes and manifest stay with zero claims. `unreferenced()`
+exists on `DownloadRepository` but has no production caller, and the Downloads row hides Remove for a copy the
+active profile does not claim, so the space cannot be recovered from the UI. Start-up `sweepOrphans` keeps
+anything that still has a manifest. **Proposed, not implemented** (owner decision: out of scope for the
+Phase 3 downloads work): `OfflineFiles.removeUnclaimed` taking the same per-copy lock as remove, plus a Downloads
+"Remove from device" row action with a confirmation that states the bytes freed; or have profile removal list
+the downloads only that profile claims and ask what to do with them.
+
+### R-122 — a shared transfer keeps running under the profile that enqueued it
+
+`WorkManagerDownloadScheduler.enqueue` stores the enqueuing profile's id in the job's input data
+(`KEY_PROFILE_ID`) and `BookDownloadWorker` hands it to `downloader.download`. Since PR #209, profile A can stop
+while profile B still claims the book, and the transfer continues, still under A's job data. If A is later signed
+out or removed, the transfer may fail on authentication or on the profile lookup, although B is entitled to it.
+Not reproduced; derived from reading the worker. **Proposed, not implemented:** when a claim is released and
+others remain, re-enqueue the work under a remaining claimant (with `ExistingWorkPolicy` chosen so the `.part`
+resumes), or resolve the profile from the claims at run time instead of from job data.
+
+### R-123 — the recorded Paused percent can drop on resume when the server gave no ETag
+
+`FileDownloader` resumes from the `.part` only when the stored file has an ETag (`resumeFrom = if (file.eTag
+!= null) onDisk else 0`). Pause records the `.part` length, so a paused row shows a truthful percent of what is on
+disk, but for a file the server served without an ETag, Resume restarts that file at zero and the percent falls
+back. It is a restart, not a loss of the committed files. The behaviour follows the rule against guessing
+undocumented server behaviour (no `If-Range` validator, no resume); the percent drop should be disclosed or
+tolerated, not worked around by resuming unvalidated.
 
 | # | Risk | If it bites | Retired by |
 | --- | --- | --- | --- |
@@ -213,6 +258,7 @@ generation-based check; comparing profile IDs alone cannot detect that sequence.
 | R-34 | **Closed 2026-08-21.** There was no changelog and no label convention, both required by PRODUCT_SPEC 18 for a generated release note. | It blocked the release pipeline, cheaply. | `CHANGELOG.md` is written by hand and carries the reasoning behind each decision; `.github/release.yml` maps pull-request labels to sections so GitHub generates the note for a tag. The division is deliberate — the note indexes what merged, the changelog explains why. Unlabelled changes fall into a catch-all rather than being dropped, and nothing enforces a label, because a check that failed a pull request over one would block the fix for a labelling mistake. |
 | R-37 | **A test double that does not reproduce the shape of the real thing hides defects behind a passing test.** PR #28 found that catalogue reconciliation deleted an entire library on any unchanged refresh: `LibrarySnapshot.books` carries only *expanded* items, an item the server reports unchanged is deliberately skipped, so a second refresh produced an empty list and called `markAllBooksDeleted` — and every read filters `isDeleted = 0`. A test named `refresh is idempotent and does not duplicate rows` had existed for months, refreshed twice, and passed. | It passed because `FakeAudiobookshelfGateway.listBooks` **ignored its `cached` argument** and returned every book on every call, so the fake's `books` was never empty and the production shape never occurred. The fake was not a double; it was a second implementation that agreed with nothing. A 60-second OkHttp `callTimeout` bounding the Media3 stream — PR #28's other serious find — escaped for the sibling reason: nothing in the suite plays for sixty-one seconds. | **The sync half is closed.** The fake now honours `cached.isUpToDate`, and the fixture books carry a server stamp — without one `isUpToDate` can never return true and the skip path is unreachable, which is why the blind spot existed. Reverting the production fix now fails `refresh is idempotent` through the full repository path. The playback half still needs R-07. |
 | R-38 | **A defaulted parameter can preserve the bug it was added to fix.** `LibraryApi.listBooks` gained `onCatalogueBatch`, defaulting to `onBatch` so no implementer had to change. Any future persistence caller that does not pass a non-destructive sink silently gets the destructive behaviour the parameter exists to avoid. | Today there is exactly one persistence caller and it passes the sink. The trap is dormant, not absent, and it is the kind that reappears when a second caller is added by somebody reading the signature rather than the KDoc. | Removing the default once every caller is explicit, so the compiler asks the question instead of the reviewer. |
+| R-124 | **No `BookViewModel` test proves that WorkManager execution evidence reaches the Book download button or the Pause routing.** The pure policy, `recoveryAction()` and the observer mapping are each tested; the wiring between them in `BookViewModel` is not. | A refactor could stop the Book screen consuming the observer, and the button would go back to showing `Failed` for a book WorkManager is retrying, with every existing test still green. | A `BookViewModel` test with the observer, the manifest, claims and the scheduler faked. It needs roughly ten fakes, which is why PR2 did not carry it. Follow-up. |
 
 ---
 

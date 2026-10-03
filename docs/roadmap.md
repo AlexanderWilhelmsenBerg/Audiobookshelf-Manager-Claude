@@ -35,16 +35,25 @@ Merged code, automated verification and physical acceptance are separate statuse
 
 ## 2. Verify the merged download reliability lane
 
-Forgejo PR #94 (`8ea2122f`) already merged the former implementation queue:
+Forgejo PR #94 (`8ea2122f`) already merged the former implementation queue. The table below is the
+merged implementation **awaiting physical/device acceptance**; none of these issues should close on code alone.
+Forgejo issue numbers are the historical tracker's and are matched to GitHub by title and order; only #19 is
+corroborated by code comments (`BW-DL-04 / #19`), so treat the others as inferred.
 
-| GitHub issue | Implemented behavior | Remaining acceptance |
-| --- | --- | --- |
-| #108 | State-owned Pause / Resume / Retry, originally Forgejo PR #55 | Failure/restart actions preserve partial bytes. |
-| #109 | Aggregate WorkManager waiting/retry observation | Constrained/retrying work recovers across process restart. |
-| #112 | Confirmed partial-data discard, separate from Retry | Confirmation preserves committed media; ordinary Retry is non-destructive. |
-| #120 | Active queue, live progress and notification navigation | Independent transfers, state transitions and denied notification permission. |
-| #110 | Volume identity, conservative verifier and storage projection | Card removal/reinsertion and disclosed internal fallback without redownload. |
-| #111 | Shared copy, profile claims and device pin | Last-claim removal, shared-copy retention and metadata redaction. PD-003 settles ownership. |
+| GitHub issue | Forgejo issue | Implemented behavior | Remaining acceptance |
+| --- | --- | --- | --- |
+| #108 | #18 | State-owned Pause / Resume / Retry, originally Forgejo PR #55 | Failure/restart actions preserve partial bytes. |
+| #109 | #19 | Aggregate WorkManager waiting/retry observation | Constrained/retrying work recovers across process restart. |
+| #110 | #20 | Volume identity, conservative verifier and storage projection | Card removal/reinsertion and disclosed internal fallback without redownload (R-116). |
+| #111 | #21 | Shared copy, profile claims and device pin. PD-003 settles ownership. | Last-claim removal, shared-copy retention and metadata redaction. |
+| #112 | #22 | Confirmed partial-data discard, separate from Retry | Confirmation preserves committed media; ordinary Retry is non-destructive. |
+| #120 | #29 | Active queue, live progress and notification navigation | Independent transfers, state transitions and denied notification permission. |
+
+#111 is **decided and implemented**: PD-004 (the owner's decision on tap behaviour, profile-scoped removal and
+the in-flight Pause / Stop prompt) landed through GitHub PRs #207 (claim-aware removal, floored percent,
+domain recovery actions, `.part` bytes recorded on cancel) and #209 (Book button percent and ring, Pause / Stop /
+Keep prompt, Paused and Resume, claim-aware Downloads removal). Pause is offered only for a copy no other
+profile claims. Its device checks are R-119; the remaining design gaps are R-120 to R-123 and the test gap R-124.
 
 Fix reproducible gaps in these paths. Do not build another execution adapter, persist WorkManager state into
 Room or reopen settled physical-copy ownership. Verify server-and-item identity at the storage/active-profile
