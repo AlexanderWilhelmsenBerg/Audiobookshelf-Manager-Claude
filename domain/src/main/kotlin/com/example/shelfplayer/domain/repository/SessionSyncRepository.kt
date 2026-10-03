@@ -1,7 +1,7 @@
 package com.example.shelfplayer.domain.repository
 
 import com.example.shelfplayer.core.model.AppResult
-import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
 import com.example.shelfplayer.core.model.playback.SyncOutcome
@@ -34,21 +34,14 @@ interface SessionSyncRepository {
     /**
      * Records the start of a listening session and returns the local id it was filed under.
      *
-     * The id is a UUIDv4 generated here (PLAY-005), not the server's. [remoteSessionId] is stored alongside
-     * it and is `null` for a session opened with no connection — the two are separate columns because they
+     * The id is a UUIDv4 generated here (PLAY-005), not the server's. [PlaybackSession.id] is stored alongside
+     * it (or null for a blank offline id) — the two are separate columns because they
      * are separate facts, and only one of them exists offline.
      *
-     * @return the local session id, or a failure when no profile is active.
+     * [PlaybackSession.profileId] is the captured owner, even if the active selection changes during storage.
+     * @return the local session id, or a failure when the captured profile is no longer saved.
      */
-    suspend fun openSession(
-        bookId: LibraryItemId,
-        remoteSessionId: String?,
-        title: String,
-        author: String?,
-        position: kotlin.time.Duration,
-        duration: kotlin.time.Duration,
-        startedAt: Instant,
-    ): AppResult<String>
+    suspend fun openSession(session: PlaybackSession, startedAt: Instant): AppResult<String>
 
     /**
      * Records a position against a session already opened, and returns whether the server took it.

@@ -77,6 +77,19 @@ class BookChanges @Inject internal constructor(
         autoRewind.onBookChanged(session.chapters)
     }
 
+    /** R-115 — a prepared car queue has no live book/timer/session authority until this guarded commit. */
+    internal suspend fun acceptBook(
+        session: PlaybackSession,
+        stillAuthorized: suspend () -> Boolean,
+        install: () -> Unit,
+    ): Boolean = sessionSync.acceptSession(session, stillAuthorized) {
+        resumeBaseline.stageServerPosition(session.bookId, session.serverAcknowledgedStartPosition())
+        resumeFreshness.onSessionOpenedImmediately(session)
+        sleepTimer.onBookChangedImmediately(session.chapters)
+        autoRewind.onBookChanged(session.chapters)
+        install()
+    }
+
     /** PRODUCT_SPEC PLAY-004 — "chapter change" is one of the seven sync triggers. */
     fun onChapterCrossed() {
         sessionSync.request(SyncTrigger.ChapterChanged)

@@ -20,6 +20,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
@@ -90,49 +91,43 @@ class DefaultSessionSyncRepository @Inject constructor(
      */
     private val lastTrigger = MutableStateFlow<SyncTrigger?>(null)
 
-    override suspend fun openSession(
-        bookId: LibraryItemId,
-        remoteSessionId: String?,
-        title: String,
-        author: String?,
-        position: Duration,
-        duration: Duration,
-        startedAt: Instant,
-    ): AppResult<String> = withContext(ioDispatcher) {
-        val profile = activeProfile() ?: return@withContext AppResult.Failure(AppError.Authentication())
-        // PRODUCT_SPEC PLAY-005 — "every offline listening session has a UUIDv4 identifier". Generated here,
-        // for every session, online or not: an id that only exists when there is a connection is an id the
-        // offline route cannot use.
-        val sessionId = UUID.randomUUID().toString()
-        outbox.upsert(
-            PlaybackSessionEntity(
-                sessionId = sessionId,
-                profileId = profile.profileId,
-                serverId = profile.serverId,
-                bookKey = EntityKey.of(profile.serverId, bookId.value),
-                remoteBookId = bookId.value,
-                remoteSessionId = remoteSessionId,
-                title = title,
-                author = author,
-                state = SessionOutboxState.OPEN,
-                positionMillis = position.inWholeMilliseconds.coerceAtLeast(0),
-                durationMillis = duration.inWholeMilliseconds.coerceAtLeast(0),
-                timeListenedMillis = 0,
-                startedAt = startedAt.toEpochMilli(),
-                updatedAt = startedAt.toEpochMilli(),
-                syncedAt = null,
-                wasProgressApplied = null,
-                attempts = 0,
-                lastErrorCode = null,
-            ),
-        )
-        logger.info(
-            LogCategory.Playback,
-            "Recorded the start of a listening session",
-            LogField.Public("hasServerSession", remoteSessionId != null),
-        )
-        AppResult.Success(sessionId)
-    }
+    override suspend fun openSession(session: PlaybackSession, startedAt: Instant): AppResult<String> =
+        withContext(ioDispatcher) {
+            val profile = profileDao.findProfile(session.profileId.value)
+                ?: return@withContext AppResult.Failure(AppError.Authentication())
+            // PRODUCT_SPEC PLAY-005 — "every offline listening session has a UUIDv4 identifier". Generated here,
+            // for every session, online or not: an id that only exists when there is a connection is an id the
+            // offline route cannot use.
+            val sessionId = UUID.randomUUID().toString()
+            outbox.upsert(
+                PlaybackSessionEntity(
+                    sessionId = sessionId,
+                    profileId = profile.profileId,
+                    serverId = profile.serverId,
+                    bookKey = EntityKey.of(profile.serverId, session.bookId.value),
+                    remoteBookId = session.bookId.value,
+                    remoteSessionId = session.id.takeIf(String::isNotBlank),
+                    title = session.title,
+                    author = session.author,
+                    state = SessionOutboxState.OPEN,
+                    positionMillis = session.startAt.inWholeMilliseconds.coerceAtLeast(0),
+                    durationMillis = session.duration.inWholeMilliseconds.coerceAtLeast(0),
+                    timeListenedMillis = 0,
+                    startedAt = startedAt.toEpochMilli(),
+                    updatedAt = startedAt.toEpochMilli(),
+                    syncedAt = null,
+                    wasProgressApplied = null,
+                    attempts = 0,
+                    lastErrorCode = null,
+                ),
+            )
+            logger.info(
+                LogCategory.Playback,
+                "Recorded the start of a listening session",
+                LogField.Public("hasServerSession", session.id.isNotBlank()),
+            )
+            AppResult.Success(sessionId)
+        }
 
     override suspend fun syncOpenSession(
         sessionId: String,

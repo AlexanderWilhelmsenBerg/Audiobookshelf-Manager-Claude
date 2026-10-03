@@ -264,6 +264,7 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Removing one profile does not remove another profile’s data.
 - The profile switcher shows server name, username, role, and optional avatar/color.
 - The active profile persists across app restart.
+- Suspended playback restoration cannot publish an outgoing profile's queue or live timer/session state after switching profiles, including switching away and back before a lookup completes. Durable session records retain the profile that opened them.
 - Switching profile takes no more than 500 ms for locally cached screens under normal device load.
 
 ### AUTH-003 Secure token storage

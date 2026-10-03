@@ -55,6 +55,8 @@ class DefaultProfileRepository @Inject constructor(
 
     override suspend fun activeProfileId(): ProfileId? = settings.activeProfileId.first()
 
+    override fun activeProfileGeneration(): Long = settings.activeProfileGeneration
+
     /**
      * PRODUCT_SPEC 6.5 — switching to a profile that is not stored locally is refused.
      *

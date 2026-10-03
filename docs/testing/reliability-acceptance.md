@@ -18,6 +18,8 @@ continuity and Previous. Extend it with:
   Arm stays paused; ArmAndPlay follows route/lock policy. Cover cached, refreshed, empty and locked states.
 - During a queue open, start another book and switch to another unlocked profile in separate cases. No old
   book, title, position, timer or session state may overwrite the new context (PR #205 review).
+- Switch A → B → A while a holder, candidate or queue is resolving; returning to A must not authorize the
+  old request. Repeat with a newer Pause/Stop and with local session storage delayed.
 - Car-only profile switch flushes outgoing progress, stays paused and evicts old dynamic browse content.
 - Phone skips, active sleep-timer slot exception, then car connect/disconnect layouts without interruption.
 - Headset heard → explicit speaker → car arrival never resurrects the headset.
@@ -82,3 +84,22 @@ Local logs are under ignored `build/reliability-evidence/`; the full-gate log is
   `car-profile-verify.log` and `car-profile-verify-final.log` under `build/reliability-evidence/`.
 - This does not retire R-115's queue-opening bookkeeping or away-and-back profile generation concerns.
   No hardware acceptance or issue closure is claimed.
+
+### Restore generation and book acceptance — 2026-10-03
+
+- The three A → B → A restorer cases and three selection-token cases failed before the generation guard.
+  Two session-acceptance cases failed when acceptance delegated to the unguarded session-opening path.
+- A real BookChanges/ExoPlayer regression failed when its guarded acceptance was replaced with the old
+  book-opening sequence. With the guard, rejected durable opening preserves the running timer, baseline
+  and prior live session. Accepted publication clears the old timer before installation. Cancellation of
+  local opening and newer transport intent are also covered. A final identity lookup suspended while its
+  profile locked reproduced an install; checking the lock after that lookup rejects it.
+- The captured-profile outbox test failed when storage looked up the current selection instead; the
+  profile-scoped implementation passes. No endpoint or schema change was needed.
+- A prepared server session or zero-listening local row can remain after later supersession; it is bound
+  to the captured owner and never becomes live playback. An outgoing close already sent before later
+  supersession cannot be undone. Physical Android Auto/profile and soak acceptance remains pending.
+- Forced `ktlintFormat verifyDebug '-Pshelfplayer.warningsAsErrors=true' --rerun-tasks --max-workers=4`
+  passed in 5m 13s with all 1,119 tasks executed. After the final lock-race correction, the full gate passed
+  again in 4m 24s (83 executed, 1,036 up-to-date), including all 21 restorer cases.
+- Logs are under ignored `build/car-evidence/`. Record the candidate commit before device use.

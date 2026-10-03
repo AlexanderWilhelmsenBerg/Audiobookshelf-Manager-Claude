@@ -196,6 +196,8 @@ class AutoLibrary @Inject constructor(
     /** AUTH-002 — bind suspended car restoration to the profile that requested it. */
     suspend fun activeProfileId(): ProfileId? = profiles.activeProfileId()
 
+    internal fun activeProfileGeneration(): Long = profiles.activeProfileGeneration()
+
     private fun profileItem(profile: Profile, server: Server?, isActive: Boolean, canActivate: Boolean): MediaItem {
         val status = when {
             isActive -> string(R.string.car_profile_active)

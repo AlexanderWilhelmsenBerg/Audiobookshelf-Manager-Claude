@@ -22,6 +22,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
+import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.model.playback.SessionProgress
@@ -365,12 +366,7 @@ class ProgressSyncChainTest {
     fun `a pause on a session the server never opened is not a baseline`() = runTest {
         val offline = assertIs<AppResult.Success<String>>(
             sync.openSession(
-                bookId = BOOK,
-                remoteSessionId = null,
-                title = "The Voyage",
-                author = "A. Cartographer",
-                position = Duration.ZERO,
-                duration = BOOK_DURATION,
+                session = sessionStart(""),
                 startedAt = clock.now(),
             ),
         ).value
@@ -459,12 +455,7 @@ class ProgressSyncChainTest {
 
     private suspend fun openSession(): String = assertIs<AppResult.Success<String>>(
         sync.openSession(
-            bookId = BOOK,
-            remoteSessionId = "remote-1",
-            title = "The Voyage",
-            author = "A. Cartographer",
-            position = Duration.ZERO,
-            duration = BOOK_DURATION,
+            session = sessionStart("remote-1"),
             startedAt = clock.now(),
         ),
     ).value
@@ -473,6 +464,19 @@ class ProgressSyncChainTest {
         requireNotNull(database.progressDao().findProgress(profileId.value, EntityKey.of(SERVER, BOOK.value))) {
             "no progress row was written"
         }
+
+    private fun sessionStart(remoteId: String) = PlaybackSession(
+        id = remoteId,
+        profileId = profileId,
+        bookId = BOOK,
+        title = "The Voyage",
+        author = "A. Cartographer",
+        coverUrl = null,
+        startAt = Duration.ZERO,
+        duration = BOOK_DURATION,
+        tracks = emptyList(),
+        chapters = emptyList(),
+    )
 
     private suspend fun seedProfile() {
         database.profileDao().upsertServer(
@@ -488,6 +492,7 @@ class ProgressSyncChainTest {
                 capabilitiesDetectedAt = null,
             ),
         )
+
         database.profileDao().upsertProfile(
             ProfileEntity(
                 profileId = profileId.value,

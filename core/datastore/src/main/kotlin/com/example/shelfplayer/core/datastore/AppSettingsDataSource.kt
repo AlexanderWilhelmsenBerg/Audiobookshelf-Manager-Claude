@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.map
 import java.io.IOException
 import java.time.Instant
 import java.time.LocalTime
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration
@@ -70,6 +71,8 @@ class AppSettingsDataSource @Inject constructor(
     private val dataStore: DataStore<AppSettings>,
     private val logger: Logger,
 ) {
+    private val profileGeneration = AtomicLong()
+
     /**
      * An I/O failure yields the defaults instead of cancelling the stream.
      *
@@ -94,8 +97,12 @@ class AppSettingsDataSource @Inject constructor(
         stored.activeProfileId.takeIf(String::isNotBlank)?.let(::ProfileId)
     }
 
+    /** AUTH-002 — process-local invalidation token for suspended operations, not another selection owner. */
+    val activeProfileGeneration: Long get() = profileGeneration.get()
+
     suspend fun setActiveProfile(profileId: ProfileId) {
         dataStore.updateData { current ->
+            if (current.activeProfileId != profileId.value) profileGeneration.incrementAndGet()
             current.toBuilder().setActiveProfileId(profileId.value).build()
         }
     }
@@ -107,7 +114,10 @@ class AppSettingsDataSource @Inject constructor(
      * would switch accounts without the user asking, so the app shows the profile picker instead.
      */
     suspend fun clearActiveProfile() {
-        dataStore.updateData { current -> current.toBuilder().clearActiveProfileId().build() }
+        dataStore.updateData { current ->
+            if (current.activeProfileId.isNotBlank()) profileGeneration.incrementAndGet()
+            current.toBuilder().clearActiveProfileId().build()
+        }
     }
 
     /**

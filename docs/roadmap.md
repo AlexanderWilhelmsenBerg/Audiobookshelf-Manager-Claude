@@ -17,7 +17,8 @@ Merged code, automated verification and physical acceptance are separate statuse
 
 - PR #205's idle car restore, remembered-book observation, resume-tile invalidation and paused
   profile-switch fallback are merged. The follow-up profile-identity guard rejects a suspended restore
-  after switching unlocked profiles; retain the remaining bookkeeping integration gap in R-115.
+  after switching unlocked profiles. The R-115 follow-up now guards A → B → A and queue/book/session
+  acceptance across suspension; retain physical acceptance and the recorded server/outbox limits.
 - Accept #128/#100 (headset continuity/route ownership), #185 (idle restore), #126/#196 (output state/Queue),
   #130 (phone/car controls), and #99/#191 (browse/profile invalidation). Principal implementations already
   exist on main. PR #205 adds follow-up tests and behavior.

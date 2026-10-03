@@ -344,6 +344,19 @@ class SleepTimerController @Inject constructor(
      * silently carrying it over would stop a book the listener had just chosen to start.
      */
     internal suspend fun onBookChanged(chapters: List<Chapter>) = withContext(mainDispatcher) {
+        val old = beginBookChange(chapters)
+        if (old != null) finalizeTimer(old, SleepTimerOutcome.PlaybackStopped)
+    }
+
+    /** R-115 — publish timer state synchronously in the same Main-thread commit as the player install. */
+    internal fun onBookChangedImmediately(chapters: List<Chapter>) {
+        val old = beginBookChange(chapters)
+        if (old != null) {
+            applicationScope.launch(mainDispatcher) { finalizeTimer(old, SleepTimerOutcome.PlaybackStopped) }
+        }
+    }
+
+    private fun beginBookChange(chapters: List<Chapter>): TimerRun? {
         playbackGeneration += 1
         invalidatePlayRequestNow()
         val old = running
@@ -353,7 +366,7 @@ class SleepTimerController @Inject constructor(
             invalidateTransientPhase()
         }
         this@SleepTimerController.chapters = chapters
-        if (old != null) finalizeTimer(old, SleepTimerOutcome.PlaybackStopped)
+        return old
     }
 
     /**

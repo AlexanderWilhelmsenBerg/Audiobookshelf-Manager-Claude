@@ -32,6 +32,14 @@ interface ProfileRepository {
     suspend fun activeProfileId(): ProfileId?
 
     /**
+     * Process-local mutation token. Suspended playback work must compare it as well as profile identity,
+     * since an A → B → A switch can disappear from a conflated Flow. A storage failure may conservatively
+     * invalidate work; the token never represents a selected profile or a persisted product preference.
+     * Implementations without mutable selection (including fixed test fixtures) use zero.
+     */
+    fun activeProfileGeneration(): Long = 0L
+
+    /**
      * PRODUCT_SPEC 6.5 — the switch is atomic: either the whole profile context changes or none of
      * it does. Phase 2 extends this to flush playback progress before the swap.
      */

@@ -118,6 +118,9 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
     private var requestGeneration: Long = 0
     private var evidenceWatch: Job? = null
 
+    /** Main-thread ownership token used by idle restore as well as loaded-item Play. */
+    internal fun currentRequestGeneration(): Long = requestGeneration
+
     /** The raw service-owned player whose loaded owner/book is the identity boundary. */
     fun attach(player: Player?) {
         this.player = player
@@ -151,18 +154,23 @@ internal class ResumeFreshnessCoordinator @Inject constructor(
      */
     suspend fun onSessionOpened(session: PlaybackSession, initialPlayWillFollow: Boolean = false) =
         withContext(mainDispatcher) {
-            val opened = OpenedSession(
-                profileId = session.profileId,
-                bookId = session.bookId,
-                remoteSessionId = session.id.takeIf(String::isNotBlank),
-            )
-            openedSession = opened
-            freshStart = opened
-                .takeIf { initialPlayWillFollow && it.remoteSessionId != null }
-                ?.let { FreshStart(session = it, awaitingMediaInstall = true) }
-            realtimeCandidate = null
-            requestGeneration += 1
+            onSessionOpenedImmediately(session, initialPlayWillFollow)
         }
+
+    /** Called within a guarded Main-thread commit; no dispatch or suspension may split publication/install. */
+    internal fun onSessionOpenedImmediately(session: PlaybackSession, initialPlayWillFollow: Boolean = false) {
+        val opened = OpenedSession(
+            profileId = session.profileId,
+            bookId = session.bookId,
+            remoteSessionId = session.id.takeIf(String::isNotBlank),
+        )
+        openedSession = opened
+        freshStart = opened
+            .takeIf { initialPlayWillFollow && it.remoteSessionId != null }
+            ?.let { FreshStart(session = it, awaitingMediaInstall = true) }
+        realtimeCandidate = null
+        requestGeneration += 1
+    }
 
     /**
      * Consumes the one immediate-Play exemption created by a fresh server `/play` response.

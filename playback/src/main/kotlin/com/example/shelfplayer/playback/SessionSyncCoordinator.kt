@@ -86,12 +86,7 @@ class SessionSyncCoordinator @Inject constructor(
         gate.withLock {
             closeCurrent(SyncTrigger.BookChanged)
             val opened = repository.openSession(
-                bookId = session.bookId,
-                remoteSessionId = session.id.takeIf(String::isNotBlank),
-                title = session.title,
-                author = session.author,
-                position = session.startAt,
-                duration = session.duration,
+                session = session,
                 startedAt = clock.now(),
             )
             if (opened is AppResult.Success) {
@@ -105,6 +100,43 @@ class SessionSyncCoordinator @Inject constructor(
                     trigger = SyncTrigger.BookChanged,
                     error = opened.error,
                 )
+            }
+        }
+    }
+
+    internal suspend fun acceptSession(
+        session: PlaybackSession,
+        stillAuthorized: suspend () -> Boolean,
+        accepted: () -> Unit,
+    ): Boolean = gate.withLock {
+        if (!withContext(mainDispatcher) { stillAuthorized() }) return@withLock false
+        val opened = repository.openSession(
+            session = session,
+            startedAt = clock.now(),
+        )
+        when (opened) {
+            is AppResult.Failure -> {
+                logger.debugFailure(
+                    "The prepared session could not be recorded locally",
+                    SyncTrigger.BookChanged,
+                    opened.error,
+                )
+                false
+            }
+
+            is AppResult.Success -> {
+                if (!withContext(mainDispatcher) { stillAuthorized() }) return@withLock false
+                closeCurrent(SyncTrigger.BookChanged)
+                withContext(mainDispatcher) {
+                    if (stillAuthorized()) {
+                        current = Active(opened.value, session.bookId)
+                        listened.reset(clock.elapsed())
+                        accepted()
+                        true
+                    } else {
+                        false
+                    }
+                }
             }
         }
     }

@@ -25,8 +25,22 @@ class IdleResumeWiringTest {
         assertTrue("carPostConnectRestorer(trace).restore(action, current)" in postConnect)
         assertTrue("auto.heldResumeAfter(::refreshResumeAccount)" in postConnect)
         assertTrue("activeProfileId = auto::activeProfileId" in postConnect)
-        assertTrue("AutoStartAction.None -> holdLastBook(current, profileId)" in restorer)
+        assertTrue("profileGeneration = auto::activeProfileGeneration" in postConnect)
+        assertTrue("resumeFreshness.currentRequestGeneration() == requestGeneration" in postConnect)
+        assertTrue("AutoStartAction.None -> holdLastBook(current, claim)" in restorer)
         assertTrue("current.setMediaItem(held.item, held.startPositionMs)" in restorer)
+    }
+
+    @Test
+    fun `idle car queue preparation publishes only through guarded book acceptance`() {
+        val source = serviceSource()
+        val restorer = source.substringAfter("private fun carPostConnectRestorer(")
+            .substringBefore("private suspend fun refreshResumeAccount")
+        assertTrue("prepareQueue(bookId, startAt = null)" in restorer)
+        assertTrue("bookChanges.acceptBook(prepared.session, authorized, install)" in restorer)
+        val prepare = source.substringAfter("private suspend fun prepareQueue(")
+            .substringBefore("private fun <T> future(")
+        assertTrue("bookChanges.onBookOpened" !in prepare)
     }
 
     @Test
