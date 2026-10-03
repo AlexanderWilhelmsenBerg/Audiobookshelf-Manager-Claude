@@ -1,14 +1,15 @@
 # BookWave roadmap
 
 **Classification:** Active plan — canonical sequencing authority.
-**Reconciled:** 2026-10-03 against GitHub main `81a06e1`, including merged PRs #205–#210.
+**Reconciled:** 2026-10-03 against GitHub main `d3596b2f`, including merged PRs #205–#212,
+#214 and #215, plus the integrated #213/#216 reliability changes in this revision.
 
 This is the only document that answers what BookWave should work on next. `PRODUCT_SPEC.md` supplies
 requirement IDs, `product-decisions.md` owns settled product choices, and accepted ADRs own architecture.
 GitHub is authoritative following the 2026-10-01 cutover. Unqualified issue/PR numbers below refer to GitHub;
 historical Forgejo numbers are explicitly labelled.
 
-The owner selected CI wait/storage improvements as the immediate lane, followed by reliability acceptance.
+The selected CI wait/storage improvements are implemented; reliability acceptance is the next lane.
 Preserve playback continuity, progress, profile privacy and offline media before adding surfaces or platforms.
 An open issue is not proof that implementation is missing. See the
 [dated issue inventory](reviews/2026-10-02-reliability-inventory.md) for its 44-issue snapshot and evidence;
@@ -33,8 +34,8 @@ Merged code, automated verification and physical acceptance are separate statuse
   Keep GitHub-hosted runners and current dependency/task caches. Remote-cache wiring, credentials, hosting
   and task-output archive exclusions are outside the active lane; reliability work can proceed independently.
 
-These implementations are in review, not merged into this baseline. Local full gates passed; CI checks
-belong to each PR's current head. After merge, verify the first trusted main seed/release run and measure
+The CI implementations are merged. Local full gates passed; CI checks belong to each PR's current head.
+After each merge, verify the trusted main seed/release run and measure
 the next PR's restore/save timings before claiming a cloud performance improvement. The schema preflight
 also has real-Git fixtures for stacked PRs, published-schema edits/deletions and new versions.
 
@@ -47,10 +48,10 @@ also has real-Git fixtures for stacked PRs, published-schema edits/deletions and
   after switching unlocked profiles. PR #216 adds mutation-time A → B → A
   invalidation, transport ownership, captured-profile storage and guarded book/timer/session acceptance.
   Keep R-115's physical acceptance and the documented server/local preparation and outgoing-close limits.
-- #211 keeps the book title during phone timer presentation. #213 includes that work and keeps timer metadata
+- Merged #211 keeps the book title during phone timer presentation. The integrated #213 keeps timer metadata
   out of Android Auto, suppresses new scheduled starts while Auto is connected, preserves existing/manual
-  timers, and rechecks schedule eligibility on disconnect without starting audio. Review #211 before #213;
-  both remain unmerged. Use PD-002 and `device-test-sleep-schedule.md` for physical acceptance.
+  timers, and rechecks schedule eligibility on disconnect without starting audio.
+  Use PD-002 and `device-test-sleep-schedule.md` for physical acceptance.
 - Accept #128/#100 (headset continuity/route ownership), #185 (idle restore), #126/#196 (output state/Queue),
   #130 (phone/car controls), and #99/#191 (browse/profile invalidation). Principal implementations already
   exist on main. PR #205 adds follow-up tests and behavior.
@@ -66,10 +67,12 @@ also has real-Git fixtures for stacked PRs, published-schema edits/deletions and
 **Requirements:** PLAY-001/002/004/007, ROUTE-001/002, AUTH-002, LIB-002/003, specification 5.2 and 6.5.
 **Gate:** physical headset/car evidence remains required; JVM tests cannot close this gate.
 
-**Review integration order:** #214 supplies the shared coverage/app-unit prerequisite for #212/#215/#216.
-Review it first, then retarget those three PRs to updated main. Review #211 before #213 because #213 includes
-its presentation changes. The Silo decision does not block any of these PRs; verify the combined candidate before
-device acceptance. No PR merge is implied by this plan.
+**Integration evidence:** #214 supplied the shared coverage/app-unit prerequisite for #212/#215/#216;
+#211 supplied #213's phone presentation change. The combined candidate `c6236833` passed the forced
+`ktlintFormat verifyDebug -Pshelfplayer.warningsAsErrors=true --rerun-tasks --max-workers=4` gate in
+7m 21s, with all 1,119 tasks executed. This revision retains the same code, tests and workflows; the
+subsequent differences are documentation. Current-head PR and post-merge main checks remain authoritative.
+Silo remains deferred, and physical acceptance remains open.
 
 ## 2. Verify the merged download reliability lane
 
@@ -92,7 +95,7 @@ corroborated by code comments (`BW-DL-04 / #19`), so treat the others as inferre
 the in-flight Pause / Stop prompt) landed through GitHub PRs #207 (claim-aware removal, floored percent,
 domain recovery actions, `.part` bytes recorded on cancel) and #209 (Book button percent and ring, Pause / Stop /
 Keep prompt, Paused and Resume, claim-aware Downloads removal). Pause is offered only for a copy no other
-profile claims. Its device checks are R-119. PR #215 covers R-124's Book observer/Pause wiring gap with five
+profile claims. Its device checks are R-119. Merged PR #215 covers R-124's Book observer/Pause wiring gap with five
 actual ViewModel scenarios that fail when the observer projection is removed. The residual risks are:
 
 | Risk | Next evidence/action | Scope boundary |
@@ -126,7 +129,7 @@ car acceptance awaits hardware.
   requirements against current workflows. Retain full Standard regression acceptance; Quick alone is not a
   merge gate. Local `verifyDebug` still includes assembly.
 - **#124/#189 sleep:** schedule and countdown/grace/sensitivity landed in Forgejo PRs #63/#84/#93. The
-  #211/#213 review lane is above; notification, sensor, grace and lifecycle device acceptance remains pending.
+  #211/#213 implementation lane is above; notification, sensor, grace and lifecycle device acceptance remains pending.
 - **#101:** keep display-only series formatting cleanup separate; preserve primary selection and ordering.
 
 ## 4. System surfaces, then iOS

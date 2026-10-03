@@ -132,3 +132,17 @@ Local logs are under ignored `build/reliability-evidence/`; the full-gate log is
   named ownership check. The app test sandbox uses the same startup-isolation fix as PR #214.
 - Phone/system layout, actual Android Auto projection and continuity remain pending; no device was attached.
   Logs are under ignored `build/sleep-evidence/` (`car-before.log`, `car-after.log`, `verify-complete.log`).
+
+### Combined CI/reliability candidate — 2026-10-03
+
+- Candidate `c62368335ef2b831e74892e3399199e4d8078307` combines #211–#216. The forced
+  `ktlintFormat verifyDebug '-Pshelfplayer.warningsAsErrors=true' --rerun-tasks --max-workers=4`
+  gate passed in 7m 21s with all 1,119 tasks executed. App 521, playback 511, datastore 30 and library 129
+  debug tests passed without failures or errors. All 16 CI policy tests, Actionlint and Bash syntax passed.
+- Subsequent integration with main preserved the code, tests and workflow tree; differences are additive
+  acceptance evidence, the roadmap and CI timing documentation. Each PR still requires green checks on its
+  current head; observe the final main seed/release workflows after merging.
+- No device was attached. Notification, lock-screen, TalkBack/large text, Android Auto/headset, removable
+  storage, download process restart/shared-copy and two-hour soak acceptance remain pending. Record the
+  final merged APK commit and device/host versions before those checks; do not close their issues from this
+  automated evidence. The Silo pilot remains deferred for separate implications research.
