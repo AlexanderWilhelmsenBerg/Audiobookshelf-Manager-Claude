@@ -17,13 +17,13 @@ Merged code, automated verification and physical acceptance are separate statuse
 
 ## 0. CI efficiency before feature expansion
 
-- Finish #212's automatic main cache seeding in the PR container/job; retain one debug verification per merge
+- #212 implements automatic main cache seeding in the PR container/job; retain one debug verification per merge
   and the main workflow's release/security checks. Main push classification, schema immutability and secret
   scanning compare against the previous main SHA, preserving classpath-forced reruns.
 - Automatic checks supersede older runs on the same PR/main ref. Manual runs remain independent. Keep PR
   cache cleanup and prune obsolete main home-state generations without deleting shared content blobs.
-- Finish #214's debug/JVM coverage gate with the same filters/modules/80% threshold, explicit release/benchmark
-  compilation on PRs and release unit tests on main. Fix the app unit sandbox's production-collector leak;
+- #214 implements the debug/JVM coverage gate with the same filters/modules/80% threshold, explicit release/benchmark
+  compilation on PRs and release unit tests on main. Its app unit sandbox fix isolates production collectors;
   preserve the existing overspill regression. R-125's unenforced 90% redaction rule remains a separate follow-up.
 - Record queue delay, verification duration and cache restore/save time separately under #188. Quick remains
   formatting evidence; Standard retains the full regression gate and local `verifyDebug` includes assembly.
@@ -31,13 +31,24 @@ Merged code, automated verification and physical acceptance are separate statuse
   Keep GitHub-hosted runners and current dependency/task caches. Remote-cache wiring, credentials, hosting
   and task-output archive exclusions are outside the active lane; reliability work can proceed independently.
 
+These implementations are in review, not merged into this baseline. Local full gates passed; CI checks
+belong to each PR's current head. After merge, verify the first trusted main seed/release run and measure
+the next PR's restore/save timings before claiming a cloud performance improvement. The schema preflight
+also has real-Git fixtures for stacked PRs, published-schema edits/deletions and new versions.
+
 **Owner:** Build & Dependencies. **Requirements:** specification 16.5, 17.1/17.3 and 18.
 
 ## 1. Playback and Android Auto acceptance
 
 - PR #205's idle car restore, remembered-book observation, resume-tile invalidation and paused
   profile-switch fallback are merged. The follow-up profile-identity guard rejects a suspended restore
-  after switching unlocked profiles; retain the remaining bookkeeping integration gap in R-115.
+  after switching unlocked profiles. PR #216 adds mutation-time A → B → A
+  invalidation, transport ownership, captured-profile storage and guarded book/timer/session acceptance.
+  Keep R-115's physical acceptance and the documented server/local preparation and outgoing-close limits.
+- #211 keeps the book title during phone timer presentation. #213 includes that work and keeps timer metadata
+  out of Android Auto, suppresses new scheduled starts while Auto is connected, preserves existing/manual
+  timers, and rechecks schedule eligibility on disconnect without starting audio. Review #211 before #213;
+  both remain unmerged. Use PD-002 and `device-test-sleep-schedule.md` for physical acceptance.
 - Accept #128/#100 (headset continuity/route ownership), #185 (idle restore), #126/#196 (output state/Queue),
   #130 (phone/car controls), and #99/#191 (browse/profile invalidation). Principal implementations already
   exist on main. PR #205 adds follow-up tests and behavior.
@@ -53,10 +64,16 @@ Merged code, automated verification and physical acceptance are separate statuse
 **Requirements:** PLAY-001/002/004/007, ROUTE-001/002, AUTH-002, LIB-002/003, specification 5.2 and 6.5.
 **Gate:** physical headset/car evidence remains required; JVM tests cannot close this gate.
 
+**Review integration order:** #214 supplies the shared app-unit isolation prerequisite for #215/#216.
+Review it first, then retarget those two PRs to updated main. Review #211 before #213 because #213 includes
+its presentation changes. #212's CI policy can proceed independently; verify the combined candidate before
+device acceptance. No PR merge is implied by this plan.
+
 ## 2. Verify the merged download reliability lane
 
 Forgejo PR #94 (`8ea2122f`) already merged the former implementation queue. The table below is the
-merged implementation **awaiting physical/device acceptance**; none of these issues should close on code alone.
+merged implementation **awaiting physical/device acceptance**. Assess remaining open-issue closure against
+that evidence; #111's closed ownership work retains its physical follow-up under R-119.
 Forgejo issue numbers are the historical tracker's and are matched to GitHub by title and order; only #19 is
 corroborated by code comments (`BW-DL-04 / #19`), so treat the others as inferred.
 
@@ -73,7 +90,15 @@ corroborated by code comments (`BW-DL-04 / #19`), so treat the others as inferre
 the in-flight Pause / Stop prompt) landed through GitHub PRs #207 (claim-aware removal, floored percent,
 domain recovery actions, `.part` bytes recorded on cancel) and #209 (Book button percent and ring, Pause / Stop /
 Keep prompt, Paused and Resume, claim-aware Downloads removal). Pause is offered only for a copy no other
-profile claims. Its device checks are R-119; the remaining design gaps are R-120 to R-123 and the test gap R-124.
+profile claims. Its device checks are R-119. PR #215 covers R-124's Book observer/Pause wiring gap with five
+actual ViewModel scenarios that fail when the observer projection is removed. The residual risks are:
+
+| Risk | Next evidence/action | Scope boundary |
+| --- | --- | --- |
+| R-120 asynchronous cancel / new-claim race | Reproduce late writes and a new claim arriving during removal on a slow disk. | Do not introduce a cross-WorkManager lock without evidence. |
+| R-121 last-profile orphan copy | Separately scope the owner decision and space-recovery UX. | Unclaimed-copy cleanup remains outside the Phase 3 downloads work. |
+| R-122 shared transfer's original profile | Reproduce A stopping, B retaining a claim, then A signing out/being removed. | Do not choose re-enqueue versus claim resolution from source inference alone. |
+| R-123 resume without ETag | Exercise Pause/Resume with a no-ETag fixture and verify the truthful percent restart. | Preserve committed media; never resume bytes without a validator merely to keep percent monotonic. |
 
 Fix reproducible gaps in these paths. Do not build another execution adapter, persist WorkManager state into
 Room or reopen settled physical-copy ownership. Verify server-and-item identity at the storage/active-profile
@@ -90,14 +115,16 @@ car acceptance awaits hardware.
 - **Accessibility/UI:** reconcile #194/#195 findings into concrete child slices. PR #200 already changed
   mini/full players and motion (#182/#183 and part of #177/#178). Assess residual criteria rather than
   reapplying earlier designs. Prioritize contrast, clipping, player clearance and recovery before polish;
-  require narrow/wide, 2.0 font scale, TalkBack and reduced-motion evidence.
+  require narrow/wide, 2.0 font scale, TalkBack and reduced-motion evidence. The
+  [concrete child slices](testing/ui-roadmap-triage.md) distinguish current code from missing work, include
+  #176's root/pushed Sign-in Back context, and sequence #194's geometry/clearance/preview fixes before polish.
 - **#190 WebView flicker:** run its provider/version, opaque-background and Haze-isolation matrix on an
   affected device before choosing a permanent mitigation. The upstream explanation remains a hypothesis.
 - **#188 CI:** tiers landed in Forgejo PR #91, then GitHub PRs #173/#201. Audit remaining coverage/telemetry
   requirements against current workflows. Retain full Standard regression acceptance; Quick alone is not a
   merge gate. Local `verifyDebug` still includes assembly.
-- **#124/#189 sleep:** schedule and countdown/grace/sensitivity landed in Forgejo PRs #63/#84/#93. Use
-  `device-test-sleep-schedule.md` and PD-002 for remaining notification, sensor and lifecycle acceptance.
+- **#124/#189 sleep:** schedule and countdown/grace/sensitivity landed in Forgejo PRs #63/#84/#93. The
+  #211/#213 review lane is above; notification, sensor, grace and lifecycle device acceptance remains pending.
 - **#101:** keep display-only series formatting cleanup separate; preserve primary selection and ordering.
 
 ## 4. System surfaces, then iOS
