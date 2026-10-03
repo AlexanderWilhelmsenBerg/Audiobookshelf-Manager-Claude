@@ -1,7 +1,7 @@
 # Build and quality gates
 
 **Classification:** Current contract.  
-**Current as reviewed:** 2026-09-07.
+**Current as reviewed:** 2026-10-03.
 
 This document describes the build as it exists on `main`. Historical bootstrap decisions remain in the
 ADRs; they are not current setup instructions.
@@ -129,6 +129,25 @@ This is one of the mechanisms behind the project's no-destructive-migration post
 `org.gradle.configuration-cache=false` remains the current repository setting. The historical comment still
 calls this a Phase 0 choice; it should be revisited only as a measured build/tooling task, not enabled while
 unrelated feature work is in flight.
+
+`BuildIdentity` reads supplied environment variables/properties; it does not run Git or inspect the working
+tree during configuration. `DebugSigning` can still invoke `keytool` when the stable debug keystore is absent.
+Configuration-cache compatibility and encrypted persistence need a separate measured change.
+
+## GitHub cache and concurrency policy
+
+Every main push runs Standard verification in the same pinned container and `verify` job as PRs, seeding
+the cache that the next PR restores. The Main workflow retains release lint, supply-chain checks and release
+assembly, but repeats debug verification only on scheduled/manual runs. Main pushes compare against the
+event's previous SHA so classpath reruns, immutable-schema checks and secret scanning see the merge delta.
+
+New automatic PR/main runs cancel superseded work on the same ref. Explicit manual runs have independent
+concurrency groups. Fork PRs remain read-only. Same-repository PR refs retain their newest Gradle generation
+per kind; closed PRs are cleaned separately. Successful current-main seeds prune older home states per
+OS/job/environment kind, preserving shared dependency/transform/task-output blobs referenced by other jobs.
+
+The proposed Silo/shared remote cache pilot is deferred pending the owner's separate implications research.
+No remote-cache configuration or task-output archive exclusion is enabled by this CI change.
 
 ## Build identity and signing
 
