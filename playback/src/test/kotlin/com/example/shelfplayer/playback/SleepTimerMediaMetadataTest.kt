@@ -66,6 +66,29 @@ class SleepTimerMediaMetadataTest {
     }
 
     @Test
+    fun `ordinary title survives an active countdown projection`() {
+        val original = item(title = "Canonical title", displayTitle = "Display title", artist = "Ann Leckie")
+        val projected = assertNotNull(SleepTimerMediaMetadata.project(original, "12:34"))
+
+        assertEquals("12:34", projected.mediaMetadata.title?.toString())
+        assertEquals("Canonical title", SleepTimerMediaMetadata.ordinaryTitle(projected.mediaMetadata)?.toString())
+        assertEquals("Canonical title", SleepTimerMediaMetadata.ordinaryTitle(original.mediaMetadata)?.toString())
+
+        val restored = assertNotNull(SleepTimerMediaMetadata.project(projected, null))
+        assertEquals("Canonical title", SleepTimerMediaMetadata.ordinaryTitle(restored.mediaMetadata)?.toString())
+    }
+
+    @Test
+    fun `ordinary title of an untitled book stays empty while projected`() {
+        val projected = assertNotNull(
+            SleepTimerMediaMetadata.project(item(title = null, artist = "Anonymous"), "0:30"),
+        )
+
+        assertEquals("0:30", projected.mediaMetadata.title?.toString())
+        assertNull(SleepTimerMediaMetadata.ordinaryTitle(projected.mediaMetadata))
+    }
+
+    @Test
     fun `countdown uses compact clock formatting and rounds a partial second up`() {
         assertEquals("0:00", SleepTimerMediaMetadata.countdownLabel(0.seconds))
         assertEquals("0:42", SleepTimerMediaMetadata.countdownLabel(42.seconds))

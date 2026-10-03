@@ -6,6 +6,13 @@ giving it a section of its own.
 
 ## Unreleased
 
+### Sleep timer keeps the book title in the app (PLAY-008, #189)
+
+- The full player and mini-player keep showing the book title while a sleep timer runs. Since the #77 system
+  media change they showed the countdown clock as the title. The countdown stays in the Sleep action.
+- The notification, lock screen, Android Auto and Bluetooth still show the countdown as the session title.
+  Whether car displays should keep the book title instead is an open owner decision (R-111).
+
 ### Book download button: live percent, Pause/Stop, Resume (DL-001, DL-003, PD-003, PD-004, #111)
 
 - The Book screen's download button shows an integer percent (0 to 99, never 100 while running) inside the

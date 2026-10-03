@@ -2,6 +2,7 @@ package com.example.shelfplayer.playback
 
 import android.os.Bundle
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import kotlin.time.Duration
 
 /**
@@ -15,6 +16,10 @@ import kotlin.time.Duration
  * Keeping that text to only the short clock avoids a long book-title marquee restarting on every one-second
  * metadata update in compact System UI. The original values travel in BookWave-owned extras so every tick
  * rebuilds from truth, and idle state restores the exact book metadata.
+ *
+ * The projection is for the shared session (notification, Android Auto, Bluetooth). BookWave's own full
+ * player and mini-player read [ordinaryTitle] instead, so the book title never turns into a clock in the app;
+ * the app shows the countdown in the Sleep action.
  */
 internal object SleepTimerMediaMetadata {
 
@@ -73,6 +78,19 @@ internal object SleepTimerMediaMetadata {
             .setExtras(extras)
             .build()
         return item.buildUpon().setMediaMetadata(projected).build()
+    }
+
+    /**
+     * The book's own title, whether or not a countdown is currently projected over it (PD-002: the projection
+     * must not change the book's identity inside BookWave).
+     */
+    fun ordinaryTitle(metadata: MediaMetadata): CharSequence? {
+        val extras = metadata.extras
+        return if (extras?.getBoolean(KEY_PROJECTED, false) == true) {
+            extras.getCharSequence(KEY_BASE_TITLE)
+        } else {
+            metadata.title
+        }
     }
 
     private fun Long.twoDigits(): String = toString().padStart(2, '0')
