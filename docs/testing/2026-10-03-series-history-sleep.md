@@ -9,7 +9,7 @@ dependency or permission changes. Private media text is excluded from shared evi
 
 | Case | Expected result | Evidence/status |
 | --- | --- | --- |
-| FIX-A01 | Formatter and full warnings-as-errors `verifyDebug` pass. | PASS: final formatter and warnings-as-errors `verifyDebug`, 2026-10-03 20:22 UTC; 1m48s. |
+| FIX-A01 | Formatter and full warnings-as-errors `verifyDebug` pass. | PASS: final formatter and warnings-as-errors `verifyDebug`, 2026-10-03; 1m48s. |
 | FIX-A02 | Series rows show finished icon/text, in-progress state, full title/author/sequence/progress; geometry works at 320/375/414/768 dp × font 1.0/1.3/2.0. | Native 20/20 pass; old-row delegation fails all three guards; restored 20/20 pass. Includes 12 geometry combinations, two states, two inspected native captures and four route/screen cases. See Hallmark findings for renderer limitations. |
 | FIX-A03 | Series ordering/counts, continuation, details vs Play and minimum targets remain correct. | Existing four `SeriesScreenTest` cases pass; full gate PASS. |
 | FIX-A04 | Rolling checkpoints update one row; a new local event starts a new checkpoint and preserves previous position/time. | Both new `MigrationTest` checkpoint cases failed insert-only implementation; fixed transaction passes. Includes Room close/reopen and existing upgrade suite PASS in final gate. |
@@ -28,7 +28,7 @@ compile/fixture/render failures are repaired before the final gate and are not r
 
 ## Physical execution required
 
-The cable was reconnected and ADB reports one authorized phone. Revised-APK physical acceptance is pending; every physical case below is **NOT RUN** until its observation is recorded.
+The cable was reconnected and ADB reports one authorized phone. The table below is the complete procedure inventory. Execution and partial coverage are recorded below it; unrecorded subcases remain **NOT RUN**.
 Earlier debug 2175 phone results cover older behavior and do not establish acceptance for these changes.
 Record APK source/version/code/signer/hash, device/API, UTC interval, settings, expected/observed result
 and redacted/private evidence for each case using the [verification register](roadmap-verification-register.md).
@@ -52,5 +52,55 @@ and redacted/private evidence for each case using the [verification register](ro
 
 ## Delivery identity
 
-Final commit, gate/CI run, APK identity/checksum and final automated totals will be recorded after validation.
+The revised phone acceptance below records the exact tested code, successful gate/CI run and signed APK identity/checksum. The final merged build is identified in its delivery handoff.
 Final local gate: PASS. App 541, playback 527, Room 56 and settings 30 tests pass with zero failures/errors/skips. A [native History row](../reviews/evidence/history-event-375dp-font1.3.png) was inspected with date/time, position, chapter event and percent. Physical results will identify the exact installed APK.
+
+## Revised phone acceptance — 2026-10-03
+
+The cable was reconnected. Samsung SM-S928B, Android 16 / API 36; 1080 × 2340,
+450 dpi, Norwegian and the user's existing appearance. Tests use debug 2177 / 0.10.6.1,
+source `267a248e66cfaee55ac74a73852c045196412f00`,
+APK SHA-256 `dfe2771ff37c71df5831d7c0239cafdc8e9dd08a5854a87632a795b38e246a66`.
+The signer matches the existing installation
+(`c63c72cb2c4b32a8ed3775e4cc0b5754abf06b5beb4481ea5a8f5c5c0dd9217c`);
+`adb install -r` succeeded with sign-in, downloaded audio, catalogue and prior History intact.
+Pinned Loopbound source is `7e24529b2a9e419218d2a1423d832b1bf587c8ef`.
+
+These observations replace the pending status only for the named subcases. They do not establish
+acceptance for every item in the broad physical matrix above. UI screenshots/XML and temporary
+Room copies stay in ignored private evidence; shared records use only event types and numeric progress.
+Fresh screenshots were taken after sheet/font transitions because the capture harness's initial
+image can precede the settled layout. UiAutomator idle failures were recorded and not treated as
+fresh XML or a layout pass.
+
+| Case/subcase | Observation and UTC interval | Result |
+| --- | --- | --- |
+| Connected storage/Keystore tier | Environment checker reports one authorized device; all 27 `:core:datastore:connectedDebugAndroidTest` cases, 1m20s, zero failures/skips. An isolated test application ID avoids the existing device's unrelated test-package certificate; production data is untouched. | PASS |
+| FIX-D01 / FIX-D02, finished rows and large text | 20:28–20:32: cached requested series, complete title/author/selected sequence/duration and visible checkmark + Fullført. The 100% and 200% portrait rows grow and wrap; the first complete long-title row remains readable. Font scale restored to 1.0. | PASS for observed rows; other states, landscape, English, appearances, missing cover, final row and TalkBack remain NOT RUN. |
+| FIX-D03, navigation while playing | Media session remains PLAYING while opening the series. History remains available after timer expiry. | PASS for these routes; audible/headset judgement and offline series route remain NOT RUN. |
+| FIX-D04, online rolling row | Same checkpoint ID advances from 64,044,599 ms / 20:27:30.883 to 64,084,986 ms / 20:28:11.246, and remains in the previous interval after Pause. New Play/timer events create new interval rows. | PASS |
+| FIX-D05, ordinary crossing with Activity backgrounded | Seek to next chapter start and rewind 30 seconds while paused; Play then Home at 20:35:59. Service records ChapterCrossed at 20:36:34.023, position 66,777,490 ms, 4,331 ms beyond the boundary. The old interval and new checkpoint both remain. Reopened History shows the distinct chapter/date/time/progress row. Return via the earlier expiry History row restores 64,283,102 ms at 20:38:14. | PASS for natural crossing and History return; account/write race variants remain NOT RUN. |
+| FIX-D07, paused remainder and actual expiry | One minute starts 20:30:55.137; Android media Pause 20:31:10.932 freezes at 0:44. Still PAUSED at 20:32:22.378 with unchanged position, beyond the original remainder. Play 20:32:22.882; expiry pauses at 20:33:07.521 after the saved audible remainder. Font configuration change does not consume the timer. | PASS; notification text, headset, buffering and real focus-loss variants remain NOT RUN. |
+| FIX-D08, paused creation | 20:29:20: preset/custom/end-of-chapter controls have disabled ancestors; Off remains enabled, and the explanation is visible. Controls enable after Play. Controller-only empty/mid-start races are covered by regression tests. | PASS for paused UI; empty-player physical variant remains NOT RUN. |
+
+Offline force-stop recovery and sensitivity/settings observations are recorded in the additional results table below.
+Real power loss/reboot, bedside breathing/false-trigger calibration, headset/car/DHU, fade-at-boundary,
+schedule boundary and soak acceptance remain NOT RUN. Synthetic sensor tests do not prove bedside
+sensitivity. The historical #36 / GitHub #128 hardware matrix remains open.
+
+| Additional case/subcase | Observation and UTC interval | Result |
+| --- | --- | --- |
+| FIX-D04, offline background listening and abrupt force-stop | 20:38:26–20:40:54: both Wi-Fi and mobile data disabled; Android reports no active default network. Cold launch has no playing session; explicit Resume plays cached audio. Activity backgrounded for 130 seconds. The same checkpoint ID advances from 64,291,632 ms / 20:38:42.731 to 64,414,222 ms / 20:40:45.313. Force-stop at 20:40:47, cold reopen and explicit Resume at 20:40:53 recover within **1,329 ms** of the pre-kill media position. Wi-Fi and data both restored to 1; playback paused. | PASS; real power loss, reboot and separate process-kill variant remain NOT RUN. |
+| FIX-D12, choices and local persistence | 20:43–20:45: all five options visible. Selecting Extra high and Ultra high changes the UI and writes their corresponding enum names to local Proto DataStore. Ultra guidance is visible. Normal is restored and confirmed in DataStore. | PASS for selection/persistence; real motion, sensing lifecycle and bedside calibration remain NOT RUN. |
+
+PR validation for code commit `267a248e66cf`:
+[Standard CI 37151277034](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37151277034)
+PASS. The tested signed APK is from
+[Build APK 37151276406](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37151276406),
+with the artifact digest independently checked before install. Subsequent acceptance-log changes are
+prose only; final merge CI and APK identity are recorded in the delivery handoff.
+
+Cleanup at 20:48:03 UTC: returning through the original 20:27 History marker restores the exact
+pre-test book position **64,025,977 ms**, with playback PAUSED. Test listening and chapter seeks are
+not left as the listener's current position. Font scale 1.0, density 450, automatic rotation 1,
+Wi-Fi/data enabled and Normal sensitivity are restored; no active sleep timer remains.

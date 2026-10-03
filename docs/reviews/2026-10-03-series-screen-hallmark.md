@@ -107,8 +107,7 @@ These are Android Compose renders drawn directly onto a native bitmap canvas, no
 `captureToImage`/PixelCopy initially timed out waiting for a hardware window; direct Android View drawing
 produced inspected renders without depending on that unavailable window. A JVM layout/render check
 does not prove physical rendering, TalkBack navigation, audible playback continuity or effective glass
-contrast across all appearance choices. The previously supplied phone was not attached when integration
-attempted fresh physical acceptance; the checklist below remains pending.
+contrast across all appearance choices. The phone was reconnected for integration acceptance. Finished rows at 100% and 200% portrait text were inspected on debug 2177; see the [execution log](../testing/2026-10-03-series-history-sleep.md). The remaining physical matrix below is still required.
 
 ## Required physical checks
 
