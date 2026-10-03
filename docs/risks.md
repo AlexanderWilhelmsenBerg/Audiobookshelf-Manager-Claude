@@ -272,6 +272,21 @@ tolerated, not worked around by resuming unvalidated.
 | R-124 | **Automated wiring gap closed, 2026-10-03.** Five `BookViewModelDownloadTest` scenarios exercise the actual observer, menu, claims and Pause use case with repository/scheduler fixtures. | A refactor that drops execution evidence must fail rather than quietly restore the Failed label during retry. | All five tests failed when the ViewModel's observer projection was removed, then passed when restored. Retry/live progress, durable fallback/completion, Pause-before-cancel, shared claims and server/item changes are covered. Physical acceptance remains R-119. |
 | R-125 | **The 90% redaction-coverage rule in `:core:common` is defined but not enforced by `verifyDebug`.** PRODUCT_SPEC 17.3's "security policies: 90%" is that module's own `koverVerify`, and nothing makes the root or module `verifyDebug` depend on it. The root gate (`koverVerifyGate`) enforces only the 80% domain-and-core rule. The 2026-10-03 coverage change (debug-only `gate` variant) did not add the hook; the owner has not decided. | Redaction coverage could fall below 90% with a green gate, and redaction is the rule between an access token and a pasted bug report. | Decide, then add `dependsOn(tasks.named("koverVerify"))` to `:core:common`'s `verifyDebug`. Measured 92.7% when wired, so it may pass today. Owner decision. |
 
+### R-106 — inconclusive projection reads across a car lifecycle
+
+The 2026-10-03 review of GitHub #128 (historical Forgejo #36) reproduced a missed departure after
+Projection → Unknown → NotConnected and a false second arrival after Projection → Unknown → Projection.
+The service compared only the immediately previous provider read, even though its existing lifecycle latch
+still owned the drive. Three of five real monitor/broadcast-to-service regressions failed on main `3e699786`;
+all five passed when the service used that latch. Unknown remains inconclusive; only a positive NotConnected
+ends the lifecycle, and duplicate/late controller cleanup cannot end it twice.
+
+This repairs the tested service bookkeeping, not physical audio continuity. Keep #128/R-106 open until
+the [review matrix](reviews/2026-10-03-issue-128-continuity-review.md) and
+[verification register](testing/roadmap-verification-register.md) are executed against the recorded APK.
+In particular, timer expiry after focus already paused the player but before late recovery is a required
+cross-policy regression/device case, currently unproven. No new routing owner or generic focus resume is added.
+
 ---
 
 ## What this register is not

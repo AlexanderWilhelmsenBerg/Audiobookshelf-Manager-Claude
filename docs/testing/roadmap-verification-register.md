@@ -40,7 +40,7 @@ phone covers its own configuration; leave the other API/host rows pending until 
 | A-01 | `ktlintFormat`, then `verifyDebug -Pshelfplayer.warningsAsErrors=true`; force `--rerun-tasks` after classpath changes. | Combined #211–#216 candidate `c6236833` passed: all 1,119 tasks executed in 7m 21s; app 521, playback 511, datastore 30 and library 129 tests, zero failures/errors. Rerun for a subsequent implementation change. |
 | A-02 | Release lint, `testReleaseUnitTest`, release assembly, SBOM and vulnerability checks. | Main `d3596b2f` completed all tiers; combined `d81de778` release tests reran all 394 tasks in 1m 56s, 1,376 tests with zero failures/errors. Record the final main run separately. |
 | A-03 | CI policy fixtures, Actionlint and Bash syntax: main/PR/manual cancellation, previous-main classification, scoped cache pruning and immutable Room schemas. | All 16 policy tests passed, including real-Git stacked-PR/schema fixtures. Observe a trusted main seed and the next PR restore/save timings; first main seed `18c2e618` passed. |
-| A-04 | Prove each regression fails without its fix; inspect actual production callers. | R-115 generation/acceptance/lock/outbox, scheduled-car suppression, phone title and R-124 Book observer/Pause regressions have recorded red/green evidence. Add the #128 projection-transition regression to the final record. |
+| A-04 | Prove each regression fails without its fix; inspect actual production callers. | R-115 generation/acceptance/lock/outbox, scheduled-car suppression, phone title and R-124 Book observer/Pause regressions have recorded red/green evidence. #128's actual monitor-to-service regression failed 3/5 on main `3e699786`, then passed 5/5 with the lifecycle latch. Record its broader/full-gate results below. |
 | A-05 | Audiobookshelf contract fixtures, missing required fields/unknown fields, compatibility failures and migration tests. | Included in the full gate. Live selected-server-version acceptance remains pending; no new endpoint or schema was introduced by #211–#216. |
 | A-06 | `:core:datastore:connectedDebugAndroidTest`. | **NOT RUN**; requires the supplied phone/emulator. Record passcode/encryption and lifecycle instrumented cases from the task's report. |
 | A-07 | Domain/core and security-policy coverage. | Debug/JVM gate enforces the existing 80% domain/core rule. R-125's separate 90% redaction hook is still a follow-up, not accepted from that gate. |
@@ -77,6 +77,8 @@ The source review found a departure edge when a positive projection is followed 
 provider read and then a positive disconnection. The focused follow-up must prove the actual service
 callback cleans up ownership once; **Unknown alone must not disconnect**. Keep #128 open for hardware
 acceptance even after that regression passes.
+Run and log every step of the [focused review's complete matrix](../reviews/2026-10-03-issue-128-continuity-review.md)
+alongside C-01–C-08; its focus/boundary order, two-headset, fallback, late-return and diagnostic cases are required.
 
 | ID | Scenario | Required evidence / pass condition |
 | --- | --- | --- |
