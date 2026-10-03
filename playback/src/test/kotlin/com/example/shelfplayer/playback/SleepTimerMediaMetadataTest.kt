@@ -2,6 +2,8 @@ package com.example.shelfplayer.playback
 
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import com.example.shelfplayer.core.model.playback.SleepTimerMode
+import com.example.shelfplayer.core.model.playback.SleepTimerState
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -96,6 +98,45 @@ class SleepTimerMediaMetadataTest {
         assertEquals("1:05:06", SleepTimerMediaMetadata.countdownLabel(65.minutes + 6.seconds))
         assertEquals("0:02", SleepTimerMediaMetadata.countdownLabel(1_001.milliseconds))
     }
+
+    @Test
+    fun `no countdown label while Android Auto is bound`() {
+        val active = activeTimer()
+
+        assertEquals("12:34", SleepTimerMediaMetadata.projectionLabel(active, carBound = false))
+        assertNull(SleepTimerMediaMetadata.projectionLabel(active, carBound = true))
+        assertNull(SleepTimerMediaMetadata.projectionLabel(SleepTimerState.Idle, carBound = false))
+        assertNull(SleepTimerMediaMetadata.projectionLabel(SleepTimerState.Idle, carBound = true))
+    }
+
+    @Test
+    fun `car connect restores the book title from an active projection and disconnect projects again`() {
+        val active = activeTimer()
+        val book = item(title = "Canonical title", displayTitle = "Display title", artist = "Ann Leckie")
+        val projected = assertNotNull(SleepTimerMediaMetadata.project(book, "12:34"))
+
+        val restored = assertNotNull(
+            SleepTimerMediaMetadata.project(projected, SleepTimerMediaMetadata.projectionLabel(active, true)),
+        )
+        assertEquals("Canonical title", restored.mediaMetadata.title?.toString())
+        assertEquals("Display title", restored.mediaMetadata.displayTitle?.toString())
+        assertEquals("Ann Leckie", restored.mediaMetadata.artist?.toString())
+        assertNull(
+            SleepTimerMediaMetadata.project(restored, SleepTimerMediaMetadata.projectionLabel(active, true)),
+            "a repeated car-bound publish must not replace the item again",
+        )
+
+        val again = assertNotNull(
+            SleepTimerMediaMetadata.project(restored, SleepTimerMediaMetadata.projectionLabel(active, false)),
+        )
+        assertEquals("12:34", again.mediaMetadata.title?.toString())
+    }
+
+    private fun activeTimer() = SleepTimerState(
+        mode = SleepTimerMode.Fixed(30.minutes),
+        remaining = 12.minutes + 34.seconds,
+        isFading = false,
+    )
 
     private fun item(title: String?, displayTitle: String? = null, artist: String? = null): MediaItem =
         MediaItem.Builder()

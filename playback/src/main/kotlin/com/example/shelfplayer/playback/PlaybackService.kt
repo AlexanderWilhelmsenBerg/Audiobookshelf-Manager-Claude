@@ -406,15 +406,7 @@ class PlaybackService : MediaLibraryService() {
         // Issue #75 — publish only after the real MediaSession exists. A direct session token lets a
         // recreated Activity attach to this exact session without using the service token that can start us.
         liveSession.publish(mediaSession.token)
-        // PRODUCT_SPEC PLAY-008 — the timer is given the player it is allowed to stop. It is a
-        // singleton in this process, so it is the same object the app's UI drives.
-        sleepTimer.attach(
-            exoPlayer,
-            resumeOwner = object : SleepTimerResumeOwner {
-                override suspend fun resume(stillAuthorized: () -> Boolean): Boolean =
-                    performFreshnessPlay(explicit = true, stillAuthorized = stillAuthorized)
-            },
-        )
+        attachSleepTimer(exoPlayer)
         // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does. It is given the
         // player rather than owning one, for the same reason the timer is: there is exactly one.
         sessionSync.attach(exoPlayer)
@@ -432,6 +424,18 @@ class PlaybackService : MediaLibraryService() {
         outputDevices.start(scope, DeviceActions())
         observeBrowseTreeInvalidation()
         logger.info(LogCategory.Playback, "Playback service started")
+    }
+
+    /** PLAY-008 — initialize connection truth before the shared timer observes this service's player. */
+    private fun attachSleepTimer(exoPlayer: ExoPlayer) {
+        synchronizeSleepTimerCarConnection()
+        sleepTimer.attach(
+            exoPlayer,
+            resumeOwner = object : SleepTimerResumeOwner {
+                override suspend fun resume(stillAuthorized: () -> Boolean): Boolean =
+                    performFreshnessPlay(explicit = true, stillAuthorized = stillAuthorized)
+            },
+        )
     }
 
     /**
@@ -1351,7 +1355,7 @@ class PlaybackService : MediaLibraryService() {
         sleepTimerWatch = scope.launch {
             sleepTimer.state.collect { timer ->
                 sleepTimerState = timer
-                publishSleepTimerMetadata(timer)
+                // Also projects the countdown (or restores the title), see publishMediaButtons.
                 publishMediaButtons()
             }
         }
@@ -1368,9 +1372,8 @@ class PlaybackService : MediaLibraryService() {
     private fun publishSleepTimerMetadata(timer: SleepTimerState) {
         val current = player ?: return
         val item = current.currentMediaItem ?: return
-        val timerLabel = timer.takeIf { it.isActive }?.let { active ->
-            SleepTimerMediaMetadata.countdownLabel(active.remaining)
-        }
+        // PD-002 (2026-10-03): never while a car controller is bound; the book title stays.
+        val timerLabel = SleepTimerMediaMetadata.projectionLabel(timer, carConnections.isConnected())
         val replacement = SleepTimerMediaMetadata.project(item, timerLabel) ?: return
         val index = current.currentMediaItemIndex
         if (index !in 0 until current.mediaItemCount) return
@@ -1808,6 +1811,11 @@ class PlaybackService : MediaLibraryService() {
         val carWasConnected = carConnections.isConnected()
         val carArrivedAt = if (carWasConnected) null else clock.elapsed()
         carConnections.onConnected()
+        synchronizeSleepTimerCarConnection()
+        // PD-002 (2026-10-03): republish synchronously, before Media3 sends the car its initial state, so the
+        // car never sees the timer button or the countdown title. publishMediaButtons() also restores the book
+        // title, through replaceMediaItem only, so playback is never interrupted.
+        publishMediaButtons()
         carContinuitySessionEstablished = true
         if (player?.isPlaying == true) {
             // A car can bind without changing isPlaying or emitting a new device list. Seed departure
@@ -1864,6 +1872,7 @@ class PlaybackService : MediaLibraryService() {
         val carWasConnected = carConnections.isConnected()
         carConnections.onDisconnected()
         val carStillConnected = carConnections.isConnected()
+        synchronizeSleepTimerCarConnection()
         val finalControllerDeparture = carWasConnected && !carStillConnected
         logAuto(
             "A car controller disconnected from the media session",
@@ -1916,6 +1925,7 @@ class PlaybackService : MediaLibraryService() {
 
         if (update.initial) {
             projectionOwnsCarLifecycle = update.current.carConnected
+            synchronizeSleepTimerCarConnection()
             if (update.current.carConnected && carConnections.isConnected()) {
                 carContinuitySessionEstablished = true
             }
@@ -1943,6 +1953,12 @@ class PlaybackService : MediaLibraryService() {
                 projectionOwnsCarLifecycle = false
             }
         }
+        synchronizeSleepTimerCarConnection()
+    }
+
+    /** The timer owns eligibility; this adapter supplies controller/projection connection truth. */
+    private fun synchronizeSleepTimerCarConnection() {
+        sleepTimer.onCarConnectionChanged(carConnections.isConnected() || projectionOwnsCarLifecycle)
     }
 
     private fun completeCarDeparture(source: String, physicalProjection: Boolean = false) {
@@ -2071,6 +2087,9 @@ class PlaybackService : MediaLibraryService() {
             },
         )
         mediaButtonPublishing.markPublished(outputButtons, carBound)
+        // Every car transition and every timer tick reaches here, so the countdown projection follows the
+        // car-bound state (PD-002, 2026-10-03). project() returns null when nothing changes.
+        publishSleepTimerMetadata(sleepTimerState)
     }
 
     /**
@@ -3128,7 +3147,12 @@ class PlaybackService : MediaLibraryService() {
                 ControllerAccess.LibraryAndPlayback ->
                     MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
                         .buildUpon()
-                        .add(SessionCommand(NotificationButtons.ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
+                        .apply {
+                            // PD-002 (2026-10-03): a car controller is never granted the sleep timer.
+                            if (!controller.isCar()) {
+                                add(SessionCommand(NotificationButtons.ACTION_EXTEND_SLEEP_TIMER, Bundle.EMPTY))
+                            }
+                        }
                         .add(SessionCommand(NotificationButtons.ACTION_SKIP_BACK, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_SKIP_FORWARD, Bundle.EMPTY))
                         .add(SessionCommand(NotificationButtons.ACTION_ADD_BOOKMARK, Bundle.EMPTY))
@@ -3386,6 +3410,30 @@ class PlaybackService : MediaLibraryService() {
                 }
             }
 
+        /** The error code to refuse [customCommand] with, or `null` when this controller may run it. */
+        private fun customCommandRefusal(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+        ): Int? = when {
+            !session.mayBrowse(controller) -> {
+                denied(controller, "onCustomCommand")
+                SessionError.ERROR_PERMISSION_DENIED
+            }
+
+            // PD-002 (2026-10-03): defense in depth for a stale cached button; onConnect does not grant it.
+            customCommand.customAction == NotificationButtons.ACTION_EXTEND_SLEEP_TIMER && controller.isCar() -> {
+                logger.info(
+                    LogCategory.Playback,
+                    "A car controller tried to extend the sleep timer and was refused",
+                    LogField.Public("controller", controller.packageName),
+                )
+                SessionError.ERROR_NOT_SUPPORTED
+            }
+
+            else -> null
+        }
+
         /**
          * Executes only commands already granted to library-capable controllers in [onConnect]. The explicit
          * guard remains defense in depth: bookmark/output/sleep-timer actions should never become an escape
@@ -3397,10 +3445,8 @@ class PlaybackService : MediaLibraryService() {
             customCommand: SessionCommand,
             args: Bundle,
         ): ListenableFuture<SessionResult> {
-            if (!session.mayBrowse(controller)) {
-                denied(controller, "onCustomCommand")
-                return Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
-            }
+            val refusal = customCommandRefusal(session, controller, customCommand)
+            if (refusal != null) return Futures.immediateFuture(SessionResult(refusal))
             when (customCommand.customAction) {
                 NotificationButtons.ACTION_EXTEND_SLEEP_TIMER -> sleepTimer.extend()
 

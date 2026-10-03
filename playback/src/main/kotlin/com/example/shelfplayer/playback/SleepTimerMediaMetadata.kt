@@ -3,6 +3,7 @@ package com.example.shelfplayer.playback
 import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import com.example.shelfplayer.core.model.playback.SleepTimerState
 import kotlin.time.Duration
 
 /**
@@ -19,7 +20,8 @@ import kotlin.time.Duration
  *
  * The projection is for the shared session (notification, Android Auto, Bluetooth). BookWave's own full
  * player and mini-player read [ordinaryTitle] instead, so the book title never turns into a clock in the app;
- * the app shows the countdown in the Sleep action.
+ * the app shows the countdown in the Sleep action. While an Android Auto controller is bound nothing is
+ * projected at all ([projectionLabel]); the shared session then carries the plain book title.
  */
 internal object SleepTimerMediaMetadata {
 
@@ -36,6 +38,13 @@ internal object SleepTimerMediaMetadata {
         val minutes = totalMinutes % MINUTES_PER_HOUR
         return hours.toString() + ":" + minutes.twoDigits() + ":" + seconds.twoDigits()
     }
+
+    /**
+     * PD-002 (2026-10-03): no countdown on any shared session surface while Android Auto is bound. The timer
+     * keeps running; only its projection into the session metadata is withheld.
+     */
+    fun projectionLabel(timer: SleepTimerState, carBound: Boolean): String? =
+        if (carBound || !timer.isActive) null else countdownLabel(timer.remaining)
 
     /** Returns a replacement item only when the public media metadata actually needs to change. */
     fun project(item: MediaItem, timerLabel: String?): MediaItem? {

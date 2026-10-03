@@ -117,7 +117,8 @@ notification/session action still extends the same playback-owned timer.
 
 On Android 13 and newer, where System UI renders the media card from the MediaSession, BookWave may add the
 localized sleep countdown to the current media byline while the timer is active. It must preserve and restore
-the original byline exactly when the timer becomes idle.
+the original byline exactly when the timer becomes idle. (#77 later moved the countdown from the byline to the
+title, because the byline was invisible on the compact media card in physical testing; see the amendment below.)
 
 Shake-to-restart remains explicit opt-in. After a timer naturally expires and pauses playback, motion sensing
 may remain active for a configurable grace period of at most ten seconds. The default is ten seconds and the
@@ -141,7 +142,41 @@ predates this setting, High is easier to trigger, and Low requires a more delibe
 - Natural expiry still records/closes the expired timer and performs its progress sync. A grace restart is a
   new timer session rather than rewriting the completed history entry.
 - The MediaSession metadata projection is shared with Android system media surfaces; it must not create a
-  second countdown owner or modify the book title/progress identity.
+  second countdown owner or modify the book's identity inside BookWave (its own players keep the book title
+  and progress).
+
+### Amended 2026-10-03 — the sleep timer never shows in Android Auto
+
+Owner decision: "A sleep timer should never show in Android Auto. I shouldn't sleep while driving."
+
+- While an Android Auto or Android Automotive controller is bound (`CarConnections.isConnected`), BookWave
+  projects no countdown into the session (the book title stays), leaves the timer button out of every
+  media-button slot, does not grant the extend command to car controllers and refuses it if one sends it.
+  The countdown and button return, within a second, when the car is no longer bound.
+- The timer keeps running. Only its presentation changes. BookWave's own full player still shows it.
+- Media3 has one shared session with no per-controller metadata or custom actions, so the phone's notification
+  and lock screen also lose the countdown and the sleep/extend button for as long as a car is bound. This is a
+  deliberate carve-out from "must visibly communicate the remaining time" above and from PLAY-008's notification
+  wording.
+- A plain Bluetooth car without Android Auto is not a Media3 controller and cannot be detected. It keeps the
+  countdown as the title.
+- Timers keep running and the schedule is unchanged (owner, 2026-10-03): "If I am suddenly connected while
+  sleep timer is on it's by mistake. Either sleep timer was set on by mistake, or I am close enough to the car
+  when it starts when I am about to sleep. So just continue the sleep timer and because of the already present
+  headset wiring I shouldn't hear a difference and can sleep soundly." A car connecting therefore neither
+  cancels nor pauses an existing manual or scheduled timer; route handling keeps audio on the headset.
+
+### Amended 2026-10-03 — suppress new nightly timers while the car is connected
+
+The approved reliability plan narrows automatic scheduling during a car connection. No new nightly timer
+starts while Android Auto/Automotive owns the connection, including a timer whose persistence is still
+suspended when the car arrives. A controller rebind does not temporarily restore automatic eligibility while
+projection still owns the car lifecycle.
+
+Existing timers continue, and an explicit manual timer remains available in BookWave's player. Disconnect
+re-evaluates the ordinary nightly window only if playback is already active; it does not start audio or erase
+the listener's manual cancellation for that window. This amendment replaces the earlier "schedule is
+unchanged" wording for new automatic timer creation only.
 
 ---
 
