@@ -87,6 +87,19 @@ Local logs are under ignored `build/reliability-evidence/`; the full-gate log is
 - This does not retire R-115's queue-opening bookkeeping or away-and-back profile generation concerns.
   No hardware acceptance or issue closure is claimed.
 
+### Book download execution wiring — 2026-10-03
+
+- Five `BookViewModelDownloadTest` scenarios cross the actual ViewModel/observer/repository/use-case boundary:
+  a Failed manifest being retried, live percent capped at 99 until durable completion, missing execution
+  fallback, Pause written before cancellation, shared-claim refusal and profile/server changes.
+- Removing the ViewModel's execution projection made all five fail. Restoring the unchanged production
+  wiring made all five pass. `BookScreen` collects `menu`, renders `menu.download` and routes the prompt's
+  Pause to `onPauseDownload`; the test does not substitute the pure button policy for that ViewModel path.
+- R-124's automated gap is closed. R-119's TalkBack, large-font, process restart and shared-copy device
+  acceptance remains pending. Logs are under ignored `build/book-evidence/`.
+- `ktlintFormat verifyDebug '-Pshelfplayer.warningsAsErrors=true' --max-workers=4` passed in 2m 33s
+  (1,119 tasks). The full app suite includes these five scenarios; no production behavior changed.
+
 ### Nightly timer during car connection — 2026-10-03
 
 - Seven new controller scenarios cover automatic suppression, the window start and disconnect, preservation
