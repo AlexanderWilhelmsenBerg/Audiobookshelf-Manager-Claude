@@ -1,13 +1,16 @@
 # Reliability acceptance
 
 **Classification:** Acceptance checklist, not a second roadmap.
-**Baseline:** main `81a06e19` plus the reliability follow-ups; record the exact candidate commit when executing.
+**Baseline:** main `3e699786` includes #211–#216; record the exact candidate APK commit when executing.
 
 ## Evidence record
 
 Record APK commit, Android/API version, device/host type and results. Use fixture accounts/media; redact
 private titles, usernames, hosts and paths from shared captures. `adb devices` returned no attached device
 during the 2026-10-02 inventory. Every physical scenario below remains pending.
+The owner will supply a phone later. Log each runbook step in the
+[verification register](roadmap-verification-register.md), including unavailable configurations and the
+historical #36 / GitHub #128 headset-continuity follow-up.
 
 ## Playback and car
 

@@ -15,6 +15,9 @@ An open issue is not proof that implementation is missing. See the
 [dated issue inventory](reviews/2026-10-02-reliability-inventory.md) for its 44-issue snapshot and evidence;
 #111 closed with #209 on 2026-10-03, leaving 43 open issues at this reconciliation.
 Merged code, automated verification and physical acceptance are separate statuses.
+The owner will supply a phone later. Use the [verification register](testing/roadmap-verification-register.md)
+to log every required case and its evidence. Include a verified debug APK with the final CI handoff for each
+delivery batch; keep iOS low priority after Android correctness and system-surface work.
 
 ## 0. CI efficiency before feature expansion
 
