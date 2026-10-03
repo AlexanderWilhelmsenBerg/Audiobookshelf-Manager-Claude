@@ -12,6 +12,9 @@ giving it a section of its own.
   and the car cannot extend the timer. The timer keeps running and everything returns when the car disconnects.
 - Because Android shares one media session, the phone's notification and lock screen also drop the countdown
   while a car is connected. A plain Bluetooth car without Android Auto cannot be detected and still shows it.
+- Nightly scheduling creates no new automatic timer while the car is connected. Existing and manual timers
+  continue; disconnect re-evaluates the window for active playback without starting audio or overriding a
+  manually cancelled occurrence.
 
 ### Sleep timer keeps the book title in the app (PLAY-008, #189)
 

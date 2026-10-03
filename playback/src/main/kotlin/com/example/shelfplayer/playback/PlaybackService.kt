@@ -406,15 +406,7 @@ class PlaybackService : MediaLibraryService() {
         // Issue #75 — publish only after the real MediaSession exists. A direct session token lets a
         // recreated Activity attach to this exact session without using the service token that can start us.
         liveSession.publish(mediaSession.token)
-        // PRODUCT_SPEC PLAY-008 — the timer is given the player it is allowed to stop. It is a
-        // singleton in this process, so it is the same object the app's UI drives.
-        sleepTimer.attach(
-            exoPlayer,
-            resumeOwner = object : SleepTimerResumeOwner {
-                override suspend fun resume(stillAuthorized: () -> Boolean): Boolean =
-                    performFreshnessPlay(explicit = true, stillAuthorized = stillAuthorized)
-            },
-        )
+        attachSleepTimer(exoPlayer)
         // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does. It is given the
         // player rather than owning one, for the same reason the timer is: there is exactly one.
         sessionSync.attach(exoPlayer)
@@ -432,6 +424,18 @@ class PlaybackService : MediaLibraryService() {
         outputDevices.start(scope, DeviceActions())
         observeBrowseTreeInvalidation()
         logger.info(LogCategory.Playback, "Playback service started")
+    }
+
+    /** PLAY-008 — initialize connection truth before the shared timer observes this service's player. */
+    private fun attachSleepTimer(exoPlayer: ExoPlayer) {
+        synchronizeSleepTimerCarConnection()
+        sleepTimer.attach(
+            exoPlayer,
+            resumeOwner = object : SleepTimerResumeOwner {
+                override suspend fun resume(stillAuthorized: () -> Boolean): Boolean =
+                    performFreshnessPlay(explicit = true, stillAuthorized = stillAuthorized)
+            },
+        )
     }
 
     /**
@@ -1807,6 +1811,7 @@ class PlaybackService : MediaLibraryService() {
         val carWasConnected = carConnections.isConnected()
         val carArrivedAt = if (carWasConnected) null else clock.elapsed()
         carConnections.onConnected()
+        synchronizeSleepTimerCarConnection()
         // PD-002 (2026-10-03): republish synchronously, before Media3 sends the car its initial state, so the
         // car never sees the timer button or the countdown title. publishMediaButtons() also restores the book
         // title, through replaceMediaItem only, so playback is never interrupted.
@@ -1867,6 +1872,7 @@ class PlaybackService : MediaLibraryService() {
         val carWasConnected = carConnections.isConnected()
         carConnections.onDisconnected()
         val carStillConnected = carConnections.isConnected()
+        synchronizeSleepTimerCarConnection()
         val finalControllerDeparture = carWasConnected && !carStillConnected
         logAuto(
             "A car controller disconnected from the media session",
@@ -1919,6 +1925,7 @@ class PlaybackService : MediaLibraryService() {
 
         if (update.initial) {
             projectionOwnsCarLifecycle = update.current.carConnected
+            synchronizeSleepTimerCarConnection()
             if (update.current.carConnected && carConnections.isConnected()) {
                 carContinuitySessionEstablished = true
             }
@@ -1946,6 +1953,12 @@ class PlaybackService : MediaLibraryService() {
                 projectionOwnsCarLifecycle = false
             }
         }
+        synchronizeSleepTimerCarConnection()
+    }
+
+    /** The timer owns eligibility; this adapter supplies controller/projection connection truth. */
+    private fun synchronizeSleepTimerCarConnection() {
+        sleepTimer.onCarConnectionChanged(carConnections.isConnected() || projectionOwnsCarLifecycle)
     }
 
     private fun completeCarDeparture(source: String, physicalProjection: Boolean = false) {

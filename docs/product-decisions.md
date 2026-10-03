@@ -164,7 +164,19 @@ Owner decision: "A sleep timer should never show in Android Auto. I shouldn't sl
   sleep timer is on it's by mistake. Either sleep timer was set on by mistake, or I am close enough to the car
   when it starts when I am about to sleep. So just continue the sleep timer and because of the already present
   headset wiring I shouldn't hear a difference and can sleep soundly." A car connecting therefore neither
-  cancels, pauses nor blocks a manual or scheduled timer; route handling keeps audio on the headset.
+  cancels nor pauses an existing manual or scheduled timer; route handling keeps audio on the headset.
+
+### Amended 2026-10-03 — suppress new nightly timers while the car is connected
+
+The approved reliability plan narrows automatic scheduling during a car connection. No new nightly timer
+starts while Android Auto/Automotive owns the connection, including a timer whose persistence is still
+suspended when the car arrives. A controller rebind does not temporarily restore automatic eligibility while
+projection still owns the car lifecycle.
+
+Existing timers continue, and an explicit manual timer remains available in BookWave's player. Disconnect
+re-evaluates the ordinary nightly window only if playback is already active; it does not start audio or erase
+the listener's manual cancellation for that window. This amendment replaces the earlier "schedule is
+unchanged" wording for new automatic timer creation only.
 
 ---
 

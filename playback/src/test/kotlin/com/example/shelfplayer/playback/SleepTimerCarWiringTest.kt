@@ -67,4 +67,22 @@ class SleepTimerCarWiringTest {
 
     private fun serviceSource(): String =
         File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt").readText()
+
+    @Test
+    fun `nightly eligibility receives controller and projection changes`() {
+        val source = serviceSource()
+        val connect = source.substringAfter("private fun onCarControllerConnected(")
+            .substringBefore("private suspend fun handleCarArrival(")
+        val disconnect = source.substringAfter("private fun onCarControllerDisconnected(")
+            .substringBefore("private fun onProjection")
+        assertTrue("synchronizeSleepTimerCarConnection()" in connect)
+        assertTrue("synchronizeSleepTimerCarConnection()" in disconnect)
+        val projection = source.substringAfter("projectionOwnsCarLifecycle = update.current.carConnected")
+            .substringBefore("private fun completeCarDeparture(")
+        assertTrue(projection.split("synchronizeSleepTimerCarConnection()").size >= 3)
+        val adapter = source.substringAfter("private fun synchronizeSleepTimerCarConnection()")
+            .substringBefore("private fun completeCarDeparture(")
+        assertTrue("sleepTimer.onCarConnectionChanged(" in adapter)
+        assertTrue("carConnections.isConnected() || projectionOwnsCarLifecycle" in adapter)
+    }
 }
