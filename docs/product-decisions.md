@@ -214,6 +214,9 @@ existing metadata-redaction rules.
    stops by itself.
    - **Pause** keeps everything downloaded so far and can be resumed. It is offered while the download is
      queued, running, waiting for a network or retrying, on the Book screen and on the Downloads rows alike.
+     Pause is offered **only for a copy no other profile claims**: the transfer belongs to the physical
+     copy, so pausing a shared one would stop the other profile's download too. For a shared copy the prompt
+     offers Stop or Keep downloading, the Downloads row shows no Pause, and the pause itself is refused.
    - **Stop** releases this profile's claim. If it was the last claim, the transfer is cancelled and the
      partly downloaded files and the manifest are deleted. If another profile still claims the copy, only this
      profile's claim is released: the other profile's download continues and no files are deleted. The prompt

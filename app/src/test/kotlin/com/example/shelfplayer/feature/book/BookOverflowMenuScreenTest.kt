@@ -305,17 +305,20 @@ class BookOverflowMenuScreenTest {
         assertEquals(0, paused)
     }
 
+    /** PD-004 — a shared copy cannot be paused from here: that would stop the other profile's download. */
     @Test
-    fun `a shared in-flight download says stop keeps the files`() {
+    fun `a shared in-flight download offers stop but never pause`() {
         render(download = DownloadButtonState.Downloading(progress = 0.42f, percent = 42), isSharedDownload = true)
         composeRule.onNodeWithTag(BOOK_DOWNLOAD_BUTTON).performClick()
 
+        composeRule.onNodeWithText("Stop this download?").assertIsDisplayed()
         composeRule.onNodeWithText(
-            "Another profile on this device is also downloading this book. Pause keeps everything downloaded " +
-                "so far and pauses the download on this device for every profile that wants it; it can be " +
-                "resumed later. Stop removes the book from your downloads only: the download continues for " +
-                "the other profile and no files are deleted. Nothing changes on your server.",
+            "Another profile on this device is also downloading this book, so it cannot be paused here. " +
+                "Stop removes the book from your downloads only: the download continues for the other profile " +
+                "and no files are deleted. Nothing changes on your server.",
         ).assertIsDisplayed()
+        composeRule.onNodeWithText("Pause").assertDoesNotExist()
+        composeRule.onNodeWithText("Stop").assertIsDisplayed()
     }
 
     @Test

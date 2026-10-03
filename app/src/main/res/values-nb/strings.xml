@@ -426,7 +426,8 @@
     <string name="book_download_paused">Nedlastingen er satt på pause</string>
     <string name="book_download_prompt_title">Sette nedlastingen på pause eller stoppe den?</string>
     <string name="book_download_prompt_body">Pause beholder alt som er lastet ned så langt på denne enheten, så du kan fortsette senere. Stopp avbryter nedlastingen og sletter de delvis nedlastede filene fra denne enheten. Ingenting endres på serveren din, og lytteposisjonen din beholdes.</string>
-    <string name="book_download_prompt_shared_body">En annen profil på denne enheten laster også ned denne boken. Pause beholder alt som er lastet ned så langt og setter nedlastingen på pause på denne enheten for alle profiler som vil ha den; den kan fortsettes senere. Stopp fjerner boken bare fra dine nedlastinger: nedlastingen fortsetter for den andre profilen, og ingen filer slettes. Ingenting endres på serveren din.</string>
+    <string name="book_download_prompt_shared_title">Stoppe denne nedlastingen?</string>
+    <string name="book_download_prompt_shared_body">En annen profil på denne enheten laster også ned denne boken, så den kan ikke settes på pause her. Stopp fjerner boken bare fra dine nedlastinger: nedlastingen fortsetter for den andre profilen, og ingen filer slettes. Ingenting endres på serveren din.</string>
     <string name="book_download_prompt_pause">Pause</string>
     <string name="book_download_prompt_stop">Stopp</string>
     <string name="book_download_prompt_keep">Fortsett å laste ned</string>

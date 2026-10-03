@@ -417,6 +417,7 @@ private fun DownloadRowItem(
         if (row.isClaimedByActiveProfile && row.storageState != DownloadStorageState.Unavailable) {
             DownloadRecoveryActionButton(
                 recoveryState = row.recoveryState,
+                isShared = row.isSharedWithAnotherProfile,
                 onClick = onRecoveryAction,
             )
         }
@@ -479,9 +480,12 @@ private fun downloadRowStatusText(row: DownloadRow): String? = when {
 @Composable
 private fun DownloadRecoveryActionButton(
     recoveryState: com.example.shelfplayer.domain.download.DownloadRecoveryState,
+    isShared: Boolean,
     onClick: () -> Unit,
 ) {
     val action = recoveryState.recoveryAction() ?: return
+    // PD-004 — pausing a copy another profile also claims would stop that profile's download too.
+    if (action == DownloadRecoveryAction.Pause && isShared) return
     val (icon, description) = when (action) {
         DownloadRecoveryAction.Pause -> Icons.Filled.Pause to R.string.downloads_pause
         DownloadRecoveryAction.Resume -> Icons.Filled.PlayArrow to R.string.downloads_resume

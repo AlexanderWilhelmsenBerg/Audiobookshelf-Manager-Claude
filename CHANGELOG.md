@@ -13,6 +13,7 @@ giving it a section of its own.
   button, the Downloads rows or the notification.
 - Tapping an in-flight download opens a Pause / Stop / Keep downloading prompt instead of cancelling at once.
   Stop is claim-aware: it deletes the partial files only when no other profile claims the copy, and says so.
+  Pause is offered only when no other profile claims the copy, so one profile never pauses another's download.
 - A paused download shows Paused with its percent and Resume (no play glyph). Previously it showed
   "Downloading" and its tap did nothing useful.
 - Retry no longer sits disabled or shows Failed while the download is actually running: the Book screen now

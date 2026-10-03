@@ -13,6 +13,9 @@ import com.example.shelfplayer.R
 /**
  * PD-004 — what tapping an in-flight download offers: Pause, Stop, or carry on.
  *
+ * Pause is offered only for a copy no other profile claims: the transfer belongs to the physical copy, so
+ * pausing a shared one would stop the other profile's download too. A shared copy is offered Stop or carry on.
+ *
  * Stop is the destructive one, and its body says exactly what it does. For a copy only this profile wants,
  * Stop cancels the transfer and deletes the partly downloaded files. For a copy another profile also
  * claims ([isShared]), Stop releases only this profile's claim: the other profile's transfer continues and
@@ -25,7 +28,13 @@ import com.example.shelfplayer.R
 internal fun DownloadInFlightDialog(isShared: Boolean, onPause: () -> Unit, onStop: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = stringResource(R.string.book_download_prompt_title)) },
+        title = {
+            Text(
+                text = stringResource(
+                    if (isShared) R.string.book_download_prompt_shared_title else R.string.book_download_prompt_title,
+                ),
+            )
+        },
         text = {
             Text(
                 text = stringResource(
@@ -35,7 +44,9 @@ internal fun DownloadInFlightDialog(isShared: Boolean, onPause: () -> Unit, onSt
         },
         confirmButton = {
             Column(horizontalAlignment = Alignment.End) {
-                TextButton(onClick = onPause) { Text(text = stringResource(R.string.book_download_prompt_pause)) }
+                if (!isShared) {
+                    TextButton(onClick = onPause) { Text(text = stringResource(R.string.book_download_prompt_pause)) }
+                }
                 TextButton(onClick = onStop) {
                     Text(
                         text = stringResource(R.string.book_download_prompt_stop),

@@ -242,6 +242,29 @@ class DownloadsScreenTest {
         compose.onNodeWithContentDescription("Retry this download").assertDoesNotExist()
     }
 
+    /** PD-004 — a shared copy is never paused from a row: that would stop the other profile's download. */
+    @Test
+    fun `a shared in-flight row offers no Pause but a shared paused row still resumes`() {
+        var recoveryState by mutableStateOf(DownloadRecoveryState.Running)
+        compose.setContent {
+            val base = state(recoveryState)
+            DownloadsScreen(
+                uiState = base.copy(books = base.books.map { it.copy(isSharedWithAnotherProfile = true) }),
+                onRemove = { _, _ -> },
+                onPinnedChanged = { _, _, _ -> },
+                onRecoveryAction = { _, _ -> },
+                onVerify = {},
+                onNavigateUp = {},
+            )
+        }
+
+        compose.onNodeWithContentDescription("Pause this download").assertDoesNotExist()
+
+        recoveryState = DownloadRecoveryState.Paused
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("Resume this download").assertExists()
+    }
+
     private fun render(recoveryState: DownloadRecoveryState, onRecovery: (DownloadRecoveryState) -> Unit = {}) {
         compose.setContent {
             DownloadsScreen(

@@ -567,7 +567,8 @@
     <string name="book_download_paused">Download paused</string>
     <string name="book_download_prompt_title">Pause or stop this download?</string>
     <string name="book_download_prompt_body">Pause keeps everything downloaded so far on this device, so you can resume later. Stop cancels the download and deletes the partly downloaded files from this device. Nothing changes on your server, and your listening position is kept.</string>
-    <string name="book_download_prompt_shared_body">Another profile on this device is also downloading this book. Pause keeps everything downloaded so far and pauses the download on this device for every profile that wants it; it can be resumed later. Stop removes the book from your downloads only: the download continues for the other profile and no files are deleted. Nothing changes on your server.</string>
+    <string name="book_download_prompt_shared_title">Stop this download?</string>
+    <string name="book_download_prompt_shared_body">Another profile on this device is also downloading this book, so it cannot be paused here. Stop removes the book from your downloads only: the download continues for the other profile and no files are deleted. Nothing changes on your server.</string>
     <string name="book_download_prompt_pause">Pause</string>
     <string name="book_download_prompt_stop">Stop</string>
     <string name="book_download_prompt_keep">Keep downloading</string>

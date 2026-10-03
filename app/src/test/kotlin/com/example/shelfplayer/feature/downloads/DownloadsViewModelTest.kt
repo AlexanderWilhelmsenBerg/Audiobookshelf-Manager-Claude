@@ -309,6 +309,22 @@ class DownloadsViewModelTest {
         assertEquals(emptyList(), scheduler.enqueued)
     }
 
+    /** PD-004 — pausing a shared copy would stop the other profile's download, so it is refused. */
+    @Test
+    fun `a shared in-flight copy is not paused`() = runTest {
+        downloads.emit(
+            listOf(offlineBook("tidewatch", state = DownloadState.Running, requestedBy = setOf(ADA, GRACE))),
+        )
+        val scheduler = TrackingScheduler()
+        val viewModel = viewModel(scheduler)
+
+        viewModel.onRecoveryAction(LibraryItemId("tidewatch"), DownloadRecoveryState.Running)
+
+        assertEquals(emptyList(), downloads.paused)
+        assertEquals(emptyList(), scheduler.cancelled, "another profile's transfer must keep running")
+        assertNotNull(viewModel.message.value)
+    }
+
     /** #111: Pause is offered, and routed, in every in-flight state. Revert-detector for Pause-only-Running. */
     @Test
     fun `queued waiting and retrying rows pause`() = runTest {
