@@ -334,8 +334,8 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          base_ref="${GITHUB_BASE_REF:-main}"
-          base="refs/remotes/bookwave-base/$base_ref"
+          # Policy and the checkout fetch use canonical main, including for stacked PRs.
+          base="refs/remotes/bookwave-base/main"
           git rev-parse --verify "$base^{commit}" >/dev/null
 
           modified="$(git diff --diff-filter=MD --name-only "$base"...HEAD -- core/database/schemas)"
