@@ -56,8 +56,9 @@ Typical coverage includes:
 - ktlint;
 - detekt with type resolution;
 - Android Lint for Android modules;
-- JVM/Robolectric unit tests;
-- Kover coverage gates;
+- JVM/Robolectric debug unit tests (release unit tests run in `main.yml`, not in `verifyDebug`);
+- Kover coverage gate over a custom debug-only `gate` variant (`koverVerifyGate`), not Kover's all-variant `total`;
+- explicit compilation of `:app` release and benchmark Kotlin and `:playback` release Kotlin;
 - Room schema verification;
 - debug assembly.
 

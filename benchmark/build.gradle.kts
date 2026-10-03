@@ -24,8 +24,9 @@ plugins {
  * runner and mean anything anyway: the number would describe the runner's contention.
  *
  * What CI *does* do is compile it. The `debug` variant is deliberately left enabled so that
- * `shelfplayer.quality`'s `verifyDebug` runs ktlint, detekt with type resolution, Lint and `assembleDebug`
- * over these sources on every pull request. A benchmark that stops compiling six months from now is the
+ * `shelfplayer.quality`'s `verifyDebug` runs ktlint and type-resolved detekt (`detektDebug`, which compiles
+ * these sources against `:app`'s debug classes) on every pull request. A `com.android.test` module has no
+ * `lintDebug`, so Lint does not run here, and `assembleDebug` is excluded from the PR gate (`-x assembleDebug`). A benchmark that stops compiling six months from now is the
  * normal fate of code no gate touches, and this is the cheap half of preventing it. The `debug` variant is
  * never *run* — Macrobenchmark refuses a debuggable target, which is exactly what it should do.
  */

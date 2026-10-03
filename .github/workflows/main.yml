@@ -65,6 +65,13 @@ jobs:
       - name: Release lint
         run: ./gradlew :app:lintRelease -Pshelfplayer.warningsAsErrors=true
 
+      # Release unit tests moved here from the PR gate: `verifyDebug` measures coverage on debug only, so it no
+      # longer runs `testReleaseUnitTest`. This is the only place the release variant's tests execute (it also
+      # starts covering :playback and :data:downloads, which never had release tests run). `:app` excludes
+      # `*ScreenTest` from this task by design.
+      - name: Release unit tests
+        run: ./gradlew testReleaseUnitTest --continue -Pshelfplayer.warningsAsErrors=true
+
       # PRODUCT_SPEC 18 — the Software Bill of Materials, unblocked by ADR-0024's licence decision.
       #
       # Run before the release assembly rather than after it: the task resolves
