@@ -63,6 +63,8 @@ class SleepTimerProjectionPlaybackTest {
                 assertEquals(0, player.currentMediaItemIndex)
                 assertEquals(BOOK_ID, player.currentMediaItem?.mediaId)
                 assertTrue(player.playWhenReady, "the countdown must not pause playback")
+                // Each replacement must actually reach the player, or zero transitions would prove nothing.
+                assertEquals(label ?: "The Tidewatch Cycle", player.currentMediaItem?.mediaMetadata?.title?.toString())
             }
 
             assertEquals(0, transitions, "metadata replacement must not look like a media-item transition")
