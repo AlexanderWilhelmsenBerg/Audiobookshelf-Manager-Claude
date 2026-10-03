@@ -1,6 +1,6 @@
 name: CI · PR verification
 
-run-name: "CI · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.ref_name }} · ${{ github.event_name == 'pull_request' && 'standard' || inputs.depth }}"
+run-name: "CI · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.ref_name }} · ${{ github.event_name == 'pull_request' && 'standard' || github.event_name == 'push' && 'cache seed' || inputs.depth }}"
 
 # GitHub-native BookWave pull-request gate, carrying forward the proven Forgejo CI quality model.
 #
@@ -21,6 +21,11 @@ run-name: "CI · ${{ github.event_name == 'pull_request' && format('PR #{0}', gi
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  # Every merge re-runs Standard on the new main and saves its Gradle state, so the next PR starts warm from
+  # the current main instead of a hand-seeded snapshot. main.yml skips its own verifyDebug on push for that
+  # reason: the merge pays for one debug verification, not two.
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       depth:
@@ -53,7 +58,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   # A second manual click should queue, not kill an already-expensive Gradle run. This also avoids
   # exercising the runner/container cancellation path unnecessarily.
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 permissions:
   contents: read
@@ -108,7 +113,19 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "$EVENT_NAME" = "pull_request" ]; then
+          if [ "$EVENT_NAME" = "push" ] && [ "$SELECTED_BRANCH" = "main" ]; then
+            # Trusted: only a merge can push to main. Same job and keys as a PR run, so PRs restore it.
+            requested_pr=""
+            pr_title=""
+            pr_head="$SELECTED_SHA"
+            pr_branch=main
+            checkout_repository="$GITHUB_REPOSITORY"
+            depth=standard
+            profiling=false
+            build_apk=false
+            cache_write=true
+            echo "Merge to main at $pr_head: verifying and seeding the PR Gradle cache."
+          elif [ "$EVENT_NAME" = "pull_request" ]; then
             requested_pr="$EVENT_PR"
             pr_title="$EVENT_PR_TITLE"
             pr_head="$EVENT_HEAD_SHA"
