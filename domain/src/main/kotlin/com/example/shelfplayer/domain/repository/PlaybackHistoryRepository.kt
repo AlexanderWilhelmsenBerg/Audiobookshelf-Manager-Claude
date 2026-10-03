@@ -28,10 +28,9 @@ interface PlaybackHistoryRepository {
      *
      * @param from where the listener was before, for the kinds that moved them; `null` for a marker.
      * @param detail a second duration the event carries — a sleep timer's length, say. `null` otherwise.
-     * @param at when it happened, for an event that did not happen *now*. The only caller that supplies it
-     *   is the one recording a change the **server** made: the row belongs where the change happened, not
-     *   where the refresh that noticed it happened, and a sync after a night's sleep would otherwise stack a
-     *   week of other devices' listening at the top of the list. `null` means the clock.
+     * @param at when it happened, captured by playback before asynchronous persistence, or supplied by a
+     *   remote event's timestamp. The row belongs where the change happened, not where the eventual write
+     *   or refresh noticed it. `null` means the repository clock.
      * @param owner PRODUCT_SPEC 6.5 — the profile the event belongs to, or `null` for the active one. The
      *   player names it from the loaded book's own extras, so a pause that arrives while a profile switch is
      *   in flight is filed against whoever was listening rather than whoever is signed in a moment later.
@@ -47,6 +46,11 @@ interface PlaybackHistoryRepository {
         at: Instant? = null,
         owner: ProfileId? = null,
     )
+
+    /** PLAY-004 — update the latest listening checkpoint, keeping intervening events intact. */
+    suspend fun recordProgress(bookId: LibraryItemId, to: Duration, at: Instant, owner: ProfileId?) {
+        record(bookId, PlaybackEvent.ListeningProgress, null, to, at = at, owner = owner)
+    }
 
     /**
      * PRODUCT_SPEC PLAY-003 — imports the **server's own** session records for [bookId], and persists them.

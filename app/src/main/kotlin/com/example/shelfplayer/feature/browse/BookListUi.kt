@@ -57,18 +57,17 @@ internal fun BookCard(
     /**
      * PRODUCT_SPEC LIB-003 — which of the book's series to name on the card.
      *
-     * Defaults to the first, which is all a general shelf can know. A series screen passes the series
-     * the user navigated through: a book can be third in one series and first in another, and the
-     * number that belongs to some other series is worse than no number at all.
+     * Defaults to the first, which is all a general shelf can know. A scoped caller can select a
+     * membership: a book can be third in one series and first in another. Series detail now uses
+     * its own adaptive SeriesBookCard rather than this fixed-height general browsing row.
      */
     membership: SeriesMembership? = book.seriesMemberships.firstOrNull(),
     /**
      * PRODUCT_SPEC LIB-003 / LIB-004 — start or resume this book without opening it first.
      *
-     * `null` on every shelf that has no opinion about playing, which is all of them but the series screen:
-     * a general list's job is to get you to a book, and a play button on each row of a search result is a
-     * tap that starts audio next to the tap that was meant to look at something. LIB-003 asks for it on a
-     * series specifically, where the rows are one story in order and *carry on* is the common intent.
+     * Optional for a caller that deliberately supports direct playback. General browsing callers leave
+     * it null: their row action opens details. Series detail exposes its direct playback action through
+     * the adaptive SeriesBookCard, whose text must remain readable at large font scales.
      */
     onPlay: (() -> Unit)? = null,
 ) {
@@ -141,7 +140,7 @@ internal fun BookCard(
  * reads as an arbitrary one. This is the visible basis.
  */
 @Composable
-private fun BookProgressLine(book: Book, modifier: Modifier = Modifier) {
+internal fun BookProgressLine(book: Book, modifier: Modifier = Modifier) {
     val progress = book.progress
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(

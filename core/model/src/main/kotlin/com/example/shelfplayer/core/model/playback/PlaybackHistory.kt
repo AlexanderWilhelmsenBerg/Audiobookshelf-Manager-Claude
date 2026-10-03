@@ -16,9 +16,17 @@ import kotlin.time.Duration
  * it to audit position arithmetic — they open it to answer "what happened, and can I get back to before
  * it". "I paused here" and "I set a timer here" are answers to that; a per-second position log is not.
  *
- * So: **discontinuities and decisions.** Not the passage of time.
+ * The owner later requested a crash-recovery checkpoint as well (PD-005). Discontinuities and decisions
+ * remain immutable; one ListeningProgress row advances between them rather than filling the history
+ * with every sample. Current-position recovery remains owned by the existing five-second journal.
  */
 enum class PlaybackEvent {
+    /** PLAY-004 — latest durable listening sample since the previous local event. */
+    ListeningProgress,
+
+    /** PLAY-003 / PLAY-004 — playback entered a different chapter, including ordinary listening. */
+    ChapterCrossed,
+
     /** A drag on either seek bar, or a tap on the notification's. */
     Seek,
 

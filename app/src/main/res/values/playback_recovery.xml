@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sleep_timer_shake_sensitivity_extra_high">Extra high</string>
+    <string name="sleep_timer_shake_sensitivity_ultra_high">Ultra high</string>
+    <string name="sleep_timer_shake_ultra_hint">Ultra high detects very small movement. Bedding and the phone’s placement affect detection; incidental movement can restart the timer.</string>
+    <string name="sleep_timer_requires_playing">Start playing a book to set a sleep timer. An existing timer waits while audio is paused.</string>
+    <string name="player_history_listening_progress">Saved listening progress</string>
+    <string name="player_history_chapter_crossed">Chapter crossed</string>
+    <string name="player_history_progress_percent">%1$d%% of book</string>
+</resources>

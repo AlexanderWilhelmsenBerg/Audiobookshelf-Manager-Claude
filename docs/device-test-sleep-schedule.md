@@ -88,15 +88,18 @@ Unit.
 
 ## Shake grace and sensitivity
 
+Before the motion tests, execute the [paused/empty timer and recovery matrix](testing/2026-10-03-series-history-sleep.md).
+New manual timers require actively playing audio; pause/focus loss/buffering freeze existing countdowns.
+
 - Enable shake-to-restart, set grace to 10 seconds and sensitivity to Normal. Let a short timer expire fully;
   playback must pause. Shake within ten seconds: playback must resume and the same timer mode must start again.
 - Repeat but wait beyond the ten-second grace before shaking. Playback must remain paused and no new timer may
   appear.
 - Set grace to Off. Let the timer expire and shake immediately afterwards; it must stay paused.
-- While a timer is active, compare High, Normal and Low sensitivity with deliberately gentler/stronger
-  movements. High should accept the gentlest gesture, Normal should match the previous BookWave behavior, and
-  Low should require the most deliberate movement. Ordinary handling/putting-down motion must not create
-  obvious false restarts.
+- While a timer is active, compare Low, Normal, High, Extra high and Ultra high with progressively gentler
+  movement. Normal retains previous behavior; the new levels target gentle motion. At Ultra high, test
+  stationary rest, placement, bedding-transmitted breathing, vibration and incidental movement separately.
+  Record real detection and false restarts; do not assume a threshold proves bedside effectiveness.
 - Disable shake-to-restart while a timer is active and after an expiry grace window has begun. Motion sensing
   must stop in both cases.
 - For an automatically scheduled timer close to the schedule end, verify a grace shake after the civil window

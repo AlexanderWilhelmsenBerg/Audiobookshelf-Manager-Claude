@@ -16,7 +16,7 @@ import kotlin.time.Duration.Companion.seconds
  * where the book's structure says, and restarting it means "the chapter after this one".
  */
 sealed interface SleepTimerMode {
-    /** A wall-clock length. PLAY-008's 5/10/15/30/45/60/90-minute options and the custom one. */
+    /** An audible listening length. Paused/buffering time does not consume it (PLAY-008). */
     data class Fixed(val length: Duration) : SleepTimerMode
 
     /**
@@ -138,6 +138,8 @@ enum class ShakeSensitivity {
     Low,
     Normal,
     High,
+    ExtraHigh,
+    UltraHigh,
 }
 
 data class SleepTimerSettings(

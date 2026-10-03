@@ -70,6 +70,65 @@ import kotlin.test.assertTrue
 @Config(sdk = [34])
 class MigrationTest {
 
+    @Test
+    fun `listening checkpoint updates one row and preserves each intervening event`() = runTest {
+        createVersion(9)
+        val dao = openWithMigrations().playbackHistoryDao()
+        fun row(id: String, reason: String, at: Long, position: Long) = PlaybackHistoryEntity(
+            id,
+            PROFILE_ID,
+            BOOK_KEY,
+            null,
+            position,
+            reason,
+            null,
+            at,
+        )
+        dao.record(row("play", "Play", 1, 0), 120)
+        dao.recordProgress(row("checkpoint-a", "ListeningProgress", 2, 5_000), 120)
+        dao.recordProgress(row("checkpoint-b", "ListeningProgress", 3, 10_000), 120)
+        var rows = dao.observe(PROFILE_ID, BOOK_KEY, 120).first()
+        assertEquals(2, rows.size)
+        assertEquals("checkpoint-a", rows.first().entryId)
+        assertEquals(10_000, rows.first().toMillis)
+        assertEquals(3, rows.first().at)
+        dao.record(row("chapter", "ChapterCrossed", 4, 12_000), 120)
+        dao.recordProgress(row("checkpoint-c", "ListeningProgress", 5, 15_000), 120)
+        rows = dao.observe(PROFILE_ID, BOOK_KEY, 120).first()
+        assertEquals(listOf("checkpoint-c", "chapter", "checkpoint-a", "play"), rows.map { it.entryId })
+        assertEquals(10_000, rows[2].toMillis)
+        database?.close()
+        val reopened = openWithMigrations().playbackHistoryDao().observe(PROFILE_ID, BOOK_KEY, 120).first()
+        assertEquals(rows, reopened, "checkpoint and event positions survive closing and reopening Room")
+    }
+
+    @Test
+    fun `remote imports do not split a local checkpoint and late samples cannot rewind it`() = runTest {
+        createVersion(9)
+        val dao = openWithMigrations().playbackHistoryDao()
+        fun row(id: String, reason: String, at: Long, position: Long) = PlaybackHistoryEntity(
+            id,
+            PROFILE_ID,
+            BOOK_KEY,
+            null,
+            position,
+            reason,
+            null,
+            at,
+        )
+        dao.recordProgress(row("checkpoint", "ListeningProgress", 2, 10_000), 120)
+        dao.record(row("remote", "ServerSession", 3, 90_000), 120)
+        dao.recordProgress(row("next", "ListeningProgress", 4, 15_000), 120)
+        dao.recordProgress(row("stale", "ListeningProgress", 1, 5_000), 120)
+        val rows = dao.observe(PROFILE_ID, BOOK_KEY, 120).first()
+        assertEquals(listOf("checkpoint", "remote"), rows.map { it.entryId })
+        assertEquals(15_000, rows.first().toMillis)
+        dao.recordProgress(row("rewind", "ListeningProgress", 5, 8_000), 120)
+        val rewound = dao.observe(PROFILE_ID, BOOK_KEY, 120).first()
+        assertEquals("checkpoint", rewound.first().entryId)
+        assertEquals(8_000, rewound.first().toMillis, "a newer intentional rewind is preserved")
+    }
+
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val databaseFile = File(context.cacheDir, "migration-test.db")
     private var database: ShelfPlayerDatabase? = null

@@ -329,6 +329,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - When a book belongs to multiple series, the UI shows each membership.
 - The smart downloader uses a selected primary series; when none is selected, it uses the first server-provided ordered series and records that choice.
 - Series order and next-book information remain available offline for downloaded books.
+- Series detail rows grow with wrapped title, author, selected series/sequence and progress. Each book has
+  an explicit Finished icon/text or In progress / Not started label; large text must not hide metadata.
 
 ### LIB-004 Book details
 
@@ -381,6 +383,11 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 
 **Acceptance criteria**
 - Local progress is journaled at least every 5 seconds during active playback.
+- The local History panel keeps a rolling listening checkpoint at the same cadence, updating one row
+  until another local event occurs. Earlier events retain their original positions and timestamps.
+- History shows each event's local date/time, book position and percentage when duration is known.
+  Chapter crossings are recorded by the playback service, including when the Activity is absent.
+  Local checkpoints work without internet and remain available after process death.
 - Remote progress is synchronized approximately every 30 seconds, plus on pause, seek completion, chapter change, book change, sleep-timer stop, service shutdown callback, and app background transition when possible.
 - The current position must survive process death with no more than 10 seconds lost under normal conditions.
 - A finished threshold defaults to 95% and is configurable from 90–99%.
@@ -433,6 +440,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 
 **Acceptance criteria**
 - Timer options: 5, 10, 15, 30, 45, 60, 90 minutes; end of chapter; custom.
+- New timers require a loaded book actively producing audio. Fixed timers consume audible listening
+  time only: pause, audio-focus interruption and buffering freeze the remainder and suspend fade/expiry;
+  resuming continues from that remainder. Existing timers can be cancelled or extended while paused.
 - Optional fade-out occurs over 5–30 seconds.
 - Timer survives activity recreation and displays remaining time in the full player and media notification.
 - The full player's ordinary Sleep action is replaced in place by the active remaining time; both states open the same sleep-timer interaction.
@@ -443,7 +453,11 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Optional shake-to-restart requires explicit opt-in. Motion sensing may run only while a timer is active or during the configured bounded post-expiry grace period.
 - The post-expiry shake grace period defaults to 10 seconds, is configurable from Off through a maximum of 10 seconds, and starts only after natural timer expiry.
 - A valid shake during the grace period restarts the same timer mode and resumes the playback that expiry paused. Outside the grace period it does nothing.
-- Shake sensitivity is configurable as Low, Normal, or High. Normal preserves the pre-setting detection threshold; High requires less movement and Low requires more.
+- Shake sensitivity is configurable as Low, Normal, High, Extra high or Ultra high. Normal preserves the
+  pre-setting detection threshold. Extra high and Ultra high detect progressively smaller movement with
+  gravity/noise filtering; Ultra high targets tiny bedding movement and is explicit opt-in. Breathing
+  detection depends on device and placement and requires physical calibration; it is not guaranteed by a
+  threshold test. The active-timer / bounded-grace sensing limits still apply.
 - An optional local-time schedule defines **eligibility**, not a timer deadline: playback starting inside the window, or already-active playback crossing its start, requests the ordinary configured default timer from the same owner.
 - Car connection suppresses creation of new automatic scheduled timers, including a suspended creation request. Existing timers and explicit manual timers retain their ordinary behavior. Disconnect re-evaluates eligibility only for playback already active; it never starts audio or overrides manual cancellation of the window occurrence.
 - The schedule end cancels a still-running **automatic** timer without pausing playback. A manual timer is independent of the schedule end.

@@ -421,6 +421,7 @@ private fun ShelfPlayerContent(
     if (isHistorySheetOpen) {
         HistorySheet(
             entries = history,
+            duration = playback.duration,
             // PRODUCT_SPEC PLAY-003 — so a row can say which chapter it happened in. The player already
             // holds the list; the history repository deliberately does not, because a chapter name stored
             // beside every event would be the same forty strings written down a hundred times.
@@ -489,6 +490,7 @@ private fun ShelfPlayerContent(
     if (isTimerSheetOpen) {
         SleepTimerSheet(
             state = timer,
+            canStart = playback.bookId != null && playback.isPlaying,
             onSelect = { mode ->
                 playerViewModel.onSleepTimerSelected(mode)
                 isTimerSheetOpen = false

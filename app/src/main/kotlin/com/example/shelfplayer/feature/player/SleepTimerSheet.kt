@@ -57,6 +57,7 @@ fun SleepTimerSheet(
     onSelect: (SleepTimerMode?) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    canStart: Boolean = false,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -75,6 +76,12 @@ fun SleepTimerSheet(
                 text = stringResource(R.string.sleep_timer_title),
                 style = MaterialTheme.typography.titleMedium,
             )
+            if (!canStart) {
+                Text(
+                    text = stringResource(R.string.sleep_timer_requires_playing),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = !state.isActive,
@@ -85,6 +92,7 @@ fun SleepTimerSheet(
                     val mode = SleepTimerMode.Fixed(preset)
                     FilterChip(
                         selected = state.mode == mode,
+                        enabled = canStart,
                         onClick = { onSelect(mode) },
                         label = {
                             Text(
@@ -98,6 +106,7 @@ fun SleepTimerSheet(
                 }
                 FilterChip(
                     selected = state.mode == SleepTimerMode.EndOfChapter,
+                    enabled = canStart,
                     onClick = { onSelect(SleepTimerMode.EndOfChapter) },
                     label = { Text(text = stringResource(R.string.sleep_timer_end_of_chapter)) },
                 )
@@ -106,6 +115,7 @@ fun SleepTimerSheet(
                 // showing nothing selected.
                 FilterChip(
                     selected = isCustom || state.isCustomLength(),
+                    enabled = canStart,
                     onClick = { isCustom = !isCustom },
                     label = { Text(text = stringResource(R.string.sleep_timer_custom)) },
                 )
@@ -115,6 +125,7 @@ fun SleepTimerSheet(
                     minutes = customMinutes,
                     onMinutesChanged = { customMinutes = it },
                     onStart = { onSelect(SleepTimerMode.Fixed(customMinutes.minutes)) },
+                    canStart = canStart,
                 )
             }
             if (state.isActive) {
@@ -123,7 +134,7 @@ fun SleepTimerSheet(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                TextButton(onClick = { onSelect(state.mode) }) {
+                TextButton(onClick = { onSelect(state.mode) }, enabled = canStart) {
                     Text(text = stringResource(R.string.sleep_timer_restart))
                 }
             }
@@ -144,6 +155,7 @@ private fun CustomLength(
     onMinutesChanged: (Int) -> Unit,
     onStart: () -> Unit,
     modifier: Modifier = Modifier,
+    canStart: Boolean = false,
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
@@ -152,11 +164,12 @@ private fun CustomLength(
             color = MaterialTheme.colorScheme.primary,
         )
         Slider(
+            enabled = canStart,
             value = minutes.toFloat(),
             onValueChange = { onMinutesChanged(it.roundToInt()) },
             valueRange = CUSTOM_RANGE,
         )
-        TextButton(onClick = onStart) {
+        TextButton(onClick = onStart, enabled = canStart) {
             Text(text = stringResource(R.string.sleep_timer_start_custom))
         }
     }

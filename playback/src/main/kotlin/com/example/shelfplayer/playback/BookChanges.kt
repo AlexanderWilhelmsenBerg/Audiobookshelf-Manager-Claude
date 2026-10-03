@@ -18,10 +18,11 @@ internal fun PlaybackSession.serverAcknowledgedStartPosition() =
 /**
  * PRODUCT_SPEC PLAY-004 / PLAY-008 / PLAY-009 — everything that has to be told a book changed.
  *
- * Five singletons need the same news, in the same order, every time a session opens: the outbox needs a row
+ * Playback collaborators need the same news, in the same order, every time a session opens: the outbox needs a row
  * before a byte of audio is fetched; the resume baseline stages a real server `/play` position before Media3
  * receives the item; the sleep timer needs the chapters so an end-of-chapter timer knows where the chapter
- * ends; and auto-rewind needs the chapters so a rewind cannot cross a chapter start.
+ * ends; auto-rewind needs the chapters so a rewind cannot cross a chapter start; and service-side History
+ * uses the same book/chapter identity to detect crossings with the Activity absent.
  *
  * Gathered here rather than listed at the call site for two reasons. It keeps the *order* in one place —
  * the outbox row must exist before playback can fail — and it means adding a listener is a change to this
@@ -35,6 +36,7 @@ class BookChanges @Inject internal constructor(
     private val autoRewind: AutoRewindController,
     private val resumeBaseline: ResumeBaseline,
     private val resumeFreshness: ResumeFreshnessCoordinator,
+    private val listeningHistory: ListeningHistoryRecorder,
 ) {
     /**
      * A session has been opened for a book. Called before the player is handed the item.
@@ -62,6 +64,7 @@ class BookChanges @Inject internal constructor(
      * that some later Play will happen.
      */
     suspend fun onBookOpened(session: PlaybackSession, initialPlayWillFollow: Boolean = false) {
+        listeningHistory.onBookOpened(session.bookId, session.chapters, session.startAt, session.profileId)
         sessionSync.onSessionOpened(session)
         resumeBaseline.stageServerPosition(
             bookId = session.bookId,
@@ -83,6 +86,7 @@ class BookChanges @Inject internal constructor(
         stillAuthorized: suspend () -> Boolean,
         install: () -> Unit,
     ): Boolean = sessionSync.acceptSession(session, stillAuthorized) {
+        listeningHistory.onBookOpened(session.bookId, session.chapters, session.startAt, session.profileId)
         resumeBaseline.stageServerPosition(session.bookId, session.serverAcknowledgedStartPosition())
         resumeFreshness.onSessionOpenedImmediately(session)
         sleepTimer.onBookChangedImmediately(session.chapters)

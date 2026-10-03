@@ -13,6 +13,13 @@ unrelated privileged-write contract change.
 
 ## Record a result for every case
 
+The owner's new series/history/sleep prerequisite has its own complete
+[case log](2026-10-03-series-history-sleep.md). Its physical cases remain NOT RUN until a device is detected
+and the revised APK is installed; do not carry the earlier phone's timer passes forward. Under the new
+PD-002 pause policy, C-07's focus-paused timer must remain frozen rather than expire during the pause.
+Test late continuity recovery against that frozen timer and newer intent; test actual expiry only after
+audio resumes and consumes the saved remainder.
+
 Use the case IDs below, including the individual steps of linked runbooks. Record the exact APK commit,
 version/code, variant, signer, CI run and artifact checksum; Android/API, device, host/DHU, headset and
 WebView provider versions; timezone and relevant settings; expected and observed behavior; result
@@ -95,7 +102,7 @@ alongside C-01–C-08; its focus/boundary order, two-headset, fallback, late-ret
 | C-04 | Projection → Unknown → NotConnected; repeat Automotive → Unknown → NotConnected in an appropriate host. | Unknown preserves ownership; confirmed disconnect releases it and balances connection/timer bookkeeping exactly once. Automated injection plus a device/provider trace if reproducible. Do not claim the provider failure occurred if it could not be induced. |
 | C-05 | Projection → Unknown → Projection; repeated disconnect and multiple car-controller clients. | No false departure/rearrival, duplicate recovery or negative/stale connection count; final-client cleanup still works. |
 | C-06 | Lost focus on car arrival, rebind/recreate the car controller, then disconnect or reconnect. | Recovery respects profile/transport and route intent; no lingering car state suppresses later schedule eligibility. |
-| C-07 | Focus has paused ExoPlayer, then sleep expires before late continuity recovery; repeat manual Pause/Stop/book/profile change. | Timer expiry and newer intent cannot be undone by an automatic Play. This cross-policy scenario needs a regression/device run; source review alone is not a pass. |
+| C-07 | Focus pauses ExoPlayer with an active timer, then late continuity recovery arrives; repeat manual Pause/Stop/book/profile change and actual expiry after resumed audio. | Paused timer stays frozen. Recovery respects newer intent; actual expiry cannot be undone by automatic Play. This cross-policy scenario needs a regression/device run; source review alone is not a pass. |
 | C-08 | Car browse/player surfaces, profiles, output indicator, absent Queue, artwork and same-count invalidation. | Run every step of [combined drive acceptance](../android-auto-pd001-drive-acceptance.md) and [browse invalidation](../android-auto-browse-invalidation-acceptance.md). PD-001 root is exactly Continue → Series → Authors → Profiles. No Library/History replacement. |
 
 ## Sleep

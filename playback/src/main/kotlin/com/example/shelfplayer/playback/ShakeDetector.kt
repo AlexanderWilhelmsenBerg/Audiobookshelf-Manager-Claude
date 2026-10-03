@@ -41,8 +41,9 @@ interface ShakeSource {
  *
  * The accelerometer reports gravity as well as movement, so a phone at rest reads about `9.81` on
  * whichever axis is down. Subtracting gravity from the magnitude gives movement alone, and
- * [ShakeSensitivity.movementThreshold] maps the listener's Low / Normal / High choice to a deterministic
- * movement threshold. Normal preserves the original 12 m/s²-above-gravity behavior.
+ * [ShakeSensitivity.movementThreshold] maps the listener's level to a deterministic movement threshold.
+ * Normal preserves the original 12 m/s²-above-gravity behavior. Extra high and Ultra high instead use
+ * gravity estimated per axis and require sustained movement so tiny sideways motion is detectable.
  *
  * Two guards stop one shake counting several times: a single shake swings the phone back and forth and
  * crosses the threshold repeatedly, so [QUIET_PERIOD_MS] must pass before another is reported.
@@ -63,10 +64,16 @@ class ShakeDetector @Inject constructor(
 
     private var listener: SensorEventListener? = null
     private var lastShakeAt = 0L
+    private var gentleMotion: GentleMotionDetector? = null
 
     /** @return whether motion sensing actually started. `false` on a device with no accelerometer. */
     override fun start(sensitivity: ShakeSensitivity, onShake: () -> Unit): Boolean {
         stop()
+        gentleMotion = if (sensitivity == ShakeSensitivity.ExtraHigh || sensitivity == ShakeSensitivity.UltraHigh) {
+            GentleMotionDetector(sensitivity.movementThreshold())
+        } else {
+            null
+        }
         val manager = sensors ?: return false
         val accelerometer = manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) ?: return false
         val registered = object : SensorEventListener {
@@ -91,6 +98,7 @@ class ShakeDetector @Inject constructor(
         sensors?.unregisterListener(current)
         listener = null
         lastShakeAt = 0L
+        gentleMotion = null
         logger.debug(LogCategory.Playback, "Motion sensing stopped")
     }
 
@@ -104,10 +112,12 @@ class ShakeDetector @Inject constructor(
             (values[0] * values[0] + values[1] * values[1] + values[2] * values[2]).toDouble(),
         )
         val movement = magnitude - SensorManager.GRAVITY_EARTH
-        if (movement < sensitivity.movementThreshold()) return false
         // The sensor's own timestamp is nanoseconds since boot, which is monotonic — a wall clock here
         // would let a time-zone change or an NTP correction swallow or duplicate a shake.
         val nowMs = event.timestamp / NANOS_PER_MILLI
+        val qualifies = gentleMotion?.detect(values[0].toDouble(), values[1].toDouble(), values[2].toDouble(), nowMs)
+            ?: (movement >= sensitivity.movementThreshold())
+        if (!qualifies) return false
         if (nowMs - lastShakeAt < QUIET_PERIOD_MS) return false
         lastShakeAt = nowMs
         logger.debug(
@@ -141,4 +151,42 @@ internal fun ShakeSensitivity.movementThreshold(): Double = when (this) {
     ShakeSensitivity.Low -> LOW_SHAKE_THRESHOLD
     ShakeSensitivity.Normal -> NORMAL_SHAKE_THRESHOLD
     ShakeSensitivity.High -> HIGH_SHAKE_THRESHOLD
+    ShakeSensitivity.ExtraHigh -> EXTRA_HIGH_SHAKE_THRESHOLD
+    ShakeSensitivity.UltraHigh -> ULTRA_HIGH_SHAKE_THRESHOLD
+}
+
+private const val EXTRA_HIGH_SHAKE_THRESHOLD = 0.5
+private const val ULTRA_HIGH_SHAKE_THRESHOLD = 0.02
+
+/** PLAY-008 — estimate gravity per axis so gentle sideways movement is visible too. */
+internal class GentleMotionDetector(private val threshold: Double) {
+    private var gravity: DoubleArray? = null
+    private var startedAt = 0L
+    private var consecutive = 0
+
+    fun detect(x: Double, y: Double, z: Double, atMs: Long): Boolean {
+        val values = doubleArrayOf(x, y, z)
+        if (values.any { !it.isFinite() }) return false
+        val baseline = gravity
+        if (baseline == null) {
+            gravity = values
+            startedAt = atMs
+            return false
+        }
+        var energy = 0.0
+        values.indices.forEach { index ->
+            baseline[index] = GRAVITY_WEIGHT * baseline[index] + (1 - GRAVITY_WEIGHT) * values[index]
+            val movement = values[index] - baseline[index]
+            energy += movement * movement
+        }
+        if (atMs - startedAt < WARMUP_MS) return false
+        consecutive = if (sqrt(energy) >= threshold) consecutive + 1 else 0
+        return consecutive >= REQUIRED_SAMPLES
+    }
+
+    private companion object {
+        const val GRAVITY_WEIGHT = 0.96
+        const val WARMUP_MS = 1_000L
+        const val REQUIRED_SAMPLES = 3
+    }
 }

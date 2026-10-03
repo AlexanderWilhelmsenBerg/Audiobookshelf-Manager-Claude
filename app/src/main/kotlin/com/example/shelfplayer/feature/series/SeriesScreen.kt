@@ -29,7 +29,6 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,7 +37,6 @@ import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.domain.library.SeriesShelf
-import com.example.shelfplayer.feature.browse.BookCard
 import com.example.shelfplayer.feature.browse.BookCoverThumbnail
 import com.example.shelfplayer.feature.browse.readable
 import com.example.shelfplayer.ui.glass.playerChromeClearance
@@ -141,10 +139,10 @@ private fun SeriesBooks(
             SeriesHeader(shelf = shelf, onContinue = { onBookPlaySelected(it) })
         }
         items(items = shelf.books, key = { it.id.value }) { book ->
-            BookCard(
+            SeriesBookCard(
                 book = book,
                 onClick = { onBookSelected(book.id) },
-                // The membership for *this* series, not the book's first one — see [BookCard].
+                // The membership for this series, not the book's first one.
                 membership = book.seriesMemberships.firstOrNull { it.series.id == shelf.series.id },
                 // LIB-003 asks for direct play/resume on a series. The rows here are one story in order,
                 // so "carry on with this one" is a common intent rather than a mis-tap waiting to happen.
@@ -172,56 +170,51 @@ private fun SeriesBooks(
 @Composable
 private fun SeriesHeader(shelf: SeriesShelf, onContinue: (LibraryItemId) -> Unit, modifier: Modifier = Modifier) {
     val next = shelf.nextBook
-    Row(
+    Column(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // The cover of the book the listener would carry on with, which is the one this screen is about.
-        // The first book only when everything is finished, so the square is never empty.
-        BookCoverThumbnail(book = next ?: shelf.books.first(), modifier = Modifier.size(COVER_SIZE))
-        Column(
-            modifier = Modifier.weight(WEIGHT_FILL),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = pluralStringResource(
-                    R.plurals.series_progress,
-                    shelf.bookCount,
-                    shelf.finishedCount,
-                    shelf.bookCount,
-                ),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                text = stringResource(R.string.series_total_duration, shelf.totalDuration.readable()),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (next == null) {
-                // Every book finished. No button: "carry on" has nowhere to go, and a control that
-                // restarts a finished series on one tap is the wrong thing to leave under a thumb.
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            // The next book's cover, or the first when everything is finished.
+            BookCoverThumbnail(book = next ?: shelf.books.first(), modifier = Modifier.size(COVER_SIZE))
+            Column(
+                modifier = Modifier.weight(WEIGHT_FILL),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 Text(
-                    text = stringResource(R.string.series_all_finished),
+                    text = pluralStringResource(
+                        R.plurals.series_progress,
+                        shelf.bookCount,
+                        shelf.finishedCount,
+                        shelf.bookCount,
+                    ),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = stringResource(R.string.series_total_duration, shelf.totalDuration.readable()),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            } else {
-                // Seen and heard say different things, deliberately. The label is the title alone, because
-                // the button sits under "N of M finished" and the surrounding words are already on screen.
-                // A screen reader gets none of that context, and "Book 3, button" does not say what pressing
-                // it does — so the spoken name is the whole sentence. A test caught this: the title alone
-                // matched both this button and the row for the same book, which is what a listener hears.
-                val spoken = stringResource(R.string.series_continue, next.title)
-                Button(
-                    onClick = { onContinue(next.id) },
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .semantics { contentDescription = spoken },
-                ) {
-                    Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null)
-                    Spacer(modifier = Modifier.size(8.dp))
-                    Text(text = next.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+            }
+        }
+        if (next == null) {
+            // Do not offer a one-tap restart of the whole finished series.
+            Text(
+                text = stringResource(R.string.series_all_finished),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            // Full title outside the button; its short label stays readable at large text sizes.
+            Text(text = next.title, style = MaterialTheme.typography.titleMedium)
+            val spoken = stringResource(R.string.series_continue, next.title)
+            Button(
+                onClick = { onContinue(next.id) },
+                modifier = Modifier.semantics { contentDescription = spoken },
+            ) {
+                Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null)
+                Spacer(modifier = Modifier.size(8.dp))
+                Text(text = stringResource(R.string.series_continue_action))
             }
         }
     }
@@ -230,6 +223,6 @@ private fun SeriesHeader(shelf: SeriesShelf, onContinue: (LibraryItemId) -> Unit
 /** The header is not a book, so it needs a key that no book id can collide with. */
 private const val HEADER_KEY = "series-header"
 
-private val COVER_SIZE = 112.dp
+private val COVER_SIZE = 80.dp
 
 private const val WEIGHT_FILL = 1f

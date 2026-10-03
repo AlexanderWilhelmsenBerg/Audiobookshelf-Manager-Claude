@@ -105,6 +105,25 @@ class DefaultPlaybackHistoryRepository @Inject constructor(
         )
     }
 
+    override suspend fun recordProgress(bookId: LibraryItemId, to: Duration, at: Instant, owner: ProfileId?) =
+        withContext(ioDispatcher) {
+            val profileId = owner ?: profileRepository.activeProfileId() ?: return@withContext
+            val profile = profileDao.findProfile(profileId.value) ?: return@withContext
+            history.recordProgress(
+                PlaybackHistoryEntity(
+                    entryId = UUID.randomUUID().toString(),
+                    profileId = profileId.value,
+                    bookKey = EntityKey.of(profile.serverId, bookId.value),
+                    fromMillis = null,
+                    toMillis = to.inWholeMilliseconds.coerceAtLeast(0),
+                    reason = PlaybackEvent.ListeningProgress.name,
+                    detailMillis = null,
+                    at = at.toEpochMilli(),
+                ),
+                keep = PlaybackHistoryRepository.DEFAULT_LIMIT,
+            )
+        }
+
     /**
      * PRODUCT_SPEC PLAY-003 — imports the server's own session records for one book.
      *

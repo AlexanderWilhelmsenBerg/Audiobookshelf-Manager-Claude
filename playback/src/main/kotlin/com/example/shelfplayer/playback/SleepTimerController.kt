@@ -164,6 +164,8 @@ class SleepTimerController @Inject constructor(
         val chapterSkip: Int,
         /** BW-SLEEP-01 occurrence id when schedule-created; null for every manually-created timer. */
         val automaticOccurrence: String?,
+        /** Frozen clock instant while audio is paused or buffering. */
+        val pausedAtElapsedMs: Long? = null,
     )
 
     private data class StartClaim(
@@ -299,8 +301,10 @@ class SleepTimerController @Inject constructor(
      */
     fun onPlaybackChanged(isPlaying: Boolean) {
         applicationScope.launch(mainDispatcher) {
+            reconcileCountdown(isPlaying)
             playbackActive = isPlaying
             if (!isPlaying) {
+                if (phase is TimerPhase.Starting) invalidateTransientPhase()
                 invalidatePlayRequestNow()
                 scheduleScheduleBoundary()
                 return@launch
@@ -402,7 +406,7 @@ class SleepTimerController @Inject constructor(
      * generation change can invalidate that claim and the old coroutine can no longer install a timer later.
      */
     private suspend fun startTimer(mode: SleepTimerMode, automaticOccurrence: String?): AppResult<Unit> {
-        val currentPlayer = player ?: return nothingToStop()
+        val currentPlayer = player?.takeIf { it.isPlaying && it.currentMediaItem != null } ?: return nothingToStop()
         if (mode is SleepTimerMode.EndOfChapter && remainingToChapterEnd(skip = 0) == null) {
             return AppResult.Failure(
                 AppError.Playback(summary = "This book has no chapters to stop at."),
@@ -433,6 +437,7 @@ class SleepTimerController @Inject constructor(
 
         val sessionId = claim.bookId?.let { recordStarted(it, mode) }
         return if (!isStartClaimCurrent(claim)) {
+            if ((phase as? TimerPhase.Starting)?.claim?.token == claim.token) invalidateTransientPhase()
             closeUncommittedSession(sessionId)
             startSuperseded()
         } else {
@@ -494,7 +499,8 @@ class SleepTimerController @Inject constructor(
                 val base = if (restart) Duration.ZERO else remainingOf(current)
                 current.copy(
                     deadlineElapsedMs =
-                    clock.elapsed().inWholeMilliseconds + (base + mode.length).inWholeMilliseconds,
+                    (current.pausedAtElapsedMs ?: clock.elapsed().inWholeMilliseconds) +
+                        (base + mode.length).inWholeMilliseconds,
                 )
             }
 
@@ -720,7 +726,13 @@ class SleepTimerController @Inject constructor(
      * would drift from the moment the listener changed it.
      */
     private suspend fun tick() {
+        reconcileCountdown(player?.isPlaying == true)
         val current = running ?: return
+        if (current.pausedAtElapsedMs != null) {
+            restorePlayerVolume()
+            publish()
+            return
+        }
         val remaining = remainingOf(current)
         if (remaining <= Duration.ZERO) {
             expire()
@@ -821,9 +833,12 @@ class SleepTimerController @Inject constructor(
      */
     private fun record(event: PlaybackEvent, from: Duration? = null, to: Duration? = null, detail: Duration? = null) {
         val media = player ?: return
-        val bookId = media.currentMediaItem?.let(MediaItems::bookIdOf) ?: return
+        val item = media.currentMediaItem ?: return
+        val bookId = MediaItems.bookIdOf(item)
         val at = to ?: media.bookPosition()
-        applicationScope.launch { history.record(bookId, event, from, at, detail) }
+        val owner = MediaItems.ownerOf(item)
+        val happenedAt = clock.now()
+        applicationScope.launch { history.record(bookId, event, from, at, detail, at = happenedAt, owner = owner) }
     }
 
     private suspend fun finish(outcome: SleepTimerOutcome, suppressAutomaticRearm: Boolean = false) {
@@ -1037,6 +1052,8 @@ class SleepTimerController @Inject constructor(
         return current.claim.token == claim.token &&
             player === claim.player &&
             playbackGeneration == claim.playbackGeneration &&
+            claim.player.isPlaying &&
+            claim.bookId != null &&
             claim.player.currentMediaItem?.let(MediaItems::bookIdOf) == claim.bookId &&
             occurrenceCurrent
     }
@@ -1130,10 +1147,30 @@ class SleepTimerController @Inject constructor(
     private fun remainingOf(current: TimerRun): Duration = when (current.mode) {
         is SleepTimerMode.Fixed -> SleepTimerMath.remainingUntil(
             deadline = current.deadlineElapsedMs.milliseconds,
-            elapsed = clock.elapsed(),
+            elapsed = current.pausedAtElapsedMs?.milliseconds ?: clock.elapsed(),
         )
 
         SleepTimerMode.EndOfChapter -> remainingToChapterEnd(current.chapterSkip) ?: Duration.ZERO
+    }
+
+    /** PLAY-008 — count audible listening time; the schedule remains a separate wall-clock eligibility. */
+    private fun reconcileCountdown(isPlaying: Boolean) {
+        val current = running ?: return
+        val now = clock.elapsed().inWholeMilliseconds
+        val pausedAt = current.pausedAtElapsedMs
+        val next = when {
+            !isPlaying && pausedAt == null -> current.copy(pausedAtElapsedMs = now)
+
+            isPlaying && pausedAt != null -> current.copy(
+                deadlineElapsedMs = current.deadlineElapsedMs + (now - pausedAt).coerceAtLeast(0),
+                pausedAtElapsedMs = null,
+            )
+
+            else -> return
+        }
+        phase = TimerPhase.Running(next)
+        if (!isPlaying) restorePlayerVolume()
+        publish()
     }
 
     private fun remainingToChapterEnd(skip: Int): Duration? {

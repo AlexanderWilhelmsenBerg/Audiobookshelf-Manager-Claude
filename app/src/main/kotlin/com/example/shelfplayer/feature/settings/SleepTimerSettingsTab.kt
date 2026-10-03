@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
@@ -75,6 +77,7 @@ internal fun LazyListScope.sleepTimerTab(
                     labelOf = { sensitivity -> sensitivity.label() },
                     onSelected = actions.onShakeSensitivityChanged,
                 )
+                UltraSensitivityHint(settings.shakeSensitivity)
             }
             if (history.isNotEmpty()) {
                 ExpandableSettingsRow(
@@ -89,6 +92,13 @@ internal fun LazyListScope.sleepTimerTab(
 }
 
 private val FADE_OPTIONS: List<Duration> = listOf(Duration.ZERO) + listOf(5, 10, 15, 20, 30).map { it.seconds }
+
+@Composable
+private fun UltraSensitivityHint(sensitivity: ShakeSensitivity) {
+    if (sensitivity == ShakeSensitivity.UltraHigh) {
+        Text(text = stringResource(R.string.sleep_timer_shake_ultra_hint), style = MaterialTheme.typography.bodySmall)
+    }
+}
 
 @Composable
 private fun minutesLabel(duration: Duration): String = stringResource(
@@ -116,6 +126,8 @@ private fun ShakeSensitivity.label(): String = stringResource(
         ShakeSensitivity.Low -> R.string.sleep_timer_shake_sensitivity_low
         ShakeSensitivity.Normal -> R.string.sleep_timer_shake_sensitivity_normal
         ShakeSensitivity.High -> R.string.sleep_timer_shake_sensitivity_high
+        ShakeSensitivity.ExtraHigh -> R.string.sleep_timer_shake_sensitivity_extra_high
+        ShakeSensitivity.UltraHigh -> R.string.sleep_timer_shake_sensitivity_ultra_high
     },
 )
 

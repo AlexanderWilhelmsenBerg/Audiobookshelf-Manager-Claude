@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sleep_timer_shake_sensitivity_extra_high">Ekstra høy</string>
+    <string name="sleep_timer_shake_sensitivity_ultra_high">Ultrahøy</string>
+    <string name="sleep_timer_shake_ultra_hint">Ultrahøy oppdager svært små bevegelser. Sengetøy og telefonens plassering påvirker registreringen; tilfeldige bevegelser kan starte tidsuret på nytt.</string>
+    <string name="sleep_timer_requires_playing">Spill av en bok for å starte sovetidsuret. Et eksisterende tidsur venter mens lyden er satt på pause.</string>
+    <string name="player_history_listening_progress">Lagret lytteposisjon</string>
+    <string name="player_history_chapter_crossed">Kapittelgrense passert</string>
+    <string name="player_history_progress_percent">%1$d%% av boken</string>
+</resources>
