@@ -208,8 +208,9 @@ class DownloadsScreenTest {
         compose.onNodeWithContentDescription("Retry this download").assertDoesNotExist()
     }
 
+    /** #111: every in-flight state offers Pause; only Complete offers nothing. */
     @Test
-    fun `queued waiting retrying and complete rows expose no recovery action`() {
+    fun `queued waiting retrying rows expose Pause and complete exposes none`() {
         var recoveryState by mutableStateOf(DownloadRecoveryState.Queued)
         compose.setContent {
             DownloadsScreen(
@@ -226,14 +227,19 @@ class DownloadsScreenTest {
             DownloadRecoveryState.Queued,
             DownloadRecoveryState.Waiting,
             DownloadRecoveryState.Retrying,
-            DownloadRecoveryState.Complete,
         ).forEach { next ->
             recoveryState = next
             compose.waitForIdle()
-            compose.onNodeWithContentDescription("Pause this download").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Pause this download").assertExists()
             compose.onNodeWithContentDescription("Resume this download").assertDoesNotExist()
             compose.onNodeWithContentDescription("Retry this download").assertDoesNotExist()
         }
+
+        recoveryState = DownloadRecoveryState.Complete
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("Pause this download").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Resume this download").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Retry this download").assertDoesNotExist()
     }
 
     private fun render(recoveryState: DownloadRecoveryState, onRecovery: (DownloadRecoveryState) -> Unit = {}) {

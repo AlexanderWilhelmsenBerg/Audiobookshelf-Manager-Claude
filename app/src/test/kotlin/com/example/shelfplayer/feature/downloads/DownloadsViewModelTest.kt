@@ -41,6 +41,7 @@ import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.DownloadBookUseCase
 import com.example.shelfplayer.domain.usecase.PauseDownloadUseCase
+import com.example.shelfplayer.domain.usecase.RemoveDownloadUseCase
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -296,21 +297,33 @@ class DownloadsViewModelTest {
     }
 
     @Test
-    fun `states without a manual recovery action call neither use case`() = runTest {
+    fun `a complete row has no recovery action and calls neither use case`() = runTest {
+        val scheduler = TrackingScheduler()
+        val viewModel = viewModel(scheduler)
+
+        viewModel.onRecoveryAction(LibraryItemId("tidewatch"), DownloadRecoveryState.Complete)
+
+        assertEquals(emptyList(), downloads.paused)
+        assertEquals(emptyList(), downloads.requested)
+        assertEquals(emptyList(), scheduler.cancelled)
+        assertEquals(emptyList(), scheduler.enqueued)
+    }
+
+    /** #111: Pause is offered, and routed, in every in-flight state. Revert-detector for Pause-only-Running. */
+    @Test
+    fun `queued waiting and retrying rows pause`() = runTest {
         val scheduler = TrackingScheduler()
         val viewModel = viewModel(scheduler)
         val bookId = LibraryItemId("tidewatch")
 
         listOf(
-            DownloadRecoveryState.Complete,
             DownloadRecoveryState.Queued,
             DownloadRecoveryState.Waiting,
             DownloadRecoveryState.Retrying,
         ).forEach { state -> viewModel.onRecoveryAction(bookId, state) }
 
-        assertEquals(emptyList(), downloads.paused)
+        assertEquals(listOf(bookId, bookId, bookId), downloads.paused)
         assertEquals(emptyList(), downloads.requested)
-        assertEquals(emptyList(), scheduler.cancelled)
         assertEquals(emptyList(), scheduler.enqueued)
     }
 
@@ -393,6 +406,35 @@ class DownloadsViewModelTest {
     }
 
     /**
+     * Revert-detector for D4: removing an in-flight copy nobody else claims used to delete the files while
+     * the worker kept downloading into them. It must stop the transfer too.
+     */
+    @Test
+    fun `removing an in-flight copy nobody else claims cancels its work`() = runTest {
+        val scheduler = TrackingScheduler()
+        downloads.emit(listOf(offlineBook("tidewatch", state = DownloadState.Running, requestedBy = setOf(ADA))))
+        val viewModel = viewModel(scheduler)
+
+        viewModel.onRemove(LibraryItemId("tidewatch"), SERVER)
+
+        assertEquals(listOf(LibraryItemId("tidewatch")), scheduler.cancelled)
+        assertEquals(listOf(LibraryItemId("tidewatch")), files.removed)
+    }
+
+    /** A row from another server is not this profile's to remove: the use case would resolve the wrong item. */
+    @Test
+    fun `removing a row from another server does nothing`() = runTest {
+        val scheduler = TrackingScheduler()
+        downloads.emit(listOf(offlineBook("tidewatch")))
+        val viewModel = viewModel(scheduler)
+
+        viewModel.onRemove(LibraryItemId("tidewatch"), ServerId("other-server"))
+
+        assertEquals(emptyList(), files.removed)
+        assertEquals(emptyList(), scheduler.cancelled)
+    }
+
+    /**
      * DL-003 criterion 5. A silent success would leave the user watching the total not move and wondering
      * which of the two of them is broken.
      */
@@ -400,12 +442,14 @@ class DownloadsViewModelTest {
     fun `removing a shared copy explains why nothing was freed`() = runTest {
         downloads.emit(listOf(offlineBook("tidewatch", requestedBy = setOf(ADA, GRACE))))
         files.refusals += LibraryItemId("tidewatch")
-        val viewModel = viewModel()
+        val scheduler = TrackingScheduler()
+        val viewModel = viewModel(scheduler)
 
         viewModel.onRemove(LibraryItemId("tidewatch"), SERVER)
 
         val message = assertNotNull(viewModel.message.value)
         assertTrue(message.contains("another profile"), message)
+        assertEquals(emptyList(), scheduler.cancelled, "another profile's transfer must keep running")
     }
 
     @Test
@@ -484,8 +528,11 @@ class DownloadsViewModelTest {
         execution = execution,
         // The real use cases are intentionally kept in this ViewModel test: #18 is about routing the row's
         // presentation state to exactly one of them, not about replacing that seam with a mock.
-        pauseDownload = PauseDownloadUseCase(FakeProfiles(), downloads, scheduler),
-        downloadBook = DownloadBookUseCase(FakeProfiles(), ActionAssets, downloads, scheduler),
+        actions = DownloadRowActions(
+            pause = PauseDownloadUseCase(FakeProfiles(), downloads, scheduler),
+            download = DownloadBookUseCase(FakeProfiles(), ActionAssets, downloads, scheduler),
+            remove = RemoveDownloadUseCase(FakeProfiles(), downloads, files, scheduler),
+        ),
         library = library,
     )
 

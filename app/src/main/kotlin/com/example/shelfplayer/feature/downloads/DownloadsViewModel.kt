@@ -17,15 +17,16 @@ import com.example.shelfplayer.domain.download.DownloadExecutionKey
 import com.example.shelfplayer.domain.download.DownloadExecutionObserver
 import com.example.shelfplayer.domain.download.DownloadExecutionSnapshot
 import com.example.shelfplayer.domain.download.DownloadLocations
+import com.example.shelfplayer.domain.download.DownloadRecoveryAction
 import com.example.shelfplayer.domain.download.DownloadRecoveryPolicy
 import com.example.shelfplayer.domain.download.DownloadRecoveryState
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.download.OfflineVerification
+import com.example.shelfplayer.domain.download.recoveryAction
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
-import com.example.shelfplayer.domain.usecase.DownloadBookUseCase
-import com.example.shelfplayer.domain.usecase.PauseDownloadUseCase
+import com.example.shelfplayer.domain.usecase.DownloadRemoval
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -64,10 +66,8 @@ class DownloadsViewModel @Inject constructor(
     private val profiles: ProfileRepository,
     private val locations: DownloadLocations,
     private val execution: DownloadExecutionObserver,
-    /** PRODUCT_SPEC DL-001 — stop a transfer without discarding what it fetched. */
-    private val pauseDownload: PauseDownloadUseCase,
-    /** The resume half. It re-checks the grant and the free space, which a bare re-enqueue would not. */
-    private val downloadBook: DownloadBookUseCase,
+    /** Pause, resume/retry and claim-aware remove: the row's three actions. */
+    private val actions: DownloadRowActions,
     library: LibraryRepository,
 ) : ViewModel() {
 
@@ -220,14 +220,22 @@ class DownloadsViewModel @Inject constructor(
         _message.value = null
     }
 
-    /** PRODUCT_SPEC DL-003 — releases this profile's claim, and the files if it was the last. */
+    /**
+     * PRODUCT_SPEC DL-003 — releases this profile's claim, and the files if it was the last.
+     *
+     * Goes through [RemoveDownloadUseCase] rather than the file store: removing a copy nobody else claims
+     * must also cancel its in-flight transfer, or the worker keeps writing into files that were just
+     * deleted. The use case acts on the *active* profile's server, so a row from another server is refused
+     * here rather than resolved against the wrong item.
+     */
     fun onRemove(bookId: LibraryItemId, serverId: ServerId) {
         viewModelScope.launch {
-            val profileId = profiles.activeProfileId() ?: return@launch
-            when (val removed = files.remove(profileId, serverId, bookId)) {
+            val profile = profiles.observeActiveProfile().first() ?: return@launch
+            if (profile.serverId != serverId) return@launch
+            when (val removed = actions.remove(bookId)) {
                 is AppResult.Failure -> _message.value = removed.error.summary
 
-                is AppResult.Success -> if (!removed.value) {
+                is AppResult.Success -> if (removed.value == DownloadRemoval.ClaimReleased) {
                     // The honest report. Somebody else on this device still wants the book, so nothing was
                     // freed — and a silent success would leave the user wondering why the number did not
                     // move (DL-003 criterion 5).
@@ -263,21 +271,20 @@ class DownloadsViewModel @Inject constructor(
     /**
      * BW-DL-03 / #18 — execute only the recovery action owned by the row's presentation state.
      *
-     * Running is the sole state allowed to pause. Paused and terminal Failed both go through
-     * [DownloadBookUseCase], which preserves an existing manifest/file rows while re-checking the active
-     * profile's download permission and current free space. Queued, Waiting, Retrying and Complete expose
-     * no row action in this slice; BW-DL-04 / #19 will add transient execution evidence without turning it
-     * into another durable state owner.
+     * Pause applies to every in-flight state (Queued, Running, Waiting, Retrying). Paused and terminal Failed
+     * go through [DownloadRowActions.download], which preserves an existing manifest/file rows while re-checking the
+     * active profile's download permission and current free space. Complete exposes no row action. The
+     * state-to-action mapping is the domain's `recoveryAction()`, shared with the Book button.
      */
     fun onRecoveryAction(bookId: LibraryItemId, recoveryState: DownloadRecoveryState) {
-        val action = recoveryState.rowAction() ?: return
+        val action = recoveryState.recoveryAction() ?: return
         viewModelScope.launch {
             val result = when (action) {
-                DownloadRecoveryAction.Pause -> pauseDownload(bookId)
+                DownloadRecoveryAction.Pause -> actions.pause(bookId)
 
                 DownloadRecoveryAction.Resume,
                 DownloadRecoveryAction.Retry,
-                -> downloadBook(bookId)
+                -> actions.download(bookId)
             }
             if (result is AppResult.Failure) _message.value = result.error.summary
         }
@@ -388,33 +395,6 @@ class DownloadsViewModel @Inject constructor(
             "Removed from your downloads. The files stayed, because another profile on this device also " +
                 "downloaded this book."
     }
-}
-
-/** The concrete listener action, if any, for a BW-DL-02 recovery state. */
-internal enum class DownloadRecoveryAction {
-    Pause,
-    Resume,
-    Retry,
-}
-
-/**
- * BW-DL-03 / #18 — one exhaustive mapping keeps ViewModel routing and Compose semantics from disagreeing.
- *
- * WorkManager-owned waiting/retry evidence is representable already, but remains actionless until #19
- * supplies that evidence. Complete is likewise actionless.
- */
-internal fun DownloadRecoveryState.rowAction(): DownloadRecoveryAction? = when (this) {
-    DownloadRecoveryState.Running -> DownloadRecoveryAction.Pause
-
-    DownloadRecoveryState.Paused -> DownloadRecoveryAction.Resume
-
-    DownloadRecoveryState.Failed -> DownloadRecoveryAction.Retry
-
-    DownloadRecoveryState.Complete,
-    DownloadRecoveryState.Queued,
-    DownloadRecoveryState.Waiting,
-    DownloadRecoveryState.Retrying,
-    -> null
 }
 
 /**
