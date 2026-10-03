@@ -166,9 +166,10 @@ private fun ApplicationExtension.configureBuildTypes() {
  * PRODUCT_SPEC 17.3 — the benchmark variant builds an application and nothing else.
  *
  * Without this, adding a third build type silently adds `testBenchmarkUnitTest` and a third Kover variant
- * to a project whose coverage gate is a root-level aggregate — so a variant that exists only to be
- * measured on a device would start contributing to, and being required by, the coverage number. It would
- * also fail: `ui-test-manifest` is a `debugImplementation`, so the Robolectric screen tests have no
+ * to the project's built-in `total` report. The root coverage gate no longer aggregates `total` (it verifies
+ * the debug-only `gate` variant), so the gate is not exposed to it; this still keeps `total` reports and
+ * `./gradlew testBenchmarkUnitTest`-style invocations from picking up a variant that exists only to be
+ * measured on a device. It would also fail: `ui-test-manifest` is a `debugImplementation`, so the Robolectric screen tests have no
  * activity to launch outside debug.
  *
  * Turning both test components off states that in one place, rather than leaving a reader of `:app`'s

@@ -64,9 +64,9 @@ also has real-Git fixtures for stacked PRs, published-schema edits/deletions and
 **Requirements:** PLAY-001/002/004/007, ROUTE-001/002, AUTH-002, LIB-002/003, specification 5.2 and 6.5.
 **Gate:** physical headset/car evidence remains required; JVM tests cannot close this gate.
 
-**Review integration order:** #214 supplies the shared app-unit isolation prerequisite for #215/#216.
-Review it first, then retarget those two PRs to updated main. Review #211 before #213 because #213 includes
-its presentation changes. #212's CI policy can proceed independently; verify the combined candidate before
+**Review integration order:** #214 supplies the shared coverage/app-unit prerequisite for #212/#215/#216.
+Review it first, then retarget those three PRs to updated main. Review #211 before #213 because #213 includes
+its presentation changes. The Silo decision does not block any of these PRs; verify the combined candidate before
 device acceptance. No PR merge is implied by this plan.
 
 ## 2. Verify the merged download reliability lane
