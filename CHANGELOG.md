@@ -6,6 +6,13 @@ giving it a section of its own.
 
 ## Unreleased
 
+### Android Auto continuity across unreadable connection state (PLAY-002, ROUTE-002, #128)
+
+- A temporary unreadable projection state no longer prevents cleanup on confirmed car disconnection or
+  creates a second arrival when the provider recovers. Unknown alone never grants a disconnect or Play.
+- Five real provider-to-service regressions and the 68-case continuity suite cover the correction.
+  Exact headset routing and audible entry/departure remain pending physical acceptance.
+
 ### Android Auto never shows the sleep timer (PLAY-008, PD-002, #189)
 
 - While Android Auto or Android Automotive is connected, no countdown title and no sleep button are published,

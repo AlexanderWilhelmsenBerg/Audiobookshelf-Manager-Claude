@@ -1607,3 +1607,14 @@ So the range 2.26.0 to 2.35.x is **accepted and unverified**, and that is a deci
 oversight: refusing it would turn an untested-but-probably-fine server away for the sake of a claim this app
 cannot make either way, since 2.30 has been tested exactly as much as 2.26 has. If a report ever arrives
 from a server in that range, this is the paragraph that explains why it was allowed to connect.
+
+## Android Auto interoperability verification — 2026-10-03
+
+GitHub #128 (historical Forgejo #36) has five actual projection-provider/broadcast-to-service regressions.
+The service retains its existing positive lifecycle latch across Unknown, grants departure only on confirmed
+NotConnected and does not treat a recovered positive provider read as a second arrival. All 68 focused
+continuity cases passed. No Audiobookshelf endpoint, response field, permission, schema or dependency changed.
+
+The interoperability boundary remains host-dependent. API 26/31/34/36, projected/Automotive/provider fallback,
+exact headset routing and audible continuity require the [review matrix](reviews/2026-10-03-issue-128-continuity-review.md)
+and [verification register](testing/roadmap-verification-register.md). Physical acceptance is pending.
