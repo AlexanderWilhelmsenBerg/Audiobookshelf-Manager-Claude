@@ -56,4 +56,8 @@ targets, keyboard/system Back where relevant and reduced motion. Record APK comm
 - #101 series formatting: change display copy separately, preserving primary series selection and ordering.
 - New system surfaces and iOS retain the roadmap's correctness gate; this UI audit does not advance them.
 
-No render, TalkBack, physical WebView or device acceptance was performed for this reconciliation.
+No render, TalkBack, physical WebView or device acceptance was performed for the original reconciliation.
+The later [supplied-phone pass](2026-10-03-phone-acceptance.md), on main `8beec05c` / API 36, samples
+landscape and 200% portrait player text and renders Loopbound's first page with WebView 153.0.8010.36.
+Landscape text over bright enlarged artwork needs controlled contrast review under #194/#195. This does
+not accept the complete width/theme/TalkBack matrix or #190's affected-device flicker/opaque/Haze checks.

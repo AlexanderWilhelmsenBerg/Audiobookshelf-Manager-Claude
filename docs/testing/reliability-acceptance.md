@@ -1,15 +1,17 @@
 # Reliability acceptance
 
 **Classification:** Acceptance checklist, not a second roadmap.
-**Baseline:** main `b7266a3d` includes #211–#217; this revision adds the R-122 correction.
+**Baseline:** main `8beec05c` includes #211–#218, including the R-122 correction.
 Record the exact candidate APK commit when executing.
 
 ## Evidence record
 
 Record APK commit, Android/API version, device/host type and results. Use fixture accounts/media; redact
 private titles, usernames, hosts and paths from shared captures. `adb devices` returned no attached device
-during the 2026-10-02 inventory. Every physical scenario below remains pending.
-The owner will supply a phone later. Log each runbook step in the
+during the 2026-10-02 inventory. The owner supplied an API-36 phone on 2026-10-03; its
+[dated execution](2026-10-03-phone-acceptance.md) records passing instrumented/manual subcases, failed
+benchmark attempts and pending matrices. No entire playback/car/download lane is accepted from that subset.
+Log each remaining runbook step in the
 [verification register](roadmap-verification-register.md), including unavailable configurations and the
 historical #36 / GitHub #128 headset-continuity follow-up.
 
@@ -162,8 +164,8 @@ Local logs are under ignored `build/reliability-evidence/`; the full-gate log is
   fixture lint and isolated local SDK-path/cache findings were corrected; failed logs remain available.
 - The [focused review](../reviews/2026-10-03-issue-128-continuity-review.md) records eight automated-check
   entries (the first now passed) and 26 granular phone/Auto cases; the [register](roadmap-verification-register.md)
-  logs the wider functional/release checks and exact APK handoff. All current physical cases remain pending
-  until the owner supplies the phone and relevant headset/host. Keep #128 open for that evidence.
+  logs the wider functional/release checks and exact APK handoff. The later phone pass did not exercise
+  heard-headset/Auto continuity or departure. Keep #128 open for the relevant headset/host evidence.
 
 ### Shared-transfer credential ownership — 2026-10-03
 
@@ -178,3 +180,21 @@ Local logs are under ignored `build/reliability-evidence/`; the full-gate log is
 - The [review](../reviews/2026-10-03-shared-download-ownership.md) records every automated case, 12 granular
   phone cases and the next R-123 second-cancellation fixture. Device/server authentication, process restart,
   notifications, metering, card storage and audible playback remain NOT RUN; no hardware issue is closed.
+
+### First supplied-phone execution — 2026-10-03
+
+- Installed debug 0.10.6.1 (2175) is byte-identical to the trusted main `8beec05c` artifact; About matches.
+  The owner had already installed it, so prior-build upgrade/preservation is not accepted from this run.
+- All 27 Keystore/passcode instrumented tests passed through an isolated test package after a pre-existing
+  test-package signer conflict. Whole-app security/lifecycle acceptance is a different scope.
+- Local offline Resume worked with no active default network. Force-stop/reopen stayed silent; explicit
+  Resume was 1.306 seconds ahead of the pre-kill sample, with no observed progress loss in this one run.
+  Mini/full and notification entry, configured system skips, manual timer expiry/extend/cancel, rotation
+  and 200% player text were sampled. Timer cancellation restored the Samsung media-card book title.
+- Five macrobenchmark cases failed because the pinned harness cannot discover this phone's truncated
+  `pgrep` process names. No startup, frame, memory or baseline-profile metric is accepted.
+- A warm Starting observation cleared after cold launch; landscape artwork/text needs contrast review.
+  These are scoped follow-ups, not diagnosed causes. The [case report](2026-10-03-phone-acceptance.md)
+  retains UTC/evidence and every remaining register group, including physical car/headset, controlled
+  transfer/account/server, TalkBack and two-hour soak. Networking/display settings were restored and
+  playback was left paused with the timer off.

@@ -14,6 +14,12 @@ date remains the date the server version and contract were explicitly recorded; 
 review on 2026-08-23 did not capture the server version and therefore does not add an inferred matrix row.
 No released build has been tested.
 
+The [2026-10-03 phone pass](testing/2026-10-03-phone-acceptance.md) used main `8beec05c`, debug 0.10.6.1
+(2175), on Samsung SM-S928B / Android 16 / API 36. Installed-byte/About identity, 27 isolated Keystore/passcode
+instrumented tests, local offline/restart and manual phone timer subcases have evidence. It did not capture
+the active Audiobookshelf server version or verify server contracts/history, so the server table above is
+unchanged. API 26/31/34, car/headset, upgrade and the full functional/security matrices remain pending.
+
 This table is a release blocker for anything that talks to a server (`PRODUCT_SPEC 17.1`: contract
 tests against the selected server versions are release blockers). It must have at least one row
 before Phase 1 is complete.
