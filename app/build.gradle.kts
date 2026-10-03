@@ -2,7 +2,7 @@ plugins {
     id("shelfplayer.android.application.compose")
     id("shelfplayer.hilt")
     alias(libs.plugins.ksp)
-    // PRODUCT_SPEC 17.3 — this module contributes coverage data; the thresholds live in the root build.
+    // PRODUCT_SPEC 17.3 — this module contributes debug coverage data to the root `gate` variant; the thresholds live in the root build.
     alias(libs.plugins.kover)
 }
 
@@ -89,6 +89,22 @@ dependencies {
 }
 
 /*
+ * Release- and benchmark-only sources are compiled on every pull request, on purpose.
+ *
+ * `verifyDebug` no longer runs release unit tests or Kover's release/benchmark artefacts, which used to pull
+ * these compiles in as a side effect. What is kept is the compile evidence: `app/src/release`,
+ * `app/src/benchmark` and `playback/src/release` (a Hilt module), plus the library release variants they
+ * consume. `main.yml` assembles release but never builds the benchmark variant (docs/risks.md R-25), so
+ * without this edge the benchmark source set would rot unseen. The Kotlin compile tasks are used rather
+ * than `hiltJavaCompile<Variant>`: they are known to exist from CI logs, and `hiltJavaCompileBenchmark`
+ * has never run here. Adding it (and detekt for these variants) is a follow-up once it is confirmed with
+ * `./gradlew :app:tasks --all`.
+ */
+tasks.named("verifyDebug") {
+    dependsOn("compileReleaseKotlin", "compileBenchmarkKotlin")
+}
+
+/*
  * PRODUCT_SPEC 17.1 — the rendered UI tier runs on the debug variant, and only there.
  *
  * `ui-test-manifest` is what declares the `ComponentActivity` that `createComposeRule` launches, and it
@@ -97,7 +113,9 @@ dependencies {
  * these classes are excluded from it rather than being made to pass by weakening the release build.
  *
  * Nothing is lost. The debug variant is what `verifyDebug` gates on and what CI runs, and the code under
- * test is identical in both — a Compose semantics tree does not change with the build type.
+ * test is identical in both — a Compose semantics tree does not change with the build type. The release
+ * unit tests themselves run in `main.yml` (`testReleaseUnitTest`), not in `verifyDebug`, so this exclusion
+ * only takes effect there.
  *
  * **The `ScreenTest` suffix is a contract, not a description.** Any test class that calls
  * `createComposeRule` has to carry it, whether or not the thing it renders is a screen; one that does not
@@ -107,5 +125,20 @@ dependencies {
 tasks.withType<Test>().configureEach {
     if (name == "testReleaseUnitTest") {
         exclude("**/*ScreenTest.class")
+    }
+}
+
+/*
+ * PRODUCT_SPEC 17.3 — the root coverage gate measures the debug variant only (docs/architecture/build.md).
+ *
+ * Kover's built-in total variant merges every build variant, which dragged `testReleaseUnitTest` and the
+ * release and benchmark Kover artefacts into every pull request. The custom `gate` variant is what the
+ * root `koverVerifyGate` aggregates.
+ */
+kover {
+    currentProject {
+        createVariant("gate") {
+            add("debug")
+        }
     }
 }
