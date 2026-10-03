@@ -5,7 +5,7 @@ which of them a committed fixture cannot answer on its own.
 
 Nothing here runs in CI. Every command below needs a phone plugged in, and that is not a limitation of the
 tooling — a start-up figure measured on a shared runner describes the runner's contention. `docs/risks.md`
-R-25 is the entry this file closes.
+R-25 remains open until usable measurements and a generated baseline profile are recorded.
 
 ---
 
@@ -48,6 +48,12 @@ its screen timeout longer than the run.
 
 ## Running them
 
+Use a disposable benchmark installation: this variant uses `org.homebord.bookwave`, while the debug
+delivery uses `.debug`. Do not replace or clear an existing unsuffixed installation holding real data.
+The profile-required startup case needs the generated, shipped profile first; select other methods
+explicitly until it exists. The 2026-10-03 phone run selected no/full-compilation startup, list scrolling,
+Home memory and profile generation and failed in launch confirmation; see Results below.
+
 ```bash
 # The three automated measurements. ~15 minutes for all of them.
 ./gradlew :benchmark:connectedBenchmarkAndroidTest
@@ -70,9 +76,22 @@ benchmark/build/outputs/connected_android_test_additional_output/benchmark/conne
   `.debug` build. `adb shell pm list packages | grep bookwave` should show the unsuffixed one.
 - **`No scrollable list on Home`** — the books-view toggle was not found or did not take effect. The
   fixture pins the app's language to English so the content description is stable; if the app was already
-  running from a previous session with a different language, `adb shell pm clear org.homebord.bookwave` and
-  run again.
+  running from a previous session with a different language, clear only the disposable fixture installation
+  for the test user and run again.
 - **`ERROR: Debuggable`** — the debug variant got installed. Macrobenchmark refuses it, correctly.
+- **`Unable to confirm activity launch completion []`** — on the supplied SM-S928B / API-36 phone,
+  Benchmark 1.3.4 cannot discover the running process. `pgrep -l -f org.homebord.bookwave` returns truncated
+  `comm` names, whereas `ps -A -o PID,NAME` returns the full package. Its full-name filter yields no process
+  and its frame-stat polling sees an empty list. Explicit alias launch renders the seeded 2,000-book Home.
+  Do not infer a product launch crash or substitute that render for performance measurements.
+
+The inspected code is `Shell.getRunningProcessesForPackage` in the official
+[benchmark-common 1.3.4 source artifact](https://dl.google.com/dl/android/maven2/androidx/benchmark/benchmark-common/1.3.4/benchmark-common-1.3.4-sources.jar)
+and `MacrobenchmarkScope.getFrameStats` / launch polling in
+[benchmark-macro 1.3.4 sources](https://dl.google.com/dl/android/maven2/androidx/benchmark/benchmark-macro/1.3.4/benchmark-macro-1.3.4-sources.jar).
+Build & Dependencies should reproduce this process-discovery edge and choose a compatible harness fix
+through the staged dependency policy, then rerun the selected measurements and generator. No dependency
+upgrade, shortened application ID or suppressed error is part of the acceptance report.
 
 ---
 
@@ -135,21 +154,23 @@ it is busy — the interactions in step 3 are the measurement, not decoration.
 
 ## Results
 
-Taken on **(device, Android version, date)** — fill in when the run happens.
+Attempted on **Samsung SM-S928B, Android 16 / API 36, 2026-10-03**, source main `8beec05c`.
+All five selected cases failed launch confirmation; no usable measurement/profile was produced.
+The [dated phone report](testing/2026-10-03-phone-acceptance.md) records each failure, duration and evidence.
 
 | Measurement | Target | Result | Notes |
 | --- | --- | --- | --- |
-| Cold start, no compilation — TTID | — | | The first launch after an install |
-| Cold start, no compilation — TTFD | < 1 s | | **17.3's "library interactive"** |
-| Cold start, baseline profile — TTFD | < 1 s | | What a user gets once the profile ships |
-| Cold start, full compilation — TTFD | — | | The floor; not shippable |
-| Scroll `BooksView.List`, P50 frame | — | | |
-| Scroll `BooksView.List`, P95 frame | < 16.7 ms at 60 Hz | | Read the tail, not the median |
-| Scroll `BooksView.List`, P99 frame | — | | |
-| Home heap max, 2,000 books | — | | ADR-0025's second target |
-| Home RSS anon max, 2,000 books | — | | |
-| Player start from downloaded book | < 1 s | | Median of five, aeroplane mode |
-| ANR under download/playback stress | none | | |
+| Cold start, no compilation — TTID | — | BLOCKED | Test failed in process discovery; no metric |
+| Cold start, no compilation — TTFD | < 1 s | BLOCKED | Same failed test; library threshold unaccepted |
+| Cold start, baseline profile — TTFD | < 1 s | NOT RUN | No shipped profile; generator failed |
+| Cold start, full compilation — TTFD | — | BLOCKED | Test failed in process discovery; no metric |
+| Scroll `BooksView.List`, P50 frame | — | BLOCKED | Scroll test failed before measurement |
+| Scroll `BooksView.List`, P95 frame | < 16.7 ms at 60 Hz | BLOCKED | Same failed scroll test |
+| Scroll `BooksView.List`, P99 frame | — | BLOCKED | Same failed scroll test |
+| Home heap max, 2,000 books | — | BLOCKED | Memory test failed before measurement |
+| Home RSS anon max, 2,000 books | — | BLOCKED | Same failed memory test |
+| Player start from downloaded book | < 1 s | NOT RUN | Offline function passed; five-start diagnostic median not taken |
+| ANR under download/playback stress | none | NOT RUN | No controlled concurrent-transfer stress fixture |
 
 ### Reading the scroll number honestly
 

@@ -1,7 +1,10 @@
 # Roadmap verification register
 
 **Classification:** Test inventory and execution log; sequencing remains in [the roadmap](../roadmap.md).
-**Created:** 2026-10-03. The owner will supply a phone later. All current device rows below are **NOT RUN**.
+**Created:** 2026-10-03. The owner supplied an API-36 phone the same day. The
+[first phone execution](2026-10-03-phone-acceptance.md) records 27 passing instrumented cases, selected
+phone subcases, five failed benchmark cases and remaining NOT RUN steps. Parent rows below are inventories,
+not blanket passes; use that dated report for the exact tested APK and observed scope.
 
 This register covers the CI/reliability delivery, the historical issue #36 solution, and the remaining
 functional/release checks in PRODUCT_SPEC sections 17, 21 and 25. Merged code and passing JVM tests do not
@@ -42,9 +45,9 @@ phone covers its own configuration; leave the other API/host rows pending until 
 | A-03 | CI policy fixtures, Actionlint and Bash syntax: main/PR/manual cancellation, previous-main classification, scoped cache pruning and immutable Room schemas. | All 16 policy tests passed, including real-Git stacked-PR/schema fixtures. Observe a trusted main seed and the next PR restore/save timings; first main seed `18c2e618` passed. |
 | A-04 | Prove each regression fails without its fix; inspect actual production callers. | R-115 generation/acceptance/lock/outbox, scheduled-car suppression, phone title and R-124 Book observer/Pause regressions have recorded red/green evidence. #128's actual monitor-to-service regression failed 3/5 on main `3e699786`, then passed 5/5 with the lifecycle latch. All 68 focused cases, formatter, playback ktlint and detekt passed; its combined full gate is recorded with the delivery. |
 | A-05 | Audiobookshelf contract fixtures, missing required fields/unknown fields, compatibility failures and migration tests. | Included in the full gate. Live selected-server-version acceptance remains pending; no new endpoint or schema was introduced by #211–#216. |
-| A-06 | `:core:datastore:connectedDebugAndroidTest`. | **NOT RUN**; requires the supplied phone/emulator. Record passcode/encryption and lifecycle instrumented cases from the task's report. |
+| A-06 | `:core:datastore:connectedDebugAndroidTest`. | **PASS 27/27 on API 36, 2026-10-03**, using an isolated test application ID after the ordinary package hit a signer conflict. All names, scope and failed-install evidence are in the [phone report](2026-10-03-phone-acceptance.md). This tier does not test the whole app lifecycle. |
 | A-07 | Domain/core and security-policy coverage. | Debug/JVM gate enforces the existing 80% domain/core rule. R-125's separate 90% redaction hook is still a follow-up, not accepted from that gate. |
-| A-08 | Exact final-main APK: trusted `apk.yml`, stable signing, built version/About identity and downloadable artifact. | Required with the final CI handoff for each delivery batch. Log the immutable built SHA and actual checks; never describe an assemble-only APK as verified. |
+| A-08 | Exact final-main APK: trusted `apk.yml`, stable signing, built version/About identity and downloadable artifact. | Main `8beec05c` passed trusted debug/cache, release/security and signed APK workflows. Installed 0.10.6.1 (2175) bytes match the artifact and About identifies that source; see [identity/CI record](2026-10-03-phone-acceptance.md). Upgrade itself remains NOT RUN. Repeat handoff identity for each later delivery. |
 
 For branch-only/main builds, use **Build APK** directly: the PR verification workflow's optional APK
 handoff requires an open PR number. Set `variant=debug` and `run_checks=true` when initiating final checks
@@ -54,7 +57,11 @@ trusted workflow. Retain the APK and checksum for the later phone run; confirm u
 the phone before installing over existing data. Keep the ordinary Loopbound bundle unless explicitly
 testing a build without it, and record its source SHA.
 
-## Playback, sessions and profiles — all device cases NOT RUN
+## Playback, sessions and profiles
+
+The [phone report](2026-10-03-phone-acceptance.md) passes local offline/restart, configured system skips,
+mini/full/notification entry and rotation subcases. Remote, route, profile-race and two-hour acceptance
+remain NOT RUN; complete each parent matrix before closing it.
 
 | ID | Scenario | Pass condition / requirement |
 | --- | --- | --- |
@@ -91,7 +98,10 @@ alongside C-01–C-08; its focus/boundary order, two-headset, fallback, late-ret
 | C-07 | Focus has paused ExoPlayer, then sleep expires before late continuity recovery; repeat manual Pause/Stop/book/profile change. | Timer expiry and newer intent cannot be undone by an automatic Play. This cross-policy scenario needs a regression/device run; source review alone is not a pass. |
 | C-08 | Car browse/player surfaces, profiles, output indicator, absent Queue, artwork and same-count invalidation. | Run every step of [combined drive acceptance](../android-auto-pd001-drive-acceptance.md) and [browse invalidation](../android-auto-browse-invalidation-acceptance.md). PD-001 root is exactly Continue → Series → Authors → Profiles. No Library/History replacement. |
 
-## Sleep — all device cases NOT RUN
+## Sleep
+
+Manual phone expiry, extend/cancel and title/countdown subcases passed in the
+[phone report](2026-10-03-phone-acceptance.md). Lock-screen/headset, scheduled/grace and all car steps remain NOT RUN.
 
 Run **every step** of [scheduled sleep and active-timer projections](../device-test-sleep-schedule.md),
 including the following delivery-specific cases. These rows supplement its notification, sensor, grace,
@@ -106,7 +116,10 @@ overnight, civil-clock and lifecycle steps rather than replacing them.
 | S-05 | Boundary/end/overnight/next occurrence, timezone/wall-clock changes, service/process recreation. | Eligibility and durable suppression follow the civil window; no extra timer, lost manual timer or implicit Play. |
 | S-06 | Shake during/after grace, grace Off, sensitivity levels, sensing disabled and schedule end. | Only eligible gestures restart; expired grace/disabled sensing/window end cannot restart playback. |
 
-## Downloads/storage — all device cases NOT RUN
+## Downloads/storage
+
+Stored-copy verification navigation was sampled in the [phone report](2026-10-03-phone-acceptance.md).
+Transfer/claim/storage transition cases below remain NOT RUN; existing complete copies are not those fixtures.
 
 | ID | Scenario | Pass condition / requirement |
 | --- | --- | --- |
@@ -134,7 +147,11 @@ Its forced full formatter/verification gate passed in 7m 30s with all 1,119 task
 zero failures/errors. Use the final current-head CI/APK record for the device run; AUTO-DL-12-01 remains a
 separate unexecuted second-cancellation reproduction.
 
-## UI, security, compatibility and release function — device/server cases NOT RUN
+## UI, security, compatibility and release function
+
+The [phone report](2026-10-03-phone-acceptance.md) records About/installed-byte identity, first-page
+Loopbound rendering, player text/rotation samples and a landscape contrast concern. Five benchmark tests
+failed in their harness. Remaining UI/security/server matrices and prior-build upgrade are NOT RUN.
 
 | ID | Scenario | Required evidence |
 | --- | --- | --- |
@@ -143,7 +160,7 @@ separate unexecuted second-cancellation reproduction.
 | U-03 | Root and pushed Sign in; success/cancel/drafts and predictive/system/toolbar Back. | Explicit navigation context gives the expected destination; root has no Back arrow. #176's implementation slice remains planned. |
 | U-04 | Empty/filter/no-results recovery, offline/loading/error, connection status and app appearance. | States and recovery remain distinct; active appearance and a non-color status cue are required. Unimplemented #195 residuals stay planned. |
 | U-05 | WebView/provider/version, opaque background, reduced motion, standalone/Haze isolation. | Reproduce #190 on an affected device before selecting a permanent mitigation; record provider and each matrix result. |
-| Q-01 | Existing-install upgrade, About identity/version, stored profiles/passcode/progress/downloads and Loopbound bundle. | APK signer/version allow an in-place upgrade; data survives; About and artifact describe actual bytes/source. Installation is pending, not proven by assembly. |
+| Q-01 | Existing-install upgrade, About identity/version, stored profiles/passcode/progress/downloads and Loopbound bundle. | APK signer/version allow an in-place upgrade; data survives; About and artifact describe actual bytes/source. Current installed bytes/About/Loopbound first page passed; this session did not perform an upgrade or establish a prior-build data baseline. |
 | Q-02 | Auth expiry/reauthentication, locked profiles, app-switcher privacy and controller/exported-command boundaries. | Offline data/passcode survive ordinary reauth; unauthorised controllers cannot browse/clear privileged state; no secrets/private metadata in shared logs. AUTH-002/003/004, section 5.2. |
 | Q-03 | Selected Audiobookshelf versions: local/remote progress/history, server compatibility and offline sync. | Fixture-backed endpoints match live selected versions; missing fields/capabilities fail compatibly, with no invented endpoints or ignored TLS checks. |
 | Q-04 | Metadata/cover/match/scan, permission denial, admin user writes, database-only removal versus source-file deletion. | Repository and UI enforce permission; write errors are typed; confirmation precisely describes action; source deletion is safe or absent. Section 25. |

@@ -1,8 +1,8 @@
 # BookWave roadmap
 
 **Classification:** Active plan — canonical sequencing authority.
-**Reconciled:** 2026-10-03 against GitHub main `b7266a3d`, including merged PRs #205–#217,
-plus the reproduced R-122 shared-transfer ownership correction in this revision.
+**Reconciled:** 2026-10-03 against GitHub main `8beec05c`, including merged PRs #205–#218
+and the first supplied-phone acceptance pass.
 
 This is the only document that answers what BookWave should work on next. `PRODUCT_SPEC.md` supplies
 requirement IDs, `product-decisions.md` owns settled product choices, and accepted ADRs own architecture.
@@ -15,7 +15,10 @@ An open issue is not proof that implementation is missing. See the
 [dated issue inventory](reviews/2026-10-02-reliability-inventory.md) for its 44-issue snapshot and evidence;
 #111 closed with #209 on 2026-10-03, leaving 43 open issues at this reconciliation.
 Merged code, automated verification and physical acceptance are separate statuses.
-The owner will supply a phone later. Use the [verification register](testing/roadmap-verification-register.md)
+The owner supplied an API-36 phone on 2026-10-03. The [first pass](testing/2026-10-03-phone-acceptance.md)
+records 27 passing instrumented tests and local playback/restart/manual timer subcases. Five benchmark
+cases failed in the harness; actual car/headset, transfer/account fixtures and two-hour soak remain pending.
+Use the [verification register](testing/roadmap-verification-register.md)
 to log every required case and its evidence. Include a verified debug APK with the final CI handoff for each
 delivery batch; keep iOS low priority after Android correctness and system-surface work.
 
@@ -80,7 +83,10 @@ also has real-Git fixtures for stacked PRs, published-schema edits/deletions and
 `ktlintFormat verifyDebug -Pshelfplayer.warningsAsErrors=true --rerun-tasks --max-workers=4` gate in
 7m 21s, with all 1,119 tasks executed. #217's projection-lifecycle correction then passed the forced full
 gate in 6m 59s and merged; main `b7266a3d` passed trusted debug seed, release/security and signed APK runs.
-The R-122 correction adds its own [regression and full-gate evidence](reviews/2026-10-03-shared-download-ownership.md).
+Merged #218's R-122 correction adds its own [regression and full-gate evidence](reviews/2026-10-03-shared-download-ownership.md).
+Main `8beec05c` passed trusted debug/cache, release/security and signed APK workflows. The installed
+2175 APK matches those bytes; the [phone report](testing/2026-10-03-phone-acceptance.md) records its limited
+physical acceptance. Keep #128 open: this run did not exercise a heard headset or projected Auto.
 Current-head PR and post-merge main checks remain authoritative.
 Silo remains deferred, and physical acceptance remains open.
 
@@ -133,6 +139,10 @@ car acceptance awaits hardware.
   require narrow/wide, 2.0 font scale, TalkBack and reduced-motion evidence. The
   [concrete child slices](testing/ui-roadmap-triage.md) distinguish current code from missing work, include
   #176's root/pushed Sign-in Back context, and sequence #194's geometry/clearance/preview fixes before polish.
+- **Acceptance follow-ups:** the supplied phone's landscape player text over bright artwork needs a
+  controlled contrast check; an inherited warm Starting state needs a defined reproduction. The benchmark
+  harness fails process discovery on this phone's truncated `pgrep` names; repair/verify that compatibility
+  in the Build & Dependencies lane before claiming performance metrics or shipping a baseline profile.
 - **#190 WebView flicker:** run its provider/version, opaque-background and Haze-isolation matrix on an
   affected device before choosing a permanent mitigation. The upstream explanation remains a hypothesis.
 - **#188 CI:** tiers landed in Forgejo PR #91, then GitHub PRs #173/#201. Audit remaining coverage/telemetry
