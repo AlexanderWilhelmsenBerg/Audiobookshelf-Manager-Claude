@@ -72,16 +72,4 @@ class RemoveDownloadUseCase @Inject constructor(
             }
         }
     }
-
-    /**
-     * Stops the work and keeps the parts. Retained for the Book screen until it moves to Pause/Stop.
-     *
-     * The manifest is left alone, so the book still reads as *not downloaded* rather than vanishing.
-     */
-    suspend fun cancel(bookId: LibraryItemId): AppResult<Unit> {
-        val profile = profiles.observeActiveProfile().first()
-            ?: return AppResult.Failure(AppError.Authentication(summary = "Sign in to a server first."))
-        scheduler.cancel(profile.serverId, bookId)
-        return AppResult.Success(Unit)
-    }
 }

@@ -47,7 +47,7 @@ class DownloadNotificationFactory @Inject constructor(@param:ApplicationContext 
             .setGroup(NOTIFICATION_GROUP)
 
         when {
-            progress != null -> builder.setProgress(PERCENT, progress.percent, false)
+            progress != null -> builder.setProgress(PERCENT, progress.inFlightPercent, false)
             state == DownloadRecoveryState.Running -> builder.setProgress(0, 0, true)
             else -> builder.setProgress(0, 0, false)
         }
@@ -91,7 +91,7 @@ class DownloadNotificationFactory @Inject constructor(@param:ApplicationContext 
     }
 
     private fun progressText(progress: DownloadProgress): String {
-        val percentage = context.getString(R.string.download_notification_progress, progress.percent)
+        val percentage = context.getString(R.string.download_notification_progress, progress.inFlightPercent)
         val total = progress.totalBytes ?: return percentage
         val downloaded = Formatter.formatShortFileSize(context, progress.downloadedBytes)
         val totalText = Formatter.formatShortFileSize(context, total)

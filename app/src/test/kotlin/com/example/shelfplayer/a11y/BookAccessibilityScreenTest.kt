@@ -80,9 +80,29 @@ class BookAccessibilityScreenTest {
         composeRule.assertEveryControlIsLabelled()
     }
 
+    /**
+     * PD-004 — the in-flight control carries its percent in a content description, with the ring and the
+     * number hidden from the tree, and the 48dp target still holds when the font is doubled.
+     */
+    @Test
+    fun `an in-flight download control is labelled and big enough at double font scale`() {
+        renderAt(fontScale = 2f, download = DownloadButtonState.Downloading(progress = 0.42f, percent = 42))
+
+        composeRule.assertEveryControlIsLabelled()
+        composeRule.assertEveryControlIsBigEnough()
+    }
+
+    @Test
+    fun `a paused download control is labelled and big enough`() {
+        renderAt(fontScale = 1f, download = DownloadButtonState.Paused(progress = 0.3f, percent = 30))
+
+        composeRule.assertEveryControlIsLabelled()
+        composeRule.assertEveryControlIsBigEnough()
+    }
+
     private fun render() = renderAt(fontScale = 1f)
 
-    private fun renderAt(fontScale: Float) {
+    private fun renderAt(fontScale: Float, download: DownloadButtonState = DownloadButtonState.NotDownloaded) {
         composeRule.setContent {
             val base = LocalDensity.current
             CompositionLocalProvider(
@@ -103,7 +123,7 @@ class BookAccessibilityScreenTest {
                     menu = BookMenuState(
                         webUrl = "https://books.example/item/book-1",
                         canDownload = true,
-                        download = DownloadButtonState.NotDownloaded,
+                        download = download,
                     ),
                     actions = BookActions(
                         onPlay = {},
