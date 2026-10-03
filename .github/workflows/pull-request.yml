@@ -117,7 +117,14 @@ jobs:
             depth="standard"
             profiling="false"
             build_apk="false"
-            cache_write=false
+            # A same-repository PR saves its own Gradle state so the next push to it reuses everything that
+            # push already compiled. GitHub scopes these entries to refs/pull/N/merge: main and other PRs
+            # can never restore them, so PR code cannot poison the trusted main cache. Fork PRs stay read-only.
+            if [ "$EVENT_HEAD_REPOSITORY" = "$GITHUB_REPOSITORY" ]; then
+              cache_write=true
+            else
+              cache_write=false
+            fi
           else
             requested_pr=""
             depth="${REQUESTED_DEPTH:-standard}"
@@ -473,6 +480,8 @@ jobs:
         with:
           cache-provider: enhanced
           cache-read-only: ${{ needs.identity.outputs.cache_write != 'true' }}
+          # Drop Gradle User Home files this build did not use before saving, so a PR entry stays lean.
+          cache-cleanup: on-success
 
       - name: Prepare BookWave Android environment
         id: setup
@@ -742,6 +751,40 @@ jobs:
           set -euo pipefail
           description="${DIAGNOSTIC_DESCRIPTION:-BookWave verification failed}"
           echo "status_description=${description:0:220}" >> "$GITHUB_OUTPUT"
+
+  # Keeps exactly one generation of a PR's Gradle cache: once this run's verify job has saved its entries,
+  # every older entry of the same kind on this PR's ref is deleted. Runs no repository code, so the
+  # actions:write token never meets PR-controlled scripts. Closing the PR removes the rest
+  # (pr-cache-cleanup.yml).
+  prune-pr-cache:
+    name: "CI · ${{ needs.identity.outputs.display_label }} · prune superseded PR cache"
+    if: ${{ always() && github.event_name == 'pull_request' && needs.identity.outputs.cache_write == 'true' && needs.verify.result != 'skipped' }}
+    needs:
+      - identity
+      - verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Delete superseded cache entries for this PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: |
+          set -euo pipefail
+          # One line per entry: id, kind, created. The kind is the key without its trailing content hash, so
+          # each kind keeps only its newest entry. An entry this run restored by exact match and did not
+          # re-save is still the newest of its kind and survives.
+          gh api --paginate --method GET "repos/$GITHUB_REPOSITORY/actions/caches" \
+            -f ref="$CACHE_REF" -F per_page=100 \
+            --jq '.actions_caches[] | [.id, (.key | sub("-[0-9a-f]{8,}$"; "")), .created_at] | @tsv' \
+            | sort -t $'\t' -k2,2 -k3,3r \
+            | awk -F '\t' 'seen[$2]++ { print $1 }' \
+            | while read -r id; do
+                echo "Deleting superseded cache entry $id"
+                gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent
+              done
 
   dispatch-apk:
     name: Dispatch verified debug APK
