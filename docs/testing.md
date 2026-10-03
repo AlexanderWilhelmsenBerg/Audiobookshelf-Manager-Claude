@@ -75,6 +75,13 @@ production path unreachable. After a regression test guards a fix, revert the fi
 Compose tests inspect the semantics tree. Neither proves a real media session, AndroidKeyStore, system
 biometric window, launcher, notification permission flow, TalkBack speech, or car host.
 
+The `app` unit-test resources select a plain `android.app.Application`. These component tests inject their
+dependencies directly; booting `ShelfPlayerApplication` also starts process-lifetime Hilt/IO collectors that
+outlive a Robolectric sandbox. PR #214's reported Compose failure carried a suppressed `StorageVolumes`
+receiver-registration exception after `ActivityThread` teardown. `RobolectricApplicationIsolationTest`
+fails without the resource configuration; the overspill test and its assertions remain unchanged. A future
+application-startup integration test must opt into the production application explicitly and own teardown.
+
 **Determinism.** Injected `AppClock` and dispatchers control time and scheduling. Tests do not sleep. Preserve
 and rethrow coroutine cancellation.
 
