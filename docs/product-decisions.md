@@ -117,7 +117,8 @@ notification/session action still extends the same playback-owned timer.
 
 On Android 13 and newer, where System UI renders the media card from the MediaSession, BookWave may add the
 localized sleep countdown to the current media byline while the timer is active. It must preserve and restore
-the original byline exactly when the timer becomes idle.
+the original byline exactly when the timer becomes idle. (#77 later moved the countdown from the byline to the
+title, because the byline was invisible on the compact media card in physical testing; see the amendment below.)
 
 Shake-to-restart remains explicit opt-in. After a timer naturally expires and pauses playback, motion sensing
 may remain active for a configurable grace period of at most ten seconds. The default is ten seconds and the

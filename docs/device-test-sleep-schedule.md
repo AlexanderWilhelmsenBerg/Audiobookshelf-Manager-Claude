@@ -61,7 +61,8 @@ configured default sleep-timer length with the evidence.
   the expanded notification and in the compact/collapsed notification.
 - On the compact/background card, verify the remaining timer is readable as text: the clock (for example
   `12:34`) replaces the title, not merely a timer icon. Verify the original book title returns exactly when the
-  timer is cancelled or expires. The countdown is shared with Bluetooth displays but never shown in Android Auto (R-111, see below).
+  timer is cancelled or expires. The countdown is shared with Bluetooth displays but never shown in Android
+  Auto (R-111, see below).
 - Confirm the active timer occupies the compact forward custom-action slot while the required back-side
   skip/car control and central transport remain available; unrelated action ordering must return when idle.
 - Extend the timer and confirm the notification's remaining state updates without opening the activity.

@@ -18,9 +18,9 @@ class SleepTimerCarWiringTest {
             .substringBefore("private suspend fun handleCarArrival(")
 
         val counted = connected.indexOf("carConnections.onConnected()")
-        val restored = connected.indexOf("publishSleepTimerMetadata(sleepTimerState)")
+        val restored = connected.indexOf("publishMediaButtons()")
         assertTrue(counted >= 0, "the car must be counted as connected")
-        assertTrue(restored > counted, "the projection must be re-evaluated after the car is counted")
+        assertTrue(restored > counted, "buttons and projection must be republished after the car is counted")
     }
 
     @Test

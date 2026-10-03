@@ -1807,9 +1807,10 @@ class PlaybackService : MediaLibraryService() {
         val carWasConnected = carConnections.isConnected()
         val carArrivedAt = if (carWasConnected) null else clock.elapsed()
         carConnections.onConnected()
-        // PD-002 (2026-10-03): restore the book title synchronously, before Media3 sends the car its initial
-        // state. replaceMediaItem only, so playback is never interrupted.
-        publishSleepTimerMetadata(sleepTimerState)
+        // PD-002 (2026-10-03): republish synchronously, before Media3 sends the car its initial state, so the
+        // car never sees the timer button or the countdown title. publishMediaButtons() also restores the book
+        // title, through replaceMediaItem only, so playback is never interrupted.
+        publishMediaButtons()
         carContinuitySessionEstablished = true
         if (player?.isPlaying == true) {
             // A car can bind without changing isPlaying or emitting a new device list. Seed departure
