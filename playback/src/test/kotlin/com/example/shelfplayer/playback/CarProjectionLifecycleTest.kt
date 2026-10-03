@@ -285,7 +285,7 @@ class CarProjectionLifecycleTest {
             selectionArgs: Array<out String>?,
             sortOrder: String?,
         ): Cursor? = state?.let { value ->
-            MatrixCursor(arrayOf(AndroidAutoProjectionMonitor.CAR_CONNECTION_STATE)).apply { addRow(arrayOf(value)) }
+            MatrixCursor(arrayOf(AndroidAutoProjectionMonitor.CAR_CONNECTION_STATE)).apply { addRow(listOf(value)) }
         }
 
         override fun getType(uri: Uri): String? = null
@@ -319,7 +319,7 @@ class CarProjectionLifecycleTest {
                 .also { it.isAccessible = true }.invoke(this, argument)
         }
 
-        inline fun <reified T : Any> unused(): T = proxy { error("Unexpected ${T::class.simpleName} call: $it") }
+        inline fun <reified T : Any> unused(): T = proxy { error("Unexpected ${T::class.java.name} call: $it") }
 
         inline fun <reified T : Any> proxy(crossinline answer: (String) -> Any?): T =
             Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, _ ->
