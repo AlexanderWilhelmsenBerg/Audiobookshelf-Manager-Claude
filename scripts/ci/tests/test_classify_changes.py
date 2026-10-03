@@ -8,7 +8,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "classify-changes.sh"
 
 
 class ClassifyChangesTest(unittest.TestCase):
-    def classify(self, changed_path: str) -> str:
+    def classify(self, changed_path: str, main_push=False) -> str:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             subprocess.run(["git", "init", "-q"], cwd=root, check=True)
@@ -26,8 +26,9 @@ class ClassifyChangesTest(unittest.TestCase):
             subprocess.run(["git", "add", "."], cwd=root, check=True)
             subprocess.run(["git", "commit", "-qm", "change"], cwd=root, check=True)
 
+            comparison = ["HEAD", "HEAD", base] if main_push else [base, "HEAD"]
             return subprocess.check_output(
-                ["bash", str(SCRIPT), base, "HEAD"],
+                ["bash", str(SCRIPT), *comparison],
                 cwd=root,
                 text=True,
                 env={**os.environ, "GITHUB_OUTPUT": ""},
@@ -55,6 +56,16 @@ class ClassifyChangesTest(unittest.TestCase):
         self.assertIn("build_changed=false", out)
         self.assertIn("ci_infra_changed=false", out)
         self.assertIn("dependency_inputs_changed=false", out)
+
+    def test_main_push_detects_classpath_change_since_previous_main(self):
+        out = self.classify("gradle/libs.versions.toml", main_push=True)
+        self.assertIn("build_changed=true", out)
+        self.assertIn("dependency_inputs_changed=true", out)
+
+    def test_main_source_push_remains_incremental(self):
+        out = self.classify("app/src/main/kotlin/example.kt", main_push=True)
+        self.assertIn("app/src/main/kotlin/example.kt", out)
+        self.assertIn("build_changed=false", out)
 
 
 if __name__ == "__main__":
