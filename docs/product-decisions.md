@@ -160,11 +160,11 @@ Owner decision: "A sleep timer should never show in Android Auto. I shouldn't sl
   wording.
 - A plain Bluetooth car without Android Auto is not a Media3 controller and cannot be detected. It keeps the
   countdown as the title.
-- Open owner question: the night schedule (BW-SLEEP-01) can arm a timer automatically when playback starts
-  inside the window, which a night drive satisfies. A timer that is invisible in the car can then expire and
-  pause the book mid-drive with no explanation on the car screen. Options: keep as is; do not auto-arm
-  scheduled timers while a car is bound (recommended); or also cancel manual timers when a car connects.
-  Not implemented until the owner decides.
+- Timers keep running and the schedule is unchanged (owner, 2026-10-03): "If I am suddenly connected while
+  sleep timer is on it's by mistake. Either sleep timer was set on by mistake, or I am close enough to the car
+  when it starts when I am about to sleep. So just continue the sleep timer and because of the already present
+  headset wiring I shouldn't hear a difference and can sleep soundly." A car connecting therefore neither
+  cancels, pauses nor blocks a manual or scheduled timer; route handling keeps audio on the headset.
 
 ---
 
