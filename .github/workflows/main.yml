@@ -16,9 +16,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && format('manual-{0}', github.run_id) || github.ref }}
   # Only the newest main commit needs the expensive release gate when merges land back-to-back.
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 permissions:
   contents: read
@@ -58,12 +58,22 @@ jobs:
         with:
           cache-provider: enhanced
 
+      # On a merge, pull-request.yml runs the same verifyDebug in the CI container and saves the Gradle cache
+      # the next PR restores, so it is not repeated here. Scheduled and manual runs still verify.
       - name: Verify debug
+        if: ${{ github.event_name != 'push' }}
         run: ./gradlew verifyDebug --continue -Pshelfplayer.warningsAsErrors=true
 
       # PRODUCT_SPEC 16.5 — the release verification additionally runs release lint.
       - name: Release lint
         run: ./gradlew :app:lintRelease -Pshelfplayer.warningsAsErrors=true
+
+      # Release unit tests moved here from the PR gate: `verifyDebug` measures coverage on debug only, so it no
+      # longer runs `testReleaseUnitTest`. This is the only place the release variant's tests execute (it also
+      # starts covering :playback and :data:downloads, which never had release tests run). `:app` excludes
+      # `*ScreenTest` from this task by design.
+      - name: Release unit tests
+        run: ./gradlew testReleaseUnitTest --continue -Pshelfplayer.warningsAsErrors=true
 
       # PRODUCT_SPEC 18 — the Software Bill of Materials, unblocked by ADR-0024's licence decision.
       #

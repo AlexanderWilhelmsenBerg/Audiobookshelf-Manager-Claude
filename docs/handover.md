@@ -640,11 +640,15 @@ Nothing else is required — the Gradle wrapper fetches Gradle 8.14.3 itself, an
 
 ```bash
 ./gradlew ktlintFormat                                   # always first; formatting failures are noise
-./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true # the gate: ktlint, detekt, lint, unit tests, Kover
+./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true # the gate: ktlint, detekt, lint, debug unit tests, debug-only Kover (`koverVerifyGate`)
 ./gradlew :app:assembleDebug                             # the APK, at app/build/outputs/apk/debug/
 ```
 
-`verifyDebug` is what CI runs and what a change has to pass. Cold it takes 5–8 minutes; incremental runs
+`verifyDebug` is what CI runs and what a change has to pass. It measures coverage on the **debug variant
+only** (a custom Kover variant named `gate`) and does not run `testReleaseUnitTest`; that runs in `main.yml`
+after merge. It does still compile `:app`'s release and benchmark Kotlin and `:playback`'s release Kotlin on
+purpose. The 90% redaction rule in `:core:common` is not enforced by it (R-125). To run release unit tests
+locally: `./gradlew testReleaseUnitTest`. Cold it takes 5–8 minutes; incremental runs
 are 10–90 seconds. **Add `--rerun-tasks` before believing a green result on a branch that changed a
 classpath** — Gradle has considered test-compile tasks up to date when only the classpath moved, and that
 once let two stale test doubles pass locally and fail in CI (R-31).

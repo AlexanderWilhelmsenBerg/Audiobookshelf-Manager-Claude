@@ -382,7 +382,9 @@ staying on a supported AGP before the next `compileSdk` bump forces it anyway.
   long-deprecated DSL and tightened the variant API.
 - The custom `verifyDebug` aggregate task, the `shelfplayer.warningsAsErrors` property plumbing, the SBOM
   task and `:app`'s `testReleaseUnitTest` exclusion of `**/*ScreenTest.class` all live there and all need
-  re-checking. That exclusion is a **documented contract** — `ui-test-manifest` is a `debugImplementation`
+  re-checking, as do the per-module Kover `gate` variants (`add("debug")`) and `:app`/`:playback`'s
+  `verifyDebug` edges to `compileReleaseKotlin`/`compileBenchmarkKotlin`. That exclusion is a **documented
+  contract** (it now takes effect in `main.yml`'s `testReleaseUnitTest` step, not in `verifyDebug`) — `ui-test-manifest` is a `debugImplementation`
   and a release-variant screen test has no activity to launch — so if it silently stops applying, the
   symptom is a green local build and a red CI, which is the worst shape of failure.
 - Gradle 9 removes APIs that Gradle 8 only deprecated.

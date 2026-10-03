@@ -51,3 +51,12 @@ dependencies {
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.turbine)
 }
+
+/*
+ * `playback/src/release` holds `ColdResumeDiagnosticModule`, a Hilt module that exists only in the release
+ * variant. `verifyDebug` no longer reaches the release variant through Kover's total report, so compile it
+ * explicitly. This module is not aggregated by the root coverage gate, so it has no `gate` Kover variant.
+ */
+tasks.named("verifyDebug") {
+    dependsOn("compileReleaseKotlin")
+}

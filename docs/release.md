@@ -206,7 +206,7 @@ Forgejo is the active CI path. `.forgejo/workflows/pull-request.yml` separates *
   repository-wide KtLint. It is feedback, not merge acceptance.
 - **Standard** is the normal manually dispatched acceptance depth. Quick must pass first, then the canonical
   `verifyDebug --continue` graph runs with only `assembleDebug` excluded: full JVM/Robolectric regression,
-  type-resolved Detekt, Android Lint, Kover's existing coverage gates, Room verification and
+  type-resolved Detekt, Android Lint, Kover's debug-only coverage gate (`koverVerifyGate`), Room verification and
   warnings-as-errors remain intact.
 - **Intensive** reruns the same debug evidence without trusting task/build-cache outputs. Release/supply-chain
   extensions remain staged separately under issue #85.
@@ -235,7 +235,8 @@ Dispatch Standard from Forgejo → **Actions** → **CI · PR verification** →
 branch/ref, optionally enter the Forgejo **PR number**, choose verification depth and compute profile, and
 enable **force_rerun** only when a reviewer deliberately wants a full task rerun regardless of the diff.
 
-`.forgejo/workflows/main.yml` remains the trusted main/release safety path: release lint, SBOM,
+`.forgejo/workflows/main.yml` remains the trusted main/release safety path: release lint, release unit tests
+(`testReleaseUnitTest`, which `verifyDebug` does not run), SBOM,
 vulnerability scan and unsigned release assembly, with standalone debug verification on scheduled/manual
 runs and cache-seeding cases.
 
@@ -308,7 +309,7 @@ GitHub Actions under `.github/workflows/` are the authoritative BookWave CI and 
 (`PRODUCT_SPEC 22.5`).
 
 `verifyDebug` itself fans out to every module: ktlint, detekt with type resolution, Android Lint with
-warnings as errors, the unit suite, and Kover's coverage gate over domain and core. Dependency
+warnings as errors, the debug unit suite, and Kover's debug-only `gate` coverage verification over domain and core. Dependency
 verification is `strict` over 890 pinned components.
 
 **Verify with `--rerun-tasks`.** Gradle can consider a test-compile task up to date when only its
