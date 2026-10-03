@@ -28,7 +28,7 @@ class RemoveDownloadUseCaseTest {
 
     @Test
     fun `a sole claim in flight cancels the work and deletes the files`() = runTest {
-        val result = remove(offlineBook("b", DownloadState.Running, setOf(TEST_PROFILE)))
+        val result = remove(offlineBook("b", state = DownloadState.Running, requestedBy = setOf(TEST_PROFILE)))
 
         assertEquals(AppResult.Success(DownloadRemoval.FilesDeleted), result)
         assertEquals(listOf(book), scheduler.cancelled)
@@ -40,7 +40,7 @@ class RemoveDownloadUseCaseTest {
     fun `a shared copy releases the claim and never cancels the other profile's work`() = runTest {
         files.refusals += book
 
-        val result = remove(offlineBook("b", DownloadState.Running, setOf(TEST_PROFILE, other)))
+        val result = remove(offlineBook("b", state = DownloadState.Running, requestedBy = setOf(TEST_PROFILE, other)))
 
         assertEquals(AppResult.Success(DownloadRemoval.ClaimReleased), result)
         assertTrue(scheduler.cancelled.isEmpty(), "another profile's transfer must keep running")
@@ -49,7 +49,7 @@ class RemoveDownloadUseCaseTest {
 
     @Test
     fun `a copy that turned out unshared at delete time cancels the work afterwards`() = runTest {
-        val result = remove(offlineBook("b", DownloadState.Running, setOf(TEST_PROFILE, other)))
+        val result = remove(offlineBook("b", state = DownloadState.Running, requestedBy = setOf(TEST_PROFILE, other)))
 
         assertEquals(AppResult.Success(DownloadRemoval.FilesDeleted), result)
         assertEquals(listOf(book), scheduler.cancelled)
@@ -57,7 +57,7 @@ class RemoveDownloadUseCaseTest {
 
     @Test
     fun `a profile with no claim cancels and removes nothing`() = runTest {
-        val result = remove(offlineBook("b", DownloadState.Running, setOf(other)))
+        val result = remove(offlineBook("b", state = DownloadState.Running, requestedBy = setOf(other)))
 
         assertEquals(AppResult.Success(DownloadRemoval.NotClaimed), result)
         assertTrue(scheduler.cancelled.isEmpty())
