@@ -99,13 +99,35 @@ class MediaButtonLayoutTest {
     }
 
     @Test
-    fun `active timer keeps compact forward slot even while car outputs have priority`() {
+    fun `active timer is absent from every slot while a car controller is bound`() {
+        val raw = MediaButtonLayout.inPriorityOrder(
+            outputActions = listOf(
+                button("car", CommandButton.SLOT_BACK),
+                button("headset", CommandButton.SLOT_FORWARD),
+            ),
+            skipActions = listOf(
+                button("skipBack", CommandButton.SLOT_BACK),
+                button("skipForward", CommandButton.SLOT_FORWARD),
+            ),
+            activeTimerActions = listOf(button("sleep 9m", CommandButton.SLOT_FORWARD)),
+            overflowActions = emptyList(),
+            carBound = true,
+        )
+        assertTrue(raw.none { it.displayName.toString() == "sleep 9m" }, "PD-002: no timer button for a car")
+
+        val layout = convert(raw)
+
+        assertEquals("car", named(layout, CommandButton.SLOT_BACK))
+        assertEquals("headset", named(layout, CommandButton.SLOT_FORWARD))
+        assertTrue(layout.none { it.displayName.toString() == "sleep 9m" }, "the car must not read a timer button")
+        assertTrue(layout.map { it.displayName.toString() }.containsAll(listOf("skipBack", "skipForward")))
+    }
+
+    @Test
+    fun `without a car output the forward slot falls back to skip forward and no timer is shown`() {
         val layout = convert(
             MediaButtonLayout.inPriorityOrder(
-                outputActions = listOf(
-                    button("car", CommandButton.SLOT_BACK),
-                    button("headset", CommandButton.SLOT_FORWARD),
-                ),
+                outputActions = emptyList(),
                 skipActions = listOf(
                     button("skipBack", CommandButton.SLOT_BACK),
                     button("skipForward", CommandButton.SLOT_FORWARD),
@@ -116,9 +138,9 @@ class MediaButtonLayoutTest {
             ),
         )
 
-        assertEquals("car", named(layout, CommandButton.SLOT_BACK))
-        assertEquals("sleep 9m", named(layout, CommandButton.SLOT_FORWARD))
-        assertTrue(layout.map { it.displayName.toString() }.containsAll(listOf("headset", "skipBack", "skipForward")))
+        assertEquals("skipBack", named(layout, CommandButton.SLOT_BACK))
+        assertEquals("skipForward", named(layout, CommandButton.SLOT_FORWARD))
+        assertTrue(layout.none { it.displayName.toString() == "sleep 9m" })
     }
 
     @Test

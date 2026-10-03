@@ -141,7 +141,29 @@ predates this setting, High is easier to trigger, and Low requires a more delibe
 - Natural expiry still records/closes the expired timer and performs its progress sync. A grace restart is a
   new timer session rather than rewriting the completed history entry.
 - The MediaSession metadata projection is shared with Android system media surfaces; it must not create a
-  second countdown owner or modify the book title/progress identity.
+  second countdown owner or modify the book's identity inside BookWave (its own players keep the book title
+  and progress).
+
+### Amended 2026-10-03 — the sleep timer never shows in Android Auto
+
+Owner decision: "A sleep timer should never show in Android Auto. I shouldn't sleep while driving."
+
+- While an Android Auto or Android Automotive controller is bound (`CarConnections.isConnected`), BookWave
+  projects no countdown into the session (the book title stays), leaves the timer button out of every
+  media-button slot, does not grant the extend command to car controllers and refuses it if one sends it.
+  The countdown and button return, within a second, when the car is no longer bound.
+- The timer keeps running. Only its presentation changes. BookWave's own full player still shows it.
+- Media3 has one shared session with no per-controller metadata or custom actions, so the phone's notification
+  and lock screen also lose the countdown and the sleep/extend button for as long as a car is bound. This is a
+  deliberate carve-out from "must visibly communicate the remaining time" above and from PLAY-008's notification
+  wording.
+- A plain Bluetooth car without Android Auto is not a Media3 controller and cannot be detected. It keeps the
+  countdown as the title.
+- Open owner question: the night schedule (BW-SLEEP-01) can arm a timer automatically when playback starts
+  inside the window, which a night drive satisfies. A timer that is invisible in the car can then expire and
+  pause the book mid-drive with no explanation on the car screen. Options: keep as is; do not auto-arm
+  scheduled timers while a car is bound (recommended); or also cancel manual timers when a car connects.
+  Not implemented until the owner decides.
 
 ---
 

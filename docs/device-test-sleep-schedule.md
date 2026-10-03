@@ -61,7 +61,7 @@ configured default sleep-timer length with the evidence.
   the expanded notification and in the compact/collapsed notification.
 - On the compact/background card, verify the remaining timer is readable as text: the clock (for example
   `12:34`) replaces the title, not merely a timer icon. Verify the original book title returns exactly when the
-  timer is cancelled or expires. The countdown is shared with Android Auto and Bluetooth displays (R-111).
+  timer is cancelled or expires. The countdown is shared with Bluetooth displays but never shown in Android Auto (R-111, see below).
 - Confirm the active timer occupies the compact forward custom-action slot while the required back-side
   skip/car control and central transport remain available; unrelated action ordering must return when idle.
 - Extend the timer and confirm the notification's remaining state updates without opening the activity.
@@ -70,6 +70,20 @@ configured default sleep-timer length with the evidence.
 - Close/destroy the activity while playback continues. The notification must keep projecting the correct
   timer state because the playback service, not Compose, owns it.
 - Keep the screen off for part of a timer and re-open the notification. State must agree with the full player.
+
+## Android Auto
+
+PD-002 (amended 2026-10-03): the sleep timer never shows in Android Auto. Use a head unit or the Desktop Head
+Unit.
+
+- Start a timer on the phone, then connect Android Auto. The car's now-playing shows the book title and no
+  sleep button in any slot or overflow. The phone notification also drops the countdown and the button while the
+  car is connected (one shared session). The full player still shows the countdown in the Sleep action.
+- Disconnect while the timer is still running. The countdown title and the sleep button return within a second.
+- Start a timer while connected. Nothing appears in the car and playback is not interrupted.
+- Let a timer expire while connected. Playback pauses as usual; record what the car shows.
+- Plain Bluetooth car without Android Auto: the countdown appears as the title. This is the documented
+  limitation.
 
 ## Shake grace and sensitivity
 
