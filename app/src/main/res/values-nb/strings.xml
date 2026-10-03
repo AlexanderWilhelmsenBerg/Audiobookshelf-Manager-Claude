@@ -421,8 +421,8 @@
     <string name="book_download_use_device_copy">Bruk den nedlastede kopien</string>
     <string name="book_download_starting">Starter nedlastingen</string>
     <string name="book_download_percent">%1$d %%</string>
-    <string name="book_download_in_progress_description">%1$s, %2$d prosent. Velg Pause eller Stopp.</string>
-    <string name="book_download_paused_description">Nedlastingen er satt på pause ved %1$d prosent. Fortsett nedlastingen.</string>
+    <string name="book_download_in_progress_description">%1$s, %2$d %%. Velg Pause eller Stopp.</string>
+    <string name="book_download_paused_description">Nedlastingen er satt på pause ved %1$d %%. Fortsett nedlastingen.</string>
     <string name="book_download_paused">Nedlastingen er satt på pause</string>
     <string name="book_download_prompt_title">Sette nedlastingen på pause eller stoppe den?</string>
     <string name="book_download_prompt_body">Pause beholder alt som er lastet ned så langt på denne enheten, så du kan fortsette senere. Stopp avbryter nedlastingen og sletter de delvis nedlastede filene fra denne enheten. Ingenting endres på serveren din, og lytteposisjonen din beholdes.</string>

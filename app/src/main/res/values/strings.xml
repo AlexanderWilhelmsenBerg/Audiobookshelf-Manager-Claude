@@ -562,8 +562,8 @@
     <string name="book_download_use_device_copy">Use the downloaded copy</string>
     <string name="book_download_starting">Starting the download</string>
     <string name="book_download_percent">%1$d%%</string>
-    <string name="book_download_in_progress_description">%1$s, %2$d percent. Choose Pause or Stop.</string>
-    <string name="book_download_paused_description">Download paused at %1$d percent. Resume the download.</string>
+    <string name="book_download_in_progress_description">%1$s, %2$d%%. Choose Pause or Stop.</string>
+    <string name="book_download_paused_description">Download paused at %1$d%%. Resume the download.</string>
     <string name="book_download_paused">Download paused</string>
     <string name="book_download_prompt_title">Pause or stop this download?</string>
     <string name="book_download_prompt_body">Pause keeps everything downloaded so far on this device, so you can resume later. Stop cancels the download and deletes the partly downloaded files from this device. Nothing changes on your server, and your listening position is kept.</string>

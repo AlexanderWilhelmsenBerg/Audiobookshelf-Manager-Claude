@@ -113,7 +113,12 @@ internal fun DownloadButtonState.description(): String = when (this) {
 
     is DownloadButtonState.Paused -> stringResource(R.string.book_download_paused_description, percent)
 
-    else -> stringResource(label)
+    DownloadButtonState.NotDownloaded,
+    DownloadButtonState.OnDevice,
+    DownloadButtonState.Starting,
+    DownloadButtonState.Downloaded,
+    DownloadButtonState.Failed,
+    -> stringResource(label)
 }
 
 /**
@@ -149,7 +154,12 @@ private fun DownloadButtonState.isIndeterminate(): Boolean = when (this) {
     is DownloadButtonState.Downloading ->
         progress == null && (phase == DownloadPhase.Queued || phase == DownloadPhase.Transferring)
 
-    else -> false
+    DownloadButtonState.NotDownloaded,
+    DownloadButtonState.OnDevice,
+    is DownloadButtonState.Paused,
+    DownloadButtonState.Downloaded,
+    DownloadButtonState.Failed,
+    -> false
 }
 
 /** `null` for the two states whose face is the percent rather than an icon. */

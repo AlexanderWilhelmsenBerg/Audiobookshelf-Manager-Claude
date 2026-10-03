@@ -256,7 +256,7 @@ class BookOverflowMenuScreenTest {
             onDownloadClicked = { taps += it },
         )
 
-        composeRule.onNodeWithContentDescription("Downloading, 42 percent. Choose Pause or Stop.").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Downloading, 42%. Choose Pause or Stop.").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Download").assertDoesNotExist()
         composeRule.onNodeWithTag(BOOK_DOWNLOAD_BUTTON).performClick()
 
@@ -346,7 +346,7 @@ class BookOverflowMenuScreenTest {
         val paused = DownloadButtonState.Paused(progress = 0.3f, percent = 30)
         render(download = paused, onDownloadClicked = { taps += it })
 
-        composeRule.onNodeWithContentDescription("Download paused at 30 percent. Resume the download.")
+        composeRule.onNodeWithContentDescription("Download paused at 30%. Resume the download.")
             .assertIsDisplayed()
             .performClick()
 
