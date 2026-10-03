@@ -1,17 +1,37 @@
 # BookWave roadmap
 
 **Classification:** Active plan — canonical sequencing authority.
-**Reconciled:** 2026-10-02 against GitHub main `756d521e`, including merged PR #205.
+**Reconciled:** 2026-10-03 against GitHub main `81a06e1`, including merged PRs #205–#210.
 
 This is the only document that answers what BookWave should work on next. `PRODUCT_SPEC.md` supplies
 requirement IDs, `product-decisions.md` owns settled product choices, and accepted ADRs own architecture.
 GitHub is authoritative following the 2026-10-01 cutover. Unqualified issue/PR numbers below refer to GitHub;
 historical Forgejo numbers are explicitly labelled.
 
-The owner selected reliability first. Preserve playback continuity, progress, profile privacy and offline
-media before adding surfaces or platforms. An open issue is not proof that implementation is missing.
-See [the issue inventory](reviews/2026-10-02-reliability-inventory.md) for all 44 open issues and evidence.
+The owner selected CI wait/storage improvements as the immediate lane, followed by reliability acceptance.
+Preserve playback continuity, progress, profile privacy and offline media before adding surfaces or platforms.
+An open issue is not proof that implementation is missing. See the
+[dated issue inventory](reviews/2026-10-02-reliability-inventory.md) for its 44-issue snapshot and evidence;
+#111 closed with #209 on 2026-10-03, leaving 43 open issues at this reconciliation.
 Merged code, automated verification and physical acceptance are separate statuses.
+
+## 0. CI efficiency before feature expansion
+
+- Finish #212's automatic main cache seeding in the PR container/job; retain one debug verification per merge
+  and the main workflow's release/security checks. Main push classification, schema immutability and secret
+  scanning compare against the previous main SHA, preserving classpath-forced reruns.
+- Automatic checks supersede older runs on the same PR/main ref. Manual runs remain independent. Keep PR
+  cache cleanup and prune obsolete main home-state generations without deleting shared content blobs.
+- Finish #214's debug/JVM coverage gate with the same filters/modules/80% threshold, explicit release/benchmark
+  compilation on PRs and release unit tests on main. Fix the app unit sandbox's production-collector leak;
+  preserve the existing overspill regression. R-125's unenforced 90% redaction rule remains a separate follow-up.
+- Record queue delay, verification duration and cache restore/save time separately under #188. Quick remains
+  formatting evidence; Standard retains the full regression gate and local `verifyDebug` includes assembly.
+- **Deferred by the owner:** the Silo/shared Gradle cache pilot waits for separate implications research.
+  Keep GitHub-hosted runners and current dependency/task caches. Remote-cache wiring, credentials, hosting
+  and task-output archive exclusions are outside the active lane; reliability work can proceed independently.
+
+**Owner:** Build & Dependencies. **Requirements:** specification 16.5, 17.1/17.3 and 18.
 
 ## 1. Playback and Android Auto acceptance
 

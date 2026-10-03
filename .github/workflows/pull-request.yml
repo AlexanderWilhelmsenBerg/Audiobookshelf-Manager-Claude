@@ -55,10 +55,9 @@ on:
         default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  # A second manual click should queue, not kill an already-expensive Gradle run. This also avoids
-  # exercising the runner/container cancellation path unnecessarily.
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+  # Keep explicit manual runs independent; only automatic work on the same PR/main ref is superseded.
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && format('manual-{0}', github.run_id) || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 permissions:
   contents: read
@@ -114,7 +113,7 @@ jobs:
           set -euo pipefail
 
           if [ "$EVENT_NAME" = "push" ] && [ "$SELECTED_BRANCH" = "main" ]; then
-            # Trusted: only a merge can push to main. Same job and keys as a PR run, so PRs restore it.
+            # Trusted main push: same job and cache keys as a PR run, so PRs restore it.
             requested_pr=""
             pr_title=""
             pr_head="$SELECTED_SHA"
@@ -263,6 +262,7 @@ jobs:
           EXPECTED_PR_HEAD: ${{ needs.identity.outputs.pr_head }}
           SELECTED_BRANCH: ${{ needs.identity.outputs.pr_branch }}
           TARGET_LABEL: ${{ needs.identity.outputs.display_label }}
+          PUSH_BEFORE: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: |
           set -euo pipefail
 
@@ -293,7 +293,9 @@ jobs:
             exit 1
           fi
 
-          bash scripts/ci/classify-changes.sh "$base" HEAD
+          # A push has already advanced canonical main to HEAD. Compare against its previous SHA so
+          # build/classpath changes still force --rerun-tasks (R-31), rather than classifying an empty diff.
+          bash scripts/ci/classify-changes.sh "$base" HEAD "$PUSH_BEFORE"
 
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "${{ inputs.force_rerun }}" = "true" ]; then
             echo "build_changed=true" >> "$GITHUB_OUTPUT"
@@ -330,6 +332,8 @@ jobs:
       - name: Secret scan
         id: secret_scan
         continue-on-error: true
+        env:
+          COMPARISON_BASE: ${{ steps.classify.outputs.comparison_base }}
         run: |
           set -euo pipefail
           tmp="$(mktemp -d)"
@@ -344,15 +348,18 @@ jobs:
           tar -xzf "$archive" -C "$tmp" gitleaks
           install -m 0755 "$tmp/gitleaks" /usr/local/bin/gitleaks
           gitleaks version
-          env -u GITHUB_TOKEN gitleaks git . --redact --verbose --no-banner --log-opts="refs/remotes/bookwave-base/main..HEAD"
+          test -n "$COMPARISON_BASE"
+          env -u GITHUB_TOKEN gitleaks git . --redact --verbose --no-banner --log-opts="$COMPARISON_BASE..HEAD"
 
       - name: Committed Room schemas are immutable
         id: schema_check
         continue-on-error: true
+        env:
+          COMPARISON_BASE: ${{ steps.classify.outputs.comparison_base }}
         run: |
           set -euo pipefail
-          base_ref="${GITHUB_BASE_REF:-main}"
-          base="refs/remotes/bookwave-base/$base_ref"
+          base="$COMPARISON_BASE"
+          test -n "$base"
           git rev-parse --verify "$base^{commit}" >/dev/null
 
           modified="$(git diff --diff-filter=MD --name-only "$base"...HEAD -- core/database/schemas)"
@@ -770,12 +777,13 @@ jobs:
           echo "status_description=${description:0:220}" >> "$GITHUB_OUTPUT"
 
   # Keeps exactly one generation of a PR's Gradle cache: once this run's verify job has saved its entries,
-  # every older entry of the same kind on this PR's ref is deleted. Runs no repository code, so the
-  # actions:write token never meets PR-controlled scripts. Closing the PR removes the rest
-  # (pr-cache-cleanup.yml).
-  prune-pr-cache:
-    name: "CI · ${{ needs.identity.outputs.display_label }} · prune superseded PR cache"
-    if: ${{ always() && github.event_name == 'pull_request' && needs.identity.outputs.cache_write == 'true' && needs.verify.result != 'skipped' }}
+  # PR refs retain one generation per Gradle kind. Successful current-main seeds prune only home-state
+  # generations: dependency/transform/build-cache blobs can be referenced by other jobs' home states.
+  # Runs no repository code, so the actions:write token never meets PR-controlled scripts.
+  # Closing a PR removes its remaining entries (pr-cache-cleanup.yml).
+  prune-gradle-cache:
+    name: "CI · ${{ needs.identity.outputs.display_label }} · prune superseded Gradle cache"
+    if: ${{ always() && !cancelled() && needs.identity.outputs.cache_write == 'true' && ((github.event_name == 'pull_request' && (needs.verify.result == 'success' || needs.verify.result == 'failure')) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.verify.result == 'success')) }}
     needs:
       - identity
       - verify
@@ -784,12 +792,26 @@ jobs:
     permissions:
       actions: write
     steps:
-      - name: Delete superseded cache entries for this PR
+      - name: Delete superseded Gradle cache entries
         env:
           GH_TOKEN: ${{ github.token }}
-          CACHE_REF: refs/pull/${{ github.event.pull_request.number }}/merge
+          CACHE_REF: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/merge', github.event.pull_request.number) || 'refs/heads/main' }}
+          CACHE_MODE: ${{ github.event_name == 'pull_request' && 'pr' || 'main' }}
+          VERIFIED_SHA: ${{ needs.identity.outputs.pr_head }}
         run: |
           set -euo pipefail
+          if [ "$CACHE_MODE" = "main" ] && [ "$CACHE_REF" = "refs/heads/main" ]; then
+            current_main="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+            if [ "$current_main" != "$VERIFIED_SHA" ]; then
+              echo "Main advanced after verification; leaving cache cleanup to the newer seed."
+              exit 0
+            fi
+          elif [ "$CACHE_MODE" = "pr" ] && [[ "$CACHE_REF" =~ ^refs/pull/[1-9][0-9]*/merge$ ]]; then
+            :
+          else
+            echo "::error::Unsupported cache cleanup scope."
+            exit 1
+          fi
           # One line per entry: id, kind, created. The kind is the key without its trailing content hash, so
           # each kind keeps only its newest entry. An entry this run restored by exact match and did not
           # re-save is still the newest of its kind and survives.
@@ -797,7 +819,11 @@ jobs:
             -f ref="$CACHE_REF" -F per_page=100 \
             --jq '.actions_caches[] | [.id, (.key | sub("-[0-9a-f]{8,}$"; "")), .created_at] | @tsv' \
             | sort -t $'\t' -k2,2 -k3,3r \
-            | awk -F '\t' 'seen[$2]++ { print $1 }' \
+            | awk -F '\t' -v mode="$CACHE_MODE" '
+                $2 !~ /^gradle-/ { next }
+                mode == "main" && $2 !~ /^gradle-home-v2[|]/ { next }
+                seen[$2]++ { print $1 }
+              ' \
             | while read -r id; do
                 echo "Deleting superseded cache entry $id"
                 gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent

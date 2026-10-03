@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,7 +16,7 @@ class CiTelemetryTest(unittest.TestCase):
             log = root / "gradle.log"
             log.write_text("1121 actionable tasks: 506 executed, 157 from cache, 458 up-to-date\n")
             env = {**os.environ, "BOOKWAVE_CI_DEPTH": "standard"}
-            subprocess.run(["python3", str(SCRIPT), str(log)], cwd=root, check=True, env=env)
+            subprocess.run([sys.executable, str(SCRIPT), str(log)], cwd=root, check=True, env=env)
             data = json.loads((root / "ci-telemetry/metrics.json").read_text())
             self.assertEqual(data["gradle_tasks"]["actionable"], 1121)
             self.assertEqual(data["gradle_tasks"]["executed"], 506)
