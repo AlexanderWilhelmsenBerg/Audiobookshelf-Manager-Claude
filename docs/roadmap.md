@@ -1,8 +1,8 @@
 # BookWave roadmap
 
 **Classification:** Active plan — canonical sequencing authority.
-**Reconciled:** 2026-10-03 against GitHub main `d3596b2f`, including merged PRs #205–#212,
-#214 and #215, plus the integrated #213/#216 reliability changes in this revision.
+**Reconciled:** 2026-10-03 against GitHub main `3e699786`, including merged PRs #205–#216,
+plus the focused #128 projection-read follow-up in this revision.
 
 This is the only document that answers what BookWave should work on next. `PRODUCT_SPEC.md` supplies
 requirement IDs, `product-decisions.md` owns settled product choices, and accepted ADRs own architecture.
@@ -15,6 +15,9 @@ An open issue is not proof that implementation is missing. See the
 [dated issue inventory](reviews/2026-10-02-reliability-inventory.md) for its 44-issue snapshot and evidence;
 #111 closed with #209 on 2026-10-03, leaving 43 open issues at this reconciliation.
 Merged code, automated verification and physical acceptance are separate statuses.
+The owner will supply a phone later. Use the [verification register](testing/roadmap-verification-register.md)
+to log every required case and its evidence. Include a verified debug APK with the final CI handoff for each
+delivery batch; keep iOS low priority after Android correctness and system-surface work.
 
 ## 0. CI efficiency before feature expansion
 
@@ -55,6 +58,11 @@ also has real-Git fixtures for stacked PRs, published-schema edits/deletions and
 - Accept #128/#100 (headset continuity/route ownership), #185 (idle restore), #126/#196 (output state/Queue),
   #130 (phone/car controls), and #99/#191 (browse/profile invalidation). Principal implementations already
   exist on main. PR #205 adds follow-up tests and behavior.
+- #128 is historical Forgejo #36. Its focused review found that Projection → Unknown → NotConnected could
+  lose the departure edge, while Unknown → Projection could repeat arrival. Preserve the existing positive
+  lifecycle latch across unreadable provider results. The five real monitor-to-service cases and
+  [detailed review/device matrix](reviews/2026-10-03-issue-128-continuity-review.md) supplement the continuity
+  suite; physical entry/departure and audible routing remain pending.
 - Use [the combined drive checklist](android-auto-pd001-drive-acceptance.md) and
   [browse invalidation checks](android-auto-browse-invalidation-acceptance.md). Include headset Previous,
   Rewind and Fast-forward from merged PR #204. Record the APK commit and device/host versions.
