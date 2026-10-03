@@ -1932,7 +1932,9 @@ class PlaybackService : MediaLibraryService() {
             return
         }
 
-        val wasConnected = previous?.carConnected == true
+        // An unreadable provider result cannot erase a positively observed car lifecycle. Use the existing
+        // latch so Unknown -> NotConnected still ends it, and Unknown -> Projection is not another arrival.
+        val wasConnected = projectionOwnsCarLifecycle
         val isConnected = update.current.carConnected
         when {
             !wasConnected && isConnected -> {
