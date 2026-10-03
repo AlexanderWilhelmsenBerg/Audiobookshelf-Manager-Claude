@@ -27,6 +27,8 @@ Merged code, automated verification and physical acceptance are separate statuse
   preserve the existing overspill regression. R-125's unenforced 90% redaction rule remains a separate follow-up.
 - Record queue delay, verification duration and cache restore/save time separately under #188. Quick remains
   formatting evidence; Standard retains the full regression gate and local `verifyDebug` includes assembly.
+  [Three dated timing samples](reviews/2026-10-03-ci-timing-baseline.md) establish the measurement fields,
+  not a controlled performance claim.
 - **Deferred by the owner:** the Silo/shared Gradle cache pilot waits for separate implications research.
   Keep GitHub-hosted runners and current dependency/task caches. Remote-cache wiring, credentials, hosting
   and task-output archive exclusions are outside the active lane; reliability work can proceed independently.
