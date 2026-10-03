@@ -439,11 +439,13 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - The active remaining timer is projected from the playback-owned timer into both expanded and compact media-notification layouts.
 - Compact/background Android system media controls must communicate the remaining timer as visible text, not only as a timer icon. On Android 13+ this is session metadata because System UI owns the media card.
 - A notification action extends the same timer by the configured amount.
+- While Android Auto or Automotive owns the car connection, the shared session exposes neither countdown nor sleep/extend action; this also hides them on the phone's system media surfaces. The in-app timer remains visible and any existing timer continues (PD-002).
 - Optional shake-to-restart requires explicit opt-in. Motion sensing may run only while a timer is active or during the configured bounded post-expiry grace period.
 - The post-expiry shake grace period defaults to 10 seconds, is configurable from Off through a maximum of 10 seconds, and starts only after natural timer expiry.
 - A valid shake during the grace period restarts the same timer mode and resumes the playback that expiry paused. Outside the grace period it does nothing.
 - Shake sensitivity is configurable as Low, Normal, or High. Normal preserves the pre-setting detection threshold; High requires less movement and Low requires more.
 - An optional local-time schedule defines **eligibility**, not a timer deadline: playback starting inside the window, or already-active playback crossing its start, requests the ordinary configured default timer from the same owner.
+- Car connection suppresses creation of new automatic scheduled timers, including a suspended creation request. Existing timers and explicit manual timers retain their ordinary behavior. Disconnect re-evaluates eligibility only for playback already active; it never starts audio or overrides manual cancellation of the window occurrence.
 - The schedule end cancels a still-running **automatic** timer without pausing playback. A manual timer is independent of the schedule end.
 - Example: with a 22:00–07:00 schedule and a 15-minute default, playback beginning at 06:46 starts the ordinary 15-minute timer, but the automatic timer is cancelled at 07:00 and playback continues.
 - Manual timer creation retains the ordinary timer's precedence. Manually cancelling an automatically-created timer suppresses rearming for that civil window occurrence, including across playback-service/process recreation; the next distinct occurrence is eligible again.

@@ -6,6 +6,23 @@ giving it a section of its own.
 
 ## Unreleased
 
+### Android Auto never shows the sleep timer (PLAY-008, PD-002, #189)
+
+- While Android Auto or Android Automotive is connected, no countdown title and no sleep button are published,
+  and the car cannot extend the timer. The timer keeps running and everything returns when the car disconnects.
+- Because Android shares one media session, the phone's notification and lock screen also drop the countdown
+  while a car is connected. A plain Bluetooth car without Android Auto cannot be detected and still shows it.
+- Nightly scheduling creates no new automatic timer while the car is connected. Existing and manual timers
+  continue; disconnect re-evaluates the window for active playback without starting audio or overriding a
+  manually cancelled occurrence.
+
+### Sleep timer keeps the book title in the app (PLAY-008, #189)
+
+- The full player and mini-player keep showing the book title while a sleep timer runs. Since the #77 system
+  media change they showed the countdown clock as the title. The countdown stays in the Sleep action.
+- The phone's notification, lock screen and Bluetooth displays still show the countdown as the session title
+  (not in Android Auto, see above).
+
 ### Book download button: live percent, Pause/Stop, Resume (DL-001, DL-003, PD-003, PD-004, #111)
 
 - The Book screen's download button shows an integer percent (0 to 99, never 100 while running) inside the

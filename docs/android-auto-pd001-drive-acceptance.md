@@ -62,6 +62,9 @@ profiles if practical: one unlocked and one passcode-protected.
 - **#6:** at a clearly non-zero position, press the headset/system Previous/Back control once. It should seek
   backward by the configured BookWave interval (clamped at zero when applicable), not restart the audiobook.
   Let progress sync afterwards and confirm playback continues normally.
+- **Sleep timer (PD-002, R-111):** with a sleep timer running on the phone, connect. The now-playing title is the
+  book, there is no sleep action in any slot or overflow, the compact forward slot holds the expected skip or
+  output action, and the timer is still running in the app after the drive.
 
 ## Evidence
 

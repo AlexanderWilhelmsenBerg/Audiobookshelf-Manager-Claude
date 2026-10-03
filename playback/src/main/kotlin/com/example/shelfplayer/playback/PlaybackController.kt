@@ -672,7 +672,8 @@ internal fun Player.playbackUiState(chapters: List<Chapter> = emptyList()): Play
     val chapter = if (item == null) null else GlobalTimeline.chapterAt(chapters, position)
     return PlaybackUiState(
         bookId = item?.let(MediaItems::bookIdOf),
-        title = item?.mediaMetadata?.title?.toString().orEmpty(),
+        // PLAY-008 / PD-002: the countdown is shown by the Sleep action; the session title may carry the clock.
+        title = item?.mediaMetadata?.let(SleepTimerMediaMetadata::ordinaryTitle)?.toString().orEmpty(),
         author = item?.mediaMetadata?.artist?.toString(),
         artworkUri = item?.mediaMetadata?.artworkUri?.toString(),
         isPlaying = isPlaying,

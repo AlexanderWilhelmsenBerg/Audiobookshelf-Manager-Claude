@@ -77,6 +77,35 @@ class ExistingSessionAttachmentTest {
     }
 
     @Test
+    fun `in-app state keeps the book title while the session projects a sleep countdown`() {
+        val live = LivePlaybackSession()
+        val player = ExoPlayer.Builder(context).build()
+        val session = MediaSession.Builder(context, player).build()
+        var controller: MediaController? = null
+        try {
+            player.setMediaItem(book())
+            player.replaceMediaItem(0, assertNotNull(SleepTimerMediaMetadata.project(book(), "12:34")))
+            live.publish(session.token)
+
+            val attached = assertNotNull(connectExisting(SessionConnector(context, logger, live)))
+            controller = attached
+            awaitMainLooper(message = "the controller must observe the projected session title") {
+                attached.currentMediaItem?.mediaMetadata?.title?.toString() == "12:34"
+            }
+
+            val state = attached.playbackUiState()
+            assertEquals("The Tidewatch Cycle", state.title)
+            assertEquals("Marisol Holt", state.author)
+            assertEquals(BOOK, state.bookId)
+            assertEquals("12:34", attached.currentMediaItem?.mediaMetadata?.title?.toString())
+        } finally {
+            controller?.release()
+            session.release()
+            player.release()
+        }
+    }
+
+    @Test
     fun `a second UI controller recovers the same live session after recreation`() {
         val live = LivePlaybackSession()
         val player = ExoPlayer.Builder(context).build()

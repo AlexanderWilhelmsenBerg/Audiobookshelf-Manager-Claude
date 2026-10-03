@@ -1,7 +1,7 @@
 # Reliability acceptance
 
 **Classification:** Acceptance checklist, not a second roadmap.
-**Baseline:** main `756d521e` plus the reliability follow-ups; record the exact candidate commit when executing.
+**Baseline:** main `81a06e19` plus the reliability follow-ups; record the exact candidate commit when executing.
 
 ## Evidence record
 
@@ -22,6 +22,10 @@ continuity and Previous. Extend it with:
   old request. Repeat with a newer Pause/Stop and with local session storage delayed.
 - Car-only profile switch flushes outgoing progress, stays paused and evicts old dynamic browse content.
 - Phone skips, active sleep-timer slot exception, then car connect/disconnect layouts without interruption.
+- Inside the nightly window, car connection prevents a new automatic timer while active/manual timers keep
+  running. Cross the window start while connected, then disconnect during active playback: one ordinary
+  timer starts. Disconnect while paused: no audio or timer starts. A manually cancelled occurrence remains
+  suppressed after the round trip. Cover an Android Auto controller rebind while projection stays connected.
 - Headset heard → explicit speaker → car arrival never resurrects the headset.
 - Previous/Rewind/Fast-forward use configured skips rather than whole-book restart (PR #204).
 - Process death loses at most ten seconds of progress; complete the two-hour playback soak.
@@ -116,3 +120,15 @@ Local logs are under ignored `build/reliability-evidence/`; the full-gate log is
   acceptance remains pending. Logs are under ignored `build/book-evidence/`.
 - `ktlintFormat verifyDebug '-Pshelfplayer.warningsAsErrors=true' --max-workers=4` passed in 2m 33s
   (1,119 tasks). The full app suite includes these five scenarios; no production behavior changed.
+
+### Nightly timer during car connection — 2026-10-03
+
+- Seven new controller scenarios cover automatic suppression, the window start and disconnect, preservation
+  of a running automatic timer, explicit manual creation, durable manual cancellation, and car arrival during
+  suspended history/runtime persistence. Four cases failed with the connection guard removed; all 38
+  controller tests passed with it. The service wiring test covers controller and projection lifecycle calls.
+- `ktlintFormat` and final `verifyDebug '-Pshelfplayer.warningsAsErrors=true' --max-workers=4` passed in
+  4m (1,184 tasks). Detekt findings in the initial runs were corrected by extracting timer attachment and a
+  named ownership check. The app test sandbox uses the same startup-isolation fix as PR #214.
+- Phone/system layout, actual Android Auto projection and continuity remain pending; no device was attached.
+  Logs are under ignored `build/sleep-evidence/` (`car-before.log`, `car-after.log`, `verify-complete.log`).

@@ -829,6 +829,153 @@ class SleepTimerControllerTest {
     }
 
     @Test
+    fun `car connection suppresses new automatic timers but permits an explicit manual timer`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(schedule = SleepTimerScheduleSettings.Default.copy(enabled = true)),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val controller = controller(repository, FakeShakeSource(), TestAppClock(Instant.parse("2026-09-19T23:00:00Z")))
+        controller.attach(player())
+        controller.onCarConnectionChanged(true)
+        controller.onPlayRequest(explicit = true)
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertEquals(0, repository.started)
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(30.minutes)))
+        assertTrue(controller.state.value.isActive)
+        assertEquals(1, repository.started)
+    }
+
+    @Test
+    fun `nightly boundary is suppressed in car and disconnect reconciles ongoing playback`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(schedule = SleepTimerScheduleSettings.Default.copy(enabled = true)),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val clock = TestAppClock(Instant.parse("2026-09-19T21:59:00Z"))
+        val controller = controller(repository, FakeShakeSource(), clock)
+        controller.attach(player())
+        controller.onCarConnectionChanged(true)
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        clock.advanceBy(1.minutes)
+        advanceTimeBy(60_001)
+        runCurrent()
+
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertEquals(0, repository.started)
+        controller.onCarConnectionChanged(false)
+        runCurrent()
+        assertTrue(controller.state.value.isActive)
+        assertEquals(1, repository.started)
+    }
+
+    @Test
+    fun `car arrival preserves an already running automatic timer`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(schedule = SleepTimerScheduleSettings.Default.copy(enabled = true)),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val controller = controller(repository, FakeShakeSource(), TestAppClock(Instant.parse("2026-09-19T23:00:00Z")))
+        controller.attach(player())
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        val running = controller.state.value
+        assertTrue(running.isActive)
+
+        controller.onCarConnectionChanged(true)
+        runCurrent()
+        assertEquals(running, controller.state.value)
+        assertEquals(1, repository.started)
+        assertTrue(repository.ended.isEmpty())
+    }
+
+    @Test
+    fun `disconnect does not rearm a manually cancelled nightly occurrence`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(schedule = SleepTimerScheduleSettings.Default.copy(enabled = true)),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val controller = controller(repository, FakeShakeSource(), TestAppClock(Instant.parse("2026-09-19T23:00:00Z")))
+        controller.attach(player())
+        controller.onPlaybackChanged(isPlaying = true)
+        runCurrent()
+        controller.cancel()
+        runCurrent()
+        val suppressed = assertNotNull(repository.suppressedOccurrence)
+
+        controller.onCarConnectionChanged(true)
+        controller.onCarConnectionChanged(false)
+        runCurrent()
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertEquals(suppressed, repository.suppressedOccurrence)
+        assertEquals(1, repository.started)
+    }
+
+    @Test
+    fun `car arrival invalidates an automatic start suspended in timer history persistence`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(schedule = SleepTimerScheduleSettings.Default.copy(enabled = true)),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val gate = repository.blockNextRecordStarted()
+        val controller = controller(repository, FakeShakeSource(), TestAppClock(Instant.parse("2026-09-19T23:00:00Z")))
+        controller.attach(player())
+        controller.onPlaybackChanged(isPlaying = true)
+        gate.awaitEntered()
+        controller.onCarConnectionChanged(true)
+        runCurrent()
+        gate.resume()
+        runCurrent()
+
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertEquals(listOf("timer-1" to SleepTimerOutcome.PlaybackStopped), repository.endedSessions)
+    }
+
+    @Test
+    fun `car arrival invalidates an automatic arm suspended in schedule persistence`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                schedule = SleepTimerScheduleSettings.Default.copy(
+                    enabled = true,
+                    suppressedOccurrence = "previous-night",
+                ),
+            ),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val gate = repository.blockNextScheduleRuntimeWrite()
+        val controller = controller(repository, FakeShakeSource(), TestAppClock(Instant.parse("2026-09-19T23:00:00Z")))
+        controller.attach(player())
+        controller.onPlaybackChanged(isPlaying = true)
+        gate.awaitEntered()
+        controller.onCarConnectionChanged(true)
+        runCurrent()
+        gate.resume()
+        runCurrent()
+
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertEquals(0, repository.started)
+    }
+
+    @Test
+    fun `disconnect while paused does not create a nightly timer`() = runTest {
+        val source = MutableStateFlow(
+            SleepTimerSettings.Default.copy(schedule = SleepTimerScheduleSettings.Default.copy(enabled = true)),
+        )
+        val repository = FakeSleepTimerRepository(source)
+        val controller = controller(repository, FakeShakeSource(), TestAppClock(Instant.parse("2026-09-19T23:00:00Z")))
+        controller.attach(player())
+        controller.onCarConnectionChanged(true)
+        controller.onCarConnectionChanged(false)
+        runCurrent()
+
+        assertEquals(SleepTimerState.Idle, controller.state.value)
+        assertEquals(0, repository.started)
+    }
+
+    @Test
     fun `active playback crossing start boundary arms while the end boundary never truncates`() = runTest {
         val schedule = SleepTimerScheduleSettings.Default.copy(enabled = true)
         val source = MutableStateFlow(SleepTimerSettings.Default.copy(schedule = schedule))

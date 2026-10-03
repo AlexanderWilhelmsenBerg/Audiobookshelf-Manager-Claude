@@ -12,6 +12,9 @@ import androidx.media3.session.CommandButton
  * - no car bound: skips lead, so the phone keeps skip back/forward in the compact slots;
  * - car bound: output actions lead, so Car/Headset take those slots when present.
  *
+ * The sleep timer button is the exception to "shared": while a car is bound it is left out entirely
+ * (PD-002, 2026-10-03), so the compact forward slot falls back to the car or skip priority.
+ *
  * Every contender also names overflow as its fallback. Losing a contested slot therefore relocates a button
  * instead of dropping it. [MediaButtonLayoutTest] runs this order through Media3's real legacy conversion.
  */
@@ -33,8 +36,10 @@ internal object MediaButtonLayout {
     ): List<CommandButton> {
         val surfacePriority = if (carBound) outputActions + skipActions else skipActions + outputActions
         // BW-SLEEP-01 — while active, the timer owns its requested compact slot on every shared system
-        // surface. It asks only for SLOT_FORWARD, so SLOT_BACK remains occupied by the highest-priority
-        // car/skip action and raw Previous can never leak back in.
-        return activeTimerActions + surfacePriority + overflowActions
+        // surface, except while a car controller is bound (PD-002, 2026-10-03: the sleep timer never shows in
+        // Android Auto). It asks only for SLOT_FORWARD, so SLOT_BACK remains occupied by the highest-priority
+        // car/skip action and raw Previous can never leak back in, with or without the timer.
+        val timer = if (carBound) emptyList() else activeTimerActions
+        return timer + surfacePriority + overflowActions
     }
 }

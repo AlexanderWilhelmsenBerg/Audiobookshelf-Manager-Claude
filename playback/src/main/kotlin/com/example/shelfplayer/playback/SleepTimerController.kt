@@ -113,6 +113,9 @@ class SleepTimerController @Inject constructor(
     /** True only while this attached player is actually producing audio. Main-dispatcher confined. */
     private var playbackActive = false
 
+    private var carConnected = false
+    private var carConnectionGeneration = 0L
+
     /**
      * Whether the next transition into actual playback came from an explicit controller Play.
      *
@@ -322,6 +325,18 @@ class SleepTimerController @Inject constructor(
                 is TimerPhase.Running,
                 -> reconcileSchedule(explicitPlay = explicit)
             }
+        }
+    }
+
+    /** PLAY-008 / PD-002 — car state blocks new nightly timers, leaving existing/manual timers intact. */
+    internal fun onCarConnectionChanged(connected: Boolean) {
+        applicationScope.launch(mainDispatcher) {
+            if (carConnected == connected) return@launch
+            carConnected = connected
+            carConnectionGeneration += 1
+            val starting = phase as? TimerPhase.Starting
+            if (connected && starting?.claim?.automaticOccurrence != null) invalidateTransientPhase()
+            reconcileSchedule()
         }
     }
 
@@ -923,17 +938,19 @@ class SleepTimerController @Inject constructor(
         val schedule = settings.schedule
         val suppressed = schedule.suppressedOccurrence == occurrence.id
         val replayRequired = schedule.replayRequiredOccurrence == occurrence.id
-        return !suppressed && (!replayRequired || explicitPlay)
+        return !carConnected && !suppressed && (!replayRequired || explicitPlay)
     }
 
     private suspend fun armAutomaticTimer(occurrence: SleepSchedulePolicy.Occurrence) {
         val ownerPlayer = player ?: return
         val ownerGeneration = playbackGeneration
+        val ownerCarGeneration = carConnectionGeneration
+        if (carConnected) return
         val schedule = settings.schedule
         if (schedule.suppressedOccurrence != null || schedule.replayRequiredOccurrence != null) {
             rememberScheduleRuntime(suppressedOccurrence = null, replayRequiredOccurrence = null)
         }
-        if (player !== ownerPlayer || playbackGeneration != ownerGeneration) return
+        if (!isAutomaticArmCurrent(ownerPlayer, ownerGeneration, ownerCarGeneration)) return
         val currentOccurrence = SleepSchedulePolicy.currentOccurrence(
             now = clock.now(),
             zone = zoneProvider.current(),
@@ -944,6 +961,12 @@ class SleepTimerController @Inject constructor(
             mode = SleepTimerMode.Fixed(settings.defaultLength),
             automaticOccurrence = occurrence.id,
         )
+    }
+
+    private fun isAutomaticArmCurrent(ownerPlayer: Player, ownerGeneration: Long, ownerCarGeneration: Long): Boolean {
+        val playbackCurrent = player === ownerPlayer && playbackGeneration == ownerGeneration
+        val carCurrent = !carConnected && carConnectionGeneration == ownerCarGeneration
+        return playbackCurrent && carCurrent
     }
 
     /**
@@ -1010,7 +1033,7 @@ class SleepTimerController @Inject constructor(
 
     private fun isStartClaimCurrent(claim: StartClaim): Boolean {
         val current = phase as? TimerPhase.Starting ?: return false
-        val occurrenceCurrent = claim.automaticOccurrence?.let { currentOccurrenceId() == it } ?: true
+        val occurrenceCurrent = claim.automaticOccurrence?.let { !carConnected && currentOccurrenceId() == it } ?: true
         return current.claim.token == claim.token &&
             player === claim.player &&
             playbackGeneration == claim.playbackGeneration &&
