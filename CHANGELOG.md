@@ -6,6 +6,25 @@ giving it a section of its own.
 
 ## Unreleased
 
+### Book download button: live percent, Pause/Stop, Resume (DL-001, DL-003, PD-003, PD-004, #111)
+
+- The Book screen's download button shows an integer percent (0 to 99, never 100 while running) inside the
+  button with a progress ring around it. The percent is floored, so 99.9% no longer reads as done in the
+  button, the Downloads rows or the notification.
+- Tapping an in-flight download opens a Pause / Stop / Keep downloading prompt instead of cancelling at once.
+  Stop is claim-aware: it deletes the partial files only when no other profile claims the copy, and says so.
+  Pause is offered only when no other profile claims the copy, so one profile never pauses another's download.
+- A paused download shows Paused with its percent and Resume (no play glyph). Previously it showed
+  "Downloading" and its tap did nothing useful.
+- Retry no longer sits disabled or shows Failed while the download is actually running: the Book screen now
+  reads WorkManager's execution evidence like the Downloads rows do.
+- Removing or stopping a download never stops another profile's transfer of the same copy. The old Book-screen
+  cancel did, and left the book stuck as "Downloading"; it is gone.
+- Removing an in-flight row from Downloads now stops its transfer instead of deleting files under a running
+  worker. Pause is available while a row is queued, waiting or retrying, not only while running.
+- "Downloaded on this device for another profile" is no longer shown for a copy that no profile claims.
+- Cancelling a transfer now records the bytes already on disk, so a paused download shows its true percent.
+
 ### Android Auto restore profile isolation (AUTH-002, PLAY-001, #185)
 
 - Suspended idle restoration discards the outgoing profile's metadata/queue when another unlocked profile

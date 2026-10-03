@@ -54,6 +54,8 @@ import com.example.shelfplayer.core.designsystem.layout.centredListPadding
 import com.example.shelfplayer.core.designsystem.layout.windowWidth
 import com.example.shelfplayer.core.model.download.DownloadStorageState
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
+import com.example.shelfplayer.domain.download.DownloadRecoveryAction
+import com.example.shelfplayer.domain.download.recoveryAction
 import com.example.shelfplayer.ui.glass.playerChromeClearance
 import java.util.Locale
 
@@ -396,7 +398,7 @@ private fun DownloadRowItem(
                             formatBytes(progress.downloadedBytes),
                             formatBytes(total),
                         )
-                    } ?: stringResource(R.string.downloads_progress_percent, progress.percent),
+                    } ?: stringResource(R.string.downloads_progress_percent, progress.inFlightPercent),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -415,6 +417,7 @@ private fun DownloadRowItem(
         if (row.isClaimedByActiveProfile && row.storageState != DownloadStorageState.Unavailable) {
             DownloadRecoveryActionButton(
                 recoveryState = row.recoveryState,
+                isShared = row.isSharedWithAnotherProfile,
                 onClick = onRecoveryAction,
             )
         }
@@ -472,14 +475,17 @@ private fun downloadRowStatusText(row: DownloadRow): String? = when {
 /**
  * BW-DL-03 / #18 — the row's one recovery affordance, isolated so adding recovery states does not turn
  * [DownloadRowItem] into a branch-heavy policy owner. The state-to-action decision still lives in
- * [DownloadRecoveryState.rowAction], shared with the ViewModel.
+ * [recoveryAction], shared with the ViewModel and the Book button.
  */
 @Composable
 private fun DownloadRecoveryActionButton(
     recoveryState: com.example.shelfplayer.domain.download.DownloadRecoveryState,
+    isShared: Boolean,
     onClick: () -> Unit,
 ) {
-    val action = recoveryState.rowAction() ?: return
+    val action = recoveryState.recoveryAction() ?: return
+    // PD-004 — pausing a copy another profile also claims would stop that profile's download too.
+    if (action == DownloadRecoveryAction.Pause && isShared) return
     val (icon, description) = when (action) {
         DownloadRecoveryAction.Pause -> Icons.Filled.Pause to R.string.downloads_pause
         DownloadRecoveryAction.Resume -> Icons.Filled.PlayArrow to R.string.downloads_resume

@@ -2,12 +2,14 @@ package com.example.shelfplayer.domain.usecase
 
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.TrafficCategory
 import com.example.shelfplayer.domain.FakeBookAssetSource
 import com.example.shelfplayer.domain.FakeDownloadRepository
 import com.example.shelfplayer.domain.FakeDownloadScheduler
 import com.example.shelfplayer.domain.FakeProfileRepository
+import com.example.shelfplayer.domain.TEST_PROFILE
 import com.example.shelfplayer.domain.TEST_SERVER
 import com.example.shelfplayer.domain.offlineBook
 import com.example.shelfplayer.domain.profile
@@ -15,6 +17,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -42,6 +45,29 @@ class PauseDownloadUseCaseTest {
 
         assertEquals(listOf(LibraryItemId("tidewatch")), scheduler.cancelled)
         assertEquals(DownloadState.Paused, stateOf("tidewatch"))
+    }
+
+    /** PD-004 — pausing a shared copy would stop another profile's download, so it is refused untouched. */
+    @Test
+    fun `a copy another profile also claims is not paused`() = runTest {
+        val shared = FakeDownloadRepository(
+            listOf(
+                offlineBook(
+                    "tidewatch",
+                    state = DownloadState.Running,
+                    requestedBy = setOf(TEST_PROFILE, ProfileId("profile-2")),
+                ),
+            ),
+        )
+
+        val result = pause(shared)(LibraryItemId("tidewatch"))
+
+        assertIs<AppResult.Failure>(result)
+        assertTrue(scheduler.cancelled.isEmpty(), "the other profile's transfer must keep running")
+        assertEquals(
+            DownloadState.Running,
+            shared.observe(TEST_SERVER, LibraryItemId("tidewatch")).first()?.state,
+        )
     }
 
     /**
@@ -126,9 +152,9 @@ class PauseDownloadUseCaseTest {
 
     private suspend fun stateOf(id: String) = downloads.observe(TEST_SERVER, LibraryItemId(id)).first()?.state
 
-    private fun pause() = PauseDownloadUseCase(
+    private fun pause(repository: FakeDownloadRepository = downloads) = PauseDownloadUseCase(
         profiles = FakeProfileRepository(profile().copy(canDownload = true)),
-        downloads = downloads,
+        downloads = repository,
         scheduler = scheduler,
     )
 

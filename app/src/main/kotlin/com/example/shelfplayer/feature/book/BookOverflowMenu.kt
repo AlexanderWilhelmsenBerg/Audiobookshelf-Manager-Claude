@@ -358,11 +358,18 @@ internal data class BookMenuActions(
  *    between freeing your own space and deleting somebody else's book.
  */
 @Composable
-internal fun RemoveDownloadDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+internal fun RemoveDownloadDialog(onConfirm: () -> Unit, onDismiss: () -> Unit, isShared: Boolean = false) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = stringResource(R.string.book_download_remove_title)) },
-        text = { Text(text = stringResource(R.string.book_download_remove_body)) },
+        text = {
+            // The one copy that is certain (another profile still claims it) says so, instead of the hedge.
+            Text(
+                text = stringResource(
+                    if (isShared) R.string.downloads_remove_shared_body else R.string.book_download_remove_body,
+                ),
+            )
+        },
         confirmButton = {
             TextButton(onClick = onConfirm) { Text(text = stringResource(R.string.book_download_remove_confirm)) }
         },

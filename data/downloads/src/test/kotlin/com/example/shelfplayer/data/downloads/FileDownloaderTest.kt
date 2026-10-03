@@ -22,8 +22,10 @@ import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -233,6 +235,27 @@ class FileDownloaderTest {
 
         assertFailsWith<CancellationException> { download(queuedFile(eTag = "\"v1\"")) }
 
+        assertEquals(300L, storedFile().downloadedBytes)
+    }
+
+    /**
+     * The same recording, but through a real cancellation. A cancelled coroutine cannot run a suspending
+     * write unless it is `NonCancellable`, so without that wrapper the record would itself be cancelled and
+     * the stored count would stay 0. Throwing a `CancellationException` from the fake (the test above) does
+     * not prove this: the coroutine is still active there.
+     */
+    @Test
+    fun `a really cancelled transfer still records the bytes on disk`() = runTest {
+        api.body = ByteArray(300)
+        val gate = CompletableDeferred<Unit>()
+        api.gateAfterWrite = gate
+
+        val job = launch { download(queuedFile(eTag = "\"v1\"")) }
+        api.reachedGate.await()
+        job.cancel()
+        job.join()
+
+        assertTrue(job.isCancelled)
         assertEquals(300L, storedFile().downloadedBytes)
     }
 
@@ -562,6 +585,10 @@ class FileDownloaderTest {
         /** Writes the body, then behaves as WorkManager cancelling the coroutine for a pause or stop. */
         var cancelAfterWrite: Boolean = false
 
+        /** When set, completes [reachedGate] after writing and then suspends until cancelled. */
+        var gateAfterWrite: CompletableDeferred<Unit>? = null
+        val reachedGate = CompletableDeferred<Unit>()
+
         var lastResumeFrom: Long = -1
         var lastValidator: String? = null
         val requests = mutableListOf<Pair<Long, String?>>()
@@ -598,6 +625,10 @@ class FileDownloaderTest {
             val appended = wasResumed && resumeFrom > 0
             sink(appended).use { stream -> stream.write(body) }
             if (cancelAfterWrite) throw CancellationException("paused")
+            gateAfterWrite?.let { gate ->
+                reachedGate.complete(Unit)
+                gate.await()
+            }
             onProgress((if (appended) resumeFrom else 0) + body.size)
             return AppResult.Success(
                 FileTransfer(

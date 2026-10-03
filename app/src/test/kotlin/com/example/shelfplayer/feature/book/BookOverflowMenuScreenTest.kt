@@ -243,19 +243,128 @@ class BookOverflowMenuScreenTest {
     }
 
     /**
-     * PRODUCT_SPEC DL-001 — the control cycles, and each state's label names what a tap *does*.
+     * PD-004 — the control announces the percent, and a tap asks rather than acts.
      *
-     * The labels are the assertion rather than the icons, because the label is what a TalkBack user hears
-     * and it is the only thing that distinguishes *cancel* — which keeps the partial download — from
-     * *remove*, which deletes it. An icon swap with a stale description would be silently wrong for exactly
-     * the people who cannot see the icon.
+     * The labels are the assertion rather than the icons, because the label is what a TalkBack user hears.
+     * Revert-detector: the old screen forwarded the tap straight to the ViewModel, which cancelled.
      */
     @Test
-    fun `a download in flight offers to cancel it`() {
-        render(download = DownloadButtonState.Downloading(progress = 0.4f))
+    fun `a download in flight announces its percent and does not act on tap`() {
+        val taps = mutableListOf<DownloadButtonState>()
+        render(
+            download = DownloadButtonState.Downloading(progress = 0.42f, percent = 42),
+            onDownloadClicked = { taps += it },
+        )
 
-        composeRule.onNodeWithContentDescription("Cancel the download").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Downloading, 42%. Choose Pause or Stop.").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Download").assertDoesNotExist()
+        composeRule.onNodeWithTag(BOOK_DOWNLOAD_BUTTON).performClick()
+
+        composeRule.onNodeWithText("Pause or stop this download?").assertIsDisplayed()
+        assertEquals(emptyList<DownloadButtonState>(), taps, "the tap opens the prompt and nothing else")
+    }
+
+    @Test
+    fun `pause from the prompt pauses and deletes nothing`() {
+        var paused = 0
+        var removed = 0
+        render(
+            download = DownloadButtonState.Downloading(progress = 0.42f, percent = 42),
+            onPauseDownload = { paused++ },
+            onRemoveDownload = { removed++ },
+        )
+        composeRule.onNodeWithTag(BOOK_DOWNLOAD_BUTTON).performClick()
+
+        composeRule.onNodeWithText("Pause").performClick()
+
+        assertEquals(1, paused)
+        assertEquals(0, removed)
+        composeRule.onNodeWithText("Pause or stop this download?").assertDoesNotExist()
+    }
+
+    @Test
+    fun `stop from the prompt says what it deletes and removes`() {
+        var paused = 0
+        var removed = 0
+        render(
+            download = DownloadButtonState.Downloading(progress = 0.42f, percent = 42),
+            onPauseDownload = { paused++ },
+            onRemoveDownload = { removed++ },
+        )
+        composeRule.onNodeWithTag(BOOK_DOWNLOAD_BUTTON).performClick()
+
+        composeRule.onNodeWithText(
+            "Pause keeps everything downloaded so far on this device, so you can resume later. Stop cancels " +
+                "the download and deletes the partly downloaded files from this device. Nothing changes on " +
+                "your server, and your listening position is kept.",
+        ).assertIsDisplayed()
+        assertEquals(0, removed, "nothing happens until Stop is chosen")
+        composeRule.onNodeWithText("Stop").performClick()
+
+        assertEquals(1, removed)
+        assertEquals(0, paused)
+    }
+
+    /** PD-004 — a shared copy cannot be paused from here: that would stop the other profile's download. */
+    @Test
+    fun `a shared in-flight download offers stop but never pause`() {
+        render(download = DownloadButtonState.Downloading(progress = 0.42f, percent = 42), isSharedDownload = true)
+        composeRule.onNodeWithTag(BOOK_DOWNLOAD_BUTTON).performClick()
+
+        composeRule.onNodeWithText("Stop this download?").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "Another profile on this device is also downloading this book, so it cannot be paused here. " +
+                "Stop removes the book from your downloads only: the download continues for the other profile " +
+                "and no files are deleted. Nothing changes on your server.",
+        ).assertIsDisplayed()
+        composeRule.onNodeWithText("Pause").assertDoesNotExist()
+        composeRule.onNodeWithText("Stop").assertIsDisplayed()
+    }
+
+    @Test
+    fun `keep downloading dismisses without acting`() {
+        var paused = 0
+        var removed = 0
+        render(
+            download = DownloadButtonState.Downloading(progress = 0.42f, percent = 42),
+            onPauseDownload = { paused++ },
+            onRemoveDownload = { removed++ },
+        )
+        composeRule.onNodeWithTag(BOOK_DOWNLOAD_BUTTON).performClick()
+
+        composeRule.onNodeWithText("Keep downloading").performClick()
+
+        assertEquals(0, paused)
+        assertEquals(0, removed)
+        composeRule.onNodeWithText("Pause or stop this download?").assertDoesNotExist()
+    }
+
+    /** No play glyph and no prompt: a paused download resumes on the tap, because nothing is lost by it. */
+    @Test
+    fun `a paused download resumes on tap without asking`() {
+        val taps = mutableListOf<DownloadButtonState>()
+        val paused = DownloadButtonState.Paused(progress = 0.3f, percent = 30)
+        render(download = paused, onDownloadClicked = { taps += it })
+
+        composeRule.onNodeWithContentDescription("Download paused at 30%. Resume the download.")
+            .assertIsDisplayed()
+            .performClick()
+
+        assertEquals(listOf<DownloadButtonState>(paused), taps)
+        composeRule.onNodeWithText("Pause or stop this download?").assertDoesNotExist()
+    }
+
+    @Test
+    fun `removing a shared download says the files stay`() {
+        render(download = DownloadButtonState.Downloaded, isSharedDownload = true)
+
+        composeRule.onNodeWithTag(BOOK_DOWNLOAD_BUTTON).performClick()
+
+        composeRule.onNodeWithText(
+            "This removes the book from your downloads. Another profile on this phone downloaded it too, so " +
+                "the files stay and no space is freed until they remove it as well. Nothing is deleted on " +
+                "your server.",
+        ).assertIsDisplayed()
     }
 
     @Test
@@ -288,7 +397,6 @@ class BookOverflowMenuScreenTest {
         render(download = DownloadButtonState.Starting, onDownloadClicked = { taps += it })
 
         composeRule.onNodeWithContentDescription("Starting the download").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Cancel the download").assertDoesNotExist()
         composeRule.onNodeWithTag(BOOK_DOWNLOAD_BUTTON).assertIsNotEnabled().performClick()
 
         assertEquals(emptyList<DownloadButtonState>(), taps)
@@ -368,8 +476,10 @@ class BookOverflowMenuScreenTest {
         onOpenWebClient: (String) -> Unit = {},
         onDownloadClicked: (DownloadButtonState) -> Unit = {},
         onRemoveDownload: () -> Unit = {},
+        onPauseDownload: () -> Unit = {},
         onManageDownloads: () -> Unit = {},
         message: BookMessage? = null,
+        isSharedDownload: Boolean = false,
     ) {
         composeRule.setContent {
             BookScreen(
@@ -385,7 +495,12 @@ class BookOverflowMenuScreenTest {
                     position = Duration.ZERO,
                     duration = Duration.ZERO,
                 ),
-                menu = BookMenuState(webUrl = webUrl, canDownload = canDownload, download = download),
+                menu = BookMenuState(
+                    webUrl = webUrl,
+                    canDownload = canDownload,
+                    download = download,
+                    isSharedDownload = isSharedDownload,
+                ),
                 actions = BookActions(
                     onPlay = {},
                     onTogglePlayPause = {},
@@ -394,6 +509,7 @@ class BookOverflowMenuScreenTest {
                     onOpenWebClient = onOpenWebClient,
                     onDownloadClicked = onDownloadClicked,
                     onRemoveDownload = onRemoveDownload,
+                    onPauseDownload = onPauseDownload,
                     onManageDownloads = onManageDownloads,
                 ),
                 onNavigateUp = {},

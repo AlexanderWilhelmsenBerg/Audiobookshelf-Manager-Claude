@@ -208,8 +208,9 @@ class DownloadsScreenTest {
         compose.onNodeWithContentDescription("Retry this download").assertDoesNotExist()
     }
 
+    /** #111: every in-flight state offers Pause; only Complete offers nothing. */
     @Test
-    fun `queued waiting retrying and complete rows expose no recovery action`() {
+    fun `queued waiting retrying rows expose Pause and complete exposes none`() {
         var recoveryState by mutableStateOf(DownloadRecoveryState.Queued)
         compose.setContent {
             DownloadsScreen(
@@ -226,14 +227,42 @@ class DownloadsScreenTest {
             DownloadRecoveryState.Queued,
             DownloadRecoveryState.Waiting,
             DownloadRecoveryState.Retrying,
-            DownloadRecoveryState.Complete,
         ).forEach { next ->
             recoveryState = next
             compose.waitForIdle()
-            compose.onNodeWithContentDescription("Pause this download").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Pause this download").assertExists()
             compose.onNodeWithContentDescription("Resume this download").assertDoesNotExist()
             compose.onNodeWithContentDescription("Retry this download").assertDoesNotExist()
         }
+
+        recoveryState = DownloadRecoveryState.Complete
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("Pause this download").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Resume this download").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Retry this download").assertDoesNotExist()
+    }
+
+    /** PD-004 — a shared copy is never paused from a row: that would stop the other profile's download. */
+    @Test
+    fun `a shared in-flight row offers no Pause but a shared paused row still resumes`() {
+        var recoveryState by mutableStateOf(DownloadRecoveryState.Running)
+        compose.setContent {
+            val base = state(recoveryState)
+            DownloadsScreen(
+                uiState = base.copy(books = base.books.map { it.copy(isSharedWithAnotherProfile = true) }),
+                onRemove = { _, _ -> },
+                onPinnedChanged = { _, _, _ -> },
+                onRecoveryAction = { _, _ -> },
+                onVerify = {},
+                onNavigateUp = {},
+            )
+        }
+
+        compose.onNodeWithContentDescription("Pause this download").assertDoesNotExist()
+
+        recoveryState = DownloadRecoveryState.Paused
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("Resume this download").assertExists()
     }
 
     private fun render(recoveryState: DownloadRecoveryState, onRecovery: (DownloadRecoveryState) -> Unit = {}) {

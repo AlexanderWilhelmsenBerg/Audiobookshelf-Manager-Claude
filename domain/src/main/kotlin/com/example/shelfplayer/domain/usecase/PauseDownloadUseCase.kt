@@ -31,6 +31,12 @@ import javax.inject.Inject
  * which the worker's own failure handler runs against a manifest that still says `Running`, and records
  * `Failed` over the top of the pause that was about to be written. That window is short and it is exactly
  * the one that a slow device makes long.
+ *
+ * ### Only an unshared copy can be paused (PD-004)
+ *
+ * The transfer belongs to the physical copy, not to a profile. Pausing a copy another profile also claims
+ * would stop that profile's download too, so it is refused before anything is written; Stop, which only
+ * releases this profile's claim, is what such a profile is offered instead.
  */
 class PauseDownloadUseCase @Inject constructor(
     private val profiles: ProfileRepository,
@@ -42,11 +48,21 @@ class PauseDownloadUseCase @Inject constructor(
         val profile = profiles.observeActiveProfile().first()
             ?: return AppResult.Failure(AppError.Authentication(summary = "Sign in to a server first."))
 
+        val stored = downloads.observe(profile.serverId, bookId).first()
+        if (stored != null && stored.requestedBy.any { it != profile.id }) {
+            return AppResult.Failure(AppError.Conflict(summary = SHARED_COPY))
+        }
+
         // Written before the cancellation, so the worker's failure path cannot overwrite it. See above.
         val paused = downloads.markPaused(profile.serverId, bookId)
         if (paused is AppResult.Failure) return paused
 
         scheduler.cancel(profile.serverId, bookId)
         return AppResult.Success(Unit)
+    }
+
+    private companion object {
+        const val SHARED_COPY =
+            "Another profile on this device is also downloading this book, so it cannot be paused."
     }
 }

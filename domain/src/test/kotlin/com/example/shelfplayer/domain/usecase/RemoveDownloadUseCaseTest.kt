@@ -1,5 +1,6 @@
 package com.example.shelfplayer.domain.usecase
 
+import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
@@ -10,6 +11,7 @@ import com.example.shelfplayer.domain.FakeOfflineFiles
 import com.example.shelfplayer.domain.FakeProfileRepository
 import com.example.shelfplayer.domain.TEST_PROFILE
 import com.example.shelfplayer.domain.offlineBook
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -57,11 +59,47 @@ class RemoveDownloadUseCaseTest {
 
     @Test
     fun `a profile with no claim cancels and removes nothing`() = runTest {
-        val result = remove(offlineBook("b", state = DownloadState.Running, requestedBy = setOf(other)))
+        val stored = offlineBook("b", state = DownloadState.Running, requestedBy = setOf(other))
+        val downloads = FakeDownloadRepository(listOf(stored))
+
+        val result = RemoveDownloadUseCase(FakeProfileRepository(), downloads, files, scheduler)(book)
 
         assertEquals(AppResult.Success(DownloadRemoval.NotClaimed), result)
         assertTrue(scheduler.cancelled.isEmpty())
         assertTrue(files.removed.isEmpty())
+        // No repository mutation either: the manifest is exactly what it was and nothing was pinned.
+        assertEquals(listOf(stored), downloads.observeAll().first())
+        assertTrue(downloads.pinned.isEmpty())
+    }
+
+    @Test
+    fun `a book with no manifest at all is not claimed`() = runTest {
+        val result = RemoveDownloadUseCase(FakeProfileRepository(), FakeDownloadRepository(), files, scheduler)(book)
+
+        assertEquals(AppResult.Success(DownloadRemoval.NotClaimed), result)
+        assertTrue(scheduler.cancelled.isEmpty())
+        assertTrue(files.removed.isEmpty())
+    }
+
+    /** A failed delete is reported as one, and a shared copy's work is never cancelled after the fact. */
+    @Test
+    fun `a failed delete on a shared copy propagates and cancels nothing`() = runTest {
+        files.failure = AppError.Storage(summary = "disk")
+
+        val result = remove(offlineBook("b", state = DownloadState.Running, requestedBy = setOf(TEST_PROFILE, other)))
+
+        assertIs<AppResult.Failure>(result)
+        assertTrue(scheduler.cancelled.isEmpty(), "no post-delete cancel when the delete failed")
+    }
+
+    @Test
+    fun `a failed delete on a sole claim propagates and cancels only before the delete`() = runTest {
+        files.failure = AppError.Storage(summary = "disk")
+
+        val result = remove(offlineBook("b", state = DownloadState.Running, requestedBy = setOf(TEST_PROFILE)))
+
+        assertIs<AppResult.Failure>(result)
+        assertEquals(listOf(book), scheduler.cancelled, "exactly the one pre-delete cancel")
     }
 
     @Test

@@ -120,6 +120,7 @@ fun BookRoute(
             },
             onDownloadClicked = viewModel::onDownloadClicked,
             onRemoveDownload = viewModel::onRemoveDownload,
+            onPauseDownload = viewModel::onPauseDownload,
             onManageDownloads = onManageDownloads,
             onEditMetadata = onEditMetadata,
             onRemoveFromServer = viewModel::onRemoveFromServer,
@@ -244,11 +245,16 @@ fun BookScreen(
                         isPermitted = menu.canDownload,
                         state = menu.download,
                         onClick = {
-                            // The one state that asks first: removing is the only tap here that deletes files.
-                            if (menu.download is DownloadButtonState.Downloaded) {
-                                openSurface = BookSurface.RemoveDownloadConfirmation
-                            } else {
-                                actions.onDownloadClicked(menu.download)
+                            // Two states ask first: removing deletes files, and an in-flight download offers
+                            // Pause or Stop. A tap never pauses or stops on its own.
+                            when (menu.download.tap()) {
+                                DownloadTap.AskRemove -> openSurface = BookSurface.RemoveDownloadConfirmation
+
+                                DownloadTap.AskPauseOrStop -> openSurface = BookSurface.DownloadInFlightPrompt
+
+                                DownloadTap.Start,
+                                DownloadTap.Ignore,
+                                -> actions.onDownloadClicked(menu.download)
                             }
                         },
                     ),
@@ -311,12 +317,31 @@ private fun BookSurfaces(
         )
 
         BookSurface.RemoveDownloadConfirmation -> RemoveDownloadDialog(
+            isShared = menu.isSharedDownload,
             onConfirm = {
                 onClose()
                 actions.onRemoveDownload()
             },
             onDismiss = onClose,
         )
+
+        BookSurface.DownloadInFlightPrompt -> if (menu.download is DownloadButtonState.Downloading) {
+            DownloadInFlightDialog(
+                isShared = menu.isSharedDownload,
+                onPause = {
+                    onClose()
+                    actions.onPauseDownload()
+                },
+                onStop = {
+                    onClose()
+                    actions.onRemoveDownload()
+                },
+                onDismiss = onClose,
+            )
+        } else {
+            // It finished, failed or was paused elsewhere while the prompt was open: nothing left to ask.
+            LaunchedEffect(Unit) { onClose() }
+        }
 
         BookSurface.EmbedConfirmation -> EmbedMetadataDialog(
             title = book.title,
@@ -427,6 +452,9 @@ private enum class BookSurface {
     DiscardConfirmation,
     RemoveDownloadConfirmation,
 
+    /** PD-004 — Pause, Stop or Keep downloading, asked when an in-flight download is tapped. */
+    DownloadInFlightPrompt,
+
     /** PRODUCT_SPEC MGR-005 — the only surface on this screen that changes somebody else's server. */
     RemoveFromServerConfirmation,
 
@@ -453,6 +481,8 @@ data class BookActions(
     val onDownloadClicked: (DownloadButtonState) -> Unit = {},
     /** The confirmed half of *remove*, which is the only tap on this screen that deletes files. */
     val onRemoveDownload: () -> Unit = {},
+    /** PD-004 — the in-flight prompt's Pause. Stop is [onRemoveDownload], which is claim-aware. */
+    val onPauseDownload: () -> Unit = {},
     /** PRODUCT_SPEC DL-003 — opens the list of everything downloaded on this device. */
     val onManageDownloads: () -> Unit = {},
     /** PRODUCT_SPEC MGR-001 — opens the metadata editor for this book. */
@@ -704,6 +734,8 @@ private fun FactStrip(book: Book, downloadState: DownloadButtonState, modifier: 
         is DownloadButtonState.Downloading,
         DownloadButtonState.Failed,
         -> R.string.book_download_partial
+
+        is DownloadButtonState.Paused -> R.string.book_download_paused
 
         DownloadButtonState.Downloaded -> R.string.book_downloaded
     }
