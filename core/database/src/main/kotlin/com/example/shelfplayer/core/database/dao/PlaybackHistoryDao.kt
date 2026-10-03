@@ -19,7 +19,7 @@ interface PlaybackHistoryDao {
         """
         SELECT * FROM playback_history
         WHERE profileId = :profileId AND bookKey = :bookKey
-        ORDER BY at DESC
+        ORDER BY at DESC, rowid DESC
         LIMIT :limit
         """,
     )
@@ -48,6 +48,28 @@ interface PlaybackHistoryDao {
         insert(entry)
         prune(entry.profileId, entry.bookKey, keep)
     }
+
+    /** PLAY-004 — the mutable listening checkpoint between explicit local events. */
+    @Transaction
+    suspend fun recordProgress(entry: PlaybackHistoryEntity, keep: Int) {
+        val latest = latestLocal(entry.profileId, entry.bookKey)
+        if (latest != null && entry.at < latest.at) return
+        record(
+            if (latest?.reason == "ListeningProgress") entry.copy(entryId = latest.entryId) else entry,
+            keep,
+        )
+    }
+
+    @Query(
+        """
+        SELECT * FROM playback_history
+        WHERE profileId = :profileId AND bookKey = :bookKey
+        AND reason NOT IN ('RemoteProgress', 'RemoteFinished', 'ServerSession',
+            'ServerCheckAhead', 'ServerCheckCurrent', 'ServerCheckUnavailable')
+        ORDER BY at DESC, rowid DESC LIMIT 1
+        """,
+    )
+    suspend fun latestLocal(profileId: String, bookKey: String): PlaybackHistoryEntity?
 
     @Query("DELETE FROM playback_history WHERE profileId = :profileId AND bookKey = :bookKey")
     suspend fun clear(profileId: String, bookKey: String)

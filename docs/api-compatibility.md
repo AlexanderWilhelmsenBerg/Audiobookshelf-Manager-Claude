@@ -5,6 +5,14 @@ known endpoint differences, the fixtures used, and the date last verified.
 
 ## Server versions tested
 
+The 2026-10-03 series/history/sleep revision changes local presentation and playback policy only. Rolling
+History checkpoints reuse the existing profile/book-scoped Room table and store no media text; the schema
+and server endpoints/fixtures are unchanged. Existing remote-session imports and five-second local progress
+journaling remain in place. New fixed timers count audible playback and cannot start on paused/empty
+playback. Extra high / Ultra high sensitivity use local accelerometer data inside the existing opt-in sensing
+bound. See [the fix verification log](testing/2026-10-03-series-history-sleep.md) for automated and pending
+physical evidence; earlier phone acceptance does not verify these new behaviors.
+
 | Server version | Date verified | Auth mode | Websocket | Notes |
 | --- | --- | --- | --- | --- |
 | 2.36.0 | 2026-08-05 | local (`authMethods: ["local"]`) | not verified | Login, refresh-token behaviour and API-key bearer auth observed directly. Contract capture in CI runs against the same version. |

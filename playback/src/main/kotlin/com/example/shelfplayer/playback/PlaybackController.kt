@@ -136,9 +136,8 @@ class PlaybackController @Inject constructor(
     /**
      * PRODUCT_SPEC PLAY-004 — the chapter the last publish saw, so a crossing can be detected.
      *
-     * The chapter list only exists in this process, so this is the only place a chapter change *can* be
-     * noticed. With the app gone the service's thirty-second cadence covers the same ground half a minute
-     * later, which is the honest limit of putting the list here rather than in the playlist.
+     * This detects UI/controller crossings immediately. The service's five-second History sampler also
+     * observes crossings independently of the Activity using the chapter list supplied by BookChanges.
      */
     private var lastChapter: Chapter? = null
 

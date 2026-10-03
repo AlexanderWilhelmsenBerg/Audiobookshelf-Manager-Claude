@@ -1,6 +1,7 @@
 package com.example.shelfplayer.playback
 
 import android.content.Context
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.test.core.app.ApplicationProvider
 import com.example.shelfplayer.core.common.log.LogEvent
@@ -59,6 +60,7 @@ import kotlin.time.Duration.Companion.minutes
  * fails because a blank-id local session would be promoted as server evidence.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @RunWith(RobolectricTestRunner::class)
 class BookChangesServerEvidenceTest {
 
@@ -94,7 +96,10 @@ class BookChangesServerEvidenceTest {
             val old = session("old")
             player.setMediaItem(MediaItems.queueFor(old).item, START.inWholeMilliseconds)
             boundary.sync.attach(player)
-            boundary.timer.attach(player)
+            boundary.timer.attach(object : ForwardingPlayer(player) {
+                // Model audible playback; this case verifies commit ordering rather than decoding.
+                override fun isPlaying(): Boolean = true
+            })
             boundary.changes.onBookOpened(old)
             baseline.onBookClosed()
             boundary.timer.start(SleepTimerMode.Fixed(15.minutes))
@@ -133,7 +138,9 @@ class BookChangesServerEvidenceTest {
         try {
             val old = session("old")
             player.setMediaItem(MediaItems.queueFor(old).item, START.inWholeMilliseconds)
-            boundary.timer.attach(player)
+            boundary.timer.attach(object : ForwardingPlayer(player) {
+                override fun isPlaying(): Boolean = true
+            })
             boundary.changes.onBookOpened(old)
             boundary.timer.start(SleepTimerMode.Fixed(15.minutes))
             assertTrue(boundary.timer.state.value != SleepTimerState.Idle)
@@ -173,15 +180,7 @@ class BookChangesServerEvidenceTest {
         )
         val history = proxy<PlaybackHistoryRepository>()
         val sleepTimer = SleepTimerController(
-            repository = proxy<SleepTimerRepository> { name ->
-                when (name) {
-                    "observeSettings" -> flowOf(SleepTimerSettings.Default)
-                    "recordStarted" -> AppResult.Success("timer-session")
-                    "recordEnded" -> AppResult.Success(Unit)
-                    "closeOrphanedSessions" -> AppResult.Success(0)
-                    else -> null
-                }
-            },
+            repository = timerRepository(),
             shakes = ShakeDetector(ApplicationProvider.getApplicationContext<Context>(), NO_OP_LOGGER),
             sessionSync = sync,
             history = history,
@@ -217,8 +216,19 @@ class BookChangesServerEvidenceTest {
             autoRewind = autoRewind,
             resumeBaseline = baseline,
             resumeFreshness = freshness,
+            listeningHistory = ListeningHistoryRecorder(history),
         )
         return Boundary(changes, sleepTimer, sync)
+    }
+
+    private fun timerRepository(): SleepTimerRepository = proxy { name ->
+        when (name) {
+            "observeSettings" -> flowOf(SleepTimerSettings.Default)
+            "recordStarted" -> AppResult.Success("timer-session")
+            "recordEnded" -> AppResult.Success(Unit)
+            "closeOrphanedSessions" -> AppResult.Success(0)
+            else -> null
+        }
     }
 
     private fun session(id: String, bookId: LibraryItemId = BOOK) = PlaybackSession(

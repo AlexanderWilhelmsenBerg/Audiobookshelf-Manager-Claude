@@ -104,6 +104,7 @@ fun HistorySheet(
     onReturnTo: (Duration) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    duration: Duration = Duration.ZERO,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -139,6 +140,7 @@ fun HistorySheet(
                                 entry = row.entry,
                                 check = row.check,
                                 chapters = chapters,
+                                duration = duration,
                                 onReturnTo = { position ->
                                     onReturnTo(position)
                                     onDismiss()
@@ -263,12 +265,13 @@ private fun DayHeading(date: LocalDate, modifier: Modifier = Modifier) {
  * remembers "just before I fell asleep, in the chapter about the harbour", not "4:12:30".
  */
 @Composable
-private fun HistoryRow(
+internal fun HistoryRow(
     entry: PlaybackHistoryEntry,
     check: PlaybackEvent?,
     chapters: List<Chapter>,
     onReturnTo: (Duration) -> Unit,
     modifier: Modifier = Modifier,
+    duration: Duration = Duration.ZERO,
 ) {
     val from = entry.from
     val label = stringResource(entry.event.labelRes())
@@ -277,6 +280,9 @@ private fun HistoryRow(
     val chapter = GlobalTimeline.chapterAt(chapters, entry.to)?.title?.takeIf(String::isNotBlank)
     val time = entry.at.asWallClock()
     val whenAndWhere = chapter?.let { stringResource(R.string.player_history_when_chapter, time, it) } ?: time
+    val progress = historyProgressPercent(entry.to, duration)?.let {
+        stringResource(R.string.player_history_progress_percent, it)
+    }
     val spoken = if (from == null) {
         stringResource(R.string.player_history_started_at, caption, entry.to.asChapterClock())
     } else {
@@ -296,7 +302,7 @@ private fun HistoryRow(
             .clickable { onReturnTo(entry.returnTo) }
             .padding(horizontal = 24.dp, vertical = 12.dp)
             .semantics(mergeDescendants = true) {
-                contentDescription = listOfNotNull(spoken, whenAndWhere, checkLabel).joinToString(" ")
+                contentDescription = listOfNotNull(spoken, progress, whenAndWhere, checkLabel).joinToString(" ")
             },
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -327,6 +333,9 @@ private fun HistoryRow(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (progress != null) {
+                Text(text = progress, style = MaterialTheme.typography.labelSmall)
+            }
             Text(
                 text = whenAndWhere,
                 style = MaterialTheme.typography.labelSmall,
@@ -377,6 +386,8 @@ private fun PlaybackEvent.checkIcon(): ImageVector =
  */
 @Suppress("CyclomaticComplexMethod")
 private fun PlaybackEvent.labelRes(): Int = when (this) {
+    PlaybackEvent.ListeningProgress -> R.string.player_history_listening_progress
+    PlaybackEvent.ChapterCrossed -> R.string.player_history_chapter_crossed
     PlaybackEvent.Seek -> R.string.player_history_seek
     PlaybackEvent.Skip -> R.string.player_history_skip
     PlaybackEvent.Chapter -> R.string.player_history_chapter
@@ -398,6 +409,10 @@ private fun PlaybackEvent.labelRes(): Int = when (this) {
 
 @Suppress("CyclomaticComplexMethod")
 private fun PlaybackEvent.icon(): ImageVector = when (this) {
+    PlaybackEvent.ListeningProgress -> Icons.Filled.PlayArrow
+
+    PlaybackEvent.ChapterCrossed -> Icons.AutoMirrored.Filled.MenuBook
+
     PlaybackEvent.Seek -> Icons.Filled.FastForward
 
     PlaybackEvent.Skip -> Icons.Filled.FastForward
@@ -441,12 +456,21 @@ private fun PlaybackEvent.icon(): ImageVector = when (this) {
 /**
  * The time of day the event happened, in the device's zone.
  *
- * Minutes, not seconds. This is the field a listener matches against their own memory of the evening, and
- * `21:04:37` is three characters of noise on a line that is already carrying a chapter name.
+ * PD-005 requires the complete event date and time, including seconds, alongside chapter/progress.
  */
 private fun Instant.asWallClock(): String = TIME_FORMAT.format(atZone(ZoneId.systemDefault()))
 
-private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
+
+/** Unknown durations must not manufacture a percentage; intentional rewinds use each event's position. */
+internal fun historyProgressPercent(position: Duration, duration: Duration): Int? =
+    if (duration <= Duration.ZERO || !duration.isFinite()) {
+        null
+    } else {
+        ((position / duration).coerceIn(0.0, 1.0) * PERCENT_SCALE).toInt()
+    }
+
+private const val PERCENT_SCALE = 100
 
 /** Localised, because a date is the one thing on this sheet whose order differs by country. */
 private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)

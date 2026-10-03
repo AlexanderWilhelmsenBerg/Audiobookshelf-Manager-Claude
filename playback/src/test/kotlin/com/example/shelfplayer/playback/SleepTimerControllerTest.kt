@@ -63,6 +63,91 @@ import kotlin.time.Duration.Companion.seconds
 class SleepTimerControllerTest {
 
     @Test
+    fun `pause during a suspended start retires its provisional session`() = runTest {
+        val repository = FakeSleepTimerRepository()
+        val controller = controller(repository, FakeShakeSource(), TestAppClock())
+        var playing = true
+        controller.attach(player(playing = { playing }))
+        val gate = repository.blockNextRecordStarted()
+        var result: AppResult<Unit>? = null
+        val start = launch { result = controller.start(SleepTimerMode.Fixed(30.minutes)) }
+        runCurrent()
+        playing = false
+        controller.onPlaybackChanged(false)
+        gate.resume()
+        start.join()
+        assertIs<AppResult.Failure>(result)
+        assertFalse(controller.state.value.isActive)
+        assertEquals(1, repository.ended.count { it == SleepTimerOutcome.PlaybackStopped })
+    }
+
+    @Test
+    fun `extending a paused timer preserves its frozen clock`() = runTest {
+        val clock = TestAppClock()
+        val controller = controller(FakeSleepTimerRepository(), FakeShakeSource(), clock)
+        var playing = true
+        controller.attach(player(playing = { playing }))
+        controller.start(SleepTimerMode.Fixed(30.minutes))
+        clock.advanceBy(5.minutes)
+        playing = false
+        controller.onPlaybackChanged(false)
+        runCurrent()
+        clock.advanceBy(40.minutes)
+        controller.extend()
+        runCurrent()
+        assertEquals(55.minutes, controller.state.value.remaining)
+        clock.advanceBy(10.minutes)
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertEquals(55.minutes, controller.state.value.remaining)
+    }
+
+    @Test
+    fun `paused audio freezes the fixed timer and resuming uses only the saved remainder`() = runTest {
+        val clock = TestAppClock()
+        val controller = controller(FakeSleepTimerRepository(), FakeShakeSource(), clock)
+        var playing = true
+        controller.attach(player(playing = { playing }))
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(30.minutes)))
+        clock.advanceBy(5.minutes)
+        playing = false
+        controller.onPlaybackChanged(false)
+        runCurrent()
+        assertEquals(25.minutes, controller.state.value.remaining)
+        clock.advanceBy(40.minutes)
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertEquals(25.minutes, controller.state.value.remaining)
+        assertTrue(controller.state.value.isActive)
+        playing = true
+        controller.onPlaybackChanged(true)
+        runCurrent()
+        clock.advanceBy(1.minutes)
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertEquals(24.minutes, controller.state.value.remaining)
+    }
+
+    @Test
+    fun `new timer is refused for a paused book without writing a session`() = runTest {
+        val repository = FakeSleepTimerRepository()
+        val controller = controller(repository, FakeShakeSource(), TestAppClock())
+        controller.attach(player(playing = { false }))
+        assertIs<AppResult.Failure>(controller.start(SleepTimerMode.Fixed(30.minutes)))
+        assertEquals(0, repository.started)
+        assertFalse(controller.state.value.isActive)
+    }
+
+    @Test
+    fun `new timer is refused with no loaded book even if player reports playing`() = runTest {
+        val repository = FakeSleepTimerRepository()
+        val controller = controller(repository, FakeShakeSource(), TestAppClock())
+        controller.attach(player(hasBook = false))
+        assertIs<AppResult.Failure>(controller.start(SleepTimerMode.Fixed(30.minutes)))
+        assertEquals(0, repository.started)
+    }
+
+    @Test
     fun `a late enabled setting starts sensing and a shake refreshes the active timer`() = runTest {
         val settings = MutableSharedFlow<SleepTimerSettings>(extraBufferCapacity = 4)
         val repository = FakeSleepTimerRepository(settings)
@@ -1319,18 +1404,23 @@ class SleepTimerControllerTest {
         }
     }
 
-    private fun player(onPlay: (() -> Unit)? = null, position: () -> Duration = { 10.minutes }): Player {
+    private fun player(
+        onPlay: (() -> Unit)? = null,
+        position: () -> Duration = { 10.minutes },
+        playing: () -> Boolean = { true },
+        hasBook: Boolean = true,
+    ): Player {
         val item = MediaItem.Builder().setMediaId("book-a").build()
         return Proxy.newProxyInstance(
             Player::class.java.classLoader,
             arrayOf(Player::class.java),
         ) { _, method, _ ->
             when (method.name) {
-                "getCurrentMediaItem" -> item
+                "getCurrentMediaItem" -> item.takeIf { hasBook }
                 "getCurrentPosition" -> position().inWholeMilliseconds
                 "getDuration" -> 60.minutes.inWholeMilliseconds
                 "getVolume" -> 1f
-                "isPlaying" -> true
+                "isPlaying" -> playing()
                 "play" -> invokePlay(onPlay)
                 else -> defaultValue(method.returnType)
             }
@@ -1411,8 +1501,9 @@ class SleepTimerControllerTest {
         }
     }
 
-    private class FakeSleepTimerRepository(private val settings: Flow<SleepTimerSettings>) :
-        SleepTimerRepository {
+    private class FakeSleepTimerRepository(
+        private val settings: Flow<SleepTimerSettings> = flowOf(SleepTimerSettings.Default),
+    ) : SleepTimerRepository {
         var started = 0
             private set
         var restarted = 0

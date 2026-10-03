@@ -170,6 +170,14 @@ class DefaultSleepTimerRepositoryTest {
     }
 
     @Test
+    fun `every sensitivity including extra high and ultra high survives storage`() = runTest {
+        ShakeSensitivity.entries.forEach { sensitivity ->
+            repository.setShakeSensitivity(sensitivity)
+            assertEquals(sensitivity, repository.observeSettings().first().shakeSensitivity)
+        }
+    }
+
+    @Test
     fun `shake grace is clamped to the ten second product maximum`() = runTest {
         repository.setShakeGracePeriod(30.seconds)
 

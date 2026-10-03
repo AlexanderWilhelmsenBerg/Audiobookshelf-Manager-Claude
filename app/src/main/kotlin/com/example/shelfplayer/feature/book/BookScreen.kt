@@ -297,6 +297,7 @@ private fun BookSurfaces(
 
         BookSurface.History -> HistorySheet(
             entries = menu.history,
+            duration = book.duration,
             chapters = menu.chapters,
             // Read-only here, unlike the player's copy of this sheet. The player is *at* a position and can
             // return to one; this screen may be showing a book that is not playing, and a row that started

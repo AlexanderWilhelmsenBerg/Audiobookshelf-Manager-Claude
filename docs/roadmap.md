@@ -24,6 +24,15 @@ delivery batch; keep iOS low priority after Android correctness and system-surfa
 
 ## 0. CI efficiency before feature expansion
 
+### Owner-requested prerequisite: series, history and sleep fixes
+
+Before returning to the reliability queue, deliver the owner's 2026-10-03 series readability/finished-state
+fix, offline rolling History checkpoints with chapter/date/progress detail, and paused timer / playing-only
+creation fixes with Extra high / Ultra high motion sensitivity (PD-002 amendment, PD-005). Track each required
+test in [the fix log](testing/2026-10-03-series-history-sleep.md); the [Hallmark findings](reviews/2026-10-03-series-screen-hallmark.md)
+cover the series-only slice of #194. Keep the broader UI issues open. Resume reliability afterwards;
+the Silo research deferral and low iOS priority remain unchanged.
+
 - #212 implements automatic main cache seeding in the PR container/job; retain one debug verification per merge
   and the main workflow's release/security checks. Main push classification, schema immutability and secret
   scanning compare against the previous main SHA, preserving classpath-forced reruns.

@@ -1,10 +1,13 @@
 package com.example.shelfplayer.feature.series
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import com.example.shelfplayer.a11y.assertEveryControlIsBigEnough
 import com.example.shelfplayer.a11y.assertEveryControlIsLabelled
 import com.example.shelfplayer.core.model.LibraryId
@@ -75,8 +78,7 @@ class SeriesScreenTest {
         compose.onNodeWithText("2 of 4 books finished").assertExists()
         compose.onNodeWithText("12h 0m in total").assertExists()
 
-        // By its spoken name, which is unique. The visible label is the title alone, and that alone
-        // matches the row for the same book — which is exactly what a screen reader would have heard.
+        // The short visible label is "Continue"; the spoken name identifies its target book.
         compose.onNodeWithContentDescription("Continue with Book 3").performClick()
 
         assertEquals(LibraryItemId("book-3"), played)
@@ -125,6 +127,7 @@ class SeriesScreenTest {
             }
         }
 
+        compose.onNode(hasScrollAction()).performScrollToNode(hasContentDescription("Play Book 2"))
         compose.onNodeWithContentDescription("Play Book 2").performClick()
 
         assertEquals(LibraryItemId("book-2"), played)

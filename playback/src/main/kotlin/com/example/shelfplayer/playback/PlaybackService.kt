@@ -150,6 +150,9 @@ class PlaybackService : MediaLibraryService() {
     internal lateinit var history: PlaybackHistoryRepository
 
     @Inject
+    internal lateinit var listeningHistory: ListeningHistoryRecorder
+
+    @Inject
     internal lateinit var auto: AutoLibrary
 
     /** Issue #88 — one cheap authenticated account reconcile when local/cached resume identity is absent. */
@@ -596,7 +599,24 @@ class PlaybackService : MediaLibraryService() {
         journal = scope.launch {
             while (isActive) {
                 delay(JOURNAL_INTERVAL_MS)
-                recordPosition()
+                val snapshot = positionSnapshot() ?: continue
+                val playing = player?.isPlaying == true
+                val at = clock.now()
+                val historySample = if (playing) {
+                    listeningHistory.capture(
+                        snapshot.bookId,
+                        snapshot.position,
+                        at,
+                        snapshot.owner,
+                    )
+                } else {
+                    null
+                }
+                recordPosition(snapshot)
+                if (historySample != null) {
+                    listeningHistory.persist(historySample)
+                    if (historySample.crossed) bookChanges.onChapterCrossed()
+                }
             }
         }
     }
@@ -1197,9 +1217,8 @@ class PlaybackService : MediaLibraryService() {
         }
 
         /**
-         * A track boundary. `ChapterChanged` is reported by `PlaybackController`, which is the only place that
-         * holds the chapter list — the service deliberately does not, because a long book's chapters in every
-         * `MediaItem`'s extras would be tens of kilobytes across the binder to answer one question.
+         * A track boundary. Chapter crossings are also observed by the UI/controller and by the service's
+         * History sampler. Chapter lists remain in-process rather than duplicated in MediaItem extras.
          */
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             activeAutoTrace?.let { trace ->
@@ -2245,7 +2264,8 @@ class PlaybackService : MediaLibraryService() {
         // launch. See [flushProgress] for why the far end of an application-scoped launch is the wrong
         // place to ask who is signed in.
         val owner = MediaItems.ownerOf(item)
-        applicationScope.launch { history.record(bookId, event, from = null, to = at, owner = owner) }
+        val happenedAt = clock.now()
+        applicationScope.launch { history.record(bookId, event, from = null, to = at, at = happenedAt, owner = owner) }
     }
 
     /**

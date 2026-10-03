@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="series_book_in_progress">In progress</string>
+    <string name="series_book_not_started">Not started</string>
+    <string name="series_continue_action">Continue</string>
+</resources>

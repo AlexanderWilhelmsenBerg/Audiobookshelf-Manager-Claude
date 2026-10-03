@@ -298,8 +298,9 @@ ends the lifecycle, and duplicate/late controller cleanup cannot end it twice.
 This repairs the tested service bookkeeping, not physical audio continuity. Keep #128/R-106 open until
 the [review matrix](reviews/2026-10-03-issue-128-continuity-review.md) and
 [verification register](testing/roadmap-verification-register.md) are executed against the recorded APK.
-In particular, timer expiry after focus already paused the player but before late recovery is a required
-cross-policy regression/device case, currently unproven. No new routing owner or generic focus resume is added.
+The owner's later PD-002 amendment freezes timers while focus has paused audio. Required cross-policy
+acceptance now checks that freeze against late recovery/newer intent, then checks actual expiry after audio
+resumes. Hardware remains unproven; no new routing owner or generic focus resume is added.
 
 ---
 

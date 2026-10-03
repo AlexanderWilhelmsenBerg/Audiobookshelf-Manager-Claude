@@ -180,6 +180,21 @@ unchanged" wording for new automatic timer creation only.
 
 ---
 
+### Amended 2026-10-03 — countdown follows audible playback and supports gentle movement
+
+The owner reported that the sleep timer continued during pauses and requested that new timers cannot
+start without a running book. New timer creation now requires actual playing audio and a loaded book,
+including after suspended persistence. Pause, focus loss and buffering freeze the fixed countdown;
+resume uses the saved remainder. A paused timer remains cancellable/extendable. The schedule's civil
+end still cancels only automatic timers. This supersedes elapsed wall-clock countdown through pauses;
+the earlier car decision means a connection alone does not pause or cancel a timer.
+
+The owner also requested Extra high and Ultra high sensitivity, with the latter intended for breathing
+movement transmitted through bedding. These are additional opt-in levels with gravity estimation and
+sustained-sample filtering. A stationary or noisy sensor must not count as a deliberate gesture. Actual
+bedside effectiveness needs device/placement calibration; thresholds alone cannot prove breathing
+detection. Natural expiry/grace restart and the ten-second sensing bound retain their existing ownership.
+
 ## PD-003 — Downloads use one device copy, profile claims, and a device-level pin
 
 **Status:** Accepted  
@@ -273,3 +288,23 @@ existing metadata-redaction rules.
 
 **Supersedes:** the Book button's former "tap cancels" behaviour, which kept the partial files but left the
 manifest unchanged, so the book looked stuck.
+
+## PD-005 — Readable series state and local listening checkpoints
+
+**Status:** Accepted
+
+**Date:** 2026-10-03
+
+**Scope:** Series detail and playback History (LIB-003/004, PLAY-003/004)
+**Source:** Owner's screenshot and requested fixes in this chat.
+
+Series rows must show complete wrapped metadata and identify finished books with Finished text and a subtle green glow inside the card border,
+alongside in-progress/not-started state. The next book's full title stays readable outside a short Continue
+button. Details and explicit Play keep separate actions; ordering and cached repository state remain authoritative.
+
+History must show the event's date/time, book position and percentage when duration is known, and mark
+chapter crossings. During listening, a local rolling checkpoint updates until a new event occurs; prior
+events retain their original data. The owner's suggested minute interval is a maximum recovery interval:
+retain the stronger existing five-second local journal and update the History checkpoint at that cadence.
+This is local/offline persistence, independent of the existing server synchronization. It adds no endpoint
+and does not replace or weaken the current-position journal or profile ownership.
