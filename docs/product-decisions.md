@@ -189,3 +189,49 @@ existing metadata-redaction rules.
   must expose one logical physical-copy pin and keep those stored bits coherent.
 - Losing or deleting one profile must never silently delete a physical copy that another profile still claims.
 
+
+---
+
+## PD-004 — The Book download button shows live percent and asks Pause or Stop
+
+**Status:** Accepted  
+**Date:** 2026-10-03  
+**Scope:** The Book screen's download button, in-flight download controls, and what Stop does to shared copies  
+**Tracked by:** GitHub #111 (Forgejo issue #21)
+
+### Decision
+
+1. **Joining a downloaded copy only adds a claim.** When the book is downloaded on this device for another
+   profile, the Book screen says so, and tapping Download adds the active profile's claim without another
+   transfer (PD-003). It never changes another profile's claim.
+2. **Removal is profile-scoped.** The files are deleted only when the last claiming profile removes the
+   download. Removing or stopping while other profiles claim the copy releases only the active profile's
+   claim and never stops another profile's transfer.
+3. **In flight, the button shows an integer percent from 0 to 99 inside the button, with a progress ring
+   around it.** The percent never reads 100 while a transfer is running: completion is shown by the
+   Downloaded state. Before the first byte the ring is indeterminate and the percent reads 0.
+4. **Tapping an in-flight download opens a prompt: Pause, Stop or Keep downloading.** A tap never pauses or
+   stops by itself.
+   - **Pause** keeps everything downloaded so far and can be resumed. It is offered while the download is
+     queued, running, waiting for a network or retrying, on the Book screen and on the Downloads rows alike.
+   - **Stop** releases this profile's claim. If it was the last claim, the transfer is cancelled and the
+     partly downloaded files and the manifest are deleted. If another profile still claims the copy, only this
+     profile's claim is released: the other profile's download continues and no files are deleted. The prompt
+     says which of the two applies.
+   - **Keep downloading** dismisses the prompt.
+5. **A paused download shows its percent with a muted ring and no play glyph.** Tapping it resumes, without a
+   prompt, because resuming loses nothing.
+
+### Consequences
+
+- The Book button reads WorkManager's execution evidence through the same recovery policy the Downloads rows
+  use, so a retried download is never shown as Failed or stuck, and a paused one is never shown as
+  downloading. Evidence is transient and never written to the database.
+- Notifications stay per book; there is no group summary.
+- Stop is the same claim-aware removal as Remove. The Book overflow's *Delete local item* is unchanged and
+  still applies only to completed downloads.
+- Copies left without any claim after a profile is removed are a separate, recorded risk and are not handled
+  here.
+
+**Supersedes:** the Book button's former "tap cancels" behaviour, which kept the partial files but left the
+manifest unchanged, so the book looked stuck.
