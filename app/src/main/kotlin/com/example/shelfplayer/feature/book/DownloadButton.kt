@@ -188,7 +188,7 @@ private fun PercentLabel(percent: Int) {
 }
 
 /** What an in-flight transfer is doing right now, for its spoken description. */
-enum class DownloadPhase(@StringRes val status: Int) {
+enum class DownloadPhase(@param:StringRes val status: Int) {
     Queued(R.string.downloads_queued),
     Transferring(R.string.downloads_downloading),
     Waiting(R.string.downloads_waiting),
