@@ -1,0 +1,33 @@
+name: CI · PR cache cleanup
+
+# A closed or merged PR's Gradle cache can never be restored again (it is scoped to refs/pull/N/merge), so
+# delete it rather than let it push main's warm entries out of the repository's cache quota.
+# Runs no repository code: there is no checkout.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  actions: write
+
+jobs:
+  delete:
+    name: Delete closed PR cache
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Delete every cache entry on the PR ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --paginate --method GET "repos/$GITHUB_REPOSITORY/actions/caches" \
+            -f ref="$CACHE_REF" -F per_page=100 --jq '.actions_caches[].id' \
+            | while read -r id; do
+                echo "Deleting cache entry $id"
+                gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent
+              done
