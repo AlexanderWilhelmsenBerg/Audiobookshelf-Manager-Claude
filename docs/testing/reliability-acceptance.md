@@ -103,3 +103,16 @@ Local logs are under ignored `build/reliability-evidence/`; the full-gate log is
   passed in 5m 13s with all 1,119 tasks executed. After the final lock-race correction, the full gate passed
   again in 4m 24s (83 executed, 1,036 up-to-date), including all 21 restorer cases.
 - Logs are under ignored `build/car-evidence/`. Record the candidate commit before device use.
+
+### Book download execution wiring — 2026-10-03
+
+- Five `BookViewModelDownloadTest` scenarios cross the actual ViewModel/observer/repository/use-case boundary:
+  a Failed manifest being retried, live percent capped at 99 until durable completion, missing execution
+  fallback, Pause written before cancellation, shared-claim refusal and profile/server changes.
+- Removing the ViewModel's execution projection made all five fail. Restoring the unchanged production
+  wiring made all five pass. `BookScreen` collects `menu`, renders `menu.download` and routes the prompt's
+  Pause to `onPauseDownload`; the test does not substitute the pure button policy for that ViewModel path.
+- R-124's automated gap is closed. R-119's TalkBack, large-font, process restart and shared-copy device
+  acceptance remains pending. Logs are under ignored `build/book-evidence/`.
+- `ktlintFormat verifyDebug '-Pshelfplayer.warningsAsErrors=true' --max-workers=4` passed in 2m 33s
+  (1,119 tasks). The full app suite includes these five scenarios; no production behavior changed.
