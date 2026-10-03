@@ -49,6 +49,8 @@ configured default sleep-timer length with the evidence.
 - Cancel a timer and separately let one expire. The ordinary Sleep presentation must return.
 - Recreate the activity while the timer is still active. The remaining timer must be projected immediately;
   the UI must not restart or invent a countdown.
+- While a timer runs, the full player and the mini-player keep showing the book title; the countdown appears
+  only in the Sleep action (PLAY-008).
 - Run TalkBack over the active control. It must announce the sleep timer with useful remaining-time semantics
   and remain a normal actionable control.
 
@@ -57,9 +59,9 @@ configured default sleep-timer length with the evidence.
 - With a timer inactive, confirm the current notification control policy is unchanged.
 - Start a manual timer and an automatically scheduled timer. Each must expose the same active-timer state in
   the expanded notification and in the compact/collapsed notification.
-- On the compact/background card, verify the remaining timer is readable as text (for example
-  `Author · Sleep 12 min`), not merely represented by a timer icon. Verify the ordinary author/byline returns
-  exactly when the timer is cancelled or expires.
+- On the compact/background card, verify the remaining timer is readable as text: the clock (for example
+  `12:34`) replaces the title, not merely a timer icon. Verify the original book title returns exactly when the
+  timer is cancelled or expires. The countdown is shared with Android Auto and Bluetooth displays (R-111).
 - Confirm the active timer occupies the compact forward custom-action slot while the required back-side
   skip/car control and central transport remain available; unrelated action ordering must return when idle.
 - Extend the timer and confirm the notification's remaining state updates without opening the activity.
