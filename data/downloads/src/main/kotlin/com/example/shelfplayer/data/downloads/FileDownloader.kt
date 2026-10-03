@@ -17,9 +17,12 @@ import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.domain.repository.CapabilityRepository
 import com.example.shelfplayer.domain.repository.DownloadRepository
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * PRODUCT_SPEC DL-001 / DL-002 — one audio file, fetched, verified and committed atomically.
@@ -113,7 +116,7 @@ class FileDownloader @Inject constructor(
         val resumeFrom = if (file.eTag != null) onDisk else 0
         var manifestFile = file
 
-        var transfer = fetch(profileId, itemId, file, part, resumeFrom, onProgress)
+        var transfer = fetchRecordingCancellation(serverId, profileId, itemId, file, part, resumeFrom, onProgress)
         if (transfer.isFailure()) {
             if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
             record(
@@ -151,7 +154,8 @@ class FileDownloader @Inject constructor(
             // process dies, the next worker starts from zero instead of sending the same impossible range.
             record(serverId, itemId, restartFile)
             manifestFile = restartFile
-            transfer = fetch(
+            transfer = fetchRecordingCancellation(
+                serverId,
                 profileId,
                 itemId,
                 restartFile,
@@ -265,6 +269,33 @@ class FileDownloader @Inject constructor(
         if (outcome.eTag != null || outcome.lastModified != null) {
             capabilities.record(serverId, ServerCapability.ChecksumOrETag, isSupported = true)
         }
+    }
+
+    /**
+     * [fetch], but a pause or stop (WorkManager cancelling the coroutine) first records the `.part` length.
+     *
+     * Without this the durable `downloadedBytes` stays at the last file boundary and a Paused download
+     * shows a stale, often zero, percent. Progress is monotonic: an unavailable volume reads as zero bytes
+     * and must never erase what was already recorded. The write runs in [NonCancellable] because the
+     * coroutine is already cancelled; the cancellation is always rethrown.
+     */
+    @Suppress("LongParameterList")
+    private suspend fun fetchRecordingCancellation(
+        serverId: ServerId,
+        profileId: ProfileId,
+        itemId: LibraryItemId,
+        file: OfflineFile,
+        part: File,
+        resumeFrom: Long,
+        onProgress: (Long) -> Unit,
+    ): AppResult<FileTransfer> = try {
+        fetch(profileId, itemId, file, part, resumeFrom, onProgress)
+    } catch (cancelled: CancellationException) {
+        withContext(NonCancellable) {
+            val onDisk = storage.bytesOnDisk(part)
+            if (onDisk > file.downloadedBytes) record(serverId, itemId, file.copy(downloadedBytes = onDisk))
+        }
+        throw cancelled
     }
 
     /**

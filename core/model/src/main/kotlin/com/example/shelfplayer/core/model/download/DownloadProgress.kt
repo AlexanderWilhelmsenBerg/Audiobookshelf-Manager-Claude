@@ -1,6 +1,6 @@
 package com.example.shelfplayer.core.model.download
 
-import kotlin.math.roundToInt
+import kotlin.math.floor
 
 /**
  * BW-DL-08 / #29 — one narrow transient transfer snapshot shared by the downloader, WorkManager, UI and
@@ -11,11 +11,20 @@ import kotlin.math.roundToInt
  * downloader has a bounded per-file weighting fallback; callers must not present estimated bytes as exact.
  */
 data class DownloadProgress(val downloadedBytes: Long, val totalBytes: Long?, val fraction: Float) {
+    /**
+     * Whole percent, floored so 99.9% never reads as done. The epsilon only absorbs float error such as
+     * `0.42f * 100 = 41.99998`; it is far smaller than a displayable step.
+     */
     val percent: Int
-        get() = (fraction.coerceIn(0f, 1f) * PERCENT).roundToInt().coerceIn(0, PERCENT)
+        get() = floor(fraction.coerceIn(0f, 1f) * PERCENT + PERCENT_EPSILON).toInt().coerceIn(0, PERCENT)
+
+    /** Never 100 while a transfer is still in flight; completion is shown by the Downloaded state instead. */
+    val inFlightPercent: Int
+        get() = percent.coerceAtMost(PERCENT - 1)
 
     companion object {
         private const val PERCENT = 100
+        private const val PERCENT_EPSILON = 1e-3f
     }
 }
 

@@ -431,7 +431,7 @@ class BookViewModel @Inject constructor(
      * failure is "the server has not heard yet" rather than "nothing happened". Saying so is the honest
      * message; a success banner for something the screen already shows would be noise.
      */
-    private fun report(result: com.example.shelfplayer.core.model.AppResult<Unit>) {
+    private fun report(result: com.example.shelfplayer.core.model.AppResult<*>) {
         if (result is com.example.shelfplayer.core.model.AppResult.Failure) {
             _message.value = BookMessage.Failed(result.error.summary)
         }
