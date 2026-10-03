@@ -115,3 +115,31 @@ object DownloadRecoveryPolicy {
         DownloadState.Paused -> DownloadRecoveryState.Paused
     }
 }
+
+/** The one listener action a download offers. Shared by the Downloads rows and the Book button. */
+enum class DownloadRecoveryAction { Pause, Resume, Retry }
+
+/**
+ * BW-DL-03 / #108 and #111 — the single mapping from state to the action offered.
+ *
+ * Queued, Waiting and Retrying offer Pause as well as Running: pausing writes the durable Paused intent
+ * first and then cancels the work, which is safe in every in-flight state and un-sticks a row left Queued
+ * with no work behind it. Failed offers Retry and never Pause. Complete offers nothing.
+ */
+fun DownloadRecoveryState.recoveryAction(): DownloadRecoveryAction? = when (this) {
+    DownloadRecoveryState.Queued,
+    DownloadRecoveryState.Running,
+    DownloadRecoveryState.Waiting,
+    DownloadRecoveryState.Retrying,
+    -> DownloadRecoveryAction.Pause
+
+    DownloadRecoveryState.Paused -> DownloadRecoveryAction.Resume
+
+    DownloadRecoveryState.Failed -> DownloadRecoveryAction.Retry
+
+    DownloadRecoveryState.Complete -> null
+}
+
+/** Work exists, or is expected to run without the listener: progress and the Pause/Stop prompt apply. */
+val DownloadRecoveryState.isInFlight: Boolean
+    get() = recoveryAction() == DownloadRecoveryAction.Pause

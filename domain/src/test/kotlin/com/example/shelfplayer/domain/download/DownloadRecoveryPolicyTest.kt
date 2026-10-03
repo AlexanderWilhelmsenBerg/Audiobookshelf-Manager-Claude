@@ -9,6 +9,25 @@ import kotlin.test.assertNull
 class DownloadRecoveryPolicyTest {
 
     @Test
+    fun `recovery action table covers every state`() {
+        val expected = mapOf(
+            DownloadRecoveryState.Queued to DownloadRecoveryAction.Pause,
+            DownloadRecoveryState.Running to DownloadRecoveryAction.Pause,
+            DownloadRecoveryState.Waiting to DownloadRecoveryAction.Pause,
+            DownloadRecoveryState.Retrying to DownloadRecoveryAction.Pause,
+            DownloadRecoveryState.Paused to DownloadRecoveryAction.Resume,
+            DownloadRecoveryState.Failed to DownloadRecoveryAction.Retry,
+            DownloadRecoveryState.Complete to null,
+        )
+
+        assertEquals(DownloadRecoveryState.entries.toSet(), expected.keys)
+        expected.forEach { (state, action) ->
+            assertEquals(action, state.recoveryAction(), state.name)
+            assertEquals(action == DownloadRecoveryAction.Pause, state.isInFlight, state.name)
+        }
+    }
+
+    @Test
     fun `durable states resolve without execution evidence`() {
         val expected = mapOf(
             DownloadState.Queued to DownloadRecoveryState.Queued,

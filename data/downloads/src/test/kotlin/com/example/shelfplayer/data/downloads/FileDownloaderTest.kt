@@ -34,7 +34,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.File
 import java.io.OutputStream
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -217,6 +219,21 @@ class FileDownloaderTest {
         assertEquals(4L, api.lastResumeFrom, "the request asked to continue from the four bytes on disk")
         assertEquals("\"v1\"", api.lastValidator, "guarded by If-Range, so a changed file cannot be spliced")
         assertEquals(13L, stored.downloadedBytes)
+    }
+
+    /**
+     * Pause and stop cancel the coroutine mid-transfer. The bytes already on disk must still be recorded,
+     * or a Paused download shows the percent of the last file boundary (often zero). Reverting the
+     * recording leaves the stored count at 0.
+     */
+    @Test
+    fun `a cancelled transfer records the bytes already on disk`() = runTest {
+        api.body = ByteArray(300)
+        api.cancelAfterWrite = true
+
+        assertFailsWith<CancellationException> { download(queuedFile(eTag = "\"v1\"")) }
+
+        assertEquals(300L, storedFile().downloadedBytes)
     }
 
     /**
@@ -542,6 +559,9 @@ class FileDownloaderTest {
         var rangeNotSatisfiableTotalBytes: Long? = null
         var rangeNotSatisfiableETag: String? = null
 
+        /** Writes the body, then behaves as WorkManager cancelling the coroutine for a pause or stop. */
+        var cancelAfterWrite: Boolean = false
+
         var lastResumeFrom: Long = -1
         var lastValidator: String? = null
         val requests = mutableListOf<Pair<Long, String?>>()
@@ -577,6 +597,7 @@ class FileDownloaderTest {
 
             val appended = wasResumed && resumeFrom > 0
             sink(appended).use { stream -> stream.write(body) }
+            if (cancelAfterWrite) throw CancellationException("paused")
             onProgress((if (appended) resumeFrom else 0) + body.size)
             return AppResult.Success(
                 FileTransfer(
