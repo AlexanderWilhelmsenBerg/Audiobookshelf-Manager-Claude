@@ -6,9 +6,9 @@
 phone subcases, five failed benchmark cases and remaining NOT RUN steps. The
 [2179 continuation](2026-10-04-phone-2179.md) supersedes the benchmark harness failure for its measured
 configuration: eight executions and 27 datastore cases pass, but scrolling remains over budget.
-**Reconciled:** 2026-10-04 through merged main `8de931f0` (PR #226), plus source-scoped draft evidence. Parent rows are inventories, not blanket passes;
+**Reconciled:** 2026-10-04 through merged main `9ced43ae` (PR #233), plus source-scoped draft evidence. Parent rows are inventories, not blanket passes;
 use each dated report for its exact tested APK/scope. Signed main APK2180 was superseded without installation. Browse draft APK2181 and downloads draft
-APK2184 have their own bounded phone results; neither establishes final-main acceptance.
+APK2184 have their own bounded phone results; neither establishes final-main acceptance. Signed main APK2186 remains uninstalled; author/Sign-in candidates have separate source-scoped evidence.
 
 This register covers the CI/reliability delivery, the historical issue #36 solution, and the remaining
 functional/release checks in PRODUCT_SPEC sections 17, 21 and 25. Merged code and passing JVM tests do not
@@ -211,7 +211,7 @@ established. Remaining UI/security/server/manual-performance matrices and final-
 | --- | --- | --- |
 | U-01 | 320/375/414/768 dp, scales 1.0/1.3/2.0, portrait/landscape, long English/Norwegian, light/dark/AMOLED/dynamic/background packs. | Apply the [UI triage matrix](ui-roadmap-triage.md): effective contrast, minimum/content geometry, player clearance, theme-preview parity, missing/loading/failed covers and reduced motion. #194/#195. |
 | U-02 | TalkBack order/labels/values, whole-book/chapter seek, nested actions, 48 dp targets and keyboard/Back. | Full controls remain reachable and coherent. Record actual speech/focus rather than a semantics-tree-only result. |
-| U-03 | Root and pushed Sign in; success/cancel/drafts and predictive/system/toolbar Back. | Explicit navigation context gives the expected destination; root has no Back arrow. #176's implementation slice remains planned. |
+| U-03 | Root and pushed Sign in; success/cancel/drafts and predictive/system/toolbar Back. | Explicit navigation context gives the expected destination; root has no Back arrow. #176 is implemented on `fix/sign-in-navigation-back`, stacked on #234; [Sign-in log](2026-10-04-sign-in-back.md) records software evidence and pending physical U-03-01–07. |
 | U-04 | Empty/filter/no-results recovery, offline/loading/error, connection status and app appearance. | States and recovery remain distinct; active appearance and a non-color status cue are required. Unimplemented #195 residuals stay planned. |
 | U-05 | WebView/provider/version, opaque background, reduced motion, standalone/Haze isolation. | Reproduce #190 on an affected device before selecting a permanent mitigation; record provider and each matrix result. |
 | U-06 | Gesture navigation — #227. | Implemented on the browse branch; see the dated browse delivery report for scoped source/render/phone results and missing acceptance. |

@@ -63,6 +63,7 @@ fun ShelfPlayerNavHost(
             ),
         ) {
             SignInRoute(
+                onNavigateUp = navController.signInBackAction(),
                 onSignedIn = {
                     // The sign-in screen is popped, not stacked under home: pressing back from a freshly
                     // signed-in home must not return to a password field. `popUpTo` names the route

@@ -2,30 +2,38 @@ package com.example.shelfplayer.feature.onboarding
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -33,6 +41,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -47,7 +57,12 @@ import com.example.shelfplayer.core.model.ServerCandidate
  * previewed and screenshot-tested without Hilt (PRODUCT_SPEC 16.4).
  */
 @Composable
-fun SignInRoute(onSignedIn: () -> Unit, modifier: Modifier = Modifier, viewModel: SignInViewModel = hiltViewModel()) {
+fun SignInRoute(
+    onSignedIn: () -> Unit,
+    onNavigateUp: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    viewModel: SignInViewModel = hiltViewModel(),
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     // Navigation is driven by a one-shot signal that the ViewModel then clears, so a recomposition or a
@@ -61,6 +76,7 @@ fun SignInRoute(onSignedIn: () -> Unit, modifier: Modifier = Modifier, viewModel
 
     SignInScreen(
         uiState = uiState,
+        onNavigateUp = onNavigateUp,
         actions = SignInActions(
             onServerUrlChanged = viewModel::onServerUrlChanged,
             onServerSubmitted = viewModel::onServerSubmitted,
@@ -76,10 +92,15 @@ fun SignInRoute(onSignedIn: () -> Unit, modifier: Modifier = Modifier, viewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SignInScreen(uiState: SignInUiState, actions: SignInActions, modifier: Modifier = Modifier) {
+fun SignInScreen(
+    uiState: SignInUiState,
+    actions: SignInActions,
+    modifier: Modifier = Modifier,
+    onNavigateUp: (() -> Unit)? = null,
+) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { TopAppBar(title = { Text(text = stringResource(R.string.sign_in_title)) }) },
+        topBar = { SignInTopBar(onNavigateUp = onNavigateUp) },
     ) { innerPadding ->
         // PRODUCT_SPEC 4 / §51 — a sign-in form is the clearest case for a width cap. There are two
         // fields and a button; stretched across a tablet they sit a hand-span apart with nothing between
@@ -124,6 +145,39 @@ fun SignInScreen(uiState: SignInUiState, actions: SignInActions, modifier: Modif
                 }
             }
         }
+    }
+}
+
+/** The title can wrap at large text sizes; a fixed-height app bar clips its second line. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SignInTopBar(onNavigateUp: (() -> Unit)?) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val title = stringResource(R.string.sign_in_title)
+        val style = MaterialTheme.typography.titleLarge
+        val density = LocalDensity.current
+        val horizontalSpace = if (onNavigateUp == null) 32.dp else 72.dp
+        val titleWidth = (maxWidth - horizontalSpace).coerceAtLeast(1.dp)
+        val layout = rememberTextMeasurer().measure(
+            text = title,
+            style = style,
+            constraints = Constraints(maxWidth = with(density) { titleWidth.roundToPx() }),
+        )
+        val titleHeight = with(density) { layout.size.height.toDp() }
+        TopAppBar(
+            expandedHeight = maxOf(TopAppBarDefaults.TopAppBarExpandedHeight, titleHeight + 16.dp),
+            title = { Text(text = title, style = style) },
+            navigationIcon = {
+                onNavigateUp?.let { back ->
+                    IconButton(onClick = back, modifier = Modifier.size(48.dp)) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.navigate_back),
+                        )
+                    }
+                }
+            },
+        )
     }
 }
 

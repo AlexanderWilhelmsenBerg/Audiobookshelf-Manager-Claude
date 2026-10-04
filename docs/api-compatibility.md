@@ -37,6 +37,11 @@ handoff and lazy-list keys. Existing authorized Room queries, sync status, APIs,
 server fixtures remain unchanged. [Caller regression evidence](testing/2026-10-05-author-observation.md)
 is separate from pending phone acceptance; no additional tested server version is claimed.
 
+The #176 Sign-in Back draft changes only navigation capability and toolbar layout. Existing server probes,
+authentication/reauthentication, fixtures, profile/password/draft policy and success cleanup are unchanged.
+No endpoint, schema, permission or newly tested server version is introduced. The
+[Sign-in log](testing/2026-10-04-sign-in-back.md) records source/scoped tests and pending phone acceptance.
+
 ## Server versions tested
 
 The 2026-10-03 series/history/sleep revision changes local presentation and playback policy only. Rolling
