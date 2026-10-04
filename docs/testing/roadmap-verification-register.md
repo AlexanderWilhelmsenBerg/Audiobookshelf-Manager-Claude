@@ -216,7 +216,7 @@ established. Remaining UI/security/server/manual-performance matrices and final-
 | U-05 | WebView/provider/version, opaque background, reduced motion, standalone/Haze isolation. | Reproduce #190 on an affected device before selecting a permanent mitigation; record provider and each matrix result. |
 | U-06 | Gesture navigation — #227. | Implemented on the browse branch; see the dated browse delivery report for scoped source/render/phone results and missing acceptance. |
 | U-07 | Browse counts — #228. | Implemented on the browse branch; see the dated browse delivery report for scoped source/render/phone results and missing acceptance. |
-| U-08 | Author details — #229. | Planned, all U-08-01–07 NOT RUN; record source/render/device evidence below before claiming acceptance. |
+| U-08 | Author details — #229. | Draft implementation with automated/caller/native-render evidence in [author log](2026-10-04-author-details.md). Physical U-08-01–07 all NOT RUN; issue stays open. |
 | Q-01 | Existing-install upgrade, About identity/version, stored profiles/passcode/progress/downloads and Loopbound bundle. | APK signer/version allow an in-place upgrade; data survives; About and artifact describe actual bytes/source. 2178 installed bytes and 2177→2178 in-place upgrade/data retention passed in the linked continuation; repeat against the new signed APK. Earlier About/Loopbound first-page results retain their original build scope. |
 | Q-02 | Auth expiry/reauthentication, locked profiles, app-switcher privacy and controller/exported-command boundaries. | Offline data/passcode survive ordinary reauth; unauthorised controllers cannot browse/clear privileged state; no secrets/private metadata in shared logs. AUTH-002/003/004, section 5.2. |
 | Q-03 | Selected Audiobookshelf versions: local/remote progress/history, server compatibility and offline sync. | Fixture-backed endpoints match live selected versions; missing fields/capabilities fail compatibly, with no invented endpoints or ignored TLS checks. |
@@ -226,11 +226,11 @@ established. Remaining UI/security/server/manual-performance matrices and final-
 
 ## Browse acceptance — planned 2026-10-04; scoped implementation/results below
 
-Owner decisions PD-006/007 define the acceptance obligations. #227/#228 implementation and scoped results now exist on PR #230; #229 remains planned.
+Owner decisions PD-006/007 define the acceptance obligations. #227/#228 implementation and scoped results now exist on PR #230; #229 has a draft implementation stacked on #230, with all physical acceptance still pending.
 The original issue-registration change claimed no app-function or phone test. The subsequent #227/#228
 implementation and its scoped automatic/device results are tracked in the
 [browse delivery report](2026-10-04-browse-selection-counts.md); use its exact APK and pending portions.
-#229's author-detail cases remain **NOT RUN — awaiting implementation**. Use the existing result template for exact
+#229's author-detail cases have scoped software evidence in the [author log](2026-10-04-author-details.md); **physical acceptance remains NOT RUN**. Use the existing result template for exact
 APK/configuration, expected/observed behavior, UTC/evidence and regressions. Guard actual callers; future
 bug tests must fail on the old behavior. Source/UI semantics checks do not replace physical gesture,
 TalkBack or rendering evidence. All new work preserves Room/profile/playback ownership and adds no endpoint/schema here.
@@ -260,13 +260,13 @@ TalkBack or rendering evidence. All new work preserves Room/profile/playback own
 
 | Case | Scenario | Required result | Current result |
 | --- | --- | --- | --- |
-| U-08-01 | Both route entry points | Home author card and Book-detail author link open the same existing destination with the correct author and Series/Standalone sections; missing author state remains truthful. | NOT RUN — awaiting implementation. |
-| U-08-02 | Grouping and identity | Series-only, standalone-only, mixed, coauthored and multi-membership fixtures; stable identities/order, no false standalone duplication and no primary-series/sequence policy change. | NOT RUN — awaiting implementation. |
-| U-08-03 | Completion truth | Finished/in-progress/unstarted/unknown books and complete/partial/unknown series, filters and incomplete catalogue; all accessible series members determine completion. Inward green cue/no checkmarks plus readable/spoken state. | NOT RUN — awaiting implementation. |
-| U-08-04 | Existing detail destinations | Series and standalone taps open correct existing detail routes; details navigation never issues Play, replaces the queue or changes progress. | NOT RUN — awaiting implementation. |
-| U-08-05 | Back and recreation | Toolbar/system/predictive Back restore Home axis/query/filter/sort/scroll, both entry points survive Activity recreation and remain reachable. | NOT RUN — awaiting implementation. |
-| U-08-06 | Offline and privacy states | Offline cached data, loading/error/missing covers, locked/switched/revoked profile; no stale private author/book information, UI API calls or unauthorized artwork access. | NOT RUN — awaiting implementation. |
-| U-08-07 | Adaptive/rendered accessibility | 320/375/414/768 dp; font 1.0/1.3/2.0; English/Norwegian; portrait/landscape; light/dark/AMOLED/dynamic/artwork; active mini-player; reduced motion; 48 dp targets and actual TalkBack ordering/completion speech. | NOT RUN — awaiting implementation. |
+| U-08-01 | Both route entry points | Home author card and Book-detail author link open the same existing destination with the correct author and Series/Standalone sections; missing author state remains truthful. | Scoped source/JVM/render coverage in [author log](2026-10-04-author-details.md); physical acceptance NOT RUN. |
+| U-08-02 | Grouping and identity | Series-only, standalone-only, mixed, coauthored and multi-membership fixtures; stable identities/order, no false standalone duplication and no primary-series/sequence policy change. | Scoped source/JVM/render coverage in [author log](2026-10-04-author-details.md); physical acceptance NOT RUN. |
+| U-08-03 | Completion truth | Finished/in-progress/unstarted/unknown books and complete/partial/unknown series, filters and incomplete catalogue; all accessible series members determine completion. Inward green cue/no checkmarks plus readable/spoken state. | Scoped source/JVM/render coverage in [author log](2026-10-04-author-details.md); physical acceptance NOT RUN. |
+| U-08-04 | Existing detail destinations | Series and standalone taps open correct existing detail routes; details navigation never issues Play, replaces the queue or changes progress. | Scoped source/JVM/render coverage in [author log](2026-10-04-author-details.md); physical acceptance NOT RUN. |
+| U-08-05 | Back and recreation | Toolbar/system/predictive Back restore Home axis/query/filter/sort/scroll, both entry points survive Activity recreation and remain reachable. | Scoped source/JVM/render coverage in [author log](2026-10-04-author-details.md); physical acceptance NOT RUN. |
+| U-08-06 | Offline and privacy states | Offline cached data, loading/error/missing covers, locked/switched/revoked profile; no stale private author/book information, UI API calls or unauthorized artwork access. | Scoped source/JVM/render coverage in [author log](2026-10-04-author-details.md); physical acceptance NOT RUN. |
+| U-08-07 | Adaptive/rendered accessibility | 320/375/414/768 dp; font 1.0/1.3/2.0; English/Norwegian; portrait/landscape; light/dark/AMOLED/dynamic/artwork; active mini-player; reduced motion; 48 dp targets and actual TalkBack ordering/completion speech. | Scoped source/JVM/render coverage in [author log](2026-10-04-author-details.md); physical acceptance NOT RUN. |
 
 Garmin #119 is low priority / parked under PD-007. No Garmin test campaign, research child issue or
 implementation acceptance is scheduled until the owner returns with evaluation findings and resumes that

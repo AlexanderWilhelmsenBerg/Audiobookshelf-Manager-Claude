@@ -33,7 +33,8 @@ Open issues can contain merged implementation and missing acceptance; this recon
 | [#231](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/231) | Draft, based on #230 | Backdrop-sampling candidate and control-trace analysis prepared; no measured speedup or physical visual-quality acceptance. Alternating control/candidate runs are required before merge. |
 | [#232](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/232) | Draft, based on #230 | Cancellation checkpoint guards and stopped-progress precedence implemented. 87 downloads and 52 caller tests pass; APK2184 ordinary Pause/relaunch/discard/Resume/file verification passes. Controlled phase/response/race/storage/credential/notification/accessibility cases remain. |
 
-The draft dependencies are **main → #230 → #231 or #232**; #231 and #232 are independent siblings.
+The draft dependencies are **main → #230 → #231, #232 or the author-details branch**;
+performance, downloads and author implementation are independent siblings. [Author evidence](testing/2026-10-04-author-details.md) records pending physical acceptance.
 Green CI alone does not clear explicit acceptance gaps. Do not merge drafts or close their issues from
 this document's evidence import. Source/APK details and the repository-wide audit are in the
 [reconciliation report](reviews/2026-10-04-documentation-reconciliation.md).
@@ -173,7 +174,11 @@ specification 17.2/21. Follow the [child-slice triage](testing/ui-roadmap-triage
    origin axis/query/filter/sort/scroll on Back, cached portraits, locked/profile boundaries and player clearance.
    A completed series needs all accessible members finished; filtered/author-only subsets cannot complete it.
    Use the inward green cue without checkmarks and readable/spoken completion information. U-08-01–07
-   remains planned / NOT RUN; no endpoint or schema change is expected.
+   now has implementation and automated evidence on `feature/author-series-standalone`, stacked on #230.
+   [Author verification log](testing/2026-10-04-author-details.md) records grouping, caller, privacy and native-render
+   coverage plus every pending phone case. All physical U-08-01–07 remain NOT RUN; #229 stays open.
+   No endpoint/schema change. While these candidates await physical acceptance, the next software UI slice
+   is #176's root/pushed Sign-in Back context.
 2. Address #176's root/pushed Sign-in Back context; reproduce landscape player contrast, clipping/player
    clearance and preview/theme mismatch. #195 adds non-color connection status and useful no-results recovery.
    Whole-book/chapter seek labels already exist; verify actual TalkBack rather than reimplementing labels.

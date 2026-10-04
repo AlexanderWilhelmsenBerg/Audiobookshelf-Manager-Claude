@@ -8,10 +8,8 @@ enum class BookGroupKind { Author, Genre }
 /**
  * One group the book list has been narrowed to, carrying its label so the screen can name it.
  *
- * Opening an author or a genre narrows the book list in place rather than pushing a screen. The two
- * would look identical to the user, and this way the sort chips, the filter chips and the search field
- * all keep working inside the narrowed list — a pushed screen would have to grow its own copies of
- * each, or do without them.
+ * Genre cards narrow Home in place. Author cards now push the shared grouped author destination
+ * (PD-006); this type still reads previously saved author focus without discarding profile preferences.
  */
 data class BookFocus(val kind: BookGroupKind, val key: String, val label: String)
 

@@ -82,6 +82,7 @@ fun ShelfPlayerNavHost(
                 onSeriesSelected = { seriesId ->
                     navController.navigate(ShelfDestinations.series(seriesId))
                 },
+                onAuthorSelected = { authorId -> navController.navigate(ShelfDestinations.author(authorId)) },
                 onProfilesSelected = { navController.navigate(ShelfDestinations.PROFILES) },
                 onDownloadsSelected = { navController.navigate(ShelfDestinations.DOWNLOADS) },
                 onLoopboundSelected = { navController.navigate(ShelfDestinations.LOOPBOUND) },
@@ -157,6 +158,7 @@ fun ShelfPlayerNavHost(
         ) {
             AuthorRoute(
                 onBookSelected = { bookId -> navController.navigate(ShelfDestinations.book(bookId)) },
+                onSeriesSelected = { seriesId -> navController.navigate(ShelfDestinations.series(seriesId)) },
                 onNavigateUp = navController::navigateUp,
             )
         }

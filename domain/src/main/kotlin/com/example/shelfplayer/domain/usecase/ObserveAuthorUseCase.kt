@@ -3,6 +3,7 @@ package com.example.shelfplayer.domain.usecase
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.model.AuthorId
+import com.example.shelfplayer.core.model.SyncStatus
 import com.example.shelfplayer.domain.library.AuthorShelf
 import com.example.shelfplayer.domain.library.authorShelfFor
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -10,10 +11,11 @@ import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import javax.inject.Inject
 
 /**
@@ -36,8 +38,12 @@ class ObserveAuthorUseCase @Inject constructor(
             if (profile == null) {
                 flowOf(null)
             } else {
-                libraryRepository.observeAccessibleBooks(profile.id)
-                    .map { books -> authorShelfFor(books, authorId) }
+                combine(
+                    libraryRepository.observeAccessibleBooks(profile.id),
+                    libraryRepository.observeSyncState(profile.id),
+                ) { books, sync ->
+                    authorShelfFor(books, authorId, catalogueComplete = sync.status == SyncStatus.Succeeded)
+                }.onStart { emit(null) }
             }
         }.flowOn(defaultDispatcher)
 }

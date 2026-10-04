@@ -1,6 +1,7 @@
 package com.example.shelfplayer.feature.home
 
 import androidx.compose.runtime.Immutable
+import com.example.shelfplayer.core.model.AuthorId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.domain.library.BookFilter
@@ -21,6 +22,7 @@ data class HomeActions(
     /** PLAY-001 — starts the book without opening details or forcing the full player over the shelf. */
     val onBookPlaySelected: (LibraryItemId) -> Unit,
     val onSeriesSelected: (SeriesId) -> Unit,
+    val onAuthorSelected: (AuthorId) -> Unit,
     val onGroupSelected: (BookGroup) -> Unit,
     /** PRODUCT_SPEC MGR-008 — opens the confirmation flow for one genre group. */
     val onGenreEditRequested: (BookGroup) -> Unit,

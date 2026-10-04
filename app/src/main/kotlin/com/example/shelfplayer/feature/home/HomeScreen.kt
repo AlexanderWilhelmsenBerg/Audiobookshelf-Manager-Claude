@@ -105,6 +105,7 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfErrorState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
+import com.example.shelfplayer.core.model.AuthorId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.core.model.ServerStatus
@@ -139,6 +140,7 @@ fun HomeRoute(
     onBookSelected: (LibraryItemId) -> Unit,
     onBookPlaySelected: (LibraryItemId) -> Unit,
     onSeriesSelected: (SeriesId) -> Unit,
+    onAuthorSelected: (AuthorId) -> Unit,
     onProfilesSelected: () -> Unit,
     onDownloadsSelected: () -> Unit,
     onLoopboundSelected: () -> Unit,
@@ -161,6 +163,7 @@ fun HomeRoute(
             onBookSelected = onBookSelected,
             onBookPlaySelected = onBookPlaySelected,
             onSeriesSelected = onSeriesSelected,
+            onAuthorSelected = onAuthorSelected,
             onGroupSelected = viewModel::onGroupSelected,
             onGenreEditRequested = viewModel::onGenreEditRequested,
             onGenreEditReplacementChanged = viewModel::onGenreEditReplacementChanged,
@@ -1212,7 +1215,7 @@ private fun AxisContent(
                     items(items = uiState.groups, key = { it.key }) { group ->
                         GroupCard(
                             group = group,
-                            onClick = { actions.onGroupSelected(group) },
+                            onClick = { actions.onAuthorSelected(AuthorId(group.key)) },
                             modifier = Modifier.padding(horizontal = 16.dp),
                         )
                     }

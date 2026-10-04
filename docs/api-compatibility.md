@@ -26,6 +26,12 @@ states use the durable manifest; active states retain live execution progress. N
 Room schema, permission or additional tested server version changes. The same download test log records
 its caller guards and separate source-matched physical acceptance.
 
+The draft #229 author-details implementation reads existing profile-authorized Room catalogue/progress
+and sync status. Author navigation, Series/Standalone grouping, local completion rendering and clearing
+on profile change add no endpoint, response field, fixture, schema or permission. No new server version
+is verified; [the author log](testing/2026-10-04-author-details.md) distinguishes synthetic fixtures/native
+renders from the pending physical/offline/permission checks.
+
 ## Server versions tested
 
 The 2026-10-03 series/history/sleep revision changes local presentation and playback policy only. Rolling

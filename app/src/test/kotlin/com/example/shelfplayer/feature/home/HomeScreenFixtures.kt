@@ -137,6 +137,7 @@ internal fun noActions() = HomeActions(
     onBookSelected = {},
     onBookPlaySelected = {},
     onSeriesSelected = {},
+    onAuthorSelected = {},
     onGroupSelected = { _: BookGroup -> },
     onGenreEditRequested = { _: BookGroup -> },
     onGenreEditReplacementChanged = {},

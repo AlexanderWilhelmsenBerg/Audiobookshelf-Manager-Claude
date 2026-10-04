@@ -24,6 +24,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -31,16 +33,19 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.domain.library.AuthorShelf
-import com.example.shelfplayer.feature.browse.BookCard
 import com.example.shelfplayer.feature.browse.CollectionArtwork
 import com.example.shelfplayer.feature.browse.CollectionArtworkStyle
+import com.example.shelfplayer.feature.browse.SeriesCard
 import com.example.shelfplayer.feature.browse.readable
+import com.example.shelfplayer.feature.series.SeriesBookCard
 import com.example.shelfplayer.ui.glass.playerChromeClearance
 
 @Composable
 fun AuthorRoute(
     onBookSelected: (LibraryItemId) -> Unit,
+    onSeriesSelected: (SeriesId) -> Unit,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: AuthorViewModel = hiltViewModel(),
@@ -49,34 +54,19 @@ fun AuthorRoute(
     AuthorScreen(
         uiState = uiState,
         onBookSelected = onBookSelected,
+        onSeriesSelected = onSeriesSelected,
         onNavigateUp = onNavigateUp,
         modifier = modifier,
     )
 }
 
-/**
- * PRODUCT_SPEC §62 "author view" — an author opened into their books.
- *
- * ### Why this is a screen when the Authors browse axis narrows in place
- *
- * Two entry points asking the same question in different situations. Inside the library the reader is
- * already holding the sort chips, the filter chips and the search field, and `BookFocus` keeps all three
- * working — pushing a screen there would mean rebuilding them or doing without. Arriving from a book's own
- * page there is nothing to keep, and the line above says *Series*, which pushes a screen. Being asymmetric
- * with the line directly above it would be the stranger choice.
- *
- * ### No play button on the rows
- *
- * A series' rows are one story in order, so *carry on with this one* is the common intent and LIB-003 asks
- * for it. An author's rows are not in any order — several series and standalones interleaved — so a play
- * control on each is a tap that starts audio beside the tap that meant to look at something. The rule that
- * `BookCard.onPlay` defaults to absent exists for exactly this.
- */
+/** LIB-002/003/004, PD-006: both author entry points share this Room-backed destination. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuthorScreen(
     uiState: AuthorUiState,
     onBookSelected: (LibraryItemId) -> Unit,
+    onSeriesSelected: (SeriesId) -> Unit,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -112,6 +102,7 @@ fun AuthorScreen(
             else -> AuthorBooks(
                 shelf = shelf,
                 onBookSelected = onBookSelected,
+                onSeriesSelected = onSeriesSelected,
                 contentPadding = innerPadding,
             )
         }
@@ -122,6 +113,7 @@ fun AuthorScreen(
 private fun AuthorBooks(
     shelf: AuthorShelf,
     onBookSelected: (LibraryItemId) -> Unit,
+    onSeriesSelected: (SeriesId) -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
@@ -137,15 +129,32 @@ private fun AuthorBooks(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = HEADER_KEY) { AuthorHeader(shelf = shelf) }
-        items(items = shelf.books, key = { it.id.value }) { book ->
-            BookCard(
-                book = book,
-                onClick = { onBookSelected(book.id) },
-                // The book's own primary membership, since this shelf is not about any one series.
-                membership = book.seriesMemberships.firstOrNull(),
-            )
+        if (shelf.series.isNotEmpty()) {
+            item(key = "series-heading") { AuthorSectionTitle(R.string.author_series_section) }
+            items(items = shelf.series, key = { "series-${it.series.id.value}" }) { series ->
+                SeriesCard(
+                    shelf = series,
+                    onClick = { onSeriesSelected(series.series.id) },
+                    completionKnown = shelf.catalogueComplete,
+                )
+            }
+        }
+        if (shelf.standaloneBooks.isNotEmpty()) {
+            item(key = "standalone-heading") { AuthorSectionTitle(R.string.author_standalone_section) }
+            items(items = shelf.standaloneBooks, key = { "book-${it.id.value}" }) { book ->
+                SeriesBookCard(book = book, onClick = { onBookSelected(book.id) }, membership = null)
+            }
         }
     }
+}
+
+@Composable
+private fun AuthorSectionTitle(title: Int) {
+    Text(
+        text = stringResource(title),
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.semantics { heading() },
+    )
 }
 
 /**

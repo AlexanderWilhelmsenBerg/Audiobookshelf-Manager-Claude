@@ -39,10 +39,16 @@ import com.example.shelfplayer.ui.glass.GlassCard
  * position number, because "Book 3" means nothing without the shelf in front of you.
  */
 @Composable
-internal fun SeriesCard(shelf: SeriesShelf, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun SeriesCard(
+    shelf: SeriesShelf,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    completionKnown: Boolean = true,
+) {
+    val completed = completionKnown && shelf.bookCount > 0 && shelf.finishedCount == shelf.bookCount
     val count = pluralStringResource(R.plurals.series_book_count, shelf.bookCount, shelf.bookCount)
     val summary = when {
-        shelf.finishedCount == shelf.bookCount ->
+        completed ->
             stringResource(R.string.series_summary_finished, count)
 
         shelf.finishedCount > 0 -> stringResource(
@@ -53,7 +59,10 @@ internal fun SeriesCard(shelf: SeriesShelf, onClick: () -> Unit, modifier: Modif
 
         else -> count
     }
-    GlassCard(onClick = onClick, modifier = modifier.fillMaxWidth()) {
+    GlassCard(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().completedInnerEdge(completed).semantics { stateDescription = summary },
+    ) {
         Row(
             modifier = Modifier.heightIn(min = SERIES_CARD_HEIGHT),
             verticalAlignment = Alignment.CenterVertically,
@@ -77,6 +86,13 @@ internal fun SeriesCard(shelf: SeriesShelf, onClick: () -> Unit, modifier: Modif
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (!completionKnown) {
+                    Text(
+                        text = stringResource(R.string.author_completion_unverified),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 shelf.nextBook?.let { next ->
                     Text(
                         text = stringResource(R.string.series_next_up, next.title),
@@ -98,8 +114,7 @@ internal fun SeriesCard(shelf: SeriesShelf, onClick: () -> Unit, modifier: Modif
 /**
  * PRODUCT_SPEC LIB-002 — one author or one genre, and how many of the profile's books are under it.
  *
- * Tapping it narrows the book list rather than opening a screen; see `HomeViewModel.onGroupSelected`
- * for why.
+ * Authors push the author destination; genres narrow the Home book list in place.
  */
 @Composable
 internal fun GroupCard(
