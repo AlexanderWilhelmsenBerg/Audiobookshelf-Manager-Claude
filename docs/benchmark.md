@@ -50,8 +50,8 @@ its screen timeout longer than the run.
 
 Use a disposable benchmark installation: this variant uses `org.homebord.bookwave`, while the debug
 delivery uses `.debug`. Do not replace or clear an existing unsuffixed installation holding real data.
-The profile-required startup case needs the generated, shipped profile first; select other methods
-explicitly until it exists. The 2026-10-03 phone run selected no/full-compilation startup, list scrolling,
+Required-profile startup checks that a compiled profile can be installed. Android libraries already
+contribute profiles: run and record a library-only control before testing an app-owned generated file. The 2026-10-03 phone run selected no/full-compilation startup, list scrolling,
 Home memory and profile generation and failed in launch confirmation; see Results below.
 
 ```bash
@@ -93,19 +93,22 @@ Build & Dependencies should reproduce this process-discovery edge and choose a c
 through the staged dependency policy, then rerun the selected measurements and generator. No dependency
 upgrade, shortened application ID or suppressed error is part of the acceptance report.
 
-**2026-10-04 repair candidate:** the focused Benchmark 1.5.0 update includes the upstream API-36
+**2026-10-04 source repair:** the focused Benchmark 1.5.0 update includes the upstream API-36
 full-command-line process discovery fix. The exact official source artifact was inspected, and the
 [repair review](reviews/2026-10-04-benchmark-api36.md) separates compile/gate evidence from missing phone
-measurements. The five historical failures above stay failed until repeated on connected hardware;
-no profile or performance number has been fabricated.
+measurements. The [later connected continuation](testing/2026-10-04-phone-2179.md) passes all five
+methods and records real numbers. Historical failures stay dated failures; current results appear below.
 
 ---
 
 ## The baseline profile
 
 R-25 records that the *consuming* half is already free: `androidx.profileinstaller` is on the release
-classpath transitively, so shipping a profile costs no new dependency. Only the file is missing, and a
-profile cannot be hand-written — it is recorded by exercising the app.
+classpath transitively. Android dependencies already contribute compiled profiles. An app-owned source
+file costs no new dependency, but the measurement must justify using it; generate it by exercising the app.
+The [2026-10-04 captured profile](../benchmark/profiles/2026-10-04-api36-baseline-prof.txt) is an experiment
+artifact outside app/src/main because its comparison did not establish a benefit. The copy command below
+is the consumer procedure for a justified future candidate, not an instruction to ship this experiment.
 
 ```bash
 ./gradlew :benchmark:connectedBenchmarkAndroidTest \
@@ -192,3 +195,28 @@ ADR-0025 deliberately did not adopt paging: *"the measurement may show paging is
 small object and 2,000 of them is not obviously a problem on a 2026 device; the reason to measure is that
 nobody knows, not that anybody suspects."* That is what the two memory rows are for. No threshold is
 asserted in code, because a gate written from the first reading is a threshold chosen to pass.
+
+
+## Current hardware results — 2026-10-04
+
+SM-S928B / Android16, source1e74bab2, Benchmark1.5.0, ten iterations per measurement. All five
+formerly failing methods passed in890.559s. A library-profile control passed; the app-profile experiment
+then passed both selected methods in335.191s. Eight test executions pass; target assessments differ.
+
+| Measurement | Library-only / original target | App-profile experiment | Assessment |
+| --- | --- | --- | --- |
+| No-compilation TTFD | Median733.110ms, max809.717 | Not repeated | <1s all samples |
+| Full-compilation TTFD | Median674.086ms, max707.321 | Not repeated | Control, not shipping mode |
+| Required-profile TTFD | Median680.555ms, max726.797 | Median699.608ms, max756.887 | <1s all samples; no demonstrated app-profile gain |
+| Scroll CPU P50/P95/P99 | 13.941/19.145/25.708ms | 14.344/20.560/28.147ms | P95 comparison budget16.7ms remains FAIL |
+| Scroll frame-overrun P95 | 8.142ms | 9.945ms | Positive actual overruns; do not infer a fixed refresh rate |
+| Home/list peak memory medians | Heap212253kB; anonymous RSS265516kB | Not repeated | Baseline, no threshold invented |
+| Baseline profile generation | Stable reported at iteration15 | Exact generated artifact retained | Keep outside production until justified |
+| Cached local player latency, five starts | NOT RUN | NOT RUN | Still requires diagnostic median |
+| Concurrent playback/download ANR stress | NOT RUN | NOT RUN | Still requires controlled fixture |
+
+The [complete phone log](testing/2026-10-04-phone-2179.md) records identities/settings, every method,
+raw numeric summaries, comparison limits and missing functional tests. USB charging, unlocked CPU,
+no reported thermal sleep; covers absent. Sequential samples do not establish causality. Keep R-25
+open and use the saved Perfetto frame traces to choose a bounded list-rendering change before proposing
+paging or shipping the extra app profile. Existing library profiles remain in production.

@@ -52,3 +52,7 @@ Restore position, paused/timer-off state and original phone settings after tests
 The prior [2178 acceptance](../testing/2026-10-04-phone-2178.md) establishes the earlier implementation's
 behavior only; its appearance checks do not automatically accept this changed layout. Real bedside
 shake, headset/car, reboot/power loss and controlled transfer races remain in the existing test matrix.
+
+## Connected continuation — 2026-10-04
+
+The [2179 phone log](../testing/2026-10-04-phone-2179.md) records the later connected results and each missing case. The compact series/glow/large-text/last-row subset passes on signed2179. All27 storage/security tests and eight benchmark executions pass. Startup meets the fixture target; scrolling misses its P95 budget. The generated profile is retained as a measured experiment outside production; no performance gain is claimed. Earlier failed or NOT RUN cases keep their dated scope.

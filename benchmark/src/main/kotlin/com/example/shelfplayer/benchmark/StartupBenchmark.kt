@@ -33,7 +33,7 @@ import org.junit.runner.RunWith
  *  - [CompilationMode.None] — the worst case, and what the first launch after an install actually costs.
  *  - [CompilationMode.Partial] with the baseline profile — what a user gets from the first launch if
  *    `BaselineProfileGenerator`'s output is shipped. The difference between this and `None` is the whole
- *    argument for shipping one (R-25 puts it at 20–30%).
+ *    measured case for shipping an app-owned profile. Library profiles may already be present.
  *  - [CompilationMode.Full] — the floor. Not shippable; it is the "how much of this is JIT" control.
  */
 @RunWith(AndroidJUnit4::class)

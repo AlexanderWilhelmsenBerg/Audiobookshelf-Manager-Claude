@@ -16,9 +16,11 @@ import org.junit.runner.RunWith
  * ### What a baseline profile is and why this project can have one cheaply
  *
  * It is a list of the classes and methods a start-up actually touches, shipped in the APK so that Android
- * compiles them ahead of time instead of interpreting them on first launch. R-25 puts it at 20–30% of cold
- * start, and records that **the consuming half is already free**: `androidx.profileinstaller` is on the
- * release classpath transitively, so shipping a profile needs no new dependency — only a file.
+ * compiles them ahead of time instead of interpreting them on first launch. Improvement depends on the
+ * measured journey/device; the 2026-10-04 experiment did not establish a benefit. The consuming half is
+ * already available: `androidx.profileinstaller` is on the
+ * release classpath transitively, and Android libraries already contribute profiles. An app-owned profile
+ * needs no new dependency, but it needs measurement before shipping.
  *
  * It cannot be written by hand. It is *recorded* by exercising the app on a device, which is what this
  * class does and why R-25 stayed open until there was hardware.

@@ -56,3 +56,7 @@ Record device/API, source SHA, compilation mode, fixture size, thermal state, ra
 | Compact series cards on supplied phone | NOT RUN; verify normal/large font, complete metadata, inside completion glow and 48 dp Play target. |
 
 The earlier failures must only be superseded by actual successful device runs.
+
+## Connected continuation — 2026-10-04
+
+The [2179 phone log](../testing/2026-10-04-phone-2179.md) records the later connected results and each missing case. The compact series/glow/large-text/last-row subset passes on signed2179. All27 storage/security tests and eight benchmark executions pass. Startup meets the fixture target; scrolling misses its P95 budget. The generated profile is retained as a measured experiment outside production; no performance gain is claimed. Earlier failed or NOT RUN cases keep their dated scope.

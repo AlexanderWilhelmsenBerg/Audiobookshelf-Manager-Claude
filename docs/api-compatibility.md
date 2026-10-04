@@ -1658,3 +1658,7 @@ R-125 now makes ordinary verification execute the existing 90% redaction rule. F
 cover bounded, clearable, redacted EventLog state. No server endpoint, response, supported version,
 Room schema, permission, credential format or dependency changes; existing contract fixtures remain
 authoritative. See the [security review](reviews/2026-10-04-security-coverage.md).
+
+## Android performance acceptance — 2026-10-04
+
+The [2179 phone continuation](testing/2026-10-04-phone-2179.md) physically verifies Benchmark1.5.0 on API36 and records startup/frame/memory measurements. An app-profile experiment remains outside production after failing to establish benefit. No server endpoint, response, supported-version range, Room schema, permission or credential-format changes; existing fixture-backed API compatibility remains authoritative.

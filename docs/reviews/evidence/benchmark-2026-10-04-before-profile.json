@@ -1,0 +1,128 @@
+{
+  "source": "1e74bab257a454afcb0d76b29da713e8d7fe5814",
+  "profileShipped": false,
+  "device": {
+    "model": "SM-S928B",
+    "api": 36,
+    "cpuLocked": false,
+    "artMainlineVersion": 372733580
+  },
+  "rawJsonSha256": "c9a4168d900c3edbeb149808de7b6cbfb04a9c51ce2092bdb33af2fd8a07bf18",
+  "benchmarks": [
+    {
+      "name": "startupNoCompilation",
+      "iterations": 10,
+      "thermalThrottleSleepSeconds": 0,
+      "metrics": {
+        "timeToFullDisplayMs": {
+          "minimum": 671.247448,
+          "maximum": 809.716927,
+          "median": 733.110052,
+          "coefficientOfVariation": 0.05048530453992561
+        },
+        "timeToInitialDisplayMs": {
+          "minimum": 220.646146,
+          "maximum": 292.531718,
+          "median": 256.904088,
+          "coefficientOfVariation": 0.09780630544567405
+        }
+      },
+      "ttfdRunsMs": [
+        710.481197,
+        746.937291,
+        809.716927,
+        769.793593,
+        741.434583,
+        716.183333,
+        730.310573,
+        735.909531,
+        671.247448,
+        715.870937
+      ]
+    },
+    {
+      "name": "startupFullCompilation",
+      "iterations": 10,
+      "thermalThrottleSleepSeconds": 0,
+      "metrics": {
+        "timeToFullDisplayMs": {
+          "minimum": 598.507083,
+          "maximum": 707.321302,
+          "median": 674.086276,
+          "coefficientOfVariation": 0.043621882080326295
+        },
+        "timeToInitialDisplayMs": {
+          "minimum": 232.481354,
+          "maximum": 298.284218,
+          "median": 281.185703,
+          "coefficientOfVariation": 0.0929300653679485
+        }
+      },
+      "ttfdRunsMs": [
+        661.944583,
+        664.78125,
+        707.321302,
+        691.003906,
+        679.494688,
+        668.677864,
+        680.376041,
+        598.507083,
+        687.613072,
+        658.317708
+      ]
+    },
+    {
+      "name": "scrollBooksList",
+      "iterations": 10,
+      "thermalThrottleSleepSeconds": 0,
+      "metrics": {
+        "frameCount": {
+          "minimum": 533.0,
+          "maximum": 634.0,
+          "median": 573.0,
+          "coefficientOfVariation": 0.050910396625922956
+        },
+        "frameDurationCpuMs": {
+          "P50": 13.940573,
+          "P90": 17.674427,
+          "P95": 19.145458299999998,
+          "P99": 25.707702960000013
+        },
+        "frameOverrunMs": {
+          "P50": 2.864693,
+          "P90": 6.6381388,
+          "P95": 8.141627599999998,
+          "P99": 14.736352740000006
+        }
+      },
+      "sampledFrames": 5767,
+      "cpuFramesOver16_7ms": 892,
+      "framesWithPositiveOverrun": 5081
+    },
+    {
+      "name": "homeMemoryAtScale",
+      "iterations": 10,
+      "thermalThrottleSleepSeconds": 0,
+      "metrics": {
+        "memoryHeapSizeMaxKb": {
+          "minimum": 210765.0,
+          "maximum": 217265.0,
+          "median": 212253.0,
+          "coefficientOfVariation": 0.010300709294171293
+        },
+        "memoryRssAnonMaxKb": {
+          "minimum": 258400.0,
+          "maximum": 275156.0,
+          "median": 265516.0,
+          "coefficientOfVariation": 0.023977862481894145
+        },
+        "memoryRssFileMaxKb": {
+          "minimum": 96976.0,
+          "maximum": 109984.0,
+          "median": 109258.0,
+          "coefficientOfVariation": 0.05490036011955633
+        }
+      }
+    }
+  ]
+}

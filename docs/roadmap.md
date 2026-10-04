@@ -1,7 +1,7 @@
 # BookWave roadmap
 
 **Classification:** Active plan — canonical sequencing authority.
-**Reconciled:** 2026-10-04 against GitHub main `842b0971`, including merged PRs #205–#222
+**Reconciled:** 2026-10-04 against GitHub main `02dd77c1`, including merged PRs #205–#224
 and the supplied-phone acceptance continuations.
 
 This is the only document that answers what BookWave should work on next. `PRODUCT_SPEC.md` supplies
@@ -31,7 +31,7 @@ fix, offline rolling History checkpoints with chapter/date/progress detail, and 
 creation fixes with Extra high / Ultra high motion sensitivity (PD-002 amendment, PD-005). Track each required
 test in [the fix log](testing/2026-10-03-series-history-sleep.md); the [Hallmark findings](reviews/2026-10-03-series-screen-hallmark.md)
 cover the series-only slice of #194. Keep the broader UI issues open. Resume reliability afterwards;
-the Silo research deferral and low iOS priority remain unchanged. PR #220 delivered these fixes and the
+the Silo research deferral and iOS development hold remain unchanged. PR #220 delivered these fixes and the
 owner's inward green completion cue; PR #221 corrected R-123's stale byte count after a fresh download
 restart and a second cancellation. The [2178 phone continuation](testing/2026-10-04-phone-2178.md)
 records completion-state/large-text/last-row checks, paused timer behavior and abrupt offline process
@@ -157,11 +157,16 @@ car acceptance awaits hardware.
   [concrete child slices](testing/ui-roadmap-triage.md) distinguish current code from missing work, include
   #176's root/pushed Sign-in Back context, and sequence #194's geometry/clearance/preview fixes before polish.
 - **Acceptance follow-ups:** the supplied phone's landscape player text over bright artwork needs a
-  controlled contrast check; an inherited warm Starting state needs a defined reproduction. The benchmark
-  harness fails process discovery on this phone's truncated `pgrep` names; repair/verify that compatibility
-  in the Build & Dependencies lane before claiming performance metrics or shipping a baseline profile.
-  The [focused Benchmark 1.5.0 repair](reviews/2026-10-04-benchmark-api36.md) advances that harness lane;
-  actual startup/scroll/memory/profile reruns remain pending while no phone is reported by ADB.
+  controlled contrast check; an inherited warm Starting state needs a defined reproduction. The
+  [2179 phone continuation](testing/2026-10-04-phone-2179.md) passes the compact series text/glow/last-row
+  subsets and all 27 connected storage tests. Benchmark1.5.0 physically fixes API-36 process discovery;
+  eight benchmark executions now pass. Startup meets the measured fixture target; list CPU P95 remains
+  above16.7ms (19.145 before /20.560ms in the app-profile experiment). Profile the saved frame traces,
+  isolate list/card rendering cost, make one bounded change and repeat a controlled comparison.
+  The [generated profile experiment](reviews/2026-10-04-generated-baseline-profile.md) showed no
+  demonstrated benefit and stays outside the production consumer; existing library profiles ship.
+  Memory is a baseline, not justification for a paging rewrite. Manual cached-player latency/stress,
+  full accessibility/theme/landscape, car/headset and controlled transfer/account fixtures remain open.
 - **#190 WebView flicker:** run its provider/version, opaque-background and Haze-isolation matrix on an
   affected device before choosing a permanent mitigation. The upstream explanation remains a hypothesis.
 - **#188 CI:** tiers landed in Forgejo PR #91, then GitHub PRs #173/#201. Audit remaining coverage/telemetry
@@ -171,7 +176,7 @@ car acceptance awaits hardware.
   #211/#213 implementation lane is above; notification, sensor, grace and lifecycle device acceptance remains pending.
 - **#101:** keep display-only series formatting cleanup separate; preserve primary selection and ordering.
 
-## 4. System surfaces, then iOS
+## 4. Android system surfaces; iOS on hold
 
 After Android correctness acceptance, implement #114's typed action contract using existing remembered-book
 and resume-freshness owners. Validate exported parameters, profile access and lock behavior; no arbitrary
@@ -180,7 +185,8 @@ media URLs, credentials or unrestricted item execution.
 Then implement #117 (widget) and #118 (Quick Settings) as projections, followed by #116's opt-in headset
 automation. #119 first evaluates Garmin's Control Phone path; custom work needs a demonstrated gap.
 
-Keep #121–#123 last: selective portable model/domain seams, native iOS shell/authentication, cached library,
+Do not start #121–#123 while the owner’s iOS hold applies. Retain their future scope in the plan:
+selective portable model/domain seams, native iOS shell/authentication, cached library,
 native Apple playback, progress correctness, then offline transfers. Live Activity and CarPlay follow proven
 native playback. No wholesale KMP conversion or shared UI is implied.
 

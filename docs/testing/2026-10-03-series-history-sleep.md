@@ -110,3 +110,7 @@ Wi-Fi/data enabled and Normal sensitivity are restored; no active sleep timer re
 The user requested removal of the completed checkmark after reviewing the phone rows. Finished text remains; completed cards now use a subtle green glow inside their border. The earlier phone checkmark observations above apply to APK 2177 only. Physical acceptance of the revised glow, light/dark appearance, TalkBack and remaining layout cases is **NOT RUN**, as requested; retain these in the missing-test matrix and proceed with the roadmap. Native rendering verification is recorded in the Hallmark review.
 
 Refinement validation: three completion guards failed against the old card; restored refinement passed all 24 series tests. Regenerated native images were inspected. Formatter and full verifyDebug with warnings-as-errors passed in 1m 50s; initial test-only Lint findings were fixed. No dependency/classpath changes.
+
+## Connected continuation — 2026-10-04
+
+The [2179 phone log](2026-10-04-phone-2179.md) records the later connected results and each missing case. The compact series/glow/large-text/last-row subset passes on signed2179. All27 storage/security tests and eight benchmark executions pass. Startup meets the fixture target; scrolling misses its P95 budget. The generated profile is retained as a measured experiment outside production; no performance gain is claimed. Earlier failed or NOT RUN cases keep their dated scope.
