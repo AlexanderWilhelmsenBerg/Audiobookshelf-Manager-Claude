@@ -2,7 +2,8 @@
 
 **Classification:** Draft source/automated evidence; physical acceptance pending.
 **Owner:** UI & Experience, implementation owner. Requirements: AUTH-001/004, PRODUCT_SPEC 6.1/16.2/17.2/21;
-GitHub #176, U-03. Branch `fix/sign-in-navigation-back` is stacked on author PR #234 / `fbbb69d3`.
+GitHub #176, U-03. Draft [PR #235](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/235),
+branch `fix/sign-in-navigation-back`, is stacked on author PR #234 / `fbbb69d3`.
 
 ## Implemented behavior
 
@@ -67,3 +68,5 @@ failure respectively; all production files are restored before this final green 
 Material 3 palette and synthetic/empty form state; it does not accept actual phone theming or TalkBack.
 CI and signed APK identity will be recorded on the draft PR. Physical U-03-01–07 are NOT RUN;
 #176 remains open. No authentication/password/profile policy change or device acceptance is claimed.
+
+Implementation source: `012291ff` (the PR head may include documentation-only closeout commits).
