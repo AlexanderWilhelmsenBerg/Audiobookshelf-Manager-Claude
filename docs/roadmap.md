@@ -1,17 +1,17 @@
 # BookWave Android roadmap
 
 **Classification:** Active plan — canonical sequencing authority.
-**Reconciled:** 2026-10-04 against GitHub main `a20bb5b9` (merged through PR #225),
-the open GitHub tracker, dated phone/performance evidence and the owner's new browse/priority decisions.
-PR #226 carries the reconciled plan. Draft PR #230 implements #227/#228 with scoped phone evidence;
-author details #229 remain planned. Neither implementation nor outstanding acceptance is merged here.
+**Reconciled:** 2026-10-04 against GitHub main `8de931f0` (merged through PR #226),
+all open PRs/issues, current build source and dated phone/performance evidence.
+PR #226's planning reconciliation is merged. Runtime PRs #230/#231/#232 remain drafts with acceptance gaps.
 
 This is the only document that orders the next work. [PRODUCT_SPEC](../PRODUCT_SPEC.md) supplies
 requirements, [product decisions](product-decisions.md) own settled behavior, and accepted ADRs own
 architecture. GitHub has been authoritative since the 2026-10-01 cutover; unqualified issue/PR numbers
 below are GitHub numbers. Historical Forgejo provenance does not create another implementation queue.
-The updated snapshot has 42 open Android issues, parked Garmin #119, planning PR #226 and draft fix PR #230. Open issues can contain merged
-implementation, residual design work and missing acceptance; none is closed by this reconciliation.
+The tracker has **46 open issues: 42 active Android, three excluded iOS and parked Garmin #119**.
+There are 23 closed tickets, including one accidental ticket (22 substantive closures).
+Open issues can contain merged implementation and missing acceptance; this reconciliation closes none.
 
 ## Delivered baseline and remaining gates
 
@@ -22,7 +22,21 @@ implementation, residual design work and missing acceptance; none is closed by t
 | Downloads | Existing execution observer, recovery actions, claims/device pin and discard flow; PRs #207/#209/#215/#218/#221 add UI wiring, current-claim credentials and actual replacement-byte checkpointing. #111 is closed. | Physical transfers, storage, sharing/privacy and R-119–R-123. Closed ownership implementation does not accept its device matrix. |
 | CI and security | Main cache seeding, verification tiers, debug aggregate coverage, release/security checks and the existing 90% redaction gate are wired. PR #224 records 96.72% redaction coverage. | #188's residual audit/timing evidence; no controlled CI speedup is claimed. Quick alone is insufficient for runtime acceptance. |
 | Phone/performance | Build 2179: selected compact-series checks and 27 connected datastore cases pass. Benchmark 1.5.0 repairs API-36 discovery; eight benchmark executions pass. | Startup fixture meets <1 s; list CPU P95 is 19.145 ms before / 20.560 ms in the profile experiment, above the 16.7 ms comparison budget. Manual cached-audio startup and concurrent download/playback stress are NOT RUN. |
-| Delivery | Main `a20bb5b9` passed main release/security, debug cache-seed and signed APK workflows. Verified debug 0.10.6.1 / code 2180 is available. | Final 2180 install/upgrade, About identity and phone smoke are NOT RUN; the phone disconnected after the 2179 run. Evidence does not transfer automatically between APKs. |
+| Delivery | Main `a20bb5b9` passed delivery workflows and produced 2180. Draft browse 2181 and downloads 2184 were installed/tested with retained data; each report identifies its exact runtime. PR #226 is merged at `8de931f0`. | PR #226/main debug, release/security and signed APK2185 pass; exact identity is in the reconciliation report. A main APK does not contain draft fixes; later phone acceptance remains source-specific. 2180 was superseded without a phone run. |
+
+## Merge review and work handled
+
+| PR | State | Handled / remaining |
+| --- | --- | --- |
+| #226 | Merged, `8de931f0` | Canonical Android ordering, issue inventory and PD-006/007 registration. No runtime change or issue closure. |
+| [#230](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/230) | Draft, based on main | Gesture highlight and axis-specific counts implemented; 39 targeted tests, strict verification and selected API-36 phone checks pass. Actual TalkBack, other detail/restoration paths, live English/search/filter/profile/permission/update cases remain. #227/#228 stay open. |
+| [#231](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/231) | Draft, based on #230 | Backdrop-sampling candidate and control-trace analysis prepared; no measured speedup or physical visual-quality acceptance. Alternating control/candidate runs are required before merge. |
+| [#232](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/232) | Draft, based on #230 | Cancellation checkpoint guards and stopped-progress precedence implemented. 87 downloads and 52 caller tests pass; APK2184 ordinary Pause/relaunch/discard/Resume/file verification passes. Controlled phase/response/race/storage/credential/notification/accessibility cases remain. |
+
+The draft dependencies are **main → #230 → #231 or #232**; #231 and #232 are independent siblings.
+Green CI alone does not clear explicit acceptance gaps. Do not merge drafts or close their issues from
+this document's evidence import. Source/APK details and the repository-wide audit are in the
+[reconciliation report](reviews/2026-10-04-documentation-reconciliation.md).
 
 Use the [2178](testing/2026-10-04-phone-2178.md) and [2179](testing/2026-10-04-phone-2179.md)
 reports for exact tested builds and subcases. The [verification register](testing/roadmap-verification-register.md)
@@ -80,13 +94,12 @@ playback/progress/privacy defect. Hardware-dependent reliability acceptance rema
    truthful loading/partial-sync status; count labels remain Room-backed.
 
 Both issues now have implementation in [draft PR #230](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/230)
-on `fix/browse-selection-counts`, stacked on planning PR #226.
+on `fix/browse-selection-counts`, based on main after PR #226 merged.
 The [browse delivery report](testing/2026-10-04-browse-selection-counts.md) records failing pre-fix guards,
 actual caller wiring and scoped automatic/device results. These fixes are not merged or blanket-accepted;
 carry pending phone/TalkBack/configuration portions forward. Signed debug 2181 was installed in place with progress/data
 retained. All-axis, rapid/mixed gesture, Series Back, large-text/orientation/reduced-motion/offline and
-active media-state checks pass in their recorded scope. The next independent implementation slice is
-measured scrolling cost; pending TalkBack, live English/profile/permission and broad appearance cases
+active media-state checks pass in their recorded scope. The measured scrolling candidate is now draft PR #231; pending TalkBack, live English/profile/permission and broad appearance cases
 remain explicit obligations rather than being inferred from this phone run.
 
 **Exit:** U-06-01–06 and U-07-01–05 have source-gate and applicable physical gesture/localization/TalkBack
@@ -97,8 +110,9 @@ evidence; fix gesture selection before counts, then return to measured performan
 **Owner:** UI & Experience, with Test & Acceptance review. **Requirements:** LIB-002; specification 17.3/21;
 ADR-0025/0026, R-25/R-27.
 
-After the small navigation/count fixes, this is the next performance slice while hardware-dependent
-reliability checks are pending.
+Draft PR #231 prepares one bounded sampling candidate; physical comparison remains the next performance
+step while hardware-dependent reliability checks are pending. See the
+[PERF-01–10 log](testing/2026-10-04-card-blur-sampling.md); no speedup or visual acceptance is claimed.
 Inspect saved frame traces, isolate flat-list/card rendering cost, make one bounded change and compare on the
 same device/fixture/compilation mode. Report CPU timing and actual frame overruns separately. Passing benchmark
 methods do not accept the exceeded comparison budget. Keep manual cached-player latency and ANR stress pending
@@ -126,6 +140,23 @@ PD-003/004. **Cases:** D-01–D-15 in the verification register and [reliability
 | R-121 | Separately settle the policy and scope space recovery for a copy orphaned by the last profile's removal; do not silently delete it. |
 | R-122 | Run the [credential handoff matrix](reviews/2026-10-03-shared-download-ownership.md) after original-owner sign-out/removal. Only currently eligible same-server/item claims authorize each request. |
 | R-123 | Run the [restart/second-cancellation cases](reviews/2026-10-04-download-restart-progress.md) for no ETag and refused range; visible percentages reflect actual replacement bytes. Never resume unvalidated bytes to preserve a monotonic percent. |
+
+A bounded verification-cancellation correction is prepared in [draft PR #232](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/232)
+on `fix/download-cancellation-commit`, stacked on browse PR #230:
+real Room/filesystem guards reproduced synchronous validation renaming or clearing a part after worker
+cancellation. The [download test log](testing/2026-10-04-download-verification-cancellation.md) tracks the
+checkpoint/rethrow correction, passing strict/CI/signed-APK gates and scoped API36 phone evidence:
+normal 21-track transfer, Pause/force-stop/relaunch/Resume, cancel/confirm partial discard, native verification
+and test-copy cleanup. Controlled verifier timing, response/storage/sharing/playback/accessibility cases
+remain NOT RUN; no full download acceptance is claimed.
+This lane proceeds independently of the unaccepted scroll candidate; no prior phone result accepts it.
+The phone audit also found a paused Book percentage mismatch (28% displayed versus 31% from durable
+bytes). The R-123 follow-up now guards stale/terminal progress precedence in both actual Book/Downloads
+callers and passes the strict gate/CI. Signed APK2184 physically matches Book/Downloads to durable
+bytes after Pause, force-stop/relaunch and partial discard (45% → 41%); explicit Resume completes.
+The [same log](testing/2026-10-04-download-verification-cancellation.md) separates this scoped acceptance
+from remaining controlled replacement, concurrent attempt, storage and notification cases. R-120's WorkManager stop/delete and new-claim windows remain open; the correction
+adds no cross-owner lock.
 
 **Exit:** physical recovery, authorization, file integrity and displayed state agree. Fix reproduced gaps;
 do not build a second execution adapter or persist WorkManager's execution state as another Room owner.

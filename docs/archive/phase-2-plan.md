@@ -1,5 +1,8 @@
 # Phase 2 — the streaming player, in waves
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Written against `PRODUCT_SPEC` PLAY-001 … PLAY-009 and the Phase 2 exit criteria, with Phase 1 merged.
 
 ## Where Phase 2 actually stands — 2026-08-08

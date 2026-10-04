@@ -1,5 +1,9 @@
 # BW-SLEEP-01 device acceptance — scheduled sleep and active-timer projections
 
+**Classification:** Current hardware acceptance runbook; source tests do not accept rendered/system behavior.
+GitHub #124 is historical Forgejo #33; #189 owns the timer-system projection follow-up.
+Use [the roadmap](roadmap.md) and its verification register for current state.
+
 This is the remaining Android/system acceptance for Forgejo issue #33. JVM tests prove the portable
 window policy, timer-owner integration and Compose/system-button models; they do **not** prove that a
 particular Android System UI, Bluetooth stack or Media3 host renders or dispatches those surfaces.

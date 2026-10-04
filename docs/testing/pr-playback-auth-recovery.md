@@ -1,5 +1,9 @@
 # Playback authentication recovery device test
 
+**Classification:** Historical PR-specific test evidence; rerun applicable current cases using the verification register.
+
+Use [the roadmap](../roadmap.md) and its verification register for current state.
+
 This change is intentionally separate from the resume/task-removal work.
 
 The device log that prompted it showed healthy `200` session syncs followed by a sustained switch to `401`

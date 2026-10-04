@@ -1,5 +1,8 @@
 # Phone acceptance — 2026-10-03
 
+**Classification:** Dated evidence snapshot; original source/build findings and results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 **Owner:** Test & Acceptance. **Source:** main `8beec05ca33b786bb7e6d53a42fbe7bfdde7dd2e` (#218).
 **Scope:** first physical pass on the supplied phone. Requirements AUTH-002/003, PLAY-001/004/007/008,
 DL-006 and PRODUCT_SPEC 17.2/17.3/21. The [verification register](roadmap-verification-register.md)

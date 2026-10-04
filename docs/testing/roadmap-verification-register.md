@@ -6,13 +6,24 @@
 phone subcases, five failed benchmark cases and remaining NOT RUN steps. The
 [2179 continuation](2026-10-04-phone-2179.md) supersedes the benchmark harness failure for its measured
 configuration: eight executions and 27 datastore cases pass, but scrolling remains over budget.
-**Reconciled:** 2026-10-04 through main `a20bb5b9`. Parent rows are inventories, not blanket passes;
-use each dated report for its exact tested APK/scope. Signed APK 2180 is verified but not phone-installed.
+**Reconciled:** 2026-10-04 through merged main `8de931f0` (PR #226), plus source-scoped draft evidence. Parent rows are inventories, not blanket passes;
+use each dated report for its exact tested APK/scope. Signed main APK2180 was superseded without installation. Browse draft APK2181 and downloads draft
+APK2184 have their own bounded phone results; neither establishes final-main acceptance.
 
 This register covers the CI/reliability delivery, the historical issue #36 solution, and the remaining
 functional/release checks in PRODUCT_SPEC sections 17, 21 and 25. Merged code and passing JVM tests do not
 transfer physical acceptance from an older APK. GitHub #128 is historical Forgejo #36; GitHub PR #36 is an
 unrelated privileged-write contract change.
+
+## Current candidate obligations
+
+- Main includes PR #226's documentation only. PR #230 remains draft; its browse case rows below use APK2181 evidence.
+- Draft PR #231 has [PERF-01â€“10](2026-10-04-card-blur-sampling.md): software/source-labelled artifacts pass;
+  all candidate phone timing/quality/upgrade/accessibility obligations remain NOT RUN.
+- Draft PR #232 has [DC-P01â€“13 and PP-P01â€“06](2026-10-04-download-verification-cancellation.md):
+  ordinary APK2184 Pause/relaunch/discard/Resume and exact-size verification pass; controlled cases remain open.
+- New main APK identity/packaging and checks belong to the [reconciliation report](../reviews/2026-10-04-documentation-reconciliation.md).
+  No physical case was rerun for this docs-only merge. Historical build results are never promoted to this APK.
 
 ## Record a result for every case
 
@@ -62,7 +73,7 @@ phone covers its own configuration; leave the other API/host rows pending until 
 | A-05 | Audiobookshelf contract fixtures, missing required fields/unknown fields, compatibility failures and migration tests. | Included in the full gate. Live selected-server-version acceptance remains pending; no new endpoint or schema was introduced by #211–#216. |
 | A-06 | `:core:datastore:connectedDebugAndroidTest`. | **PASS 27/27 on API 36, repeated 2026-10-04 on the [2179 continuation](2026-10-04-phone-2179.md)**, using an isolated test application ID after the ordinary package hit a signer conflict. All names, scope and failed-install evidence are in the [phone report](2026-10-03-phone-acceptance.md). This tier does not test the whole app lifecycle. |
 | A-07 | Domain/core and security-policy coverage. | PR #224 wires both the unchanged 80% aggregate and 90% redaction rule into ordinary verification. Fresh redaction coverage is 96.72%; four EventLog cases and the hook-removal regression passed. See [security evidence](../reviews/2026-10-04-security-coverage.md). |
-| A-08 | Exact final-main APK: trusted `apk.yml`, stable signing, built version/About identity and downloadable artifact. | Main `8beec05c` passed trusted debug/cache, release/security and signed APK workflows. Installed 0.10.6.1 (2175) bytes match the artifact and About identifies that source; see [identity/CI record](2026-10-03-phone-acceptance.md). The [2178 continuation](2026-10-04-phone-2178.md) records an in-place 2177→2178 upgrade with data retained. Final main `a20bb5b9` produced verified debug 2180 (APK SHA-256 `e8fa3cab6707cd3c72470d779889ee037402bf1930efad4e1e2a177e3d156e99`); installation, About and smoke are NOT RUN. The [browse delivery](2026-10-04-browse-selection-counts.md) records trusted signed 2181/source `00ee58c6`, 2179→2181 upgrade with unchanged pre-launch data/progress, and scoped phone smoke; About UI remains NOT RUN. Repeat handoff identity and upgrade checks for each later delivery. |
+| A-08 | Exact final-main APK: trusted `apk.yml`, stable signing, built version/About identity and downloadable artifact. | Main `8beec05c` passed trusted debug/cache, release/security and signed APK workflows. Installed 0.10.6.1 (2175) bytes match the artifact and About identifies that source; see [identity/CI record](2026-10-03-phone-acceptance.md). The [2178 continuation](2026-10-04-phone-2178.md) records an in-place 2177→2178 upgrade with data retained. Final main `a20bb5b9` produced verified debug 2180 (APK SHA-256 `e8fa3cab6707cd3c72470d779889ee037402bf1930efad4e1e2a177e3d156e99`); installation, About and smoke were NOT RUN before it was superseded. Later draft 2181/2184 results are recorded below. The [browse delivery](2026-10-04-browse-selection-counts.md) records trusted signed 2181/source `00ee58c6`, 2179→2181 upgrade with unchanged pre-launch data/progress, and scoped phone smoke; About UI remains NOT RUN. Repeat handoff identity and upgrade checks for each later delivery. |
 
 2026-10-04 follow-up: compact series guards failed the old layout twice, then all 26 card/screen cases
 passed with native captures. Its full gate passed, followed by PR #222 and main CI. The isolated Benchmark
@@ -72,7 +83,7 @@ PR #224 then passed its full gate (2,182 debug/JVM cases); #225 passed the final
 Main `a20bb5b9` passed [release/security](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37199316812),
 [debug cache seed](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37199316530)
 and [signed APK](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37199316879).
-A-08/Q-01 remain pending on the final 2180 phone installation; earlier phone results retain their original scope.
+A-08/Q-01 apply to each new final-main APK; superseded 2180 needs no redundant install, and draft 2184 does not accept main; earlier phone results retain their original scope.
 
 For branch-only/main builds, use **Build APK** directly: the PR verification workflow's optional APK
 handoff requires an open PR number. Set `variant=debug` and `run_checks=true` when initiating final checks
@@ -143,8 +154,20 @@ overnight, civil-clock and lifecycle steps rather than replacing them.
 
 ## Downloads/storage
 
+The [verification-cancellation log](2026-10-04-download-verification-cancellation.md) records reproduced
+late verification/rename and invalid-416-clear regressions with actual Job cancellation, real Room and
+filesystem. DC-A01–07 pass; DC-P01–13 distinguish scoped API36 phone evidence from remaining physical
+obligations. APK2183 passes real transfer, Pause/force-stop/relaunch/Resume, cancel/confirm partial discard,
+native full verification, cleanup and 27 isolated security tests. Controlled timing, response, sharing,
+storage, playback and accessibility matrices remain NOT RUN; D-10's asynchronous removal/new-claim
+acceptance stays open. APK2183 exposed 28% versus 31% from durable bytes. The correction on APK2184 passes actual caller
+guards and numeric Book/Downloads Pause, force-stop/relaunch, discard and Resume assertions (45% → 41%).
+Controlled R-123 response/replacement/old-attempt cases remain pending. Use this log alongside
+D-01–D-15, not as whole-matrix acceptance.
+
 Stored-copy verification navigation was sampled in the [phone report](2026-10-03-phone-acceptance.md).
-Transfer/claim/storage transition cases below remain NOT RUN; existing complete copies are not those fixtures.
+APK2183 adds bounded transfer/recovery/discard evidence in the log above. Remaining steps below are
+NOT RUN; existing complete copies and one disposable fixture do not accept every transition.
 
 | ID | Scenario | Pass condition / requirement |
 | --- | --- | --- |
@@ -182,7 +205,7 @@ The [2179 continuation](2026-10-04-phone-2179.md) repeats all27 connected tests 
 series/glow/large-text/last-row cases. Benchmark1.5.0 passes the five historical methods, a library-profile
 control and two app-profile experiments. Startup meets the fixture target; P95 frame cost still exceeds
 the comparison budget. The generated app profile is retained outside production because no benefit is
-established. Remaining UI/security/server/manual-performance matrices and final-delivery upgrade stay pending.
+established. Remaining UI/security/server/manual-performance matrices and final-main delivery acceptance stay pending.
 
 | ID | Scenario | Required evidence |
 | --- | --- | --- |

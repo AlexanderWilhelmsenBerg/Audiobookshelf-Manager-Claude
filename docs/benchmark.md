@@ -8,6 +8,9 @@ tooling — a start-up figure measured on a shared runner describes the runner's
 R-25 remains partially open: the 2026-10-04 measurements and stable generated profile are recorded,
 but scrolling exceeds the comparison budget and real cached-player/stress acceptance remains pending.
 The app-profile experiment stays outside production because it demonstrated no benefit.
+Draft PR #231 prepares automatic backdrop sampling for book rows; its
+[PERF-01-10 log](testing/2026-10-04-card-blur-sampling.md) contains control-trace analysis and required
+alternating device/visual comparison. No candidate phone improvement or budget acceptance is recorded.
 
 ---
 

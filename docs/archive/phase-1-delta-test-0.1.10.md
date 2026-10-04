@@ -1,5 +1,8 @@
 # Delta test script — 0.1.10-phase1
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Three changes, all from the 0.1.9 device run. Short script; 0.1.9's still applies for everything else.
 
 **Install over 0.1.9 without clearing data.** No migration. H-01 needs an existing cache with a
