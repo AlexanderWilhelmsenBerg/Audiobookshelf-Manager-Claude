@@ -1,8 +1,8 @@
 # BookWave roadmap
 
 **Classification:** Active plan — canonical sequencing authority.
-**Reconciled:** 2026-10-03 against GitHub main `8beec05c`, including merged PRs #205–#218
-and the first supplied-phone acceptance pass.
+**Reconciled:** 2026-10-04 against GitHub main `1b5d4937`, including merged PRs #205–#221
+and the supplied-phone acceptance continuations.
 
 This is the only document that answers what BookWave should work on next. `PRODUCT_SPEC.md` supplies
 requirement IDs, `product-decisions.md` owns settled product choices, and accepted ADRs own architecture.
@@ -31,7 +31,14 @@ fix, offline rolling History checkpoints with chapter/date/progress detail, and 
 creation fixes with Extra high / Ultra high motion sensitivity (PD-002 amendment, PD-005). Track each required
 test in [the fix log](testing/2026-10-03-series-history-sleep.md); the [Hallmark findings](reviews/2026-10-03-series-screen-hallmark.md)
 cover the series-only slice of #194. Keep the broader UI issues open. Resume reliability afterwards;
-the Silo research deferral and low iOS priority remain unchanged.
+the Silo research deferral and low iOS priority remain unchanged. PR #220 delivered these fixes and the
+owner's inward green completion cue; PR #221 corrected R-123's stale byte count after a fresh download
+restart and a second cancellation. The [2178 phone continuation](testing/2026-10-04-phone-2178.md)
+records completion-state/large-text/last-row checks, paused timer behavior and abrupt offline process
+recovery with less than four seconds of estimated loss. Missing hardware/server/bedside tests stay open.
+The owner's subsequent compact-card revision is tracked in
+[its review and verification log](reviews/2026-10-04-compact-series-cards.md). Normal rows must be compact
+without restoring fixed-height truncation; large text remains content-driven.
 
 - #212 implements automatic main cache seeding in the PR container/job; retain one debug verification per merge
   and the main workflow's release/security checks. Main push classification, schema immutability and secret
