@@ -3,13 +3,14 @@
 **Classification:** Active plan — canonical sequencing authority.
 **Reconciled:** 2026-10-04 against GitHub main `a20bb5b9` (merged through PR #225),
 the open GitHub tracker, dated phone/performance evidence and the owner's new browse/priority decisions.
-Implementation of those new decisions is planned, not accepted; PR #226 carries this documentation update.
+PR #226 carries the reconciled plan. Draft PR #230 implements #227/#228 with scoped phone evidence;
+author details #229 remain planned. Neither implementation nor outstanding acceptance is merged here.
 
 This is the only document that orders the next work. [PRODUCT_SPEC](../PRODUCT_SPEC.md) supplies
 requirements, [product decisions](product-decisions.md) own settled behavior, and accepted ADRs own
 architecture. GitHub has been authoritative since the 2026-10-01 cutover; unqualified issue/PR numbers
 below are GitHub numbers. Historical Forgejo provenance does not create another implementation queue.
-The updated snapshot has 42 open Android issues, parked Garmin #119 and open planning PR #226. Open issues can contain merged
+The updated snapshot has 42 open Android issues, parked Garmin #119, planning PR #226 and draft fix PR #230. Open issues can contain merged
 implementation, residual design work and missing acceptance; none is closed by this reconciliation.
 
 ## Delivered baseline and remaining gates
@@ -69,18 +70,24 @@ The owner selected these small functional fixes as the next implementation slice
 playback/progress/privacy defect. Hardware-dependent reliability acceptance remains open alongside them.
 
 1. [#227 gesture selection](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/227): reproduce Books → Series → Books, where the
-   pill reaches Books but Series stays highlighted. The pager and label selection currently have different
-   projections; the settled-page listener may capture an older axis. Keep this a source hypothesis until
-   actual callback-path reproduction. Preserve continuous motion, cancelled drags and settled semantics.
+   pill reaches Books but Series stays highlighted. The actual stable-callback route regression confirmed
+   the settled-page listener captured the initial axis. PR #230 reads the latest axis/callback while keeping
+   its listener stable; return, cancelled and rapid/mixed-intent checks pass. Preserve continuous motion
+   and settled semantics; remaining TalkBack/restoration acceptance stays open.
 2. [#228 entity counts](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/228): Books counts books, Series counts series,
    Authors counts authors and Genres counts genres within the active authorized library/search/filter
    scope. Focused book results count books. Retain uncapped Books shelf totals, localized plurals and
    truthful loading/partial-sync status; count labels remain Room-backed.
 
-Both issues now have implementation on `fix/browse-selection-counts`, stacked on planning PR #226.
+Both issues now have implementation in [draft PR #230](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/230)
+on `fix/browse-selection-counts`, stacked on planning PR #226.
 The [browse delivery report](testing/2026-10-04-browse-selection-counts.md) records failing pre-fix guards,
 actual caller wiring and scoped automatic/device results. These fixes are not merged or blanket-accepted;
-carry pending phone/TalkBack/configuration portions forward.
+carry pending phone/TalkBack/configuration portions forward. Signed debug 2181 was installed in place with progress/data
+retained. All-axis, rapid/mixed gesture, Series Back, large-text/orientation/reduced-motion/offline and
+active media-state checks pass in their recorded scope. The next independent implementation slice is
+measured scrolling cost; pending TalkBack, live English/profile/permission and broad appearance cases
+remain explicit obligations rather than being inferred from this phone run.
 
 **Exit:** U-06-01–06 and U-07-01–05 have source-gate and applicable physical gesture/localization/TalkBack
 evidence; fix gesture selection before counts, then return to measured performance/download work.
