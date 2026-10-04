@@ -1,0 +1,66 @@
+{
+  "candidateSource": "9b6d0ffa",
+  "candidateApkSha256": "eca30ff6fd16a1da03aa313e351c602ae6af76a02f15057ee9cc757b8f1137a1",
+  "generatedProfileSha256": "031234bff74ddda152492af66f4a138a373ff92af1530d2b1430b40da51a02cf",
+  "profileShippedInFinalDelivery": false,
+  "rawJsonSha256": "502b93c8967e351b197289f863cf02df19b60b9c48827b6e149215065d9e3df2",
+  "benchmarks": [
+    {
+      "name": "startupBaselineProfile",
+      "iterations": 10,
+      "thermalThrottleSleepSeconds": 0,
+      "metrics": {
+        "timeToFullDisplayMs": {
+          "minimum": 642.088749,
+          "maximum": 756.887395,
+          "median": 699.6078125,
+          "coefficientOfVariation": 0.056057536140060184
+        },
+        "timeToInitialDisplayMs": {
+          "minimum": 227.212188,
+          "maximum": 334.917083,
+          "median": 266.43260399999997,
+          "coefficientOfVariation": 0.13314730640657493
+        }
+      },
+      "ttfdRunsMs": [
+        677.563489,
+        752.784999,
+        756.887395,
+        651.157135,
+        718.335937,
+        734.759948,
+        693.832031,
+        705.383594,
+        689.183749,
+        642.088749
+      ]
+    },
+    {
+      "name": "scrollBooksList",
+      "iterations": 10,
+      "thermalThrottleSleepSeconds": 0,
+      "metrics": {
+        "frameCount": {
+          "minimum": 539.0,
+          "maximum": 606.0,
+          "median": 578.0,
+          "coefficientOfVariation": 0.03597536778720143
+        },
+        "frameDurationCpuMs": {
+          "P50": 14.344375,
+          "P90": 18.5896983,
+          "P95": 20.560411449999997,
+          "P99": 28.147228570000006
+        },
+        "frameOverrunMs": {
+          "P50": 3.6418625000000002,
+          "P90": 8.021343700000003,
+          "P95": 9.945476199999998,
+          "P99": 16.339496660000002
+        }
+      },
+      "ttfdRunsMs": []
+    }
+  ]
+}

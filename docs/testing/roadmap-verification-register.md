@@ -170,8 +170,11 @@ physical cases remain NOT RUN at the owner's request; continue the roadmap witho
 The [phone report](2026-10-03-phone-acceptance.md) records About/installed-byte identity, first-page
 Loopbound rendering, player text/rotation samples and a landscape contrast concern. The
 [2178 continuation](2026-10-04-phone-2178.md) records its in-place upgrade and selected revised subcases.
-Five benchmark tests failed in the old harness; the [source repair](../reviews/2026-10-04-benchmark-api36.md)
-does not establish a physical pass. Remaining UI/security/server matrices and later-build upgrade stay pending.
+The [2179 continuation](2026-10-04-phone-2179.md) repeats all27 connected tests and passes selected compact
+series/glow/large-text/last-row cases. Benchmark1.5.0 passes the five historical methods, a library-profile
+control and two app-profile experiments. Startup meets the fixture target; P95 frame cost still exceeds
+the comparison budget. The generated app profile is retained outside production because no benefit is
+established. Remaining UI/security/server/manual-performance matrices and final-delivery upgrade stay pending.
 
 | ID | Scenario | Required evidence |
 | --- | --- | --- |
@@ -193,6 +196,5 @@ Keep release section 25 pending until its applicable functional, security and qu
 
 ## Deferred scope
 
-Silo/shared-cache implications research remains a separate deferred decision. iOS (#121–#123) is low
-priority and stays after Android correctness acceptance and the planned Android system surfaces. No iOS
-implementation or hardware acceptance is claimed by this delivery.
+Silo/shared-cache implications research remains a separate deferred decision. iOS (#121–#123) development
+is on hold by the owner’s2026-10-04 instruction. Neither lane starts in this roadmap batch.
