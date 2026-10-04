@@ -201,6 +201,15 @@ established. Remaining UI/security/server/manual-performance matrices and final-
 | Q-05 | Cached local player and library startup, 2,000-book list frame timing, baseline profile and download/playback stress. | Run [benchmark procedures](../benchmark.md): cached start/interactive under 1 s where specified, recorded frame timing and no ANR. Use the benchmark variant rather than inferring these from a debug APK. |
 | Q-06 | API 26/31/34/36, Bluetooth/wired routes, DHU and actual car/Automotive where available. | Record each supported configuration separately; an unavailable host remains NOT RUN. |
 
+## Scrolling performance candidate — 2026-10-04
+
+Q-05 / LIB-002 / SET-002 / PRODUCT_SPEC 17.3: [card-blur sampling log](2026-10-04-card-blur-sampling.md)
+owns PERF-01–10. Ten saved control traces were analyzed; caller audit identifies general Home/focused
+and current Author book rows. The candidate is implemented on a branch and unaccepted: software gates
+and exact artifacts are recorded in that log, with physical timing/quality/continuity and connected
+security tests deferred until the owner's next phone connection. Old benchmark/browse results do not
+accept this binary. The original exceeded 16.7 ms comparison budget and R-25 remain open.
+
 ## Browse acceptance — planned 2026-10-04; scoped implementation/results below
 
 Owner decisions PD-006/007 define the acceptance obligations. #227/#228 implementation and scoped results now exist on PR #230; #229 remains planned.

@@ -1,0 +1,631 @@
+{
+  "source": "1e74bab2",
+  "device": "SM-S928B Android16 API36",
+  "fixture_books": 2000,
+  "tool_version": "Perfetto v58.2-add693d8b",
+  "scope": "original library-profile control scroll traces; overlapping inclusive durations, not CPU-running time",
+  "iterations": [
+    {
+      "iteration": 0,
+      "trace_sha256": "729ceaac3a83a21d0bcc75e2053eb6c1f4e770f501f0989322c9503ad330e55d",
+      "categories": {
+        "main_frame": {
+          "count": 576,
+          "inclusive_ms": 1377.787,
+          "max_ms": 19.955
+        },
+        "main_haze_effect_lookup": {
+          "count": 1276,
+          "inclusive_ms": 24.705,
+          "max_ms": 0.098
+        },
+        "main_recompose": {
+          "count": 127,
+          "inclusive_ms": 55.651,
+          "max_ms": 0.842
+        },
+        "main_record_draw": {
+          "count": 568,
+          "inclusive_ms": 577.693,
+          "max_ms": 14.978
+        },
+        "render_fill_rect": {
+          "count": 145578,
+          "inclusive_ms": 1160.7,
+          "max_ms": 0.385
+        },
+        "render_flush_commands": {
+          "count": 568,
+          "inclusive_ms": 3287.862,
+          "max_ms": 14.502
+        },
+        "render_flush_layers": {
+          "count": 559,
+          "inclusive_ms": 1528.326,
+          "max_ms": 9.612
+        },
+        "render_frame": {
+          "count": 568,
+          "inclusive_ms": 7295.392,
+          "max_ms": 25.043
+        },
+        "render_text": {
+          "count": 14106,
+          "inclusive_ms": 102.089,
+          "max_ms": 0.507
+        },
+        "render_texture": {
+          "count": 14672,
+          "inclusive_ms": 95.242,
+          "max_ms": 0.376
+        }
+      },
+      "power_rail_empty_packet": true
+    },
+    {
+      "iteration": 1,
+      "trace_sha256": "fb688221f11b50b731cda07a44de6af464a6203ba5cd9afb200881125a9e5a82",
+      "categories": {
+        "main_frame": {
+          "count": 580,
+          "inclusive_ms": 1217.795,
+          "max_ms": 14.899
+        },
+        "main_haze_effect_lookup": {
+          "count": 1289,
+          "inclusive_ms": 25.025,
+          "max_ms": 0.105
+        },
+        "main_recompose": {
+          "count": 127,
+          "inclusive_ms": 50.836,
+          "max_ms": 0.844
+        },
+        "main_record_draw": {
+          "count": 574,
+          "inclusive_ms": 548.616,
+          "max_ms": 11.031
+        },
+        "render_fill_rect": {
+          "count": 144260,
+          "inclusive_ms": 1162.784,
+          "max_ms": 0.56
+        },
+        "render_flush_commands": {
+          "count": 574,
+          "inclusive_ms": 3323.136,
+          "max_ms": 10.248
+        },
+        "render_flush_layers": {
+          "count": 565,
+          "inclusive_ms": 1542.443,
+          "max_ms": 6.551
+        },
+        "render_frame": {
+          "count": 574,
+          "inclusive_ms": 6889.908,
+          "max_ms": 21.999
+        },
+        "render_text": {
+          "count": 13966,
+          "inclusive_ms": 102.197,
+          "max_ms": 0.126
+        },
+        "render_texture": {
+          "count": 14319,
+          "inclusive_ms": 93.275,
+          "max_ms": 0.127
+        }
+      },
+      "power_rail_empty_packet": true
+    },
+    {
+      "iteration": 2,
+      "trace_sha256": "735453bba6f170a1c57e153679924e54a6cc669de33394d86929510b6eab549e",
+      "categories": {
+        "main_frame": {
+          "count": 577,
+          "inclusive_ms": 1334.411,
+          "max_ms": 15.553
+        },
+        "main_haze_effect_lookup": {
+          "count": 1274,
+          "inclusive_ms": 25.306,
+          "max_ms": 0.121
+        },
+        "main_recompose": {
+          "count": 124,
+          "inclusive_ms": 47.423,
+          "max_ms": 0.898
+        },
+        "main_record_draw": {
+          "count": 570,
+          "inclusive_ms": 558.644,
+          "max_ms": 10.211
+        },
+        "render_fill_rect": {
+          "count": 142383,
+          "inclusive_ms": 1157.063,
+          "max_ms": 1.655
+        },
+        "render_flush_commands": {
+          "count": 570,
+          "inclusive_ms": 3296.614,
+          "max_ms": 12.595
+        },
+        "render_flush_layers": {
+          "count": 562,
+          "inclusive_ms": 1494.893,
+          "max_ms": 6.981
+        },
+        "render_frame": {
+          "count": 570,
+          "inclusive_ms": 7459.301,
+          "max_ms": 26.534
+        },
+        "render_text": {
+          "count": 13588,
+          "inclusive_ms": 100.351,
+          "max_ms": 0.194
+        },
+        "render_texture": {
+          "count": 14131,
+          "inclusive_ms": 92.18,
+          "max_ms": 0.195
+        }
+      },
+      "power_rail_empty_packet": true
+    },
+    {
+      "iteration": 3,
+      "trace_sha256": "69d5a1d3f982974abe022aff95190f009d450b77798cfa9afbda2c7a276c0a35",
+      "categories": {
+        "main_frame": {
+          "count": 591,
+          "inclusive_ms": 1265.026,
+          "max_ms": 17.31
+        },
+        "main_haze_effect_lookup": {
+          "count": 1309,
+          "inclusive_ms": 25.365,
+          "max_ms": 0.133
+        },
+        "main_recompose": {
+          "count": 133,
+          "inclusive_ms": 52.758,
+          "max_ms": 1.828
+        },
+        "main_record_draw": {
+          "count": 583,
+          "inclusive_ms": 563.895,
+          "max_ms": 12.612
+        },
+        "render_fill_rect": {
+          "count": 149518,
+          "inclusive_ms": 1193.172,
+          "max_ms": 0.323
+        },
+        "render_flush_commands": {
+          "count": 583,
+          "inclusive_ms": 3384.872,
+          "max_ms": 20.216
+        },
+        "render_flush_layers": {
+          "count": 575,
+          "inclusive_ms": 1599.104,
+          "max_ms": 5.482
+        },
+        "render_frame": {
+          "count": 583,
+          "inclusive_ms": 7038.09,
+          "max_ms": 25.55
+        },
+        "render_text": {
+          "count": 14366,
+          "inclusive_ms": 103.831,
+          "max_ms": 0.375
+        },
+        "render_texture": {
+          "count": 15128,
+          "inclusive_ms": 110.541,
+          "max_ms": 12.817
+        }
+      },
+      "power_rail_empty_packet": true
+    },
+    {
+      "iteration": 4,
+      "trace_sha256": "58c5ef09736404ea1e5c2d8c3a35f05e04fd509b7db9d9e9b720d682c262a080",
+      "categories": {
+        "main_frame": {
+          "count": 581,
+          "inclusive_ms": 1300.153,
+          "max_ms": 15.286
+        },
+        "main_haze_effect_lookup": {
+          "count": 1290,
+          "inclusive_ms": 25.475,
+          "max_ms": 0.127
+        },
+        "main_recompose": {
+          "count": 129,
+          "inclusive_ms": 47.719,
+          "max_ms": 2.174
+        },
+        "main_record_draw": {
+          "count": 574,
+          "inclusive_ms": 555.338,
+          "max_ms": 9.495
+        },
+        "render_fill_rect": {
+          "count": 144848,
+          "inclusive_ms": 1161.413,
+          "max_ms": 0.735
+        },
+        "render_flush_commands": {
+          "count": 574,
+          "inclusive_ms": 3336.219,
+          "max_ms": 13.804
+        },
+        "render_flush_layers": {
+          "count": 566,
+          "inclusive_ms": 1515.432,
+          "max_ms": 7.805
+        },
+        "render_frame": {
+          "count": 574,
+          "inclusive_ms": 6867.739,
+          "max_ms": 26.993
+        },
+        "render_text": {
+          "count": 14294,
+          "inclusive_ms": 105.531,
+          "max_ms": 0.329
+        },
+        "render_texture": {
+          "count": 14516,
+          "inclusive_ms": 93.536,
+          "max_ms": 0.135
+        }
+      },
+      "power_rail_empty_packet": true
+    },
+    {
+      "iteration": 5,
+      "trace_sha256": "238359befa7640995b8a64af0d403532c7345f7532c970f29e30b848e1037e21",
+      "categories": {
+        "main_frame": {
+          "count": 606,
+          "inclusive_ms": 1297.856,
+          "max_ms": 15.654
+        },
+        "main_haze_effect_lookup": {
+          "count": 1347,
+          "inclusive_ms": 25.106,
+          "max_ms": 0.181
+        },
+        "main_recompose": {
+          "count": 146,
+          "inclusive_ms": 49.02,
+          "max_ms": 0.917
+        },
+        "main_record_draw": {
+          "count": 597,
+          "inclusive_ms": 547.775,
+          "max_ms": 11.77
+        },
+        "render_fill_rect": {
+          "count": 153238,
+          "inclusive_ms": 1138.275,
+          "max_ms": 0.636
+        },
+        "render_flush_commands": {
+          "count": 597,
+          "inclusive_ms": 3215.967,
+          "max_ms": 10.186
+        },
+        "render_flush_layers": {
+          "count": 591,
+          "inclusive_ms": 1561.845,
+          "max_ms": 11.335
+        },
+        "render_frame": {
+          "count": 597,
+          "inclusive_ms": 6786.09,
+          "max_ms": 25.092
+        },
+        "render_text": {
+          "count": 14626,
+          "inclusive_ms": 99.704,
+          "max_ms": 0.169
+        },
+        "render_texture": {
+          "count": 15294,
+          "inclusive_ms": 91.74,
+          "max_ms": 0.123
+        }
+      },
+      "power_rail_empty_packet": true
+    },
+    {
+      "iteration": 6,
+      "trace_sha256": "f8f7037e133a62134f9cd499782b7e803ec48dc5e1f8e26bbbf9b9a3fa4154c0",
+      "categories": {
+        "main_frame": {
+          "count": 644,
+          "inclusive_ms": 1341.774,
+          "max_ms": 14.538
+        },
+        "main_haze_effect_lookup": {
+          "count": 1456,
+          "inclusive_ms": 27.912,
+          "max_ms": 0.093
+        },
+        "main_recompose": {
+          "count": 169,
+          "inclusive_ms": 56.073,
+          "max_ms": 0.694
+        },
+        "main_record_draw": {
+          "count": 636,
+          "inclusive_ms": 593.05,
+          "max_ms": 10.995
+        },
+        "render_fill_rect": {
+          "count": 164266,
+          "inclusive_ms": 1278.894,
+          "max_ms": 0.647
+        },
+        "render_flush_commands": {
+          "count": 636,
+          "inclusive_ms": 3594.195,
+          "max_ms": 9.432
+        },
+        "render_flush_layers": {
+          "count": 631,
+          "inclusive_ms": 1744.861,
+          "max_ms": 9.656
+        },
+        "render_frame": {
+          "count": 636,
+          "inclusive_ms": 7538.599,
+          "max_ms": 22.469
+        },
+        "render_text": {
+          "count": 15790,
+          "inclusive_ms": 112.019,
+          "max_ms": 0.344
+        },
+        "render_texture": {
+          "count": 16504,
+          "inclusive_ms": 105.196,
+          "max_ms": 0.2
+        }
+      },
+      "power_rail_empty_packet": true
+    },
+    {
+      "iteration": 7,
+      "trace_sha256": "2ff91f67c3132ea93c87140d7ab6422c4e399e3bebc1e699630a74460102feb4",
+      "categories": {
+        "main_frame": {
+          "count": 546,
+          "inclusive_ms": 1282.341,
+          "max_ms": 19.964
+        },
+        "main_haze_effect_lookup": {
+          "count": 1197,
+          "inclusive_ms": 23.402,
+          "max_ms": 0.272
+        },
+        "main_recompose": {
+          "count": 111,
+          "inclusive_ms": 39.875,
+          "max_ms": 1.735
+        },
+        "main_record_draw": {
+          "count": 539,
+          "inclusive_ms": 509.773,
+          "max_ms": 15.274
+        },
+        "render_fill_rect": {
+          "count": 133253,
+          "inclusive_ms": 1097.254,
+          "max_ms": 0.31
+        },
+        "render_flush_commands": {
+          "count": 539,
+          "inclusive_ms": 3143.088,
+          "max_ms": 13.121
+        },
+        "render_flush_layers": {
+          "count": 532,
+          "inclusive_ms": 1414.888,
+          "max_ms": 9.041
+        },
+        "render_frame": {
+          "count": 539,
+          "inclusive_ms": 6921.596,
+          "max_ms": 25.404
+        },
+        "render_text": {
+          "count": 12748,
+          "inclusive_ms": 96.462,
+          "max_ms": 0.317
+        },
+        "render_texture": {
+          "count": 13249,
+          "inclusive_ms": 88.727,
+          "max_ms": 0.124
+        }
+      },
+      "power_rail_empty_packet": true
+    },
+    {
+      "iteration": 8,
+      "trace_sha256": "787dd50eb77a2bf6a893b194c48277bbdd996abc1b3411c9eae497a73f80e2ba",
+      "categories": {
+        "main_frame": {
+          "count": 543,
+          "inclusive_ms": 1331.479,
+          "max_ms": 20.219
+        },
+        "main_haze_effect_lookup": {
+          "count": 1174,
+          "inclusive_ms": 23.573,
+          "max_ms": 0.13
+        },
+        "main_recompose": {
+          "count": 109,
+          "inclusive_ms": 36.316,
+          "max_ms": 0.886
+        },
+        "main_record_draw": {
+          "count": 534,
+          "inclusive_ms": 499.759,
+          "max_ms": 11.208
+        },
+        "render_fill_rect": {
+          "count": 132817,
+          "inclusive_ms": 1076.652,
+          "max_ms": 0.55
+        },
+        "render_flush_commands": {
+          "count": 534,
+          "inclusive_ms": 3085.101,
+          "max_ms": 14.719
+        },
+        "render_flush_layers": {
+          "count": 527,
+          "inclusive_ms": 1370.941,
+          "max_ms": 7.624
+        },
+        "render_frame": {
+          "count": 534,
+          "inclusive_ms": 7050.169,
+          "max_ms": 28.738
+        },
+        "render_text": {
+          "count": 12840,
+          "inclusive_ms": 95.034,
+          "max_ms": 0.164
+        },
+        "render_texture": {
+          "count": 13225,
+          "inclusive_ms": 86.065,
+          "max_ms": 0.087
+        }
+      },
+      "power_rail_empty_packet": true
+    },
+    {
+      "iteration": 9,
+      "trace_sha256": "c53163c3a972b907f6d6bae74708dccb5b70f9b2baa5291467b17035f05d7a7f",
+      "categories": {
+        "main_frame": {
+          "count": 610,
+          "inclusive_ms": 1331.204,
+          "max_ms": 17.677
+        },
+        "main_haze_effect_lookup": {
+          "count": 1385,
+          "inclusive_ms": 26.792,
+          "max_ms": 0.189
+        },
+        "main_recompose": {
+          "count": 152,
+          "inclusive_ms": 48.144,
+          "max_ms": 1.064
+        },
+        "main_record_draw": {
+          "count": 602,
+          "inclusive_ms": 576.088,
+          "max_ms": 14.581
+        },
+        "render_fill_rect": {
+          "count": 152310,
+          "inclusive_ms": 1186.183,
+          "max_ms": 0.461
+        },
+        "render_flush_commands": {
+          "count": 602,
+          "inclusive_ms": 3380.659,
+          "max_ms": 9.806
+        },
+        "render_flush_layers": {
+          "count": 596,
+          "inclusive_ms": 1550.307,
+          "max_ms": 14.529
+        },
+        "render_frame": {
+          "count": 602,
+          "inclusive_ms": 7473.015,
+          "max_ms": 23.885
+        },
+        "render_text": {
+          "count": 14408,
+          "inclusive_ms": 104.769,
+          "max_ms": 1.031
+        },
+        "render_texture": {
+          "count": 15047,
+          "inclusive_ms": 95.159,
+          "max_ms": 0.117
+        }
+      },
+      "power_rail_empty_packet": true
+    }
+  ],
+  "median_per_iteration": {
+    "main_frame": {
+      "count": 580.5,
+      "inclusive_ms": 1315.6785,
+      "max_ms": 16.482
+    },
+    "main_haze_effect_lookup": {
+      "count": 1289.5,
+      "inclusive_ms": 25.206000000000003,
+      "max_ms": 0.1285
+    },
+    "main_recompose": {
+      "count": 128.0,
+      "inclusive_ms": 48.582,
+      "max_ms": 0.9075
+    },
+    "main_record_draw": {
+      "count": 574.0,
+      "inclusive_ms": 556.991,
+      "max_ms": 11.489
+    },
+    "render_fill_rect": {
+      "count": 145213.0,
+      "inclusive_ms": 1161.0565000000001,
+      "max_ms": 0.555
+    },
+    "render_flush_commands": {
+      "count": 574.0,
+      "inclusive_ms": 3309.875,
+      "max_ms": 12.858
+    },
+    "render_flush_layers": {
+      "count": 565.5,
+      "inclusive_ms": 1535.3845000000001,
+      "max_ms": 8.423
+    },
+    "render_frame": {
+      "count": 574.0,
+      "inclusive_ms": 7044.1295,
+      "max_ms": 25.247999999999998
+    },
+    "render_text": {
+      "count": 14200.0,
+      "inclusive_ms": 102.143,
+      "max_ms": 0.323
+    },
+    "render_texture": {
+      "count": 14594.0,
+      "inclusive_ms": 93.4055,
+      "max_ms": 0.131
+    }
+  }
+}

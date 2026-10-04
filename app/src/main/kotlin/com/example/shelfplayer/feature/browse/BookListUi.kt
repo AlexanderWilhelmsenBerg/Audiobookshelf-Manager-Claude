@@ -71,7 +71,11 @@ internal fun BookCard(
      */
     onPlay: (() -> Unit)? = null,
 ) {
-    GlassCard(onClick = onClick, modifier = modifier.fillMaxWidth()) {
+    // LIB-002 / PRODUCT_SPEC 17.3: the scroll trace points to layer/drawing cost. Let Haze
+    // sample this row's backdrop input; title, cover, progress and hit targets remain full size.
+    // This candidate needs physical timing/quality acceptance; other card/chrome callers keep
+    // their default. See docs/testing/2026-10-04-card-blur-sampling.md.
+    GlassCard(onClick = onClick, modifier = modifier.fillMaxWidth(), scaleBlurInput = true) {
         Row(
             // A **fixed** height rather than `IntrinsicSize.Min`.
             //

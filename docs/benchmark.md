@@ -222,3 +222,15 @@ raw numeric summaries, comparison limits and missing functional tests. USB charg
 no reported thermal sleep; covers absent. Sequential samples do not establish causality. Keep R-25
 open and use the saved Perfetto frame traces to choose a bounded list-rendering change before proposing
 paging or shipping the extra app profile. Existing library profiles remain in production.
+
+## Next controlled scroll comparison
+
+The [card-blur candidate log](testing/2026-10-04-card-blur-sampling.md) records trace attribution and
+PERF-01–10. Compare control `69d0a3ca` (runtime `00ee58c6`) and the exact candidate source using
+the same library-only profiles, benchmark variant, fixture/device/settings and DEFAULT compilation.
+Run control/candidate/control/candidate rounds with ten iterations each; retain raw distributions,
+CPU P50/P95/P99 and actual overrun metrics separately. Compare visual quality as well as timing,
+including the pinned automatic scale's 7 dp boundary. No candidate hardware result exists yet.
+Do not replace/clear an owner's unsuffixed install: inventory identities/users first and use an
+established disposable benchmark environment. The debug owner delivery and benchmark fixture stay
+separate. A native fallback screenshot cannot accept hardware blur or prove a performance gain.

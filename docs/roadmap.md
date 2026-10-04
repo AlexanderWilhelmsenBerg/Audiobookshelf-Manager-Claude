@@ -99,6 +99,10 @@ ADR-0025/0026, R-25/R-27.
 
 After the small navigation/count fixes, this is the next performance slice while hardware-dependent
 reliability checks are pending.
+The [card-blur candidate/test log](testing/2026-10-04-card-blur-sampling.md) records the ten-trace
+drawing attribution and a bounded general-row sampling candidate. It is prepared on
+`perf/list-scroll-cost`, stacked on browse PR #230; timing and physical quality remain NOT RUN until
+the owner reconnects the phone. Keep this slice unaccepted/unmerged until the controlled comparison.
 Inspect saved frame traces, isolate flat-list/card rendering cost, make one bounded change and compare on the
 same device/fixture/compilation mode. Report CPU timing and actual frame overruns separately. Passing benchmark
 methods do not accept the exceeded comparison budget. Keep manual cached-player latency and ANR stress pending
