@@ -1,5 +1,9 @@
 # Browse selection and counts — 2026-10-04
 
+**Classification:** Dated draft-candidate evidence; results apply only to the recorded source/APK.
+Imported during the 2026-10-04 reconciliation. The associated runtime PR remains unmerged;
+[the roadmap](../roadmap.md) owns current delivery status.
+
 Requirements: LIB-001/002, AUTH-002, PRODUCT_SPEC 17.2/21; PD-006/007; GitHub #227/#228.
 Implementation is on `fix/browse-selection-counts`, stacked on planning PR #226. This report records
 the bounded navigation/count slices; author details #229 remain queued after performance/download work.

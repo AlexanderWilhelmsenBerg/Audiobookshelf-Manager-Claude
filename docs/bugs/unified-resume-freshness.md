@@ -1,5 +1,8 @@
 # #91 — unified resume freshness
 
+**Classification:** Dated evidence snapshot; original source/build findings and results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Status: service wiring is implemented on PR #93 after #81 and #78. Repository `ktlintFormat` has been applied
 to the integration, and the custom notification-skip path is tied into the same invalidation owner. Review
 hardening removed the unsafe second-`/play` adoption recovery and requires explicit session identity before

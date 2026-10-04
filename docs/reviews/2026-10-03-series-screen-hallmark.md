@@ -1,5 +1,8 @@
 <!-- Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 -->
 
+**Classification:** Dated evidence snapshot; original source/build findings and results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 **Current follow-up:** the owner requested smaller cards after the 2178 phone continuation.
 The [2026-10-04 compact revision](2026-10-04-compact-series-cards.md) replaces the stacked normal-row
 layout described below with one adaptive row. This document retains the original audit and validation history.

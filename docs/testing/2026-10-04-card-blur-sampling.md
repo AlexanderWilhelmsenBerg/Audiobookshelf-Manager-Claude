@@ -1,5 +1,9 @@
 # Card blur sampling candidate — 2026-10-04
 
+**Classification:** Dated draft-candidate evidence; results apply only to the recorded source/APK.
+Imported during the 2026-10-04 reconciliation. The associated runtime PR remains unmerged;
+[the roadmap](../roadmap.md) owns current delivery status.
+
 UI & Experience implementation lane; LIB-002, SET-002, PRODUCT_SPEC 17.3/21, ADR-0025/0026, R-25/R-27.
 [Draft PR #231](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/231), stacked on browse PR #230; control source `69d0a3ca` (runtime `00ee58c6`). Phone tests are deferred
 until the owner reconnects it after software work. Every device case below is NOT RUN.
@@ -7,7 +11,7 @@ until the owner reconnects it after software work. Every device case below is NO
 ## Evidence and candidate boundary
 
 Analyze the saved synthetic 2,000-book scroll traces with official Perfetto v58.2. The shareable SQL
-at [scroll-trace-cost.sql](../../scripts/performance/scroll-trace-cost.sql) emits only numeric totals
+at [scroll-trace-cost.sql](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/blob/a807021db0e2cae903f60b9da5fa84f000eb7cb2/scripts/performance/scroll-trace-cost.sql) emits only numeric totals
 and fixed technical categories for BookWave's main/RenderThread. Inclusive categories overlap and
 must not be added together or read as CPU-running time. Traces include idle/animation frames as well
 as the flings, so attribution identifies an experiment; it does not establish a causal blur bottleneck.

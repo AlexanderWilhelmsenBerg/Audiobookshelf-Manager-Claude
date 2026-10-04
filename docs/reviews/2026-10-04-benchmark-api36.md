@@ -1,5 +1,8 @@
 # API-36 benchmark process discovery repair
 
+**Classification:** Dated evidence snapshot; original source/build findings and results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Date: 2026-10-04. Requirements: PRODUCT_SPEC 16.1 and 17.3; ADR-0025; risk R-25.
 
 The 2026-10-03 SM-S928B / Android 16 / API-36 trial failed five cases before producing measurements.

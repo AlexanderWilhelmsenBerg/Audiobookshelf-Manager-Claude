@@ -1,5 +1,8 @@
 # Phase 1 acceptance test plan
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 What a human with an APK, a real Audiobookshelf server and about an hour has to do before Phase 1 can be
 called closed.
 

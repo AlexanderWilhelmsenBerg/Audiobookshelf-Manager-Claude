@@ -1,5 +1,8 @@
 # Phase 2 closeout — one pull request per gap
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Written after PR #12 merged, at the owner's request: *"make a plan to fill all the gaps. I want to handle
 each gap as it's own pull request."*
 

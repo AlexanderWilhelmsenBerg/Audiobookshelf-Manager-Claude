@@ -1,7 +1,7 @@
 # Build and quality gates
 
 **Classification:** Current contract.  
-**Current as reviewed:** 2026-10-03.
+**Current as reviewed:** 2026-10-04 against merged main and its build source.
 
 This document describes the build as it exists on `main`. Historical bootstrap decisions remain in the
 ADRs; they are not current setup instructions.
@@ -16,11 +16,11 @@ build values are:
 | Gradle | wrapper-controlled (`gradle/wrapper/gradle-wrapper.properties`) |
 | Android Gradle Plugin | 8.12.0 |
 | Kotlin | 2.2.0 |
-| KSP | 2.3.11 |
+| KSP | 2.3.12 |
 | compileSdk / targetSdk | 36 |
 | minSdk | 26 |
 | Java bytecode | 17 |
-| ktlint | 1.5.0 (Gradle plugin 12.3.0) |
+| ktlint | 1.8.0 (Gradle plugin 14.2.0) |
 | detekt | 1.23.8 |
 | Kover | 0.9.9 |
 | Media3 | 1.11.0 |
@@ -146,8 +146,8 @@ concurrency groups. Fork PRs remain read-only. Same-repository PR refs retain th
 per kind; closed PRs are cleaned separately. Successful current-main seeds prune older home states per
 OS/job/environment kind, preserving shared dependency/transform/task-output blobs referenced by other jobs.
 
-The proposed Silo/shared remote cache pilot is deferred pending the owner's separate implications research.
-No remote-cache configuration or task-output archive exclusion is enabled by this CI change.
+Remote-cache experiments are outside the active Android scope. Existing trusted main-cache policy
+remains the build contract; this documentation reconciliation changes no cache configuration.
 
 ## Build identity and signing
 

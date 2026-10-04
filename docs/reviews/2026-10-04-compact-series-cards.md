@@ -1,5 +1,8 @@
 <!-- Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 -->
 
+**Classification:** Dated evidence snapshot; original source/build findings and results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 # Compact series cards — 2026-10-04
 
 Requirements: LIB-003, LIB-004, SET-002, product principle 2.10 and section 21.

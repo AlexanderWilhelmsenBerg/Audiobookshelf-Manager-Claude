@@ -1,5 +1,8 @@
 # Phase 2 — every gap, and what closes it
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Written 2026-08-13 after the second device run of wave 5, at the owner's request: *"Find all the gaps of
 the phase 2 and begin to fix the gaps so we can close phase 2 after testing."*
 

@@ -1,5 +1,8 @@
 # Device test — build 0.9.4, the book screen's three-dot menu
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 > **0.9.3 would not start**, on one device and for one reason: it declared database version 14 with a
 > different schema than the 0.9.2 build that had already run on that phone, so Room refused to open the file.
 > Nothing was damaged — Room refuses *before* it writes — and 0.9.4 migrates that database to version 15 and

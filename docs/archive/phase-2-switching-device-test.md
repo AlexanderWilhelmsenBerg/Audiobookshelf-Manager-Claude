@@ -1,5 +1,8 @@
 # Device test — build 0.8.0-wave5-closeout
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Three things came out of the 0.7.0 run. One of them stopped the app being testable at all, so it is first.
 
 ## 1. Playing a second book — the one that was broken

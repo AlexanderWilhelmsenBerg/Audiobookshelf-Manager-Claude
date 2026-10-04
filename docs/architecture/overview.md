@@ -1,7 +1,7 @@
 # Architecture overview
 
 **Classification:** Current contract.  
-**Current as reviewed:** 2026-09-10.
+**Current as reviewed:** 2026-10-04 against merged main; draft runtime is excluded.
 
 This is the current architectural map of BookWave. Historical phase documents remain useful evidence, but
 this file no longer describes only the original Phase 0 vertical slice.
@@ -149,15 +149,15 @@ See [`playback.md`](playback.md). The lasting direction is:
 - one logical book timeline;
 - serialized session/profile ownership;
 - realtime/REST/acknowledgements as evidence;
-- one resume-freshness owner (pending PR #93);
-- future local remembered-book identity separate from server progress recency;
+- one implemented resume-freshness owner, `ResumeFreshnessCoordinator`;
+- implemented profile-scoped remembered-book identity separate from server progress recency;
 - system surfaces call the playback owner rather than implementing playback policy.
 
 ## Android Auto
 
 Android Auto is part of the playback/media-session architecture. The host draws its UI; BookWave supplies a
-browse hierarchy, metadata and media-session actions. PR #78 is the current committed finalization and carries
-ADR-0029 until it merges.
+browse hierarchy, metadata and media-session actions. Accepted ADR-0029 and PD-001 govern the merged
+implementation; historical PR #78 is provenance rather than a pending finalization.
 
 Car/head-unit presentation claims require DHU/real-car evidence. A JVM test of a `MediaItem` cannot prove a
 vehicle rendered it.
@@ -169,8 +169,7 @@ Gradle module only when present coupling/ownership/build evidence makes the boun
 
 ## Future portability
 
-The roadmap's iOS foundation starts by testing whether `:core:model` and selected pure domain policy provide
-real Kotlin Multiplatform reuse. It explicitly does **not** assume shared UI, Media3, WorkManager, Room,
-Android routing or Apple playback should be made common.
+Portability work is outside the active scope. Android remains the required implementation stack;
+no cross-platform foundation or common playback/storage rewrite is queued.
 
 See [`../roadmap.md`](../roadmap.md) for sequencing rather than using this architecture overview as a backlog.

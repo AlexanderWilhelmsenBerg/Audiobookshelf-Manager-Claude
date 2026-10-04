@@ -1,5 +1,8 @@
 # Wave 5 closeout — device test, build 0.7.0-wave5-closeout
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Everything PRODUCT_SPEC names for Phase 2 is now built. This is the run that decides whether that is true in
 practice. Five areas, and the first two are the ones nothing in CI can reach.
 

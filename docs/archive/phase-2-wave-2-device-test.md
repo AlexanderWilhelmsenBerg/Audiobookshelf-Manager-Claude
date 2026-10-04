@@ -1,5 +1,8 @@
 # Phase 2 wave 2 — device test, build 0.2.5-chapters
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Wave 2 is the global timeline, and almost everything about it is invisible until a **multi-file book**
 is played. A single-file book exercises none of the arithmetic this wave added.
 

@@ -1,5 +1,8 @@
 # Device test — build 0.9.3-finished-threshold
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 One requirement, and the rule is **your server's**, not the app's.
 
 Until this build a book was finished when 30 seconds remained, that number was in the code, and your

@@ -1,7 +1,7 @@
 # Risk register
 
 **Classification:** Live risk register with dated entries and preserved closure history.
-**Planning reconciliation:** 2026-10-04 against main `a20bb5b9`; later entry dates override the original
+**Planning reconciliation:** 2026-10-04 against main `8de931f0` (PR #226); later entry dates override the original
 2026-08-21 inventory. [The roadmap](roadmap.md) owns sequencing and the
 [verification register](testing/roadmap-verification-register.md) owns build-specific acceptance.
 
@@ -19,7 +19,8 @@ and the cheapest thing that would retire it. Ordered by blast radius within each
 
 ## 1. Release blockers
 
-These stop a public build. None is a bug; each is a decision nobody has made.
+These were the original public-release decision blockers. The rows below retain their recorded
+closures; current release blockers and acceptance gates are tracked by the roadmap and verification register.
 
 | # | Risk | If it bites | Retired by |
 | --- | --- | --- | --- |
@@ -132,6 +133,13 @@ landing between that read and the cancel could have its transfer cancelled. The 
 a stopped download the user can resume, not lost data. Neither is closed by a lock that spans WorkManager,
 which would be a larger change than the risk justifies; both need a device with a slow disk to observe at all.
 
+A narrower cancellation boundary was reproduced on 2026-10-04 with the real downloader and filesystem:
+synchronous media verification could return after Job cancellation and still rename a valid part or
+clear an invalid complete-416 part. The [draft PR #232 correction/test log](testing/2026-10-04-download-verification-cancellation.md)
+checks cancellation after validation, checkpoints available partial bytes/response metadata and rethrows.
+It does not synchronize WorkManager stop with filesystem deletion, prevent kernel late writes or protect
+a new claim arriving across scheduler cancellation. R-120 and its D-10/DC-P07 physical cases stay open.
+
 ### R-121 — a copy whose last claim belonged to a removed profile cannot be reclaimed in the app
 
 `download_requests` has a cascading foreign key to the profile, so removing a profile deletes its claim rows. If
@@ -175,6 +183,13 @@ shrunk the part. The correction permits a lower count only after a fresh sink op
 still available; absent-owner and pre-sink cases retain known progress. See the
 [review and pending physical cases](reviews/2026-10-04-download-restart-progress.md). R-123 remains open
 for visible progress, process restart and real storage/server acceptance.
+
+Draft PR #232 / APK2183 exposed a paused Book percentage of 28% versus 31% from the correct durable bytes.
+Its unmerged follow-up keeps stale execution progress from overriding stopped Book/Downloads states, with
+two actual caller guards and revert failures. Signed draft APK2184 passes ordinary Pause/relaunch/discard/Resume
+progress checks; controlled acceptance remains open in the
+[download verification log](testing/2026-10-04-download-verification-cancellation.md); controlled
+replacement, storage and concurrent-attempt cases still leave R-123 open.
 
 | # | Risk | If it bites | Retired by |
 | --- | --- | --- | --- |
@@ -265,7 +280,7 @@ for visible progress, process restart and real storage/server acceptance.
 
 | # | Risk | If it bites | Retired by |
 | --- | --- | --- | --- |
-| R-25 | **Measured 2026-10-04; partially accepted.** Benchmark1.5.0 repairs the API-36 discovery failure: all five formerly failed methods plus the library-profile control and two app-profile experiment methods pass on SM-S928B. Fixture startup is <1s in every recorded sample. Scrolling CPU P95 is19.145ms before /20.560ms in the app-profile experiment; positive frame overruns remain. Memory median per-iteration peak is207.3MiB heap /259.3MiB anonymous RSS, with no asserted threshold. | Performance-method success does not accept exceeded frame budgets, cached-player latency or download/playback stress. Libraries already ship profiles; missing app-owned source is not missing profile presence. | Keep the generated stable profile as an [experiment artifact](reviews/2026-10-04-generated-baseline-profile.md), outside production: no demonstrated benefit over the library-profile control. Profile frame/list traces and measure a bounded change. Ten saved traces now identify a drawing/layer-cost experiment; [card sampling candidate](testing/2026-10-04-card-blur-sampling.md) and PERF-01–10 remain unaccepted until phone timing/quality comparison. No speedup or R-25 closure is claimed. Manual cached-audio startup, controlled stress and other devices remain NOT RUN. Historical 1.3.4 failures retain their dated FAIL status; see [phone evidence](testing/2026-10-04-phone-2179.md). |
+| R-25 | **Measured 2026-10-04; partially accepted.** Benchmark1.5.0 repairs the API-36 discovery failure: all five formerly failed methods plus the library-profile control and two app-profile experiment methods pass on SM-S928B. Fixture startup is <1s in every recorded sample. Scrolling CPU P95 is19.145ms before /20.560ms in the app-profile experiment; positive frame overruns remain. Memory median per-iteration peak is207.3MiB heap /259.3MiB anonymous RSS, with no asserted threshold. | Performance-method success does not accept exceeded frame budgets, cached-player latency or download/playback stress. Libraries already ship profiles; missing app-owned source is not missing profile presence. | Keep the generated stable profile as an [experiment artifact](reviews/2026-10-04-generated-baseline-profile.md), outside production: no demonstrated benefit over the library-profile control. Profile frame/list traces and measure a bounded change. Manual cached-audio startup, controlled stress and other devices remain NOT RUN. Historical 1.3.4 failures retain their dated FAIL status; see [phone evidence](testing/2026-10-04-phone-2179.md). |
 | R-26 | **Closed 2026-08-21 — ADR-0025.** The question was whether 17.3's *"scrolling grid ... on 2,000-item fixture library"* describes a screen this app has. **It does not.** A full sweep found `LazyVerticalGrid`, `LazyHorizontalGrid` and `GridCells` appearing zero times in the repository; Home is a `LazyColumn` of capped 20-item `LazyRow` shelves, the flat "all books" view is a list, and the library-browse destination was deliberately removed. | Building the benchmark first would have meant inventing a grid to satisfy a measurement, or measuring something else and calling it the target — the ADR-0016 failure again, where a "known defect" stood for four phases on one unchecked premise. | The target now measures `BooksView.List`, the screen that exists. ADR-0025 also adds the target 17.3 could not have named, because it describes a grid rather than an architecture: **there is no paging**, `Flow<List<Book>>` materialises every visible book per emission, and `HomeViewModel` reasons about that cost at 490 books — 2,000 is four times what the code was thought about at. Whether to adopt paging is deliberately left to the measurement. |
 | R-27 | **Coil's memory cache is at its defaults** with covers loaded at shelf density. | Untested on a low-memory device, which is where an audiobook app spends its life — long sessions, screen off, background. | A measurement, not a change. Guessing at a cache size is how a cache gets worse. |
 
