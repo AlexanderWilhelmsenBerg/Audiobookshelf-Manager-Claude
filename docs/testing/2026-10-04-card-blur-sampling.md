@@ -1,7 +1,7 @@
 # Card blur sampling candidate — 2026-10-04
 
 UI & Experience implementation lane; LIB-002, SET-002, PRODUCT_SPEC 17.3/21, ADR-0025/0026, R-25/R-27.
-Stacked on browse PR #230; control source `69d0a3ca` (runtime `00ee58c6`). Phone tests are deferred
+[Draft PR #231](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/231), stacked on browse PR #230; control source `69d0a3ca` (runtime `00ee58c6`). Phone tests are deferred
 until the owner reconnects it after software work. Every device case below is NOT RUN.
 
 ## Evidence and candidate boundary
@@ -62,13 +62,13 @@ only in frostedGlass for the already-pinned library; this adds no dependency or 
 | PERF-01 | Analyze all ten existing library-profile control scroll traces; preserve source, tool/version, trace hashes and aggregate category numbers. | PASS — all ten original control traces analyzed; candidate timing NOT RUN. |
 | PERF-02 | Audit actual Home/focused-list BookCard → GlassCard → cardGlass → frostedGlass effect callback; every other caller retains default sampling. | PASS — both Home/focused Books and existing Author list reach BookCard; only BookCard opts in. Other cards/chrome default to existing sampling. |
 | PERF-03 | Normal/200% native fixture render and real Home row details click, title/progress semantics, cover fallback and selection/count regression suites. Hardware blur is not reproduced by Robolectric. | PASS for 11 focused software cases: two native flat-row details/selection/count guards, three settled-selection regressions, four count cases and two glass content-color cases. Physical blur/progress visibility remains pending. |
-| PERF-04 | ktlintFormat and full verifyDebug with warnings-as-errors; benchmark/release-like assembly. Record failures and reruns; no changed classpath permits cache reuse. | PASS — ktlintFormat/full strict verifyDebug in 4m43s, 1,122 tasks (378 executed, 392 cached, 352 up-to-date). Benchmark packaging pending below. |
+| PERF-04 | ktlintFormat and full verifyDebug with warnings-as-errors; benchmark/release-like assembly. Record failures and reruns; no changed classpath permits cache reuse. | PASS — ktlintFormat/full strict verifyDebug in 4m43s, 1,122 tasks (378 executed, 392 cached, 352 up-to-date). Candidate/harness packaging passed in 2m18s and control in 1m46s; explicit-identity rebuilds below also pass. |
 | PERF-05 | Same phone/API/display/thermal/power, synthetic fixture, no app-owned profile, compilation mode, scroll journey and ten iterations. Build exact control/candidate APKs; run alternating control/candidate rounds and compare CPU P50/P95/P99 plus actual overrun percentiles/distributions separately. | NOT RUN — phone required; performance benefit/16.7 ms budget unaccepted. |
 | PERF-06 | Physical cards at blur 0, below/at 7 dp, default 28 dp and maximum, card tint on/off, gradient/artwork/light/dark/AMOLED, moving/parallax background and rounded borders. Compare control/candidate screenshots for artifacts, grain, edges and lost contrast. | NOT RUN — phone required; visual-quality acceptance pending. |
 | PERF-07 | Physical flat/focused rows, missing/cached/offline covers, scrolling with active player, all axes/rapid gestures, selection/counts, details/Back and local progress; same book continues without unintended Play/queue changes. | NOT RUN — phone required; existing PR #230 results do not accept this candidate. |
 | PERF-08 | Physical English/Norwegian, 200% text, orientation, reduced motion and actual TalkBack; targets/labels/order remain usable. Retain known fixed-row clipping/theme obligations in the UI register. | NOT RUN — phone required; semantic/source tests alone are insufficient. |
 | PERF-09 | API 26–30 no-blur fallback and API 31+ actual blur, low-memory device if available; startup/memory benchmark controls to detect displaced work. Covers-present workload remains separate from the coverless synthetic floor. | NOT RUN — device/configuration comparisons required. |
-| PERF-10 | Recheck trusted signing/source/version and in-place data retention before candidate phone delivery; prepare exact APK and benchmark artifacts. Connected datastore/security tier after reconnect. | NOT RUN — artifact/device identity pending. |
+| PERF-10 | Recheck trusted signing/source/version and in-place data retention before candidate phone delivery; prepare exact APK and benchmark artifacts. Connected datastore/security tier after reconnect. | Trusted artifact/source/signer checks PASS for debug 2182 and both benchmark APKs; installation/About/data retention and connected tier NOT RUN — phone required. |
 
 Q-05 cached-audio five-start latency and concurrent download/playback ANR stress remain separately
 NOT RUN, along with broader download, host, sensor, account and accessibility matrices. This slice
@@ -82,7 +82,7 @@ Focused formatter + four test classes passed in 2m15s (353 tasks; 104 executed, 
 cost: the new row tests exercise details-without-Play, title visibility, count and selected semantics.
 They are not claimed to fail when sampling is disabled, because a correct compatibility guard should
 pass for both control and candidate. Actual sampling reachability is audited above; its benefit is
-PERF-05's physical obligation. Full strict verification/benchmark assembly results follow separately.
+PERF-05's physical obligation. Full strict verification and benchmark assembly results are recorded below.
 
 ![Normal native fixture flat row](evidence/flat-book-en-375dp.png)
 
@@ -98,4 +98,42 @@ An initial local command lacked its ignored log directory and did not launch Gra
 tooling-cache startup was interrupted before tests; both are non-acceptance attempts. The accepted
 focused run above used the populated local Gradle cache. No phone settings/data were touched this round.
 
-Full `ktlintFormat verifyDebug -Pshelfplayer.warningsAsErrors=true`: PASS in 4m43s, including release/benchmark Kotlin compilation, lint/detekt, tests and both coverage gates. All 41 targeted Home/gesture/count/native row cases plus two glass-color cases pass. No dependency/classpath change requires a forced rerun. Benchmark APK packaging and physical acceptance remain separate.
+Full `ktlintFormat verifyDebug -Pshelfplayer.warningsAsErrors=true`: PASS in 4m43s, including release/benchmark Kotlin compilation, lint/detekt, tests and both coverage gates. All 41 targeted Home/gesture/count/native row cases plus two glass-color cases pass. No dependency/classpath change requires a forced rerun. Benchmark packaging passed; physical acceptance remains separate.
+
+## Exact artifacts prepared for the next phone session
+
+Runtime candidate source `a70bfdf7e7690270c03ef553f722a2ec4c56eeb6`; control source
+`69d0a3cad45ed75e200e488c344cf0a82ff5524d`. Later report-only commits are not different tested
+binaries. Both prebuilt benchmark targets use `org.homebord.bookwave`, version code 2000, the same
+local signer, non-debuggable/profileable manifest, compiled library .prof/.profm and no app-owned
+MainActivity profile rule. The generated experiment profile remains outside the consumer.
+
+Initial benchmark packaging succeeded but the identity verifier rejected both artifacts' default
+`unknown`/`local` labels. Those bytes were not accepted for measurement. Rebuilding with explicit
+bookwave.commit/branch/pr/versionCode inputs passed: control 3m24s and candidate 3m58s. No app runtime
+code changed during this correction. Exact embedded source prefixes and matching benchmark signers
+are now verified. Nothing was installed/run on the phone this round.
+
+| Artifact | SHA-256 | Identity / use |
+| --- | --- | --- |
+| `bookwave-scroll-control-69d0a3ca.apk` | `ba89103e75363ba78197f069414a4c0a224970a4969b49d2cfd05bde264fdfcc` | Source `69d0a3cad45e`; Prebuilt ten-iteration scroll target; same library-profile-only mode. |
+| `bookwave-scroll-candidate-a70bfdf7.apk` | `482c05bbdbd53b259d3c76543d4b33143db1438d7b1962f6aa17a3420d33c3ab` | Source `a70bfdf7e769`; Prebuilt ten-iteration scroll target; same library-profile-only mode. |
+| `bookwave-benchmark-harness-a70bfdf7.apk` | `1012f4d902684f57269007dfb817464000159153c944b027326fc2f3bee970ca` | Source `a70bfdf7e769`; Existing LibraryScaleBenchmark journey; install only as disposable test harness. |
+| `bookwave-debug-0.10.6.1-2182.apk` | `3605a003778d529ede731c26fe72f25087c05b91e60a237e615b7647d95bc13f` | Trusted signed debug 0.10.6.1 / 2182, source `a70bfdf7e769`; owner-app physical visual/function/upgrade tests pending. |
+
+Benchmark signer SHA-256 `93c0cfeb104f6302bc5d03bacc2a70cd6405d8a41ae10af62d8c20027f5a9b3b` is the local disposable-install signer; it differs
+from owner debug delivery signer `c63c72cb2c4b32a8ed3775e4cc0b5754abf06b5beb4481ea5a8f5c5c0dd9217c`. Do not substitute benchmark bytes for the
+owner's debug app. All files are preserved under the ignored local `build/deliveries/2026-10-04`.
+
+[Standard CI 37215001583](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37215001583) passed the exact candidate source and dispatched the
+trusted [APK producer 37215412359](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37215412359).
+The dispatch workflow itself ran on main; its successful Resolve APK source job verified PR #231's
+immutable candidate head before checkout/signing. Artifact 11308540545 archive digest,
+APK signature/package/version and embedded source match; embedded Loopbound source is
+`7e24529b2a9e419218d2a1423d832b1bf587c8ef`. No secrets or private media strings are published.
+
+PERF-05–09 remain **NOT RUN — phone required**; PERF-10's physical upgrade/About/data-retention and
+connected-security parts also remain NOT RUN. Preserve or reject the sampling candidate based on
+repeatable paired timing and physical quality, not the passing software gate. The original budget
+failure remains open. The next implementation lane remains downloads after this bounded comparison;
+author details retain the roadmap's later position.
