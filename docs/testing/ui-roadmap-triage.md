@@ -1,12 +1,34 @@
 # Remaining Android UI work — 2026-10-03
 
 **Classification:** Source reconciliation and future acceptance plan, not rendered acceptance.
-**Baseline:** GitHub main `81a06e1`. [The roadmap](../roadmap.md) owns sequencing.
+**Source snapshot:** GitHub main `81a06e1`; this table is dated source evidence.
+**Reconciled:** 2026-10-04 through main `a20bb5b9`. [The roadmap](../roadmap.md) owns sequencing.
+PRs #220/#222 have delivered the shared series/card slice; [2179 phone evidence](2026-10-04-phone-2179.md)
+accepts selected compact/glow/large-text subcases. It does not close the broader #194/#195 audits or
+#187's all-card-family scope. Inspect current callers before implementing a remaining proposal.
 **Owner:** UI & Experience, with Test & Acceptance review.
 
-Complete the playback/download correctness gate before these presentation slices. Preserve Material 3,
-repository-backed state, remembered-book ownership, author-before-title shelf ordering and existing routes.
+Critical playback/progress/privacy defects take precedence. Under the owner's 2026-10-04 ordering, fix
+the gesture/count bugs next while hardware acceptance remains pending, then return to performance/download
+work. The author page is the first larger remaining UI slice. Preserve Material 3, repository-backed state,
+remembered-book ownership, author-before-title shelf ordering and existing destinations.
 The proposals in #194 do not authorize an authentication/navigation rebuild or changes to other Settings tabs.
+
+## Owner-requested child issues — 2026-10-04
+
+These are planned scopes, not rendered acceptance. PD-006 adds the browse/navigation behavior to LIB-002.
+No runtime implementation, new endpoint or schema change is included in this registration.
+
+| Issue | Current source / report | Delivery boundary and test log |
+| --- | --- | --- |
+| [#227 gesture highlighting](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/227) | Owner: Books → Series → Books leaves Series highlighted although the pill returns to Books. Pager position drives the pill, uiState.axis drives selected labels; the listener can capture an old axis. This is a hypothesis pending reproduction. | First small bug. Guard the actual pager/ViewModel callback path; keep taps/cancelled gestures/recreation/settled semantics and playback consistent. U-06-01–06, all NOT RUN. |
+| [#228 browse entity counts](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/228) | Home sync label currently flattens represented books and uses book plurals for every axis. | Second small bug. Count books/series/authors/genres for the displayed authorized scope; retain uncapped source totals and partial/loading status. U-07-01–05, all NOT RUN. |
+| [#229 grouped author page](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/229) | Authors cards narrow Home to Books; existing AuthorRoute from Book details renders a flat author shelf. | First larger UI slice after performance/download work. Reuse the destination, add Series/Standalone projections and truthful completion, preserve genre focus and Back/privacy/offline boundaries. U-08-01–07, all NOT RUN. |
+
+The author page changes the deliberate earlier in-place Authors behavior; its old source comments are
+implementation history to reconcile in that future feature PR. Completion remains based on authoritative
+progress and full accessible series membership, not a filtered/author-only subset. Preserve PD-005's subtle
+inward green cue without checkmarks and provide readable/spoken completion information.
 
 ## Reconcile the first audit before implementing it again
 
@@ -54,7 +76,7 @@ targets, keyboard/system Back where relevant and reduced motion. Record APK comm
   compare standalone rendering and reduced motion, then try opaque-background/Haze isolation. The upstream
   explanation remains a hypothesis; choose a permanent mitigation only after the matrix identifies it.
 - #101 series formatting: change display copy separately, preserving primary series selection and ordering.
-- New system surfaces and iOS retain the roadmap's correctness gate; this UI audit does not advance them.
+- New Android system surfaces retain the roadmap's correctness gate; this UI audit does not advance them.
 
 No render, TalkBack, physical WebView or device acceptance was performed for the original reconciliation.
 The later [supplied-phone pass](2026-10-03-phone-acceptance.md), on main `8beec05c` / API 36, samples

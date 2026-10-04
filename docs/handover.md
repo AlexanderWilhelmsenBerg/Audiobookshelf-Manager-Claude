@@ -1,4 +1,9 @@
-# Handover
+# Historical engineering handover
+
+**Classification:** August 2026 implementation/device snapshot, reconciled as historical on 2026-10-04.
+Its work-in-flight, missing-code and never-tested claims describe that snapshot. Use [the roadmap](roadmap.md),
+[verification register](testing/roadmap-verification-register.md), [testing guide](testing.md) and
+[architecture](architecture/overview.md) for current work; do not replay its old installation/setup sequence.
 
 Status rechecked against `main` and a signed-in physical device on 2026-08-23, not from recollection. Every
 "done" below is backed by a file that exists, an explicit artifact, or a named observation; those evidence

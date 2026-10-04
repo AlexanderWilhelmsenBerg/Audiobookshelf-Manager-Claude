@@ -1,204 +1,220 @@
-# BookWave roadmap
+# BookWave Android roadmap
 
 **Classification:** Active plan — canonical sequencing authority.
-**Reconciled:** 2026-10-04 against GitHub main `02dd77c1`, including merged PRs #205–#224
-and the supplied-phone acceptance continuations.
+**Reconciled:** 2026-10-04 against GitHub main `a20bb5b9` (merged through PR #225),
+the open GitHub tracker, dated phone/performance evidence and the owner's new browse/priority decisions.
+Implementation of those new decisions is planned, not accepted; PR #226 carries this documentation update.
 
-This is the only document that answers what BookWave should work on next. `PRODUCT_SPEC.md` supplies
-requirement IDs, `product-decisions.md` owns settled product choices, and accepted ADRs own architecture.
-GitHub is authoritative following the 2026-10-01 cutover. Unqualified issue/PR numbers below refer to GitHub;
-historical Forgejo numbers are explicitly labelled.
+This is the only document that orders the next work. [PRODUCT_SPEC](../PRODUCT_SPEC.md) supplies
+requirements, [product decisions](product-decisions.md) own settled behavior, and accepted ADRs own
+architecture. GitHub has been authoritative since the 2026-10-01 cutover; unqualified issue/PR numbers
+below are GitHub numbers. Historical Forgejo provenance does not create another implementation queue.
+The updated snapshot has 42 open Android issues, parked Garmin #119 and open planning PR #226. Open issues can contain merged
+implementation, residual design work and missing acceptance; none is closed by this reconciliation.
 
-The selected CI wait/storage improvements are implemented; reliability acceptance is the next lane.
-Preserve playback continuity, progress, profile privacy and offline media before adding surfaces or platforms.
-An open issue is not proof that implementation is missing. See the
-[dated issue inventory](reviews/2026-10-02-reliability-inventory.md) for its 44-issue snapshot and evidence;
-#111 closed with #209 on 2026-10-03, leaving 43 open issues at this reconciliation.
-Merged code, automated verification and physical acceptance are separate statuses.
-The owner supplied an API-36 phone on 2026-10-03. The [first pass](testing/2026-10-03-phone-acceptance.md)
-records 27 passing instrumented tests and local playback/restart/manual timer subcases. Five benchmark
-cases failed in the harness; actual car/headset, transfer/account fixtures and two-hour soak remain pending.
-Use the [verification register](testing/roadmap-verification-register.md)
-to log every required case and its evidence. Include a verified debug APK with the final CI handoff for each
-delivery batch; keep iOS development on hold alongside Silo, as requested on 2026-10-04.
+## Delivered baseline and remaining gates
 
-## 0. CI efficiency before feature expansion
-
-### Owner-requested prerequisite: series, history and sleep fixes
-
-Before returning to the reliability queue, deliver the owner's 2026-10-03 series readability/finished-state
-fix, offline rolling History checkpoints with chapter/date/progress detail, and paused timer / playing-only
-creation fixes with Extra high / Ultra high motion sensitivity (PD-002 amendment, PD-005). Track each required
-test in [the fix log](testing/2026-10-03-series-history-sleep.md); the [Hallmark findings](reviews/2026-10-03-series-screen-hallmark.md)
-cover the series-only slice of #194. Keep the broader UI issues open. Resume reliability afterwards;
-the Silo research deferral and iOS development hold remain unchanged. PR #220 delivered these fixes and the
-owner's inward green completion cue; PR #221 corrected R-123's stale byte count after a fresh download
-restart and a second cancellation. The [2178 phone continuation](testing/2026-10-04-phone-2178.md)
-records completion-state/large-text/last-row checks, paused timer behavior and abrupt offline process
-recovery with less than four seconds of estimated loss. Missing hardware/server/bedside tests stay open.
-The owner's subsequent compact-card revision is tracked in
-[its review and verification log](reviews/2026-10-04-compact-series-cards.md). Normal rows must be compact
-without restoring fixed-height truncation; large text remains content-driven.
-
-- #212 implements automatic main cache seeding in the PR container/job; retain one debug verification per merge
-  and the main workflow's release/security checks. Main push classification, schema immutability and secret
-  scanning compare against the previous main SHA, preserving classpath-forced reruns.
-- Automatic checks supersede older runs on the same PR/main ref. Manual runs remain independent. Keep PR
-  cache cleanup and prune obsolete main home-state generations without deleting shared content blobs.
-- #214 implements the debug/JVM coverage gate with the same filters/modules/80% threshold, explicit release/benchmark
-  compilation on PRs and release unit tests on main. Its app unit sandbox fix isolates production collectors;
-  preserve the existing overspill regression. The [R-125 security follow-up](reviews/2026-10-04-security-coverage.md)
-  hooks the existing 90% redaction rule into ordinary verification; its unchanged report reaches 96.72%.
-- Record queue delay, verification duration and cache restore/save time separately under #188. Quick remains
-  formatting evidence; Standard retains the full regression gate and local `verifyDebug` includes assembly.
-  [Three dated timing samples](reviews/2026-10-03-ci-timing-baseline.md) establish the measurement fields,
-  not a controlled performance claim.
-- **Deferred by the owner:** the Silo/shared Gradle cache pilot waits for separate implications research.
-  Keep GitHub-hosted runners and current dependency/task caches. Remote-cache wiring, credentials, hosting
-  and task-output archive exclusions are outside the active lane; reliability work can proceed independently.
-
-The CI implementations are merged. Local full gates passed; CI checks belong to each PR's current head.
-After each merge, verify the trusted main seed/release run and measure
-the next PR's restore/save timings before claiming a cloud performance improvement. The schema preflight
-also has real-Git fixtures for stacked PRs, published-schema edits/deletions and new versions.
-
-**Owner:** Build & Dependencies. **Requirements:** specification 16.5, 17.1/17.3 and 18.
-
-## 1. Playback and Android Auto acceptance
-
-- PR #205's idle car restore, remembered-book observation, resume-tile invalidation and paused
-  profile-switch fallback are merged. The follow-up profile-identity guard rejects a suspended restore
-  after switching unlocked profiles. PR #216 adds mutation-time A → B → A
-  invalidation, transport ownership, captured-profile storage and guarded book/timer/session acceptance.
-  Keep R-115's physical acceptance and the documented server/local preparation and outgoing-close limits.
-- Merged #211 keeps the book title during phone timer presentation. The integrated #213 keeps timer metadata
-  out of Android Auto, suppresses new scheduled starts while Auto is connected, preserves existing/manual
-  timers, and rechecks schedule eligibility on disconnect without starting audio.
-  Use PD-002 and `device-test-sleep-schedule.md` for physical acceptance.
-- Accept #128/#100 (headset continuity/route ownership), #185 (idle restore), #126/#196 (output state/Queue),
-  #130 (phone/car controls), and #99/#191 (browse/profile invalidation). Principal implementations already
-  exist on main. PR #205 adds follow-up tests and behavior.
-- #128 is historical Forgejo #36. Its focused review found that Projection → Unknown → NotConnected could
-  lose the departure edge, while Unknown → Projection could repeat arrival. Preserve the existing positive
-  lifecycle latch across unreadable provider results. The five real monitor-to-service cases and
-  [detailed review/device matrix](reviews/2026-10-03-issue-128-continuity-review.md) supplement the continuity
-  suite; physical entry/departure and audible routing remain pending.
-- Use [the combined drive checklist](android-auto-pd001-drive-acceptance.md) and
-  [browse invalidation checks](android-auto-browse-invalidation-acceptance.md). Include headset Previous,
-  Rewind and Fast-forward from merged PR #204. Record the APK commit and device/host versions.
-- Preserve PD-001's **Continue → Series → Authors → Profiles** root. History is absent from car browse;
-  #196 requires the standard Queue affordance to be absent, not replaced by History.
-- Reproduce failures on the candidate build before changing routing. Explicit selection wins over inferred
-  routes; a merely connected headset is not heard-route evidence; a deliberately paused book stays paused.
-
-**Owners:** Android System & Auto and Playback & Lifecycle, with Test & Acceptance review.
-**Requirements:** PLAY-001/002/004/007, ROUTE-001/002, AUTH-002, LIB-002/003, specification 5.2 and 6.5.
-**Gate:** physical headset/car evidence remains required; JVM tests cannot close this gate.
-
-**Integration evidence:** #214 supplied the shared coverage/app-unit prerequisite for #212/#215/#216;
-#211 supplied #213's phone presentation change. The combined candidate `c6236833` passed the forced
-`ktlintFormat verifyDebug -Pshelfplayer.warningsAsErrors=true --rerun-tasks --max-workers=4` gate in
-7m 21s, with all 1,119 tasks executed. #217's projection-lifecycle correction then passed the forced full
-gate in 6m 59s and merged; main `b7266a3d` passed trusted debug seed, release/security and signed APK runs.
-Merged #218's R-122 correction adds its own [regression and full-gate evidence](reviews/2026-10-03-shared-download-ownership.md).
-Main `8beec05c` passed trusted debug/cache, release/security and signed APK workflows. The installed
-2175 APK matches those bytes; the [phone report](testing/2026-10-03-phone-acceptance.md) records its limited
-physical acceptance. Keep #128 open: this run did not exercise a heard headset or projected Auto.
-Current-head PR and post-merge main checks remain authoritative.
-Silo remains deferred, and physical acceptance remains open.
-
-## 2. Verify the merged download reliability lane
-
-Forgejo PR #94 (`8ea2122f`) already merged the former implementation queue. The table below is the
-merged implementation **awaiting physical/device acceptance**. Assess remaining open-issue closure against
-that evidence; #111's closed ownership work retains its physical follow-up under R-119.
-Forgejo issue numbers are the historical tracker's and are matched to GitHub by title and order; only #19 is
-corroborated by code comments (`BW-DL-04 / #19`), so treat the others as inferred.
-
-| GitHub issue | Forgejo issue | Implemented behavior | Remaining acceptance |
-| --- | --- | --- | --- |
-| #108 | #18 | State-owned Pause / Resume / Retry, originally Forgejo PR #55 | Failure/restart actions preserve partial bytes. |
-| #109 | #19 | Aggregate WorkManager waiting/retry observation | Constrained/retrying work recovers across process restart. |
-| #110 | #20 | Volume identity, conservative verifier and storage projection | Card removal/reinsertion and disclosed internal fallback without redownload (R-116). |
-| #111 | #21 | Shared copy, profile claims and device pin. PD-003 settles ownership. | Last-claim removal, shared-copy retention and metadata redaction. |
-| #112 | #22 | Confirmed partial-data discard, separate from Retry | Confirmation preserves committed media; ordinary Retry is non-destructive. |
-| #120 | #29 | Active queue, live progress and notification navigation | Independent transfers, state transitions and denied notification permission. |
-
-#111 is **decided and implemented**: PD-004 (the owner's decision on tap behaviour, profile-scoped removal and
-the in-flight Pause / Stop prompt) landed through GitHub PRs #207 (claim-aware removal, floored percent,
-domain recovery actions, `.part` bytes recorded on cancel) and #209 (Book button percent and ring, Pause / Stop /
-Keep prompt, Paused and Resume, claim-aware Downloads removal). Pause is offered only for a copy no other
-profile claims. Its device checks are R-119. Merged PR #215 covers R-124's Book observer/Pause wiring gap with five
-actual ViewModel scenarios that fail when the observer projection is removed. The residual risks are:
-
-| Risk | Next evidence/action | Scope boundary |
+| Area | Delivered on main | What is still open |
 | --- | --- | --- |
-| R-120 asynchronous cancel / new-claim race | Reproduce late writes and a new claim arriving during removal on a slow disk. | Do not introduce a cross-WorkManager lock without evidence. |
-| R-121 last-profile orphan copy | Separately scope the owner decision and space-recovery UX. | Unclaimed-copy cleanup remains outside the Phase 3 downloads work. |
-| R-122 shared transfer's original profile | Four downloader regressions reproduced the gap. Current eligible claimants now authorize each file/cover; run the [device matrix](reviews/2026-10-03-shared-download-ownership.md). | Keep the same WorkManager request/network constraints; no active-profile fallback or blind account retry. Physical acceptance remains pending. |
-| R-123 resume without ETag | Second-cancellation stale bytes reproduced for no-ETag and declined-range restarts; correction saves actual replacement length only with the owner available. See [review and missing tests](reviews/2026-10-04-download-restart-progress.md); screen/notification/restart/card acceptance stays pending. | Preserve committed media and absent-volume progress; never resume bytes without a validator merely to keep percent monotonic. |
+| Series, History and sleep | PRs #220/#222: compact, content-driven series rows; inward green completion glow without a checkmark; dated/progress/chapter History and local rolling checkpoints; playing-only timer creation, frozen countdown during pauses, Extra high/Ultra high sensitivity. | #187 covers other card families too. Full appearance/TalkBack, sensor/bedside, power-loss and account/sync matrices are not accepted by the selected phone checks. |
+| Playback and car continuity | PRs #205/#211/#213/#216/#217: guarded restore/profile/transport ownership, correct book title and car timer presentation, schedule eligibility and projection lifecycle latch. | Heard headset/projected car, idle restore, controller/privacy and two-hour acceptance. Historical Forgejo issue #36 is GitHub #128; its source regression is fixed, its hardware gate is open. |
+| Downloads | Existing execution observer, recovery actions, claims/device pin and discard flow; PRs #207/#209/#215/#218/#221 add UI wiring, current-claim credentials and actual replacement-byte checkpointing. #111 is closed. | Physical transfers, storage, sharing/privacy and R-119–R-123. Closed ownership implementation does not accept its device matrix. |
+| CI and security | Main cache seeding, verification tiers, debug aggregate coverage, release/security checks and the existing 90% redaction gate are wired. PR #224 records 96.72% redaction coverage. | #188's residual audit/timing evidence; no controlled CI speedup is claimed. Quick alone is insufficient for runtime acceptance. |
+| Phone/performance | Build 2179: selected compact-series checks and 27 connected datastore cases pass. Benchmark 1.5.0 repairs API-36 discovery; eight benchmark executions pass. | Startup fixture meets <1 s; list CPU P95 is 19.145 ms before / 20.560 ms in the profile experiment, above the 16.7 ms comparison budget. Manual cached-audio startup and concurrent download/playback stress are NOT RUN. |
+| Delivery | Main `a20bb5b9` passed main release/security, debug cache-seed and signed APK workflows. Verified debug 0.10.6.1 / code 2180 is available. | Final 2180 install/upgrade, About identity and phone smoke are NOT RUN; the phone disconnected after the 2179 run. Evidence does not transfer automatically between APKs. |
 
-Fix reproducible gaps in these paths. Do not build another execution adapter, persist WorkManager state into
-Room or reopen settled physical-copy ownership. Verify server-and-item identity at the storage/active-profile
-join: identical item IDs across servers are not authorization.
+Use the [2178](testing/2026-10-04-phone-2178.md) and [2179](testing/2026-10-04-phone-2179.md)
+reports for exact tested builds and subcases. The [verification register](testing/roadmap-verification-register.md)
+owns every required case/result; [risks](risks.md) own unresolved failure modes. Dated reports retain their
+original FAIL/NOT RUN entries even when a later run passes.
 
-Use [reliability acceptance](testing/reliability-acceptance.md). Keep physical checks pending when hardware
-is unavailable; do not close issues solely because code merged. This lane can proceed independently while
-car acceptance awaits hardware.
+## Ordered delivery lanes
 
-**Owner:** Offline & Downloads. **Requirements:** DL-001/002/003/004/006, AUTH-002, specification 5.2, PD-003.
+Any reproduced playback, progress, privacy or permission defect takes precedence over performance,
+presentation and new surfaces. Work one bounded requirement group at a time. Missing car/storage hardware
+does not block independent software work: carry its acceptance gate forward and record the missing case.
 
-## 3. Remaining Android work
+### 1. Finish playback, progress and sleep reliability acceptance
 
-- **Accessibility/UI:** reconcile #194/#195 findings into concrete child slices. PR #200 already changed
-  mini/full players and motion (#182/#183 and part of #177/#178). Assess residual criteria rather than
-  reapplying earlier designs. Prioritize contrast, clipping, player clearance and recovery before polish;
-  require narrow/wide, 2.0 font scale, TalkBack and reduced-motion evidence. The
-  [concrete child slices](testing/ui-roadmap-triage.md) distinguish current code from missing work, include
-  #176's root/pushed Sign-in Back context, and sequence #194's geometry/clearance/preview fixes before polish.
-- **Acceptance follow-ups:** the supplied phone's landscape player text over bright artwork needs a
-  controlled contrast check; an inherited warm Starting state needs a defined reproduction. The
-  [2179 phone continuation](testing/2026-10-04-phone-2179.md) passes the compact series text/glow/last-row
-  subsets and all 27 connected storage tests. Benchmark1.5.0 physically fixes API-36 process discovery;
-  eight benchmark executions now pass. Startup meets the measured fixture target; list CPU P95 remains
-  above16.7ms (19.145 before /20.560ms in the app-profile experiment). Profile the saved frame traces,
-  isolate list/card rendering cost, make one bounded change and repeat a controlled comparison.
-  The [generated profile experiment](reviews/2026-10-04-generated-baseline-profile.md) showed no
-  demonstrated benefit and stays outside the production consumer; existing library profiles ship.
-  Memory is a baseline, not justification for a paging rewrite. Manual cached-player latency/stress,
-  full accessibility/theme/landscape, car/headset and controlled transfer/account fixtures remain open.
-- **#190 WebView flicker:** run its provider/version, opaque-background and Haze-isolation matrix on an
-  affected device before choosing a permanent mitigation. The upstream explanation remains a hypothesis.
-- **#188 CI:** tiers landed in Forgejo PR #91, then GitHub PRs #173/#201. Audit remaining coverage/telemetry
-  requirements against current workflows. Retain full Standard regression acceptance; Quick alone is not a
-  merge gate. Local `verifyDebug` still includes assembly.
-- **#124/#189 sleep:** schedule and countdown/grace/sensitivity landed in Forgejo PRs #63/#84/#93. The
-  #211/#213 implementation lane is above; notification, sensor, grace and lifecycle device acceptance remains pending.
-- **#101:** keep display-only series formatting cleanup separate; preserve primary selection and ordering.
+**Owners:** Playback & Lifecycle; Android System & Auto. **Requirements:** PLAY-001/002/004/005/007/008/009,
+ROUTE-001/002/003, AUTH-002/003, LIB-002/003; specification 5.2, 6.5, 17 and 21.
 
-## 4. Android system surfaces; iOS on hold
+- Begin the next phone delivery with Q-01/A-08: verify the exact signed APK, in-place upgrade/data retention,
+  About/source identity and the affected smoke cases. Reproduce the inherited warm Starting state before
+  selecting a playback fix; it is an observation, not a diagnosed cause.
+- Complete P-01–P-12 and C-01–C-08 with controlled local/remote/profile fixtures: offline outbox reconciliation,
+  server/local history, power loss/reboot, multi-file chapters and the two-hour soak. Preserve captured profile
+  ownership, paused intent and progress-loss limits. Selected offline SIGKILL recovery already passed on 2178;
+  that is not power-loss, remote or whole-matrix acceptance.
+- #128/#100/#185/#126/#196/#130/#99/#191 await heard-route and projected-host evidence. Run the
+  [drive checklist](android-auto-pd001-drive-acceptance.md), [browse checks](android-auto-browse-invalidation-acceptance.md)
+  and [continuity matrix](reviews/2026-10-03-issue-128-continuity-review.md). Preserve PD-001's
+  Continue → Series → Authors → Profiles root; no History or replacement Queue. Unknown projection reads
+  preserve the positive lifecycle latch; they do not independently disconnect or repeat arrival.
+- #124/#189 await S-01–S-05 and the [sleep runbook](device-test-sleep-schedule.md): schedules/civil boundaries,
+  phone notification/lock screen, car suppression, grace ownership and actual sensor/bedside false positives.
+  A timer starts only with playing audio; pause/focus loss/buffering freeze its countdown. A car connection
+  suppresses presentation/new automatic timers while preserving existing/manual timers (PD-002).
+- #134 already has recent-book hydration (historical Forgejo PR #57). Verify bounded latency, item/tag admission
+  and unsynced progress before deciding issue closure; do not add an uncontracted endpoint or another refresh owner.
 
-After Android correctness acceptance, implement #114's typed action contract using existing remembered-book
-and resume-freshness owners. Validate exported parameters, profile access and lock behavior; no arbitrary
-media URLs, credentials or unrestricted item execution.
+**Exit:** every applicable case has build-specific evidence; any discovered defect gets a guarded fix.
+Do not close the host, sensor or account criteria with source/JVM evidence alone.
 
-Then implement #117 (widget) and #118 (Quick Settings) as projections, followed by #116's opt-in headset
-automation. #119 first evaluates Garmin's Control Phone path; custom work needs a demonstrated gap.
+### 2. Fix the reported navigation and browse-count bugs
 
-Do not start #121–#123 while the owner’s iOS hold applies. Retain their future scope in the plan:
-selective portable model/domain seams, native iOS shell/authentication, cached library,
-native Apple playback, progress correctness, then offline transfers. Live Activity and CarPlay follow proven
-native playback. No wholesale KMP conversion or shared UI is implied.
+**Owner:** UI & Experience. **Requirements:** LIB-001/002, AUTH-002; specification 16.2/17.2/21; PD-006.
 
-Dependency work follows `latest-stable-upgrade-plan.md` separately. Phases 4/5 are at their documented
-compatible frontier; Phase 6 is next in that lane, and ADR-0011 still gates the build-platform upgrade.
+The owner selected these small functional fixes as the next implementation slices after any critical
+playback/progress/privacy defect. Hardware-dependent reliability acceptance remains open alongside them.
 
-## Verification and status discipline
+1. [#227 gesture selection](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/227): reproduce Books → Series → Books, where the
+   pill reaches Books but Series stays highlighted. The pager and label selection currently have different
+   projections; the settled-page listener may capture an older axis. Keep this a source hypothesis until
+   actual callback-path reproduction. Preserve continuous motion, cancelled drags and settled semantics.
+2. [#228 entity counts](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/228): Books counts books, Series counts series,
+   Authors counts authors and Genres counts genres within the active authorized library/search/filter
+   scope. Focused book results count books. Retain uncapped Books shelf totals, localized plurals and
+   truthful loading/partial-sync status; count labels remain Room-backed.
 
-- Work one requirement group at a time; add policy/contract tests first and inspect production callers.
-- Prove regression tests fail without their fix; run formatter and
-  `verifyDebug -Pshelfplayer.warningsAsErrors=true`, with `--rerun-tasks` for classpath changes.
-- Record automated, source-review and device evidence separately, including failed/unavailable checks.
-- Update roadmap, relevant risks, compatibility docs and issue status together. Preserve historical provenance.
-- PR #93 owns resume freshness; PR #149 owns remembered identity; Forgejo PR #57 owns recent-book hydration
-  (#134). These are not new implementation tasks.
+Both issues are **planned / NOT RUN**, not fixes landed by this documentation PR. Prove their regression
+guards on the old behavior, inspect actual production callers and retain playback continuity.
+
+**Exit:** U-06-01–06 and U-07-01–05 have source-gate and applicable physical gesture/localization/TalkBack
+evidence; fix gesture selection before counts, then return to measured performance/download work.
+
+### 3. Resolve measured scrolling cost
+
+**Owner:** UI & Experience, with Test & Acceptance review. **Requirements:** LIB-002; specification 17.3/21;
+ADR-0025/0026, R-25/R-27.
+
+After the small navigation/count fixes, this is the next performance slice while hardware-dependent
+reliability checks are pending.
+Inspect saved frame traces, isolate flat-list/card rendering cost, make one bounded change and compare on the
+same device/fixture/compilation mode. Report CPU timing and actual frame overruns separately. Passing benchmark
+methods do not accept the exceeded comparison budget. Keep manual cached-player latency and ANR stress pending
+until measured with real offline audio/transfers.
+
+The [generated app-profile experiment](reviews/2026-10-04-generated-baseline-profile.md) demonstrated no gain;
+its file stays under `benchmark/profiles/`, outside the production consumer. Library profiles already ship.
+Memory is a baseline without an acceptance threshold. Neither observation justifies an automatic profile
+installation, paging rewrite or speculative cache-size change.
+
+**Exit:** a controlled result shows the effect of the change, with the remaining budget failures disclosed
+and no readability, accessibility, offline-cover or playback regression.
+
+### 4. Accept download recovery, storage and ownership
+
+**Owner:** Offline & Downloads. **Requirements:** DL-001/002/003/004/005/006, AUTH-002; specification 5.2;
+PD-003/004. **Cases:** D-01–D-15 in the verification register and [reliability acceptance](testing/reliability-acceptance.md).
+
+| Issues/risk | Next action |
+| --- | --- |
+| #108/#109/#112/#120, R-119 | Exercise Pause/Resume/Retry, waiting/backoff/restart, confirmed partial discard, independent transfers, live screen/notification progress and denied notification permission. Preserve committed media and ordinary non-destructive Retry. |
+| #110, R-116 | Remove/reinsert the same and a different volume; verify unavailable storage is distinct from corruption and that any internal fallback is disclosed. |
+| Closed #111, R-119 | Prove profile claims/device pin, last-claim removal, shared retention and inaccessible metadata on the device. Preserve the settled physical-copy model. |
+| R-120 | Reproduce cancellation late writes and new claims during removal with controlled slow storage before adding synchronization. |
+| R-121 | Separately settle the policy and scope space recovery for a copy orphaned by the last profile's removal; do not silently delete it. |
+| R-122 | Run the [credential handoff matrix](reviews/2026-10-03-shared-download-ownership.md) after original-owner sign-out/removal. Only currently eligible same-server/item claims authorize each request. |
+| R-123 | Run the [restart/second-cancellation cases](reviews/2026-10-04-download-restart-progress.md) for no ETag and refused range; visible percentages reflect actual replacement bytes. Never resume unvalidated bytes to preserve a monotonic percent. |
+
+**Exit:** physical recovery, authorization, file integrity and displayed state agree. Fix reproduced gaps;
+do not build a second execution adapter or persist WorkManager's execution state as another Room owner.
+
+### 5. Deliver residual Android UI and accessibility slices
+
+**Owner:** UI & Experience. **Requirements:** AUTH-001/002, LIB-002/003/004, PLAY-001/007/008, SET-001/002;
+specification 17.2/21. Follow the [child-slice triage](testing/ui-roadmap-triage.md), not duplicate audits.
+
+1. [#229 author details](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/229) is the first larger UI slice (PD-006):
+   Authors-axis cards and Book-detail author links open the same existing author destination. Extend its
+   Room-backed projection with Series and Standalone books, coauthor/all-membership handling and truthful
+   completion. Series cards open series details; standalone cards open book details. Preserve genre focus,
+   origin axis/query/filter/sort/scroll on Back, cached portraits, locked/profile boundaries and player clearance.
+   A completed series needs all accessible members finished; filtered/author-only subsets cannot complete it.
+   Use the inward green cue without checkmarks and readable/spoken completion information. U-08-01–07
+   remains planned / NOT RUN; no endpoint or schema change is expected.
+2. Address #176's root/pushed Sign-in Back context; reproduce landscape player contrast, clipping/player
+   clearance and preview/theme mismatch. #195 adds non-color connection status and useful no-results recovery.
+   Whole-book/chapter seek labels already exist; verify actual TalkBack rather than reimplementing labels.
+3. Under #194, prove content-driven flat rows/profile clearance and real-theme preview parity before comparing
+   Continue/flat-row/profile/Appearance designs. Consolidate #192/#193/#184 with that audit; do not open a
+   parallel redesign queue. Retain #179 Book detail, #180 Settings and #181 profile child scopes.
+4. #187 audits every book-card family, including Home/focused results; the series/shared-card slice is delivered.
+   Preserve authoritative finished state, the subtle inward green cue without a checkmark, and readable/spoken
+   completion information. #186's decorative appearance controls must not hide semantic completion.
+5. #182/#183 and parts of #177/#178 landed in PR #200. Verify remaining motion, predictive Back, large text and
+   reduced motion before further implementation. #175 shared-cover transitions remain a later cosmetic experiment.
+6. Reproduce #190 on an affected device with provider/version, standalone rendering, opaque background,
+   reduced motion and Haze isolation before choosing a permanent WebView mitigation. Keep #101 display formatting
+   separate from primary series membership/ordering.
+
+**Exit:** U-01–U-05 and U-08-01–07 record applicable 320/375/414/768 dp, 1.0/1.3/2.0 text, English/Norwegian, landscape,
+theme/artwork/offline/error, TalkBack and reduced-motion evidence. The 2179 series subset is not this whole matrix.
+
+### 6. Add Android system surfaces through one action contract
+
+**Owner:** Android System & Auto. **Requirements:** PLAY-001/004, ROUTE-001/002, AUTH-002/003;
+specification 3.3/5.2. **Prerequisite:** relevant playback/profile/permission correctness accepted.
+
+Implement #114's typed shortcut/automation contract using existing remembered-book and resume-freshness owners.
+Validate exported parameters, lock/profile access and stale intent; never accept arbitrary media URLs or credentials.
+Then #117 widget and #118 Quick Settings project the same state/actions, followed by #116's opt-in headset
+automation. Garmin #119 is parked outside this execution lane; see the owner-evaluation gate below.
+
+**Exit:** each alternate entry reaches the same guarded behavior and passes offline, locked-profile,
+process-recreation and playback-continuity checks. No second player, progress or timer owner.
+
+### 7. Close public-release acceptance
+
+**Owner:** Test & Acceptance, with Build & Dependencies. **Requirements:** specification 17/18/21/25.
+
+Run this acceptance lane alongside optional system-surface work; PRODUCT_SPEC 25 owns release scope.
+Complete the remaining API-26/31/34/36, server-version/permission, management, biometric/privacy,
+release/R8, signed-upgrade and quality cases Q-01–Q-06 and PRODUCT_SPEC 25. A verified debug APK,
+successful source gates or one phone configuration do not prove a public release. Retain the accepted
+release decisions and source-file-deletion boundary; do not reopen completed feature phases.
+
+**Exit:** applicable acceptance is evidenced, release artifacts/signing/identity/security are verified,
+and unresolved risks are explicitly dispositioned before publication.
+
+## Parked Garmin proposal — owner evaluation first
+
+[#119](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/119) is **low priority / parked**
+under PD-007. The owner will test the existing watch app and its sidecar for a while to learn the tradeoffs.
+No BookWave Garmin research, prototype, development or agent-run watch acceptance starts until the owner
+returns with findings and explicitly resumes the lane. Do not create a separate research child issue now.
+
+Retain the future goal: BookWave-managed preparation/transfers to fēnix 8, downloaded playback without
+the phone and later progress reconciliation through BookWave with Audiobookshelf. Replacing a separate
+helper is a target with unproven feasibility, not an accepted transport/transcoder/hosting design.
+Fully independent watch downloads/direct server sync are outside the initial target. Phone remote controls
+remain optional; #114 governs that adapter only. This parked proposal does not block an Android release.
+
+## Dependency and CI maintenance alongside the delivery lanes
+
+The [latest-stable upgrade plan](latest-stable-upgrade-plan.md) owns dependency migration gates; this roadmap
+owns product priority. Phases 4/5 are complete at the compatible frontier. Phase 6 (images/effects) is the
+next dependency lane: re-resolve stable targets and isolate Coil/Haze changes, retaining offline artwork,
+scrolling/memory and host evidence. Do not mix upgrades into the measured rendering fix or #190's diagnosis.
+ADR-0011 continues to gate the build/compiler/API major migration; phases 7–9 remain staged. Benchmark #223
+was a proven harness repair, not completion of Phase 7. No new upstream version check is claimed here.
+
+#188 audits residual CI tier/coverage/timing requirements on the active `.github/workflows/` source.
+Measure queue, verification and cache restore/save separately. Preserve trusted cache writes, schema guards,
+secret scanning, existing thresholds and complete Standard acceptance; avoid another CI foundation project.
+
+## Delivery and evidence rules
+
+- Add policy/contract tests before changing behavior; inspect production callers and alternate entries.
+  Prove regression tests fail without their fix. Keep Room/API/profile/privacy owners and typed errors intact.
+- Run `ktlintFormat`, then `verifyDebug -Pshelfplayer.warningsAsErrors=true`; add `--rerun-tasks` after
+  classpath changes. Do not report completion with a failing required gate.
+- Keep implemented, automatically verified and physically accepted statuses distinct. Log every required
+  case as PASS/FAIL/NOT RUN/BLOCKED with exact source/APK, configuration and evidence; never promote an
+  unavailable device/host or a historical result to a new build's pass.
+- When initiating final merge checks, also produce a debug APK through trusted `.github/workflows/apk.yml`.
+  Link exact-head verification and packaging, verify signer/source/version/checksum/Loopbound identity, and
+  record phone upgrade/smoke separately. A docs-only reconciliation does not itself require a new phone run.
+- Update affected roadmap, decision/risk/compatibility prose and issue criteria with each delivery.
+  Preserve dated plans/reviews as history; they do not independently order new work.

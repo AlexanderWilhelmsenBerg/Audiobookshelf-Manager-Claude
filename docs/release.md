@@ -3,7 +3,32 @@
 `PRODUCT_SPEC 18` defines the pipeline and `PRODUCT_SPEC 25` the acceptance checklist. This records the
 process, what it already does, and what still blocks a public build.
 
-**As of:** 2026-08-20, entering Phase 6. Phases 1–5 are complete.
+**Classification:** Release contract/process notes with historical pipeline sections.
+**Current handoff reconciled:** 2026-10-04, main `a20bb5b9`, merged through PR #225.
+
+The active pipeline is `.github/workflows/`, since the 2026-10-01 GitHub cutover. Use
+[`main.yml`](../.github/workflows/main.yml) for release/security checks,
+[`pull-request.yml`](../.github/workflows/pull-request.yml) for PR/main-seed verification and
+[`apk.yml`](../.github/workflows/apk.yml) as the trusted signed APK producer. The Forgejo workflow,
+runner/cache and action-ref descriptions below preserve historical process evidence, not current
+invocation instructions. Current build source/workflows win over older prose.
+
+Final main `a20bb5b9` passed all three delivery workflows. Verified signed debug 0.10.6.1 / code 2180
+has SHA-256 `e8fa3cab6707cd3c72470d779889ee037402bf1930efad4e1e2a177e3d156e99`.
+Its phone installation/upgrade, About identity and smoke remain NOT RUN; 2179's accepted phone subsets
+retain their own scope. The [roadmap](roadmap.md) and [verification register](testing/roadmap-verification-register.md)
+own current release work/acceptance. Completed feature phases and a signed debug delivery do not establish
+PRODUCT_SPEC 25 public-release acceptance. Accepted release/signing/privacy decisions remain binding.
+
+On a final merge-check handoff, also dispatch **Build APK** for the exact source, with the ordinary
+Loopbound bundle. Use `run_checks=true` when initiating verification and packaging together; an
+assemble-only run may reuse already passing exact-SHA verification if both runs are recorded.
+Verify artifact source/version/checksum/signer/bundle identity and record in-place phone upgrade separately.
+
+## Historical release notes and lasting decisions
+
+The original inventory began 2026-08-20, entering Phase 6. Historical implementation/acceptance claims
+below retain their stated dates; do not treat old blocker counts or workflow commands as current status.
 
 ## Blocking open decisions
 
