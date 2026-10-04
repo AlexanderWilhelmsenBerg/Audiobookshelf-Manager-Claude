@@ -93,6 +93,12 @@ Build & Dependencies should reproduce this process-discovery edge and choose a c
 through the staged dependency policy, then rerun the selected measurements and generator. No dependency
 upgrade, shortened application ID or suppressed error is part of the acceptance report.
 
+**2026-10-04 repair candidate:** the focused Benchmark 1.5.0 update includes the upstream API-36
+full-command-line process discovery fix. The exact official source artifact was inspected, and the
+[repair review](reviews/2026-10-04-benchmark-api36.md) separates compile/gate evidence from missing phone
+measurements. The five historical failures above stay failed until repeated on connected hardware;
+no profile or performance number has been fabricated.
+
 ---
 
 ## The baseline profile

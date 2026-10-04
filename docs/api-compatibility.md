@@ -8,6 +8,10 @@ Range/If-Range policy and response contracts are unchanged; no new endpoint/fixt
 [Automated evidence and missing physical cases](reviews/2026-10-04-download-restart-progress.md) use a
 synthetic gateway, real Room and filesystem; no additional server version is claimed.
 
+The 2026-10-04 compact series cards and device-only Benchmark 1.5.0 repair add no server request,
+response, Room schema or capability changes. The [benchmark review](reviews/2026-10-04-benchmark-api36.md)
+records source/gate evidence and missing hardware tests; no additional server version is claimed.
+
 ## Server versions tested
 
 The 2026-10-03 series/history/sleep revision changes local presentation and playback policy only. Rolling

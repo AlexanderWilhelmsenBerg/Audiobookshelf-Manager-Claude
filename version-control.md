@@ -76,7 +76,7 @@ This file is the quick answer to **“what version are we on, what is the newest
 | `androidxTestCore` | 1.7.0 | 1.7.0 | ✅ Current. | 7 | 2026-09-15 | [AndroidX Test releases](https://developer.android.com/jetpack/androidx/releases/test) |
 | `androidxTestExt` | 1.3.0 | 1.3.0 | ✅ Current. | 7 | 2026-09-15 | [AndroidX Test releases](https://developer.android.com/jetpack/androidx/releases/test) |
 | `androidxTestRunner` | 1.7.0 | 1.7.0 | ✅ Current. | 7 | 2026-09-15 | [AndroidX Test releases](https://developer.android.com/jetpack/androidx/releases/test) |
-| `androidxBenchmark` | 1.3.4 | 1.5.0 | ⬆️ Update in the dedicated test/benchmark phase. | 7 | 2026-09-15 | [Benchmark releases](https://developer.android.com/jetpack/androidx/releases/benchmark) |
+| `androidxBenchmark` | 1.5.0 | 1.5.0 | ✅ Stable API-36 process-discovery repair; forced gates and physical rerun tracked in the focused benchmark review. Performance/profile acceptance remains open. | 7 | 2026-10-04 | [Benchmark releases](https://developer.android.com/jetpack/androidx/releases/benchmark) |
 | `androidxUiAutomator` | 2.4.0 | 2.4.0 | ✅ Current. | 7 | 2026-09-15 | [UI Automator releases](https://developer.android.com/jetpack/androidx/releases/test-uiautomator) |
 | `androidxWork` | 2.11.2 | 2.11.2 | ✅ Current. | 4 | 2026-09-15 | [WorkManager releases](https://developer.android.com/jetpack/androidx/releases/work) |
 | `composeBom` | 2025.06.01 | 2026.08.00 | ⛔ Large Compose jump; execute with Phase 3 platform/AGP compatibility and device UI regression coverage. | 3 | 2026-09-15 | [Compose BOM](https://developer.android.com/develop/ui/compose/bom) |
@@ -172,8 +172,13 @@ Append to this table whenever a tracked migration slice merges. The live tables 
 | 2026-09-16 | #167 | Retrofit kotlinx.serialization converter | Jake Wharton 1.0.0 | Square 2.11.0 | ✅ Archived converter retired; first-party converter adopted without changing Retrofit or OkHttp major versions |
 | 2026-09-16 | #168 | Retrofit core + first-party converter | 2.11.0 | 3.0.0 | ✅ Latest stable reached; OkHttp intentionally held at 4.12.0 for the next independent network-major slice |
 | 2026-09-16 | #169 | OkHttp family | 4.12.0 | 5.4.0 | 🎯 Latest stable compatible with API 36 / AGP 8; 5.5.0 remains ADR-0011/platform-gated |
+| 2026-10-04 | [GitHub PR #223](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/223) focused repair | AndroidX Benchmark | 1.3.4 | 1.5.0 | Strict forced gates and harness/target assembly pass; physical rerun/profile acceptance pending. |
 
 ## Update discipline for future PRs
+
+2026-10-04 focused Phase-7 slice: AndroidX Benchmark 1.3.4→1.5.0, official stable release checked on this
+date. This repairs the supplied API-36 harness's documented process-discovery incompatibility and does
+not complete the remaining Phase 7 migration. See [verification and missing device cases](docs/reviews/2026-10-04-benchmark-api36.md).
 
 Every PR that changes a tracked version should, before merge:
 

@@ -1,7 +1,7 @@
 # BookWave roadmap
 
 **Classification:** Active plan — canonical sequencing authority.
-**Reconciled:** 2026-10-04 against GitHub main `1b5d4937`, including merged PRs #205–#221
+**Reconciled:** 2026-10-04 against GitHub main `842b0971`, including merged PRs #205–#222
 and the supplied-phone acceptance continuations.
 
 This is the only document that answers what BookWave should work on next. `PRODUCT_SPEC.md` supplies
@@ -159,6 +159,8 @@ car acceptance awaits hardware.
   controlled contrast check; an inherited warm Starting state needs a defined reproduction. The benchmark
   harness fails process discovery on this phone's truncated `pgrep` names; repair/verify that compatibility
   in the Build & Dependencies lane before claiming performance metrics or shipping a baseline profile.
+  The [focused Benchmark 1.5.0 repair](reviews/2026-10-04-benchmark-api36.md) advances that harness lane;
+  actual startup/scroll/memory/profile reruns remain pending while no phone is reported by ADB.
 - **#190 WebView flicker:** run its provider/version, opaque-background and Haze-isolation matrix on an
   affected device before choosing a permanent mitigation. The upstream explanation remains a hypothesis.
 - **#188 CI:** tiers landed in Forgejo PR #91, then GitHub PRs #173/#201. Audit remaining coverage/telemetry
