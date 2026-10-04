@@ -99,8 +99,23 @@ physical U-08-01–07 remain NOT RUN. No issue closure claimed.
 The [observation/key correction](2026-10-05-author-observation.md) on this same author PR distinguishes
 pending queries from unavailable content and prevents opaque identities colliding with section keys.
 It adds two actual ViewModel/render guards; initial source-specific results above remain historical.
-Author acceptance must include this correction, with all physical U-08-01–07 still NOT RUN.
+Author acceptance must include this correction. The dated 2026-10-05 continuation records subsequent physical results; earlier results remain historical.
 
 The same 2026-10-05 report now logs APK2189's failed author-scroll return, its actual-screen
 reversion guard and the restored strict gate. The correction retains list state through pending
 queries; 19 author cases pass. Physical scroll reacceptance requires the corrected combined APK.
+
+### Delivery prepared during the next software slice
+
+Exact author head `fbbb69d38d7d17e3144e58906b26d2d16f9afda2`: Standard CI
+[37229770267](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37229770267)
+and automatic PR CI pass. Trusted signed APK workflow
+[37230311081](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37230311081)
+produced **0.10.6.1 (2187)** / `bookwave-debug-0.10.6.1-2187-pr234.apk`, artifact11313339633.
+Artifact/APK-file SHA-256: `bee95bea5e3deda89b2073ac18a3ff5254a2c829389eed90072d96a20d36522b`.
+Package `org.homebord.bookwave.debug`; signing certificate SHA-256
+`c63c72cb2c4b32a8ed3775e4cc0b5754abf06b5beb4481ea5a8f5c5c0dd9217c`;
+embedded author source and Loopbound `7e24529b2a9e419218d2a1423d832b1bf587c8ef` verified.
+The trusted workflow itself runs from main `9ced43ae`, separately from the compiled author source.
+Downloaded artifact digest, APK package/version/signature and embedded source were verified locally.
+**Not installed on the phone**; it excludes #231/#232 and the subsequent Sign-in Back change.
