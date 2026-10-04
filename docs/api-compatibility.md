@@ -1651,3 +1651,10 @@ account leaves or receives an authentication/authorization failure; it never use
 The existing Range/If-Range, length/container verification and non-destructive failure rules still apply.
 Real server permission/reauthentication and device acceptance are logged in the
 [shared-transfer matrix](reviews/2026-10-03-shared-download-ownership.md) and remain pending.
+
+## Security verification gate — 2026-10-04
+
+R-125 now makes ordinary verification execute the existing 90% redaction rule. Four diagnostics tests
+cover bounded, clearable, redacted EventLog state. No server endpoint, response, supported version,
+Room schema, permission, credential format or dependency changes; existing contract fixtures remain
+authoritative. See the [security review](reviews/2026-10-04-security-coverage.md).
