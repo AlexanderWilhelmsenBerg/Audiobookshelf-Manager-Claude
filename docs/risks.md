@@ -167,6 +167,12 @@ back. It is a restart, not a loss of the committed files. The behaviour follows 
 undocumented server behaviour (no `If-Range` validator, no resume); the percent drop should be disclosed or
 tolerated, not worked around by resuming unvalidated.
 
+The 2026-10-04 follow-up reproduced stale durable bytes on a second cancellation after a replacement
+shrunk the part. The correction permits a lower count only after a fresh sink opened and the owner is
+still available; absent-owner and pre-sink cases retain known progress. See the
+[review and pending physical cases](reviews/2026-10-04-download-restart-progress.md). R-123 remains open
+for visible progress, process restart and real storage/server acceptance.
+
 | # | Risk | If it bites | Retired by |
 | --- | --- | --- | --- |
 | R-17 | **`accountType` defaults to `''` for any install that upgraded through migration 18**, until a sign-in or a permission refresh rewrites it — and `ProfileRole.ofAccountType("")` is `Listener`. | Nothing today: the UI gates on the `role` column, which sign-in writes. It stays a loaded gun for the next reader, because gating on `accountType` instead would silently demote every upgraded admin until their next refresh — the exact shape of the defect that hid the account-management row on a device. | **Named in a test rather than left in prose:** `version 18 leaves the account type empty, which is the least privileged role` asserts the default, the mapping, and that `role` is the column a permission check should read. A backfill on first launch would retire it entirely. |

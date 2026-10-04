@@ -3,6 +3,11 @@
 `PRODUCT_SPEC 19` requires this file to record the server versions tested, the capabilities detected,
 known endpoint differences, the fixtures used, and the date last verified.
 
+The 2026-10-04 R-123 correction changes local cancellation bookkeeping only. Existing download requests,
+Range/If-Range policy and response contracts are unchanged; no new endpoint/fixture or schema is added.
+[Automated evidence and missing physical cases](reviews/2026-10-04-download-restart-progress.md) use a
+synthetic gateway, real Room and filesystem; no additional server version is claimed.
+
 ## Server versions tested
 
 The 2026-10-03 series/history/sleep revision changes local presentation and playback policy only. Rolling

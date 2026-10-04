@@ -17,6 +17,7 @@ import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.OfflineFile
 import com.example.shelfplayer.core.model.download.StorageVolumeOption
+import com.example.shelfplayer.core.model.download.durableDownloadProgress
 import com.example.shelfplayer.core.model.getOrNull
 import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
@@ -24,6 +25,7 @@ import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -62,6 +64,7 @@ class FileDownloaderTest {
     private lateinit var repository: DefaultDownloadRepository
     private lateinit var storage: DownloadStorage
     private lateinit var downloader: FileDownloader
+    private var ownerAvailable = true
     private val api = FakeDownloadApi()
     private val verifier = FakeVerifier()
 
@@ -73,7 +76,14 @@ class FileDownloaderTest {
         database = Room.inMemoryDatabaseBuilder(context, ShelfPlayerDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        storage = DownloadStorage(context) { listOf(context.filesDir) }
+        storage = DownloadStorage(
+            context,
+            object : DownloadRoots {
+                override fun roots(): List<File> = listOf(context.filesDir)
+                override fun rootForVolume(uuid: String?): File? =
+                    context.filesDir.takeIf { ownerAvailable && uuid == StorageVolumeOption.INTERNAL_UUID }
+            },
+        )
         repository = DefaultDownloadRepository(
             downloadDao = database.downloadDao(),
             storage = storage,
@@ -258,6 +268,68 @@ class FileDownloaderTest {
         assertTrue(job.isCancelled)
         assertEquals(300L, storedFile().downloadedBytes)
     }
+
+    @Test
+    fun `second pause after no validator restart records the smaller real part`() = runTest {
+        assertRestartCancellation(validator = null, available = true)
+    }
+
+    @Test
+    fun `pause after declined range records the smaller replacement part`() = runTest {
+        assertRestartCancellation(validator = "\"v1\"", available = true)
+    }
+
+    @Test
+    fun `unavailable owner after restart preserves the last durable byte count`() = runTest {
+        assertRestartCancellation(validator = null, available = false)
+    }
+
+    @Test
+    fun `cancellation before opening a fresh sink preserves the old part`() = runTest {
+        val file = queuedFile().copy(expectedBytes = 2_000, downloadedBytes = 1_000)
+        part().writeBytes(ByteArray(1_000))
+        repository.updateFile(SERVER, BOOK, file)
+        api.cancelBeforeSink = true
+
+        assertFailsWith<CancellationException> { download(file) }
+
+        assertEquals(1_000L, part().length())
+        assertEquals(1_000L, storedFile().downloadedBytes)
+    }
+
+    @Test
+    fun `pause immediately after truncation records zero real bytes`() = runTest {
+        assertRestartCancellation(validator = null, available = true, bytesWritten = 0)
+    }
+
+    private suspend fun assertRestartCancellation(validator: String?, available: Boolean, bytesWritten: Int = 300) =
+        coroutineScope {
+            val file = queuedFile(eTag = validator).copy(expectedBytes = 2_000, downloadedBytes = 1_000)
+            part().writeBytes(ByteArray(1_000))
+            repository.updateFile(SERVER, BOOK, file)
+            val sibling = storage.partFor(SERVER.value, BOOK.value, "committed-sibling", "audio/mpeg")
+            val finished = storage.finalFor(sibling)
+            finished.writeText("verified sibling")
+            api.body = ByteArray(bytesWritten)
+            api.eTag = null
+            api.gateAfterWrite = CompletableDeferred()
+
+            val job = launch { download(file) }
+            api.reachedGate.await()
+            repository.markPaused(SERVER, BOOK)
+            ownerAvailable = available
+            job.cancel()
+            job.join()
+
+            assertTrue(job.isCancelled)
+            assertEquals(if (validator == null) 0L else 1_000L, api.lastResumeFrom)
+            assertEquals(bytesWritten.toLong(), part().length())
+            val book = assertNotNull(repository.observe(SERVER, BOOK).first())
+            assertEquals(DownloadState.Paused, book.state)
+            assertEquals(if (available) bytesWritten.toLong() else 1_000L, book.files.single().downloadedBytes)
+            assertEquals(if (available) bytesWritten / 20 else 50, book.durableDownloadProgress().percent)
+            assertEquals("verified sibling", finished.readText())
+        }
 
     /**
      * **The one that silently corrupts a file if it is wrong.**
@@ -584,6 +656,7 @@ class FileDownloaderTest {
 
         /** Writes the body, then behaves as WorkManager cancelling the coroutine for a pause or stop. */
         var cancelAfterWrite: Boolean = false
+        var cancelBeforeSink: Boolean = false
 
         /** When set, completes [reachedGate] after writing and then suspends until cancelled. */
         var gateAfterWrite: CompletableDeferred<Unit>? = null
@@ -622,6 +695,7 @@ class FileDownloaderTest {
             }
             if (resumeFrom == 0L) freshFailure?.let { return AppResult.Failure(it) }
 
+            if (cancelBeforeSink) throw CancellationException("paused before sink")
             val appended = wasResumed && resumeFrom > 0
             sink(appended).use { stream -> stream.write(body) }
             if (cancelAfterWrite) throw CancellationException("paused")

@@ -151,8 +151,9 @@ cases, all 17 downloader cases (including six new regressions), and granular D-1
 Validated owner-change resume and no-ETag restart passed with real Room/filesystem fixtures. This does not
 prove physical WorkManager restart, network metering, permission revocation or visible progress.
 Its forced full formatter/verification gate passed in 7m 30s with all 1,119 tasks executed and 2,133 tests,
-zero failures/errors. Use the final current-head CI/APK record for the device run; AUTO-DL-12-01 remains a
-separate unexecuted second-cancellation reproduction.
+zero failures/errors. Use the final current-head CI/APK record for the device run; AUTO-DL-12-01 is now reproduced and corrected in the
+[second-cancellation review](../reviews/2026-10-04-download-restart-progress.md). Its six granular
+physical cases remain NOT RUN at the owner's request; continue the roadmap without treating them as passed.
 
 ## UI, security, compatibility and release function
 

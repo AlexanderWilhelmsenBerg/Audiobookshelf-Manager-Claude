@@ -116,7 +116,16 @@ class FileDownloader @Inject constructor(
         val resumeFrom = if (file.eTag != null) onDisk else 0
         var manifestFile = file
 
-        var transfer = fetchRecordingCancellation(serverId, profileId, itemId, file, part, resumeFrom, onProgress)
+        var transfer = fetchRecordingCancellation(
+            serverId,
+            profileId,
+            itemId,
+            file,
+            part,
+            resumeFrom,
+            onProgress,
+            ::ownerAvailable,
+        )
         if (transfer.isFailure()) {
             if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
             record(
@@ -162,6 +171,7 @@ class FileDownloader @Inject constructor(
                 part,
                 resumeFrom = 0,
                 onProgress = onProgress,
+                ownerAvailable = ::ownerAvailable,
             )
             if (transfer.isFailure()) {
                 if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
@@ -275,8 +285,9 @@ class FileDownloader @Inject constructor(
      * [fetch], but a pause or stop (WorkManager cancelling the coroutine) first records the `.part` length.
      *
      * Without this the durable `downloadedBytes` stays at the last file boundary and a Paused download
-     * shows a stale, often zero, percent. Progress is monotonic: an unavailable volume reads as zero bytes
-     * and must never erase what was already recorded. The write runs in [NonCancellable] because the
+     * shows a stale, often zero, percent. An opened replacement sink really truncates the old part, so its
+     * count may decrease, including to zero. An unavailable owner or a request cancelled before opening
+     * that sink must not erase the last known count. The write runs in [NonCancellable] because the
      * coroutine is already cancelled; the cancellation is always rethrown.
      */
     @Suppress("LongParameterList")
@@ -288,14 +299,22 @@ class FileDownloader @Inject constructor(
         part: File,
         resumeFrom: Long,
         onProgress: (Long) -> Unit,
-    ): AppResult<FileTransfer> = try {
-        fetch(profileId, itemId, file, part, resumeFrom, onProgress)
-    } catch (cancelled: CancellationException) {
-        withContext(NonCancellable) {
-            val onDisk = storage.bytesOnDisk(part)
-            if (onDisk > file.downloadedBytes) record(serverId, itemId, file.copy(downloadedBytes = onDisk))
+        ownerAvailable: () -> Boolean,
+    ): AppResult<FileTransfer> {
+        var restarted = false
+        return try {
+            fetch(profileId, itemId, file, part, resumeFrom, onProgress) { restarted = true }
+        } catch (cancelled: CancellationException) {
+            withContext(NonCancellable) {
+                if (ownerAvailable() && part.exists()) {
+                    val onDisk = storage.bytesOnDisk(part)
+                    if (onDisk > file.downloadedBytes || (restarted && onDisk != file.downloadedBytes)) {
+                        record(serverId, itemId, file.copy(downloadedBytes = onDisk))
+                    }
+                }
+            }
+            throw cancelled
         }
-        throw cancelled
     }
 
     /**
@@ -305,6 +324,7 @@ class FileDownloader @Inject constructor(
      * a declined range means the bytes on disk are stale and the file must start from empty. See
      * [DownloadApi.fetchFile].
      */
+    @Suppress("LongParameterList")
     private suspend fun fetch(
         profileId: ProfileId,
         itemId: LibraryItemId,
@@ -312,13 +332,17 @@ class FileDownloader @Inject constructor(
         part: File,
         resumeFrom: Long,
         onProgress: (Long) -> Unit,
+        onRestart: () -> Unit,
     ): AppResult<FileTransfer> = downloads.fetchFile(
         profileId = profileId,
         bookId = itemId,
         fileId = file.remoteFileId,
         sink = { append ->
             if (!append && resumeFrom > 0) logDeclinedRange()
-            storage.sink(part, append = append)
+            storage.sink(part, append = append).also {
+                // Opening succeeded: only now has a fresh sink really truncated the old bytes.
+                if (!append) onRestart()
+            }
         },
         resumeFrom = resumeFrom,
         validator = file.eTag,

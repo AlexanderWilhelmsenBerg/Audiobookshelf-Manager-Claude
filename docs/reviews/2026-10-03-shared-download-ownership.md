@@ -107,11 +107,9 @@ All phone UI, foreground notification, background quotas, process restart, remov
 playback outcomes remain pending. This change does not close #108/#109/#110/#120 or their hardware gates.
 R-121 orphan cleanup remains separately scoped; Silo is deferred and iOS stays low priority.
 
-### Additional R-123 automated follow-up — NOT RUN
+### Additional R-123 automated follow-up — 2026-10-04
 
-`AUTO-DL-12-01`: cancel a no-ETag restarted body before it regains the previous partial size, compare the
-durable `downloadedBytes`/Paused percent to the actual part, and repeat with the storage owner unavailable.
-`FileDownloader` currently preserves a monotonic byte count when recording cancellation. The completed
-restart cases above do not establish the outcome of this second cancellation; reproduce that boundary
-before choosing a change, and preserve the absent-volume rule. This is a separately recorded next slice,
-not a new claim that R-123 or visible progress is fully accepted.
+AUTO-DL-12-01 has since reproduced stale bytes on a second cancellation after a fresh/declined-range
+replacement. The [follow-up review](2026-10-04-download-restart-progress.md) records the correction,
+automated guards and six missing physical cases. The earlier completed-restart evidence above remains
+valid; visible progress, process restart and absent-card hardware acceptance remain pending.

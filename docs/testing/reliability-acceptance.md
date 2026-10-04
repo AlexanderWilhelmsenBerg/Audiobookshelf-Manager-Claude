@@ -198,3 +198,14 @@ Local logs are under ignored `build/reliability-evidence/`; the full-gate log is
   retains UTC/evidence and every remaining register group, including physical car/headset, controlled
   transfer/account/server, TalkBack and two-hour soak. Networking/display settings were restored and
   playback was left paused with the timer off.
+
+### Restart cancellation and durable download progress — 2026-10-04
+
+AUTO-DL-12-01 reproduced three failures: no-ETag restart and declined-range replacement retained 1,000
+manifest bytes after writing 300, and immediate post-truncation cancellation retained 1,000 after zero.
+The correction passes all 27 file-downloader and 82 download-module cases, including unavailable-owner
+and pre-sink preservation. Formatter/full verifyDebug warnings-as-errors passed in 2m 31s (1,119 tasks).
+Initial test-fixture compilation and coroutine-style findings were corrected, with failed logs retained.
+[Six granular physical checks](../reviews/2026-10-04-download-restart-progress.md) remain NOT RUN at the
+owner's request. Controlled server, screen/notification, cold restart, removable storage and audible
+continuity acceptance remain pending; no broader issue is closed from these automated results.
