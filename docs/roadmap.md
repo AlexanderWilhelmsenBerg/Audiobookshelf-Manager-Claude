@@ -127,6 +127,13 @@ PD-003/004. **Cases:** D-01–D-15 in the verification register and [reliability
 | R-122 | Run the [credential handoff matrix](reviews/2026-10-03-shared-download-ownership.md) after original-owner sign-out/removal. Only currently eligible same-server/item claims authorize each request. |
 | R-123 | Run the [restart/second-cancellation cases](reviews/2026-10-04-download-restart-progress.md) for no ETag and refused range; visible percentages reflect actual replacement bytes. Never resume unvalidated bytes to preserve a monotonic percent. |
 
+A bounded verification-cancellation correction is prepared on `fix/download-cancellation-commit`:
+real Room/filesystem guards reproduced synchronous validation renaming or clearing a part after worker
+cancellation. The [download test log](testing/2026-10-04-download-verification-cancellation.md) tracks the
+checkpoint/rethrow correction, software gates and DC-P01–13 device cases, all physical cases NOT RUN.
+This lane proceeds independently of the unaccepted scroll candidate; no prior phone result accepts it.
+R-120's WorkManager stop/delete and new-claim windows remain open; the correction adds no cross-owner lock.
+
 **Exit:** physical recovery, authorization, file integrity and displayed state agree. Fix reproduced gaps;
 do not build a second execution adapter or persist WorkManager's execution state as another Room owner.
 

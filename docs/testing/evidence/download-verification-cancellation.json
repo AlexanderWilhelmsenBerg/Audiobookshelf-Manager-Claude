@@ -1,0 +1,51 @@
+{
+  "requirements": [
+    "DL-001",
+    "DL-002",
+    "DL-003"
+  ],
+  "controlSource": "5be5280ff30442df67b763cd0bcceeb2f64feb5e",
+  "guardMutation": {
+    "tests": 5,
+    "failures": 5,
+    "errors": 0
+  },
+  "downloadModule": {
+    "tests": 87,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": [
+      {
+        "suite": "com.example.shelfplayer.data.downloads.BookDownloaderTest",
+        "tests": 17
+      },
+      {
+        "suite": "com.example.shelfplayer.data.downloads.DefaultDownloadRepositoryTest",
+        "tests": 17
+      },
+      {
+        "suite": "com.example.shelfplayer.data.downloads.DownloadFailureMappingTest",
+        "tests": 2
+      },
+      {
+        "suite": "com.example.shelfplayer.data.downloads.DownloadStorageRootsTest",
+        "tests": 9
+      },
+      {
+        "suite": "com.example.shelfplayer.data.downloads.DownloadVerifierTest",
+        "tests": 10
+      },
+      {
+        "suite": "com.example.shelfplayer.data.downloads.FileDownloaderTest",
+        "tests": 32
+      }
+    ]
+  },
+  "strictGate": {
+    "result": "PASS",
+    "elapsedSeconds": 279,
+    "tasks": 1122
+  },
+  "physicalResult": "NOT RUN"
+}

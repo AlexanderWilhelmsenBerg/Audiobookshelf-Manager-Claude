@@ -143,6 +143,12 @@ overnight, civil-clock and lifecycle steps rather than replacing them.
 
 ## Downloads/storage
 
+The [verification-cancellation log](2026-10-04-download-verification-cancellation.md) records reproduced
+late verification/rename and invalid-416-clear regressions with actual Job cancellation, real Room and
+filesystem. DC-A01–07 distinguish source gates from DC-P01–13 physical obligations. All physical cases
+remain NOT RUN; D-10's asynchronous removal/new-claim acceptance is still open. Use this log alongside
+D-01–D-15, not as whole-matrix acceptance.
+
 Stored-copy verification navigation was sampled in the [phone report](2026-10-03-phone-acceptance.md).
 Transfer/claim/storage transition cases below remain NOT RUN; existing complete copies are not those fixtures.
 

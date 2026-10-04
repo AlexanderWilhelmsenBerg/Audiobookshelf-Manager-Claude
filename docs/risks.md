@@ -132,6 +132,13 @@ landing between that read and the cancel could have its transfer cancelled. The 
 a stopped download the user can resume, not lost data. Neither is closed by a lock that spans WorkManager,
 which would be a larger change than the risk justifies; both need a device with a slow disk to observe at all.
 
+A narrower cancellation boundary was reproduced on 2026-10-04 with the real downloader and filesystem:
+synchronous media verification could return after Job cancellation and still rename a valid part or
+clear an invalid complete-416 part. The [guarded correction/test log](testing/2026-10-04-download-verification-cancellation.md)
+checks cancellation after validation, checkpoints available partial bytes/response metadata and rethrows.
+It does not synchronize WorkManager stop with filesystem deletion, prevent kernel late writes or protect
+a new claim arriving across scheduler cancellation. R-120 and its D-10/DC-P07 physical cases stay open.
+
 ### R-121 — a copy whose last claim belonged to a removed profile cannot be reclaimed in the app
 
 `download_requests` has a cascading foreign key to the profile, so removing a profile deletes its claim rows. If

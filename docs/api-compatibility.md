@@ -12,6 +12,12 @@ The 2026-10-04 compact series cards and device-only Benchmark 1.5.0 repair add n
 response, Room schema or capability changes. The [benchmark review](reviews/2026-10-04-benchmark-api36.md)
 records source/gate evidence and missing hardware tests; no additional server version is claimed.
 
+The 2026-10-04 download verification-cancellation correction uses the existing file response metadata
+and local Room/filesystem protocol. It adds no endpoint, response field, capability, schema or permission.
+Range/If-Range, `200`/`206`/`416` validation and entitlement contracts remain unchanged. The
+[test log](testing/2026-10-04-download-verification-cancellation.md) separates synthetic real-filesystem
+regressions from pending device/parser/WorkManager/server acceptance; no new server version is claimed.
+
 ## Server versions tested
 
 The 2026-10-03 series/history/sleep revision changes local presentation and playback policy only. Rolling

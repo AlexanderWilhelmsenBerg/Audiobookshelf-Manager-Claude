@@ -18,6 +18,8 @@ import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.domain.repository.CapabilityRepository
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
@@ -137,9 +139,25 @@ class FileDownloader @Inject constructor(
         }
         if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
         var outcome = (transfer as AppResult.Success).value
+        // DL-001/002: verification can block after the transport's last cancellation check. Keep
+        // the response/real part checkpoint, but never publish Complete from a cancelled verifier.
+        val onVerificationCancelled: suspend () -> Unit = {
+            if (ownerAvailable() && part.exists()) {
+                record(
+                    serverId,
+                    itemId,
+                    manifestFile.copy(
+                        downloadedBytes = storage.bytesOnDisk(part),
+                        expectedBytes = outcome.totalBytes ?: manifestFile.expectedBytes,
+                        eTag = outcome.eTag ?: manifestFile.eTag,
+                        lastModified = outcome.lastModified ?: manifestFile.lastModified,
+                    ),
+                )
+            }
+        }
         observe(serverId, askedForRange = resumeFrom > 0, outcome = outcome)
 
-        if (outcome.rangeNotSatisfiable && !canCommitUnsatisfiedPart(file, part, outcome)) {
+        if (outcome.rangeNotSatisfiable && !canCommitUnsatisfiedPart(file, part, outcome, onVerificationCancelled)) {
             val restartFile = file.copy(
                 expectedBytes = null,
                 downloadedBytes = 0,
@@ -204,7 +222,7 @@ class FileDownloader @Inject constructor(
             observe(serverId, askedForRange = false, outcome = outcome)
         }
 
-        verify(part, outcome)?.let { problem ->
+        verify(part, outcome, onVerificationCancelled)?.let { problem ->
             if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
             // The part is left where it is. A short file resumes; a corrupt one is replaced by the next
             // attempt, which cannot resume because the validator will not match.
@@ -250,11 +268,16 @@ class FileDownloader @Inject constructor(
      * Commit only when the server's authoritative complete length matches, a returned validator does not
      * contradict the one that guarded the request, and the ordinary media checks pass.
      */
-    private fun canCommitUnsatisfiedPart(file: OfflineFile, part: File, outcome: FileTransfer): Boolean {
+    private suspend fun canCommitUnsatisfiedPart(
+        file: OfflineFile,
+        part: File,
+        outcome: FileTransfer,
+        onCancelled: suspend () -> Unit,
+    ): Boolean {
         val total = outcome.totalBytes ?: return false
         if (total <= 0 || part.length() != total) return false
         if (outcome.eTag != null && file.eTag != null && outcome.eTag != file.eTag) return false
-        return verify(part, outcome) == null
+        return verify(part, outcome, onCancelled) == null
     }
 
     /**
@@ -357,21 +380,29 @@ class FileDownloader @Inject constructor(
      * problem or `null`, rather than a boolean, because *which* check failed is what the storage screen
      * shows and what a retry decision depends on.
      */
-    private fun verify(part: File, transfer: FileTransfer): AppError? {
+    private suspend fun verify(part: File, transfer: FileTransfer, onCancelled: suspend () -> Unit): AppError? = try {
         val size = part.length()
-        if (size <= 0) {
-            return AppError.Unknown(summary = "The download produced an empty file.")
-        }
         val expected = transfer.totalBytes
-        if (expected != null && size != expected) {
-            return AppError.Unknown(
+        val problem = when {
+            size <= 0 -> AppError.Unknown(summary = "The download produced an empty file.")
+
+            expected != null && size != expected -> AppError.Unknown(
                 summary = "The download is $size bytes but the server said $expected.",
             )
+
+            !verifier.isReadable(part) -> AppError.Unknown(
+                summary = "The downloaded file is not readable as audio.",
+            )
+
+            else -> null
         }
-        if (!verifier.isReadable(part)) {
-            return AppError.Unknown(summary = "The downloaded file is not readable as audio.")
-        }
-        return null
+        // MediaMetadataRetriever is synchronous. A cancelled worker must not rename the part or clear
+        // an invalid 416 part when that check returns. This is a boundary check, not an atomic stop/delete.
+        currentCoroutineContext().ensureActive()
+        problem
+    } catch (cancelled: CancellationException) {
+        withContext(NonCancellable) { onCancelled() }
+        throw cancelled
     }
 
     private suspend fun record(serverId: ServerId, itemId: LibraryItemId, file: OfflineFile) {
