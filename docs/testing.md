@@ -1,5 +1,8 @@
 # Testing
 
+**Classification:** Current testing contract; dated reports retain their original build scope.
+**Reconciled:** 2026-10-04 against main, the verification register and draft delivery reports.
+
 `PRODUCT_SPEC.md` section 17 defines the pyramid, device matrix, and thresholds. This file records the
 current tiers and how to run them; a green JVM gate is not evidence for an absent hardware tier.
 
@@ -33,8 +36,9 @@ The [reliability checklist](testing/reliability-acceptance.md) covers the curren
 follow-ups. It distinguishes merged implementation from pending device acceptance and links the combined
 Android Auto drive checklist. Use the roadmap for current issue ordering.
 
-`docs/device-test-0.9.14.md` is the current hardware test, and `scripts/device-test/` holds its commands,
-one script per section. Nothing there installs a tool or touches a server —
+The [verification register](testing/roadmap-verification-register.md) is the current hardware test inventory.
+The version-specific [0.9.14 checklist](device-test-0.9.14.md) is historical; its reusable
+`scripts/device-test/` commands require the current package/source and applicable case review. Nothing there installs a tool or touches a server —
 `scripts/check-local-environment.sh --install` remains the only script in the repository that installs
 anything. The number on a script is run order, not section number.
 
@@ -46,7 +50,7 @@ The suite is distributed by responsibility rather than collected into one end-to
 | --- | --- | --- |
 | Result/error semantics, cancellation, redaction, clock/dispatcher policy | `core/model`, `core/common` tests | Typed failures and privacy-safe diagnostics |
 | URL normalization, auth/interceptor policy, captured request/response shapes | `core/network` contract tests and fixtures | Adapter serialization for captured endpoints; uncaptured privileged endpoints remain gaps |
-| Room schemas/migrations, profile visibility, progress, downloads, drafts | `core/database` Robolectric migration/DAO tests | SQLite behavior and every exported schema through version 20 |
+| Room schemas/migrations, profile visibility, progress, downloads, drafts | `core/database` Robolectric migration/DAO tests | SQLite behavior and every exported schema through version 21 |
 | Proto settings, session and profile-lock stores | `core/datastore` JVM plus connected lock-store tests | Serialization policy, portable atomic replace-existing commits; AndroidKeyStore only in the connected tier |
 | Auth, library, playback-progress, download and management repositories | `data/*` tests | Gateway/Room/domain boundaries and failure retention |
 | Sorting/grouping/search, sync, routing, smart download, genre consolidation | `domain` tests | Policy without Android framework dependencies |

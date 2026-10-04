@@ -1,5 +1,8 @@
 # Realtime progress and resume reference review — 2026-09-06
 
+**Classification:** Dated evidence snapshot; original source/build findings and results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Issues: #90, #91  
 Reference client: `pounat/absorb`  
 Server: `advplyr/audiobookshelf`

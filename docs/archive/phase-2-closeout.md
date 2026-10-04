@@ -1,5 +1,8 @@
 # Closing out Phase 2 — what the other clients have that we do not
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Written 2026-08-13, at the start of wave 5, after waves 1–4 merged.
 
 The question this answers: **with four waves built, what is still missing from Phase 2 that a listener would

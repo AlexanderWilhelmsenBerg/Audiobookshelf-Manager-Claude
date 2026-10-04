@@ -2,27 +2,27 @@
 
 **Classification:** Source reconciliation and future acceptance plan, not rendered acceptance.
 **Source snapshot:** GitHub main `81a06e1`; this table is dated source evidence.
-**Reconciled:** 2026-10-04 through main `a20bb5b9`. [The roadmap](../roadmap.md) owns sequencing.
+**Reconciled:** 2026-10-04 through main `8de931f0` (PR #226), with draft #230 evidence. [The roadmap](../roadmap.md) owns sequencing.
 PRs #220/#222 have delivered the shared series/card slice; [2179 phone evidence](2026-10-04-phone-2179.md)
 accepts selected compact/glow/large-text subcases. It does not close the broader #194/#195 audits or
 #187's all-card-family scope. Inspect current callers before implementing a remaining proposal.
 **Owner:** UI & Experience, with Test & Acceptance review.
 
 Critical playback/progress/privacy defects take precedence. Under the owner's 2026-10-04 ordering, fix
-the gesture/count bugs next while hardware acceptance remains pending, then return to performance/download
+the gesture/count acceptance gaps in draft #230 while hardware acceptance remains pending, then return to performance/download
 work. The author page is the first larger remaining UI slice. Preserve Material 3, repository-backed state,
 remembered-book ownership, author-before-title shelf ordering and existing destinations.
 The proposals in #194 do not authorize an authentication/navigation rebuild or changes to other Settings tabs.
 
 ## Owner-requested child issues — 2026-10-04
 
-These are planned scopes, not rendered acceptance. PD-006 adds the browse/navigation behavior to LIB-002.
-No runtime implementation, new endpoint or schema change is included in this registration.
+These began as planned scopes. The [browse delivery report](2026-10-04-browse-selection-counts.md) now records #227/#228 implementation and scoped results; #229 remains planned. PD-006 adds the browse/navigation behavior to LIB-002.
+The original registration included no runtime changes; the subsequent browse fix adds no endpoint or schema change.
 
 | Issue | Current source / report | Delivery boundary and test log |
 | --- | --- | --- |
-| [#227 gesture highlighting](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/227) | Owner: Books → Series → Books leaves Series highlighted although the pill returns to Books. Pager position drives the pill, uiState.axis drives selected labels; the listener can capture an old axis. This is a hypothesis pending reproduction. | First small bug. Guard the actual pager/ViewModel callback path; keep taps/cancelled gestures/recreation/settled semantics and playback consistent. U-06-01–06, all NOT RUN. |
-| [#228 browse entity counts](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/228) | Home sync label currently flattens represented books and uses book plurals for every axis. | Second small bug. Count books/series/authors/genres for the displayed authorized scope; retain uncapped source totals and partial/loading status. U-07-01–05, all NOT RUN. |
+| [#227 gesture highlighting](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/227) | Owner: Books → Series → Books leaves Series highlighted although the pill returns to Books. The real stable-callback route confirmed that the settled-page listener captured the initial axis; PR #230 reads the current axis/callback. Controlled physical return/rapid/mixed-intent checks pass. | First small bug. Guard the actual pager/ViewModel callback path; keep taps/cancelled gestures/recreation/settled semantics and playback consistent. U-06-01–06: scoped implementation evidence in the dated report; incomplete physical criteria remain pending. |
+| [#228 browse entity counts](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/228) | Main originally flattened represented books and used book plurals for every axis. PR #230 counts distinct displayed entity identities and localizes each noun; populated phone counts match the authorized cached scope. | Second small bug. Count books/series/authors/genres for the displayed authorized scope; retain uncapped source totals and partial/loading status. U-07-01–05: scoped implementation evidence in the dated report; incomplete physical criteria remain pending. |
 | [#229 grouped author page](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/229) | Authors cards narrow Home to Books; existing AuthorRoute from Book details renders a flat author shelf. | First larger UI slice after performance/download work. Reuse the destination, add Series/Standalone projections and truthful completion, preserve genre focus and Back/privacy/offline boundaries. U-08-01–07, all NOT RUN. |
 
 The author page changes the deliberate earlier in-place Authors behavior; its old source comments are

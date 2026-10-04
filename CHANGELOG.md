@@ -6,6 +6,13 @@ giving it a section of its own.
 
 ## Unreleased
 
+### Android roadmap and documentation reconciliation (LIB-002, PRODUCT_SPEC 17/18/21)
+
+- PR #226 registers the gesture/count/author scopes and canonical Android delivery ordering; Garmin is parked.
+- Setup and architecture documentation now match the committed product, dependency and schema versions.
+- Draft browse/performance/download evidence is indexed separately from merged implementation. Pending
+  phone/car/storage/accessibility cases remain explicit; this documentation change closes no functional issue.
+
 ### Shared download survives its original profile leaving (DL-001, DL-003, AUTH-002, PD-004)
 
 - A remaining entitled claimant can continue a shared file/artwork transfer after the original profile

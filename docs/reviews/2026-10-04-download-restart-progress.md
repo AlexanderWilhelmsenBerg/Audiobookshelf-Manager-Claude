@@ -1,5 +1,8 @@
 # Restarted download cancellation: truthful durable progress
 
+**Classification:** Dated evidence snapshot; original source/build findings and results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Requirements: DL-001/002/003; roadmap R-123; related #108. Offline & Downloads implementation lane.
 
 ## Reproduced defect

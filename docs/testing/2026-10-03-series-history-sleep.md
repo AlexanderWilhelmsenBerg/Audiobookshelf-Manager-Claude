@@ -1,5 +1,8 @@
 # Series, local History and sleep-timer fix verification
 
+**Classification:** Dated evidence snapshot; original source/build findings and results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Owner-requested prerequisite to the roadmap, based on main `cc4642c00a5e`. Requirements LIB-003/004,
 PLAY-003/004/008, SET-002 and section 21; decisions PD-002 amendment and PD-005. The Hallmark subagent
 owns the [series findings](../reviews/2026-10-03-series-screen-hallmark.md). No server endpoint, schema,

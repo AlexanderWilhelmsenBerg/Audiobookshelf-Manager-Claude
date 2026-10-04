@@ -1,7 +1,7 @@
 # Module boundaries
 
 **Classification:** Current contract.  
-**Current as reviewed:** 2026-09-07.
+**Current as reviewed:** 2026-10-04 against merged main; draft changes add no module/API boundary.
 
 `PRODUCT_SPEC 9.3` defines the dependency direction. This document records how the current repository
 implements it. Older phase documents may describe modules as prospective that are now real; `main` is the

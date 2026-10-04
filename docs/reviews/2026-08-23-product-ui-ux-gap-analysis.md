@@ -1,5 +1,8 @@
 # Product, code, and UI/UX gap analysis — 2026-08-23
 
+**Classification:** Dated evidence snapshot; original source/build findings and results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 ## Scope and evidence rules
 
 This is a review of the current working tree against `PRODUCT_SPEC.md`. It combines the specification-gap

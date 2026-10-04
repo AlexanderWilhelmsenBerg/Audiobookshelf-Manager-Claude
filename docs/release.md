@@ -4,7 +4,8 @@
 process, what it already does, and what still blocks a public build.
 
 **Classification:** Release contract/process notes with historical pipeline sections.
-**Current handoff reconciled:** 2026-10-04, main `a20bb5b9`, merged through PR #225.
+**Current handoff reconciled:** 2026-10-04, main `8de931f0`, merged through PR #226.
+The reconciliation report records later documentation-merge checks/artifact identity.
 
 The active pipeline is `.github/workflows/`, since the 2026-10-01 GitHub cutover. Use
 [`main.yml`](../.github/workflows/main.yml) for release/security checks,
@@ -13,12 +14,18 @@ The active pipeline is `.github/workflows/`, since the 2026-10-01 GitHub cutover
 runner/cache and action-ref descriptions below preserve historical process evidence, not current
 invocation instructions. Current build source/workflows win over older prose.
 
-Final main `a20bb5b9` passed all three delivery workflows. Verified signed debug 0.10.6.1 / code 2180
-has SHA-256 `e8fa3cab6707cd3c72470d779889ee037402bf1930efad4e1e2a177e3d156e99`.
-Its phone installation/upgrade, About identity and smoke remain NOT RUN; 2179's accepted phone subsets
-retain their own scope. The [roadmap](roadmap.md) and [verification register](testing/roadmap-verification-register.md)
-own current release work/acceptance. Completed feature phases and a signed debug delivery do not establish
-PRODUCT_SPEC 25 public-release acceptance. Accepted release/signing/privacy decisions remain binding.
+Main `a20bb5b9` passed delivery workflows and produced signed debug 2180; it was superseded without a
+phone installation. Draft browse APK2181 and downloads APK2184 were installed and tested on API36 with
+retained data, but those fixes are not merged. Latest phone APK2184 is source `df5e708c`, SHA-256
+`bf0e927e9786835f42caf614752e4777fed827f8bd1df1225dd7909b3e0811b7`;
+the [download report](testing/2026-10-04-download-verification-cancellation.md) owns its exact acceptance scope.
+The [reconciliation report](reviews/2026-10-04-documentation-reconciliation.md) records current merged-main
+checks/APK packaging. A newer main build does not contain draft fixes. Do not replace the tested draft
+APK on the owner's phone merely because a documentation merge produced a larger version code.
+
+The [roadmap](roadmap.md) and [verification register](testing/roadmap-verification-register.md) own current
+release work/acceptance. Signed debug delivery does not establish PRODUCT_SPEC 25 public-release acceptance.
+Accepted release/signing/privacy decisions remain binding.
 
 On a final merge-check handoff, also dispatch **Build APK** for the exact source, with the ordinary
 Loopbound bundle. Use `run_checks=true` when initiating verification and packaging together; an
@@ -70,8 +77,8 @@ that encodes nothing:
 | | |
 | --- | --- |
 | **`versionName`** | `0.10.6.1`. The product version, hand-bumped for the Forgejo migration while preserving the existing suffix. It carries no per-build fact, so there is nothing in it to go stale. |
-| **`versionCode`** | `BASE_VERSION_CODE` (2000) **+ the workflow run number**. `apk.yml` passes `BOOKWAVE_RUN_NUMBER`; Forgejo increments it on every run of that workflow. The floor was raised during the Forgejo migration because the new CI system starts a fresh run-number sequence. |
-| **Which source branch** | `BOOKWAVE_BRANCH`, shown as the **Source** row in Settings → About. The Forgejo APK workflow resolves the selected branch to an exact commit before checkout. |
+| **`versionCode`** | `BASE_VERSION_CODE` (2000) **+ the workflow run number**. `apk.yml` passes `BOOKWAVE_RUN_NUMBER` from GitHub's per-workflow run counter. The floor was raised during the Forgejo migration because the new CI system starts a fresh run-number sequence. |
+| **Which source branch** | `BOOKWAVE_BRANCH`, shown as the **Source** row in Settings → About. The GitHub APK workflow resolves the selected branch or verified PR head to an exact commit before checkout. |
 | **The commit** | `BOOKWAVE_COMMIT`, shown as the **Build** row beside the build type. |
 | **A local build** | No run number, so code `2000` and branch `local`. It will not install over a later CI build; `-Pbookwave.versionCode=N` is the way round that. |
 

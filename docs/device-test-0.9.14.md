@@ -1,5 +1,9 @@
 # Device test — build 0.9.14, against a local Audiobookshelf instance
 
+**Classification:** Historical version-specific checklist; reusable procedures require current-case review.
+
+Use [the roadmap](roadmap.md) and its verification register for current state.
+
 **What this covers.** Everything merged since the 2026-08-24 session — PRs #42 through #55 — and the six
 outstanding items that have always needed hardware. It is written to be run in order against a **local
 Audiobookshelf instance you control**, because five of the tests need you to change something on the server

@@ -1,5 +1,8 @@
 # Server and Android Auto review — 2026-08-22
 
+**Classification:** Dated evidence snapshot; original source/build findings and results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Scope: server-contact policy and adapters, authentication/session lifecycle, synchronization, playback's
 exported Media3 surface, Android Auto browse/resume behavior, and missing production coverage. This is a
 read-only review of `main`; the findings below were not silently folded into the visual/genre change.

@@ -1,5 +1,8 @@
 # Restored paused playback freshness
 
+**Classification:** Dated evidence snapshot; original source/build findings and results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Device testing while validating the realtime socket lifecycle exposed a separate SYNC-002 gap.
 
 After switching profiles, BookWave restores the incoming account's last book paused. The restored item is opened through `/play`, so the server supplies its current start position. The previous implementation nevertheless discarded the old `ResumeBaseline` on the media-item transition and established no replacement because a restored paused item never went through a play -> pause transition.
