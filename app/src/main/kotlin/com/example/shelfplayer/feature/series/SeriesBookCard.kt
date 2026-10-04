@@ -2,6 +2,7 @@ package com.example.shelfplayer.feature.series
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -37,7 +38,7 @@ import kotlin.time.Duration
 /**
  * LIB-003 / LIB-004 / section 21: a series row grows with its text, including large system fonts.
  *
- * Hallmark revision: compact artwork and title first; sequence, listening state and progress below.
+ * Hallmark revision: one compact row; metadata stays beside the artwork, with a separate Play target.
  * Playback remains a separate labelled control, and the card still opens the book's details.
  */
 @Composable
@@ -57,54 +58,54 @@ internal fun SeriesBookCard(
         if (book.progress?.isFinished == true) card.completedInnerEdge(completionColor) else card
     }
     GlassCard(onClick = onClick, modifier = cardModifier) {
-        Column(
+        Row(
             modifier = Modifier.fillMaxWidth().padding(CARD_PADDING),
-            verticalArrangement = Arrangement.spacedBy(SECTION_GAP),
+            horizontalArrangement = Arrangement.spacedBy(SECTION_GAP),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(SECTION_GAP)) {
-                BookCover(book = book, modifier = Modifier.size(COVER_SIZE))
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(TEXT_GAP),
-                ) {
-                    Text(text = book.title, style = MaterialTheme.typography.titleMedium)
-                    book.authors.takeIf { it.isNotEmpty() }?.let { authors ->
+            BookCover(book = book, modifier = Modifier.size(COVER_SIZE))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(TEXT_GAP),
+            ) {
+                Text(text = book.title, style = MaterialTheme.typography.titleMedium)
+                book.authors.takeIf { it.isNotEmpty() }?.let { authors ->
+                    Text(
+                        text = authors.joinToString(", ") { it.name },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                membership?.let { inSeries ->
+                    Text(
+                        text = stringResource(
+                            R.string.book_series_position,
+                            inSeries.series.name,
+                            inSeries.sequence.raw.ifEmpty { "—" },
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (book.progress?.isFinished == true || book.progress == null) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(SECTION_GAP)) {
+                        ListeningState(book = book)
                         Text(
-                            text = authors.joinToString(", ") { it.name },
-                            style = MaterialTheme.typography.bodyMedium,
+                            text = stringResource(R.string.book_length, book.duration.readable()),
+                            style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                } else {
+                    ListeningState(book = book)
+                    BookProgressLine(book = book)
                 }
             }
-            membership?.let { inSeries ->
-                Text(
-                    text = stringResource(
-                        R.string.book_series_position,
-                        inSeries.series.name,
-                        inSeries.sequence.raw.ifEmpty { "—" },
-                    ),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            IconButton(onClick = onPlay, modifier = Modifier.size(PLAY_TARGET_SIZE)) {
+                Icon(
+                    imageVector = Icons.Filled.PlayArrow,
+                    contentDescription = stringResource(R.string.book_play_named, book.title),
                 )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ListeningState(book = book, modifier = Modifier.weight(1f))
-                IconButton(onClick = onPlay) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = stringResource(R.string.book_play_named, book.title),
-                    )
-                }
-            }
-            if (book.progress?.isFinished == true) {
-                Text(
-                    text = stringResource(R.string.book_length, book.duration.readable()),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                BookProgressLine(book = book)
             }
         }
     }
@@ -123,7 +124,7 @@ private fun ListeningState(book: Book, modifier: Modifier = Modifier) {
                 else -> R.string.series_book_not_started
             },
         ),
-        style = MaterialTheme.typography.labelLarge,
+        style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurface,
     )
 }
@@ -146,10 +147,11 @@ private fun Modifier.completedInnerEdge(color: Color): Modifier = drawWithConten
     }
 }
 
-private val CARD_PADDING = 12.dp
-private val SECTION_GAP = 12.dp
-private val TEXT_GAP = 4.dp
-private val COVER_SIZE = 72.dp
+private val CARD_PADDING = 10.dp
+private val SECTION_GAP = 8.dp
+private val TEXT_GAP = 2.dp
+private val COVER_SIZE = 56.dp
+private val PLAY_TARGET_SIZE = 48.dp
 private val GLOW_STEP_WIDTH = 1.dp
 private const val GLOW_STEPS = 6
 private const val GLOW_EDGE_ALPHA = 0.45f

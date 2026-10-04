@@ -1,5 +1,9 @@
 <!-- Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 -->
 
+**Current follow-up:** the owner requested smaller cards after the 2178 phone continuation.
+The [2026-10-04 compact revision](2026-10-04-compact-series-cards.md) replaces the stacked normal-row
+layout described below with one adaptive row. This document retains the original audit and validation history.
+
 # Series screen: readable metadata and listening state
 
 Reviewed 2026-10-03 from main `cc4642c00a5e2238e3f867b56683f807168c4830`, the owner's

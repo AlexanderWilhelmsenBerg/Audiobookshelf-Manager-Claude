@@ -61,6 +61,38 @@ class SeriesBookCardScreenTest {
     private lateinit var renderedView: View
 
     @Test
+    @Config(qualifiers = "w375dp-h1280dp", fontScale = 1.0f)
+    fun `ordinary finished series card fits a compact list row`() = assertCompactRow(finished = true, maximum = 132.dp)
+
+    @Test
+    @Config(qualifiers = "w375dp-h1280dp", fontScale = 1.0f)
+    fun `ordinary listening series card stays compact with progress visible`() =
+        assertCompactRow(finished = false, maximum = 156.dp)
+
+    private fun assertCompactRow(finished: Boolean, maximum: Dp) {
+        render(
+            book().copy(
+                title = "10 Winter Journey",
+                authors = listOf(Author(ServerId("server"), AuthorId("author"), "A. Example")),
+                seriesMemberships = listOf(
+                    SeriesMembership(
+                        Series(ServerId("server"), SeriesId("series"), "Northern Journey"),
+                        SeriesSequence.parse("10"),
+                        true,
+                    ),
+                ),
+                progress = progress(finished),
+            ),
+        )
+        val bounds = compose.onNodeWithTag("series-book").getUnclippedBoundsInRoot()
+        val height = bounds.bottom - bounds.top
+        assertTrue(height <= maximum, "ordinary series card is too tall: $height")
+        compose.onNodeWithText(if (finished) "Finished" else "In progress", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("Northern Journey, book 10", useUnmergedTree = true).assertExists()
+        capture("compact-${if (finished) "finished" else "listening"}-375dp-font1")
+    }
+
+    @Test
     @Config(fontScale = 2.0f)
     fun `long title author series and progress fit inside the card at doubled text size`() {
         assertMetadataFits()
