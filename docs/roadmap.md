@@ -138,8 +138,10 @@ remain NOT RUN; no full download acceptance is claimed.
 This lane proceeds independently of the unaccepted scroll candidate; no prior phone result accepts it.
 The phone audit also found a paused Book percentage mismatch (28% displayed versus 31% from durable
 bytes). The R-123 follow-up now guards stale/terminal progress precedence in both actual Book/Downloads
-callers and passes the strict gate; repeat Pause/relaunch/Resume/discard on its new source-matched APK.
-Retained bytes are correct; new-binary percentage acceptance is separately logged. R-120's WorkManager stop/delete and new-claim windows remain open; the correction
+callers and passes the strict gate/CI. Signed APK2184 physically matches Book/Downloads to durable
+bytes after Pause, force-stop/relaunch and partial discard (45% → 41%); explicit Resume completes.
+The [same log](testing/2026-10-04-download-verification-cancellation.md) separates this scoped acceptance
+from remaining controlled replacement, concurrent attempt, storage and notification cases. R-120's WorkManager stop/delete and new-claim windows remain open; the correction
 adds no cross-owner lock.
 
 **Exit:** physical recovery, authorization, file integrity and displayed state agree. Fix reproduced gaps;

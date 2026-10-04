@@ -191,6 +191,90 @@
     "fullStrictGate": "PASS",
     "elapsed": "1m 57s",
     "tasks": "1122 actionable tasks: 47 executed, 16 from cache, 1059 up-to-date",
-    "physicalCorrection": "PENDING source-matched APK"
+    "physicalCorrection": "PASS \u2014 scoped API36 APK2184 cases PP-P01\u201304; remaining controlled/device matrix pending"
+  },
+  "pausedProgressPhone": {
+    "artifact": {
+      "source": "df5e708ca75a9c763b621e524d4bf917eccbbca4",
+      "embeddedSource": "df5e708ca75a",
+      "version": "0.10.6.1",
+      "versionCode": 2184,
+      "package": "org.homebord.bookwave.debug",
+      "sha256": "bf0e927e9786835f42caf614752e4777fed827f8bd1df1225dd7909b3e0811b7",
+      "signerSha256": "c63c72cb2c4b32a8ed3775e4cc0b5754abf06b5beb4481ea5a8f5c5c0dd9217c",
+      "loopbound": "7e24529b2a9e419218d2a1423d832b1bf587c8ef",
+      "run": 37223162036,
+      "artifactId": 11311445568,
+      "artifactDigestMatched": true,
+      "runEvent": "repository_dispatch",
+      "trustedSourceJobVerified": true
+    },
+    "installation": {
+      "inPlaceUpgrade": true,
+      "versionCode": 2184,
+      "source": "df5e708ca75a9c763b621e524d4bf917eccbbca4",
+      "aboutMatched": true,
+      "originalDownloadsClaimsProgressUnchanged": true,
+      "appSettingsByteIdenticalAcrossUpgrade": true
+    },
+    "pausedBook": {
+      "mode": "pp-paused-book",
+      "observedPercent": 45,
+      "durablePercent": 45,
+      "durableBytes": 67484972,
+      "totalBytes": 148140184,
+      "committedFiles": 8,
+      "partBytes": 5729876
+    },
+    "restartedBook": {
+      "mode": "pp-restarted-book",
+      "observedPercent": 45,
+      "durablePercent": 45,
+      "durableBytes": 67484972,
+      "totalBytes": 148140184,
+      "committedFiles": 8,
+      "partBytes": 5729876
+    },
+    "restartedDownloads": {
+      "mode": "pp-restarted-downloads",
+      "observedByteLabel": "64 MB / 141 MB",
+      "matchesDurableBytes": true
+    },
+    "afterDiscardBook": {
+      "mode": "pp-after-discard-book",
+      "observedPercent": 41,
+      "durablePercent": 41,
+      "durableBytes": 61755096,
+      "totalBytes": 148140184,
+      "committedFiles": 8,
+      "partBytes": 0
+    },
+    "afterDiscardDownloads": {
+      "mode": "pp-after-discard-downloads",
+      "observedByteLabel": "59 MB / 141 MB",
+      "matchesDurableBytes": true
+    },
+    "cancelPreservedRows": true,
+    "discardRetainedCommittedFiles": 8,
+    "discardRetainedClaims": 1,
+    "explicitResumeCompletedFiles": 21,
+    "noPartsRemain": true,
+    "nativeVerification": {
+      "event": "Downloads fully verified",
+      "counters": {
+        "books": 3,
+        "files": 23,
+        "brokenBooks": 0
+      }
+    },
+    "cleanupOriginalDownloadsClaimsProgressUnchanged": true,
+    "countsAfterCleanup": {
+      "profiles": 2,
+      "servers": 1,
+      "downloaded_books": 2,
+      "downloaded_files": 2,
+      "download_requests": 2,
+      "media_progress": 55
+    }
   }
 }

@@ -4,8 +4,8 @@
 **Owner:** Offline & Downloads, implementation owner.
 **Requirements:** DL-001/002/003/004, AUTH-002; PRODUCT_SPEC 12/21; PD-003/004.
 **Base:** Browse PR #230 (`69d0a3ca`), retaining its gesture/count fixes; planning #226 and Android main `a20bb5b9` underneath.
-**Change:** Stop cancellation during synchronous media verification from committing or clearing a part.
-**Device:** Samsung SM-S928B, Android 16/API 36 — scoped download/recovery checks PASS on APK 2183; the controlled timing and full hardware matrix remain pending.
+**Change:** Stop cancellation during synchronous media verification from committing or clearing a part; stopped Book/Downloads progress uses the durable checkpoint.
+**Device:** Samsung SM-S928B, Android 16/API 36 — scoped download/recovery checks PASS on APKs 2183/2184; the controlled timing and full hardware matrix remain pending.
 
 ## Reproduction and scope
 
@@ -149,7 +149,7 @@ was not separately captured as a numeric assertion. Inspect Book/Downloads progr
 both prefer `execution?.progress` over durable progress, and the observer reads WorkManager progress
 even for terminal work. Stale execution progress is a suspected cause, not a proven fix.
 
-Next R-123 slice: add a failing policy guard for Paused plus stale/cancelled execution progress, audit
+The finding motivated this R-123 follow-up scope: add a failing policy guard for Paused plus stale/cancelled execution progress, audit
 both Book/Downloads callers and notification behavior, use durable counts where execution is no longer
 authoritative, and repeat immediate Pause, settled Pause, force-stop/relaunch, explicit Resume and
 second-cancellation replacement cases on a new source-matched APK. Keep legitimate live progress while
@@ -177,9 +177,41 @@ The first compile also caught a missing existing isInFlight extension import, co
 
 | Follow-up physical case | Procedure | Status |
 | --- | --- | --- |
-| PP-P01 | New exact-source signed APK; real multi-track Pause; read settled Room/disk and Book percent. Stop-state percentage must equal floored durable bytes/known total. | NOT RUN on correction yet. |
-| PP-P02 | Force-stop/relaunch while Paused; Book and Downloads numeric progress match checkpoint and Resume remains explicit. | NOT RUN on correction yet. |
-| PP-P03 | Cancel/confirm partial discard; committed tracks/claims retained and percentage reconstructs after partial count decreases. | NOT RUN on correction yet. |
-| PP-P04 | Resume after stopped checkpoint; active live progress and completion remain correct; clean up test-only copy. | NOT RUN on correction yet. |
+| PP-P01 | New exact-source signed APK; real multi-track Pause; read settled Room/disk and Book percent. Stop-state percentage must equal floored durable bytes/known total. | PASS within the ordinary API36 fixture scope below; controlled timings remain separate. |
+| PP-P02 | Force-stop/relaunch while Paused; Book and Downloads numeric progress match checkpoint and Resume remains explicit. | PASS within the ordinary API36 fixture scope below; controlled timings remain separate. |
+| PP-P03 | Cancel/confirm partial discard; committed tracks/claims retained and percentage reconstructs after partial count decreases. | PASS within the ordinary API36 fixture scope below; controlled timings remain separate. |
+| PP-P04 | Resume after stopped checkpoint; active live progress and completion remain correct; clean up test-only copy. | PASS within the ordinary API36 fixture scope below; controlled timings remain separate. |
 | PP-P05 | Controlled no-ETag/changed-validator replacement, second Pause before recovering old count, old-work/new-attempt and terminal failure; compare Book/Downloads/notification. | NOT RUN; controlled fixtures required. |
 | PP-P06 | Notifications, two jobs, TalkBack, large font, remaining API/storage/credential/timeout and audible playback matrix. | NOT RUN; use DC-P/register steps. |
+
+## Paused percentage phone acceptance — APK 2184
+
+**Exact runtime source:** `df5e708ca75a9c763b621e524d4bf917eccbbca4` (`df5e708ca75a` in About),
+version `0.10.6.1`/2184, owner package `org.homebord.bookwave.debug`. APK SHA-256
+`bf0e927e9786835f42caf614752e4777fed827f8bd1df1225dd7909b3e0811b7`; signer and Loopbound
+match the APK2183 identities above. Trusted artifact 11311445568's digest/source/package/signature
+were checked before install. Later evidence-only commits do not change this tested runtime source.
+
+[Automatic runtime CI](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37222578405),
+[requested Standard+APK verification](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37222575282)
+and [trusted APK build](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37223162036)
+all PASS. The formatter/strict gate passed in 1m57s, 1,122 tasks. No classpath changed.
+
+On the same SM-S928B/API36, 18:13–18:18 UTC, using only the previously absent internal-volume fixture:
+
+| Case | Observed evidence |
+| --- | --- |
+| Upgrade/source | In-place 2183 → 2184. About matched exact source/version. The 412-byte AppSettings protobuf is byte-identical immediately before/after install; original download/claim/server/progress fingerprints and profile count match. No owner app clear/uninstall. |
+| PP-P01 Pause | Eight completed tracks plus a 5,729,876-byte part. Room/disk record 67,484,972 / 148,140,184 bytes; Book displays 45%, matching floored durable progress. This accepts ordinary settled Pause, not cancellation inside a controlled native verifier. |
+| PP-P02 Restart | Force-stop/relaunch retains exactly the same checkpoint and 45% in Book. Downloads renders `64 MB / 141 MB`, matching its documented rounded byte formatter. Resume remains explicit. No SIGKILL/reboot result implied. |
+| PP-P03 Discard | Cancel preserves file rows/bytes and claim. Confirm removes the partial, retains eight completed tracks/one claim; durable bytes become 61,755,096 and Book displays 41%. Downloads renders matching `59 MB / 141 MB`. Zero partial bytes. |
+| PP-P04 Resume | Explicit Resume completes 21 final files: every final size equals expected/downloaded bytes, zero parts. Native full verifier reports three books/23 files/zero broken. No server checksum or audible playback claim. |
+| Cleanup | Fixture-specific confirmation removes only the test-created copy/claim/manifest and observed physical directory. Original two books/files/claims and all 55 progress rows match the pre-upgrade baseline. No Play command. |
+
+The capture helper initially requested a nonexistent About Back accessibility label; its guard refused
+the tap. Fresh About still proved source/version, then Android's normal Back action finished navigation.
+That helper rejection is not an app-test failure. Privacy-safe numeric evidence is committed; private
+captures/configuration remain ignored. The isolated capture app is removed after tests and Books restored.
+Font/power settings remain at baseline 1.0/15. PP-P05/06 and the unobserved DC-P steps remain NOT RUN.
+R-120 removal races and R-123 controlled replacement/second-cancellation/concurrency matrices stay open;
+ordinary API36 stopped-progress acceptance does not close these risks or the whole download lane.
