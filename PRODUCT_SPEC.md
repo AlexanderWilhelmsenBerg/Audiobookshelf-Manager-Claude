@@ -321,6 +321,17 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   only after synchronized author metadata confirms one exists, and cached covers remain the loading,
   missing-image, and offline fallback.
 
+- The Home navigation pill, selected icon/label and selected semantics agree with the settled browse
+  destination after gestures, taps and restoration; a cancelled drag does not commit another destination.
+- The browse header counts the active entity: books, series, authors or genres, within the authorized
+  library/search/filter scope. Focused book results count books; loading/partial-sync status remains truthful.
+- Author cards and Book-detail author links open the same author destination, with Series and Standalone
+  books sections including coauthors/all memberships, cached state and Back restoration. Series cards
+  open existing series details and standalone cards open Book details without starting audio.
+- Finished author-page books and fully completed series have a subtle inward green completion cue without
+  checkmarks plus readable/spoken state. Series completion requires all accessible members finished;
+  unknown membership/progress and author-only/filtered subsets must not falsely imply completion (PD-006).
+
 ### LIB-003 Series ordering
 
 **Acceptance criteria**

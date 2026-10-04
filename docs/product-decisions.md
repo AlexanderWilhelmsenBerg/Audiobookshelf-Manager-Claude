@@ -308,3 +308,53 @@ events retain their original data. The owner's suggested minute interval is a ma
 retain the stronger existing five-second local journal and update the History checkpoint at that cadence.
 This is local/offline persistence, independent of the existing server synchronization. It adds no endpoint
 and does not replace or weaken the current-position journal or profile ownership.
+
+## PD-006 — Browse selection, entity counts and grouped author details
+
+**Status:** Accepted product behavior; implementation and acceptance remain planned.
+**Date:** 2026-10-04.
+**Scope:** Home axes and author detail; LIB-001/002/003/004, PLAY-004, AUTH-002.
+**Tracked by:** [#227](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/227), [#228](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/228),
+[#229](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/229); existing #194/#195 audits and #187 completion work.
+**Source:** Owner report and approved revised issue/roadmap plan in this chat.
+
+- Gestures and taps leave the Home pill, highlighted icon/label, settled selected semantics and displayed
+  axis aligned. Cancelled gestures preserve the original destination and existing continuous motion.
+- Headers count the displayed entity (books/series/authors/genres) in the authorized library/search/filter
+  scope. Focused book results count books; uncapped Books shelf totals and truthful partial/loading status remain.
+- Authors cards push the existing author destination. Book-detail author links use the same destination.
+  Show Series and Standalone books including coauthors/all memberships, cached portraits and profile-safe
+  Room projections. Genre focus retains its existing behavior. Back restores the origin's browse state.
+- Series cards open series details; standalone cards open book details. Details navigation never implies Play.
+  Completed books/series use a subtle inward green cue without checkmarks and readable/spoken state.
+  Full accessible series membership determines completion; a filtered/author-only subset or unknown data
+  cannot manufacture completion.
+
+**Supersedes:** the intentional in-place Authors-axis narrowing and flat author-only detail presentation,
+plus book-count labels on the Series/Authors/Genres axes. PD-005's series readability/completion policy remains.
+PRODUCT_SPEC LIB-002 records these criteria; this decision is not evidence they are implemented.
+
+## PD-007 — Small browse bugs next; Garmin waits for owner evaluation
+
+**Status:** Accepted priority/deferral decision; Garmin feasibility is unproven.
+**Date:** 2026-10-04.
+**Scope:** Delivery ordering and parked [Garmin #119](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/119).
+**Source:** Owner selected small bugs next, then explicitly parked Garmin while evaluating the existing watch app/sidecar.
+
+After any critical playback/progress/privacy defect, fix #227 gesture selection then #228 entity
+counts, then return to measured performance/download work. #229 is the first larger remaining UI slice.
+The roadmap remains the sequencing authority; hardware acceptance can stay pending alongside software work.
+
+Garmin #119 is low priority and parked. No BookWave Garmin research, prototypes, development or agent-run
+watch acceptance starts until the owner returns with evaluation findings and explicitly resumes the lane.
+No separate research child issue is opened now; the proposal does not block an Android release.
+
+Retain the future goal of BookWave-managed preparation/transfers, fēnix 8 downloaded playback without
+the phone, and later watch progress reconciliation through BookWave with Audiobookshelf. The owner chose
+phone-free listening with phone-assisted preparation and later sync; fully independent downloads/direct
+watch-server sync are outside the initial target. Replacing a separate helper is an unproven target,
+not an approved protocol, transport, transcoder or hosting design. Optional phone remote controls remain
+under #114's action contract; that dependency does not define watch-local audiobook feasibility.
+
+**Supersedes:** #119's remote-only product scope, its ban on watch downloads/progress and its earlier
+"run Control Phone tests early" execution order. The old proposal is retained as explicitly superseded issue history.

@@ -191,12 +191,61 @@ established. Remaining UI/security/server/manual-performance matrices and final-
 | U-03 | Root and pushed Sign in; success/cancel/drafts and predictive/system/toolbar Back. | Explicit navigation context gives the expected destination; root has no Back arrow. #176's implementation slice remains planned. |
 | U-04 | Empty/filter/no-results recovery, offline/loading/error, connection status and app appearance. | States and recovery remain distinct; active appearance and a non-color status cue are required. Unimplemented #195 residuals stay planned. |
 | U-05 | WebView/provider/version, opaque background, reduced motion, standalone/Haze isolation. | Reproduce #190 on an affected device before selecting a permanent mitigation; record provider and each matrix result. |
+| U-06 | Gesture navigation — #227. | Planned, all U-06-01–06 NOT RUN; record source/render/device evidence below before claiming acceptance. |
+| U-07 | Browse counts — #228. | Planned, all U-07-01–05 NOT RUN; record source/render/device evidence below before claiming acceptance. |
+| U-08 | Author details — #229. | Planned, all U-08-01–07 NOT RUN; record source/render/device evidence below before claiming acceptance. |
 | Q-01 | Existing-install upgrade, About identity/version, stored profiles/passcode/progress/downloads and Loopbound bundle. | APK signer/version allow an in-place upgrade; data survives; About and artifact describe actual bytes/source. 2178 installed bytes and 2177→2178 in-place upgrade/data retention passed in the linked continuation; repeat against the new signed APK. Earlier About/Loopbound first-page results retain their original build scope. |
 | Q-02 | Auth expiry/reauthentication, locked profiles, app-switcher privacy and controller/exported-command boundaries. | Offline data/passcode survive ordinary reauth; unauthorised controllers cannot browse/clear privileged state; no secrets/private metadata in shared logs. AUTH-002/003/004, section 5.2. |
 | Q-03 | Selected Audiobookshelf versions: local/remote progress/history, server compatibility and offline sync. | Fixture-backed endpoints match live selected versions; missing fields/capabilities fail compatibly, with no invented endpoints or ignored TLS checks. |
 | Q-04 | Metadata/cover/match/scan, permission denial, admin user writes, database-only removal versus source-file deletion. | Repository and UI enforce permission; write errors are typed; confirmation precisely describes action; source deletion is safe or absent. Section 25. |
 | Q-05 | Cached local player and library startup, 2,000-book list frame timing, baseline profile and download/playback stress. | Run [benchmark procedures](../benchmark.md): cached start/interactive under 1 s where specified, recorded frame timing and no ANR. Use the benchmark variant rather than inferring these from a debug APK. |
 | Q-06 | API 26/31/34/36, Bluetooth/wired routes, DHU and actual car/Automotive where available. | Record each supported configuration separately; an unavailable host remains NOT RUN. |
+
+## Newly planned browse acceptance — 2026-10-04
+
+Owner decisions PD-006/007 and GitHub issues below add acceptance obligations, not implemented fixes.
+The issue-registration/documentation change runs source gates but performs no app-function or phone test.
+Each granular case is **NOT RUN — awaiting implementation**. Use the existing result template for exact
+APK/configuration, expected/observed behavior, UTC/evidence and regressions. Guard actual callers; future
+bug tests must fail on the old behavior. Source/UI semantics checks do not replace physical gesture,
+TalkBack or rendering evidence. All new work preserves Room/profile/playback ownership and adds no endpoint/schema here.
+
+### Gesture navigation — #227
+
+| Case | Scenario | Required result | Current result |
+| --- | --- | --- | --- |
+| U-06-01 | Books → Series → Books | After each settle content/pill/icon-label highlight/selected semantics agree. Exercise the actual HomeScreen/ViewModel callback path; record the reported failure before the fix. | NOT RUN — awaiting implementation. |
+| U-06-02 | All axes and edge overspill | Traverse Books/Series/Authors/Genres in both directions; Books/Genres overspill springs back without committing another axis. | NOT RUN — awaiting implementation. |
+| U-06-03 | Interrupted gesture and tap intent | Partial/cancelled drags, rapid reversals/repeated swipes and a tab tap during settlement end at the final destination without oscillation or stale highlights. | NOT RUN — awaiting implementation. |
+| U-06-04 | Restoration and return from details | Restore a non-default axis, recreate the Activity and return from Book/Series/Author details; displayed content and selection remain aligned. | NOT RUN — awaiting implementation. |
+| U-06-05 | Selected accessibility state | Exactly one settled destination is selected; actual TalkBack focus/announcement matches the visible page, including cancelled gestures. | NOT RUN — awaiting implementation. |
+| U-06-06 | Appearance and playback continuity | Normal/200% text, portrait/landscape and reduced motion, offline and active audio; record privacy-safe state capture/video and no audio/queue/progress interruption. | NOT RUN — awaiting implementation. |
+
+### Browse counts — #228
+
+| Case | Scenario | Required result | Current result |
+| --- | --- | --- | --- |
+| U-07-01 | Distinct entity fixtures | Zero/one/many books/series/authors/genres, duplicates and coauthors; each noun/count matches the displayed entities, Books shelves retain uncapped source totals. | NOT RUN — awaiting implementation. |
+| U-07-02 | Scope and localization | Search/filter/focused-book results and English/Norwegian zero/one/many/spoken labels; focused results count books and other axes count their own entities. | NOT RUN — awaiting implementation. |
+| U-07-03 | Library/profile authorization | Switch library/profile and revoke/hide items; no inaccessible content count or stale prior-profile total is exposed. | NOT RUN — awaiting implementation. |
+| U-07-04 | Sync and unloaded states | Loading, success, partial success, failure and never-synced fixtures; retain partial caveat and never show fabricated zero counts for unloaded pages. | NOT RUN — awaiting implementation. |
+| U-07-05 | Updates, gestures and accessibility | Axis taps/swipes, Room updates and cached offline state; count settles with displayed axis, stays readable at large text, is spoken correctly and preserves playback. | NOT RUN — awaiting implementation. |
+
+### Author details — #229
+
+| Case | Scenario | Required result | Current result |
+| --- | --- | --- | --- |
+| U-08-01 | Both route entry points | Home author card and Book-detail author link open the same existing destination with the correct author and Series/Standalone sections; missing author state remains truthful. | NOT RUN — awaiting implementation. |
+| U-08-02 | Grouping and identity | Series-only, standalone-only, mixed, coauthored and multi-membership fixtures; stable identities/order, no false standalone duplication and no primary-series/sequence policy change. | NOT RUN — awaiting implementation. |
+| U-08-03 | Completion truth | Finished/in-progress/unstarted/unknown books and complete/partial/unknown series, filters and incomplete catalogue; all accessible series members determine completion. Inward green cue/no checkmarks plus readable/spoken state. | NOT RUN — awaiting implementation. |
+| U-08-04 | Existing detail destinations | Series and standalone taps open correct existing detail routes; details navigation never issues Play, replaces the queue or changes progress. | NOT RUN — awaiting implementation. |
+| U-08-05 | Back and recreation | Toolbar/system/predictive Back restore Home axis/query/filter/sort/scroll, both entry points survive Activity recreation and remain reachable. | NOT RUN — awaiting implementation. |
+| U-08-06 | Offline and privacy states | Offline cached data, loading/error/missing covers, locked/switched/revoked profile; no stale private author/book information, UI API calls or unauthorized artwork access. | NOT RUN — awaiting implementation. |
+| U-08-07 | Adaptive/rendered accessibility | 320/375/414/768 dp; font 1.0/1.3/2.0; English/Norwegian; portrait/landscape; light/dark/AMOLED/dynamic/artwork; active mini-player; reduced motion; 48 dp targets and actual TalkBack ordering/completion speech. | NOT RUN — awaiting implementation. |
+
+Garmin #119 is low priority / parked under PD-007. No Garmin test campaign, research child issue or
+implementation acceptance is scheduled until the owner returns with evaluation findings and resumes that
+lane. Its eventual device/transfer/progress matrix must be agreed then; there is no Garmin PASS claim here.
 
 Run the current scenarios above against the new APK. Historical evidence in `device-test-0.9.14.md`
 remains dated evidence, not an instruction to reproduce its obsolete hierarchy or uninstall/signing workarounds.

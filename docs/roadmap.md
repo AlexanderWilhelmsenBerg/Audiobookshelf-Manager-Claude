@@ -2,13 +2,14 @@
 
 **Classification:** Active plan — canonical sequencing authority.
 **Reconciled:** 2026-10-04 against GitHub main `a20bb5b9` (merged through PR #225),
-the open GitHub tracker and the dated phone/performance evidence.
+the open GitHub tracker, dated phone/performance evidence and the owner's new browse/priority decisions.
+Implementation of those new decisions is planned, not accepted; PR #226 carries this documentation update.
 
 This is the only document that orders the next work. [PRODUCT_SPEC](../PRODUCT_SPEC.md) supplies
 requirements, [product decisions](product-decisions.md) own settled behavior, and accepted ADRs own
 architecture. GitHub has been authoritative since the 2026-10-01 cutover; unqualified issue/PR numbers
 below are GitHub numbers. Historical Forgejo provenance does not create another implementation queue.
-The current snapshot has 40 open Android issues and no open PRs. Open issues can contain merged
+The updated snapshot has 42 open Android issues, parked Garmin #119 and open planning PR #226. Open issues can contain merged
 implementation, residual design work and missing acceptance; none is closed by this reconciliation.
 
 ## Delivered baseline and remaining gates
@@ -60,12 +61,35 @@ ROUTE-001/002/003, AUTH-002/003, LIB-002/003; specification 5.2, 6.5, 17 and 21.
 **Exit:** every applicable case has build-specific evidence; any discovered defect gets a guarded fix.
 Do not close the host, sensor or account criteria with source/JVM evidence alone.
 
-### 2. Resolve measured scrolling cost
+### 2. Fix the reported navigation and browse-count bugs
+
+**Owner:** UI & Experience. **Requirements:** LIB-001/002, AUTH-002; specification 16.2/17.2/21; PD-006.
+
+The owner selected these small functional fixes as the next implementation slices after any critical
+playback/progress/privacy defect. Hardware-dependent reliability acceptance remains open alongside them.
+
+1. [#227 gesture selection](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/227): reproduce Books → Series → Books, where the
+   pill reaches Books but Series stays highlighted. The pager and label selection currently have different
+   projections; the settled-page listener may capture an older axis. Keep this a source hypothesis until
+   actual callback-path reproduction. Preserve continuous motion, cancelled drags and settled semantics.
+2. [#228 entity counts](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/228): Books counts books, Series counts series,
+   Authors counts authors and Genres counts genres within the active authorized library/search/filter
+   scope. Focused book results count books. Retain uncapped Books shelf totals, localized plurals and
+   truthful loading/partial-sync status; count labels remain Room-backed.
+
+Both issues are **planned / NOT RUN**, not fixes landed by this documentation PR. Prove their regression
+guards on the old behavior, inspect actual production callers and retain playback continuity.
+
+**Exit:** U-06-01–06 and U-07-01–05 have source-gate and applicable physical gesture/localization/TalkBack
+evidence; fix gesture selection before counts, then return to measured performance/download work.
+
+### 3. Resolve measured scrolling cost
 
 **Owner:** UI & Experience, with Test & Acceptance review. **Requirements:** LIB-002; specification 17.3/21;
 ADR-0025/0026, R-25/R-27.
 
-This is the next executable performance slice while hardware-dependent reliability checks are pending.
+After the small navigation/count fixes, this is the next performance slice while hardware-dependent
+reliability checks are pending.
 Inspect saved frame traces, isolate flat-list/card rendering cost, make one bounded change and compare on the
 same device/fixture/compilation mode. Report CPU timing and actual frame overruns separately. Passing benchmark
 methods do not accept the exceeded comparison budget. Keep manual cached-player latency and ANR stress pending
@@ -79,7 +103,7 @@ installation, paging rewrite or speculative cache-size change.
 **Exit:** a controlled result shows the effect of the change, with the remaining budget failures disclosed
 and no readability, accessibility, offline-cover or playback regression.
 
-### 3. Accept download recovery, storage and ownership
+### 4. Accept download recovery, storage and ownership
 
 **Owner:** Offline & Downloads. **Requirements:** DL-001/002/003/004/005/006, AUTH-002; specification 5.2;
 PD-003/004. **Cases:** D-01–D-15 in the verification register and [reliability acceptance](testing/reliability-acceptance.md).
@@ -97,30 +121,38 @@ PD-003/004. **Cases:** D-01–D-15 in the verification register and [reliability
 **Exit:** physical recovery, authorization, file integrity and displayed state agree. Fix reproduced gaps;
 do not build a second execution adapter or persist WorkManager's execution state as another Room owner.
 
-### 4. Deliver residual Android UI and accessibility slices
+### 5. Deliver residual Android UI and accessibility slices
 
 **Owner:** UI & Experience. **Requirements:** AUTH-001/002, LIB-002/003/004, PLAY-001/007/008, SET-001/002;
 specification 17.2/21. Follow the [child-slice triage](testing/ui-roadmap-triage.md), not duplicate audits.
 
-1. Address #176's root/pushed Sign-in Back context; reproduce landscape player contrast, clipping/player
+1. [#229 author details](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/229) is the first larger UI slice (PD-006):
+   Authors-axis cards and Book-detail author links open the same existing author destination. Extend its
+   Room-backed projection with Series and Standalone books, coauthor/all-membership handling and truthful
+   completion. Series cards open series details; standalone cards open book details. Preserve genre focus,
+   origin axis/query/filter/sort/scroll on Back, cached portraits, locked/profile boundaries and player clearance.
+   A completed series needs all accessible members finished; filtered/author-only subsets cannot complete it.
+   Use the inward green cue without checkmarks and readable/spoken completion information. U-08-01–07
+   remains planned / NOT RUN; no endpoint or schema change is expected.
+2. Address #176's root/pushed Sign-in Back context; reproduce landscape player contrast, clipping/player
    clearance and preview/theme mismatch. #195 adds non-color connection status and useful no-results recovery.
    Whole-book/chapter seek labels already exist; verify actual TalkBack rather than reimplementing labels.
-2. Under #194, prove content-driven flat rows/profile clearance and real-theme preview parity before comparing
+3. Under #194, prove content-driven flat rows/profile clearance and real-theme preview parity before comparing
    Continue/flat-row/profile/Appearance designs. Consolidate #192/#193/#184 with that audit; do not open a
    parallel redesign queue. Retain #179 Book detail, #180 Settings and #181 profile child scopes.
-3. #187 audits every book-card family, including Home/focused results; the series/shared-card slice is delivered.
+4. #187 audits every book-card family, including Home/focused results; the series/shared-card slice is delivered.
    Preserve authoritative finished state, the subtle inward green cue without a checkmark, and readable/spoken
    completion information. #186's decorative appearance controls must not hide semantic completion.
-4. #182/#183 and parts of #177/#178 landed in PR #200. Verify remaining motion, predictive Back, large text and
+5. #182/#183 and parts of #177/#178 landed in PR #200. Verify remaining motion, predictive Back, large text and
    reduced motion before further implementation. #175 shared-cover transitions remain a later cosmetic experiment.
-5. Reproduce #190 on an affected device with provider/version, standalone rendering, opaque background,
+6. Reproduce #190 on an affected device with provider/version, standalone rendering, opaque background,
    reduced motion and Haze isolation before choosing a permanent WebView mitigation. Keep #101 display formatting
    separate from primary series membership/ordering.
 
-**Exit:** U-01–U-05 record applicable 320/375/414/768 dp, 1.0/1.3/2.0 text, English/Norwegian, landscape,
+**Exit:** U-01–U-05 and U-08-01–07 record applicable 320/375/414/768 dp, 1.0/1.3/2.0 text, English/Norwegian, landscape,
 theme/artwork/offline/error, TalkBack and reduced-motion evidence. The 2179 series subset is not this whole matrix.
 
-### 5. Add Android system surfaces through one action contract
+### 6. Add Android system surfaces through one action contract
 
 **Owner:** Android System & Auto. **Requirements:** PLAY-001/004, ROUTE-001/002, AUTH-002/003;
 specification 3.3/5.2. **Prerequisite:** relevant playback/profile/permission correctness accepted.
@@ -128,12 +160,12 @@ specification 3.3/5.2. **Prerequisite:** relevant playback/profile/permission co
 Implement #114's typed shortcut/automation contract using existing remembered-book and resume-freshness owners.
 Validate exported parameters, lock/profile access and stale intent; never accept arbitrary media URLs or credentials.
 Then #117 widget and #118 Quick Settings project the same state/actions, followed by #116's opt-in headset
-automation. #119 first tests Garmin Control Phone; a custom companion needs a demonstrated gap.
+automation. Garmin #119 is parked outside this execution lane; see the owner-evaluation gate below.
 
 **Exit:** each alternate entry reaches the same guarded behavior and passes offline, locked-profile,
 process-recreation and playback-continuity checks. No second player, progress or timer owner.
 
-### 6. Close public-release acceptance
+### 7. Close public-release acceptance
 
 **Owner:** Test & Acceptance, with Build & Dependencies. **Requirements:** specification 17/18/21/25.
 
@@ -145,6 +177,19 @@ release decisions and source-file-deletion boundary; do not reopen completed fea
 
 **Exit:** applicable acceptance is evidenced, release artifacts/signing/identity/security are verified,
 and unresolved risks are explicitly dispositioned before publication.
+
+## Parked Garmin proposal — owner evaluation first
+
+[#119](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/119) is **low priority / parked**
+under PD-007. The owner will test the existing watch app and its sidecar for a while to learn the tradeoffs.
+No BookWave Garmin research, prototype, development or agent-run watch acceptance starts until the owner
+returns with findings and explicitly resumes the lane. Do not create a separate research child issue now.
+
+Retain the future goal: BookWave-managed preparation/transfers to fēnix 8, downloaded playback without
+the phone and later progress reconciliation through BookWave with Audiobookshelf. Replacing a separate
+helper is a target with unproven feasibility, not an accepted transport/transcoder/hosting design.
+Fully independent watch downloads/direct server sync are outside the initial target. Phone remote controls
+remain optional; #114 governs that adapter only. This parked proposal does not block an Android release.
 
 ## Dependency and CI maintenance alongside the delivery lanes
 
