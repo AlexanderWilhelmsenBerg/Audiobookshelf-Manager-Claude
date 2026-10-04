@@ -16,13 +16,13 @@ The proposals in #194 do not authorize an authentication/navigation rebuild or c
 
 ## Owner-requested child issues — 2026-10-04
 
-These are planned scopes, not rendered acceptance. PD-006 adds the browse/navigation behavior to LIB-002.
-No runtime implementation, new endpoint or schema change is included in this registration.
+These began as planned scopes. The [browse delivery report](2026-10-04-browse-selection-counts.md) now records #227/#228 implementation and scoped results; #229 remains planned. PD-006 adds the browse/navigation behavior to LIB-002.
+The original registration included no runtime changes; the subsequent browse fix adds no endpoint or schema change.
 
 | Issue | Current source / report | Delivery boundary and test log |
 | --- | --- | --- |
-| [#227 gesture highlighting](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/227) | Owner: Books → Series → Books leaves Series highlighted although the pill returns to Books. Pager position drives the pill, uiState.axis drives selected labels; the listener can capture an old axis. This is a hypothesis pending reproduction. | First small bug. Guard the actual pager/ViewModel callback path; keep taps/cancelled gestures/recreation/settled semantics and playback consistent. U-06-01–06, all NOT RUN. |
-| [#228 browse entity counts](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/228) | Home sync label currently flattens represented books and uses book plurals for every axis. | Second small bug. Count books/series/authors/genres for the displayed authorized scope; retain uncapped source totals and partial/loading status. U-07-01–05, all NOT RUN. |
+| [#227 gesture highlighting](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/227) | Owner: Books → Series → Books leaves Series highlighted although the pill returns to Books. Pager position drives the pill, uiState.axis drives selected labels; the listener can capture an old axis. This is a hypothesis pending reproduction. | First small bug. Guard the actual pager/ViewModel callback path; keep taps/cancelled gestures/recreation/settled semantics and playback consistent. U-06-01–06: scoped implementation evidence in the dated report; incomplete physical criteria remain pending. |
+| [#228 browse entity counts](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/228) | Home sync label currently flattens represented books and uses book plurals for every axis. | Second small bug. Count books/series/authors/genres for the displayed authorized scope; retain uncapped source totals and partial/loading status. U-07-01–05: scoped implementation evidence in the dated report; incomplete physical criteria remain pending. |
 | [#229 grouped author page](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/229) | Authors cards narrow Home to Books; existing AuthorRoute from Book details renders a flat author shelf. | First larger UI slice after performance/download work. Reuse the destination, add Series/Standalone projections and truthful completion, preserve genre focus and Back/privacy/offline boundaries. U-08-01–07, all NOT RUN. |
 
 The author page changes the deliberate earlier in-place Authors behavior; its old source comments are

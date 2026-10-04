@@ -191,8 +191,8 @@ established. Remaining UI/security/server/manual-performance matrices and final-
 | U-03 | Root and pushed Sign in; success/cancel/drafts and predictive/system/toolbar Back. | Explicit navigation context gives the expected destination; root has no Back arrow. #176's implementation slice remains planned. |
 | U-04 | Empty/filter/no-results recovery, offline/loading/error, connection status and app appearance. | States and recovery remain distinct; active appearance and a non-color status cue are required. Unimplemented #195 residuals stay planned. |
 | U-05 | WebView/provider/version, opaque background, reduced motion, standalone/Haze isolation. | Reproduce #190 on an affected device before selecting a permanent mitigation; record provider and each matrix result. |
-| U-06 | Gesture navigation — #227. | Planned, all U-06-01–06 NOT RUN; record source/render/device evidence below before claiming acceptance. |
-| U-07 | Browse counts — #228. | Planned, all U-07-01–05 NOT RUN; record source/render/device evidence below before claiming acceptance. |
+| U-06 | Gesture navigation — #227. | Implemented on the browse branch; see the dated browse delivery report for scoped source/render/phone results and missing acceptance. |
+| U-07 | Browse counts — #228. | Implemented on the browse branch; see the dated browse delivery report for scoped source/render/phone results and missing acceptance. |
 | U-08 | Author details — #229. | Planned, all U-08-01–07 NOT RUN; record source/render/device evidence below before claiming acceptance. |
 | Q-01 | Existing-install upgrade, About identity/version, stored profiles/passcode/progress/downloads and Loopbound bundle. | APK signer/version allow an in-place upgrade; data survives; About and artifact describe actual bytes/source. 2178 installed bytes and 2177→2178 in-place upgrade/data retention passed in the linked continuation; repeat against the new signed APK. Earlier About/Loopbound first-page results retain their original build scope. |
 | Q-02 | Auth expiry/reauthentication, locked profiles, app-switcher privacy and controller/exported-command boundaries. | Offline data/passcode survive ordinary reauth; unauthorised controllers cannot browse/clear privileged state; no secrets/private metadata in shared logs. AUTH-002/003/004, section 5.2. |
@@ -204,8 +204,10 @@ established. Remaining UI/security/server/manual-performance matrices and final-
 ## Newly planned browse acceptance — 2026-10-04
 
 Owner decisions PD-006/007 and GitHub issues below add acceptance obligations, not implemented fixes.
-The issue-registration/documentation change runs source gates but performs no app-function or phone test.
-Each granular case is **NOT RUN — awaiting implementation**. Use the existing result template for exact
+The original issue-registration change claimed no app-function or phone test. The subsequent #227/#228
+implementation and its scoped automatic/device results are tracked in the
+[browse delivery report](2026-10-04-browse-selection-counts.md); use its exact APK and pending portions.
+#229's author-detail cases remain **NOT RUN — awaiting implementation**. Use the existing result template for exact
 APK/configuration, expected/observed behavior, UTC/evidence and regressions. Guard actual callers; future
 bug tests must fail on the old behavior. Source/UI semantics checks do not replace physical gesture,
 TalkBack or rendering evidence. All new work preserves Room/profile/playback ownership and adds no endpoint/schema here.
@@ -214,22 +216,22 @@ TalkBack or rendering evidence. All new work preserves Room/profile/playback own
 
 | Case | Scenario | Required result | Current result |
 | --- | --- | --- | --- |
-| U-06-01 | Books → Series → Books | After each settle content/pill/icon-label highlight/selected semantics agree. Exercise the actual HomeScreen/ViewModel callback path; record the reported failure before the fix. | NOT RUN — awaiting implementation. |
-| U-06-02 | All axes and edge overspill | Traverse Books/Series/Authors/Genres in both directions; Books/Genres overspill springs back without committing another axis. | NOT RUN — awaiting implementation. |
-| U-06-03 | Interrupted gesture and tap intent | Partial/cancelled drags, rapid reversals/repeated swipes and a tab tap during settlement end at the final destination without oscillation or stale highlights. | NOT RUN — awaiting implementation. |
-| U-06-04 | Restoration and return from details | Restore a non-default axis, recreate the Activity and return from Book/Series/Author details; displayed content and selection remain aligned. | NOT RUN — awaiting implementation. |
-| U-06-05 | Selected accessibility state | Exactly one settled destination is selected; actual TalkBack focus/announcement matches the visible page, including cancelled gestures. | NOT RUN — awaiting implementation. |
-| U-06-06 | Appearance and playback continuity | Normal/200% text, portrait/landscape and reduced motion, offline and active audio; record privacy-safe state capture/video and no audio/queue/progress interruption. | NOT RUN — awaiting implementation. |
+| U-06-01 | Books → Series → Books | After each settle content/pill/icon-label highlight/selected semantics agree. Exercise the actual HomeScreen/ViewModel callback path; record the reported failure before the fix. | Scoped automatic PASS; physical/remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
+| U-06-02 | All axes and edge overspill | Traverse Books/Series/Authors/Genres in both directions; Books/Genres overspill springs back without committing another axis. | Scoped automatic PASS; physical/remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
+| U-06-03 | Interrupted gesture and tap intent | Partial/cancelled drags, rapid reversals/repeated swipes and a tab tap during settlement end at the final destination without oscillation or stale highlights. | Scoped automatic PASS; physical/remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
+| U-06-04 | Restoration and return from details | Restore a non-default axis, recreate the Activity and return from Book/Series/Author details; displayed content and selection remain aligned. | Scoped automatic PASS; physical/remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
+| U-06-05 | Selected accessibility state | Exactly one settled destination is selected; actual TalkBack focus/announcement matches the visible page, including cancelled gestures. | Scoped automatic PASS; physical/remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
+| U-06-06 | Appearance and playback continuity | Normal/200% text, portrait/landscape and reduced motion, offline and active audio; record privacy-safe state capture/video and no audio/queue/progress interruption. | Scoped automatic PASS; physical/remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
 
 ### Browse counts — #228
 
 | Case | Scenario | Required result | Current result |
 | --- | --- | --- | --- |
-| U-07-01 | Distinct entity fixtures | Zero/one/many books/series/authors/genres, duplicates and coauthors; each noun/count matches the displayed entities, Books shelves retain uncapped source totals. | NOT RUN — awaiting implementation. |
-| U-07-02 | Scope and localization | Search/filter/focused-book results and English/Norwegian zero/one/many/spoken labels; focused results count books and other axes count their own entities. | NOT RUN — awaiting implementation. |
-| U-07-03 | Library/profile authorization | Switch library/profile and revoke/hide items; no inaccessible content count or stale prior-profile total is exposed. | NOT RUN — awaiting implementation. |
-| U-07-04 | Sync and unloaded states | Loading, success, partial success, failure and never-synced fixtures; retain partial caveat and never show fabricated zero counts for unloaded pages. | NOT RUN — awaiting implementation. |
-| U-07-05 | Updates, gestures and accessibility | Axis taps/swipes, Room updates and cached offline state; count settles with displayed axis, stays readable at large text, is spoken correctly and preserves playback. | NOT RUN — awaiting implementation. |
+| U-07-01 | Distinct entity fixtures | Zero/one/many books/series/authors/genres, duplicates and coauthors; each noun/count matches the displayed entities, Books shelves retain uncapped source totals. | Scoped automatic PASS; physical/remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
+| U-07-02 | Scope and localization | Search/filter/focused-book results and English/Norwegian zero/one/many/spoken labels; focused results count books and other axes count their own entities. | Scoped automatic PASS; physical/remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
+| U-07-03 | Library/profile authorization | Switch library/profile and revoke/hide items; no inaccessible content count or stale prior-profile total is exposed. | Scoped automatic PASS; physical/remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
+| U-07-04 | Sync and unloaded states | Loading, success, partial success, failure and never-synced fixtures; retain partial caveat and never show fabricated zero counts for unloaded pages. | Scoped automatic PASS; physical/remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
+| U-07-05 | Updates, gestures and accessibility | Axis taps/swipes, Room updates and cached offline state; count settles with displayed axis, stays readable at large text, is spoken correctly and preserves playback. | Scoped automatic PASS; physical/remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
 
 ### Author details — #229
 

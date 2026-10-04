@@ -240,11 +240,11 @@ class HomeScreenTest {
      * PRODUCT_SPEC LIB-001 — status describes whichever Room-backed browse axis is actually visible.
      *
      * Series, authors and genres deliberately do not collect the flat book flow. Their count therefore
-     * comes from their own rows, de-duplicated because one book may belong to several series or groups.
+     * names their own entities, not the books shared between their rows (LIB-002 / #228).
      * Shelves keep the uncapped source count rather than mistaking their preview limit for the library.
      */
     @Test
-    fun `sync status counts unique books on every populated browse shape`() {
+    fun `sync status counts the entity on every populated browse shape`() {
         val first = book()
         val second = book().copy(id = LibraryItemId("item-2"), title = "Second book")
         var shown by mutableStateOf(
@@ -280,7 +280,7 @@ class HomeScreenTest {
             ),
         )
         compose.waitForIdle()
-        compose.onNodeWithTag(HOME_SYNC_STATUS_TEST_TAG).assertTextEquals("2 books")
+        compose.onNodeWithTag(HOME_SYNC_STATUS_TEST_TAG).assertTextEquals("2 series")
 
         val groups = listOf(
             BookGroup(BookGroupKind.Author, "author-1", "First author", listOf(first, second)),
@@ -288,7 +288,7 @@ class HomeScreenTest {
         )
         shown = state(books = emptyList(), axis = HomeAxis.Authors, groups = groups)
         compose.waitForIdle()
-        compose.onNodeWithTag(HOME_SYNC_STATUS_TEST_TAG).assertTextEquals("2 books")
+        compose.onNodeWithTag(HOME_SYNC_STATUS_TEST_TAG).assertTextEquals("2 authors")
 
         shown = state(
             books = emptyList(),
@@ -296,7 +296,7 @@ class HomeScreenTest {
             groups = groups.map { it.copy(kind = BookGroupKind.Genre) },
         )
         compose.waitForIdle()
-        compose.onNodeWithTag(HOME_SYNC_STATUS_TEST_TAG).assertTextEquals("2 books")
+        compose.onNodeWithTag(HOME_SYNC_STATUS_TEST_TAG).assertTextEquals("2 genres")
     }
 
     /** Selecting a new axis opens its beginning instead of inheriting the previous list's position. */

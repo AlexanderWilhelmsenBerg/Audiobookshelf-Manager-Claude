@@ -77,8 +77,10 @@ playback/progress/privacy defect. Hardware-dependent reliability acceptance rema
    scope. Focused book results count books. Retain uncapped Books shelf totals, localized plurals and
    truthful loading/partial-sync status; count labels remain Room-backed.
 
-Both issues are **planned / NOT RUN**, not fixes landed by this documentation PR. Prove their regression
-guards on the old behavior, inspect actual production callers and retain playback continuity.
+Both issues now have implementation on `fix/browse-selection-counts`, stacked on planning PR #226.
+The [browse delivery report](testing/2026-10-04-browse-selection-counts.md) records failing pre-fix guards,
+actual caller wiring and scoped automatic/device results. These fixes are not merged or blanket-accepted;
+carry pending phone/TalkBack/configuration portions forward.
 
 **Exit:** U-06-01–06 and U-07-01–05 have source-gate and applicable physical gesture/localization/TalkBack
 evidence; fix gesture selection before counts, then return to measured performance/download work.

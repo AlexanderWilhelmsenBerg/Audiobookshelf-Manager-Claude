@@ -72,6 +72,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -694,11 +695,16 @@ private fun rememberAxisPager(
         val target = pages.indexOf(axis).coerceAtLeast(0)
         if (target != state.currentPage) state.animateScrollToPage(target)
     }
-    LaunchedEffect(state, onAxisChanged) {
+    // LIB-002 / #227: stable route callbacks must compare against the current axis, not the
+    // axis captured when the observer started. Read these outside snapshotFlow so axis updates
+    // do not replay the old settled page while a tab's animation is still running.
+    val currentAxis by rememberUpdatedState(axis)
+    val currentOnAxisChanged by rememberUpdatedState(onAxisChanged)
+    LaunchedEffect(state) {
         snapshotFlow { state.settledPage }
             .map { page -> pages[page.coerceIn(pages.indices)] }
-            .filter { settled -> settled != axis }
-            .collect(onAxisChanged)
+            .filter { settled -> settled != currentAxis }
+            .collect { currentOnAxisChanged(it) }
     }
     // The neighbouring axes are worth collecting from the first drag onward — see
     // `HomeViewModel.swipePreview` for why it latches rather than following the gesture.
@@ -1375,7 +1381,7 @@ private fun ShelfHeader(uiState: HomeUiState, modifier: Modifier = Modifier) {
         // "offline playback must be complete and reliable".
         Text(
             text = if (uiState.isOffline) {
-                stringResource(R.string.home_offline_caption)
+                stringResource(R.string.home_offline_caption, uiState.entityCountLabel(partial = false))
             } else {
                 uiState.syncStatusLabel()
             },
@@ -1397,30 +1403,25 @@ private fun HomeUiState.syncStatusLabel(): String = when (syncStatus) {
     // The count follows the active browse scope. A search narrows it; a shelf preview retains the
     // uncapped Room source count rather than claiming its card limit is the whole library.
     SyncStatus.Succeeded ->
-        pluralStringResource(R.plurals.home_library_books, visibleBookCount, visibleBookCount)
+        entityCountLabel(partial = false)
 
     // PRODUCT_SPEC LIB-001 — a sync that could not reach some items says so rather than claiming a clean
     // run. The count is still what is on screen; the caveat is that it is not all of it.
     SyncStatus.PartiallySucceeded ->
-        pluralStringResource(R.plurals.home_sync_partial, visibleBookCount, visibleBookCount)
+        entityCountLabel(partial = true)
 }
 
-/** Number of distinct books represented by the active browse shape, not the number of cards. */
-private val HomeUiState.visibleBookCount: Int
-    get() = when (axis) {
-        HomeAxis.Books -> if (booksView == BooksView.Shelves) {
-            shelves.totalBookCount
-        } else {
-            books.asSequence().distinctBookCount()
-        }
-
-        HomeAxis.Series -> series.asSequence().flatMap { it.books.asSequence() }.distinctBookCount()
-
-        HomeAxis.Authors, HomeAxis.Genres ->
-            groups.asSequence().flatMap { it.books.asSequence() }.distinctBookCount()
+/** LIB-001/002 / #228: the noun and count come from the same displayed browse scope. */
+@Composable
+private fun HomeUiState.entityCountLabel(partial: Boolean): String {
+    val resource = when (axis) {
+        HomeAxis.Books -> if (partial) R.plurals.home_sync_partial else R.plurals.home_library_books
+        HomeAxis.Series -> if (partial) R.plurals.home_sync_partial_series else R.plurals.home_library_series
+        HomeAxis.Authors -> if (partial) R.plurals.home_sync_partial_authors else R.plurals.home_library_authors
+        HomeAxis.Genres -> if (partial) R.plurals.home_sync_partial_genres else R.plurals.home_library_genres
     }
-
-private fun Sequence<Book>.distinctBookCount(): Int = map { it.id }.distinct().count()
+    return pluralStringResource(resource, visibleEntityCount, visibleEntityCount)
+}
 
 /**
  * PRODUCT_SPEC 21 — a status light that means the same thing in both themes.
