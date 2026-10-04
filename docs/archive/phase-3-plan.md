@@ -1,5 +1,8 @@
 # Phase 3 — Downloads and offline playback: plan, and what needs your decision
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 **Status: not started, and now fully specified.** No code exists yet. The eight decisions this document
 originally asked for were **answered on 2026-08-14** and are recorded in ADR-0018; the summary is below, and
 the original questions are kept underneath it so the answers can be read against what was asked.

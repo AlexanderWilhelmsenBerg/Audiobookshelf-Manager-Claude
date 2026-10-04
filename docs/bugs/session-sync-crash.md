@@ -1,5 +1,8 @@
 # Session-sync stress crash and permanent local crash reports
 
+**Classification:** Dated evidence snapshot; original source/build findings and results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 PR #81 serializes playback-session transitions. While it was being device-tested, a repeatable process
 termination appeared under a profile/session stress sequence. The exact initiating exception was lost because
 the in-app Event Log is intentionally memory-only and therefore vanished with the process.

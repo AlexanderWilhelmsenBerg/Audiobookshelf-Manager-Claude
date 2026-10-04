@@ -1,5 +1,8 @@
 # Device test — build 0.9.1-bookmarks
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 The bookmark button has been a disabled placeholder since wave 2. It works now. This is the only new thing
 in the build, so the script is short — but read section 4, because the API's design shows through the UI in
 one place and it is better to expect it than to report it.

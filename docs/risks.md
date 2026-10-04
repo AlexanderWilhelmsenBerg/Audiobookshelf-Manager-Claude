@@ -1,7 +1,7 @@
 # Risk register
 
 **Classification:** Live risk register with dated entries and preserved closure history.
-**Planning reconciliation:** 2026-10-04 against main `a20bb5b9`; later entry dates override the original
+**Planning reconciliation:** 2026-10-04 against main `8de931f0` (PR #226); later entry dates override the original
 2026-08-21 inventory. [The roadmap](roadmap.md) owns sequencing and the
 [verification register](testing/roadmap-verification-register.md) owns build-specific acceptance.
 
@@ -19,7 +19,8 @@ and the cheapest thing that would retire it. Ordered by blast radius within each
 
 ## 1. Release blockers
 
-These stop a public build. None is a bug; each is a decision nobody has made.
+These were the original public-release decision blockers. The rows below retain their recorded
+closures; current release blockers and acceptance gates are tracked by the roadmap and verification register.
 
 | # | Risk | If it bites | Retired by |
 | --- | --- | --- | --- |
@@ -134,7 +135,7 @@ which would be a larger change than the risk justifies; both need a device with 
 
 A narrower cancellation boundary was reproduced on 2026-10-04 with the real downloader and filesystem:
 synchronous media verification could return after Job cancellation and still rename a valid part or
-clear an invalid complete-416 part. The [guarded correction/test log](testing/2026-10-04-download-verification-cancellation.md)
+clear an invalid complete-416 part. The [draft PR #232 correction/test log](testing/2026-10-04-download-verification-cancellation.md)
 checks cancellation after validation, checkpoints available partial bytes/response metadata and rethrows.
 It does not synchronize WorkManager stop with filesystem deletion, prevent kernel late writes or protect
 a new claim arriving across scheduler cancellation. R-120 and its D-10/DC-P07 physical cases stay open.
@@ -183,9 +184,10 @@ still available; absent-owner and pre-sink cases retain known progress. See the
 [review and pending physical cases](reviews/2026-10-04-download-restart-progress.md). R-123 remains open
 for visible progress, process restart and real storage/server acceptance.
 
-APK2183 exposed a paused Book percentage of 28% versus 31% from the correct durable bytes. The
-follow-up now keeps stale execution progress from overriding stopped Book/Downloads states, with
-two actual caller guards and revert failures. New-binary physical acceptance is tracked in the
+Draft PR #232 / APK2183 exposed a paused Book percentage of 28% versus 31% from the correct durable bytes.
+Its unmerged follow-up keeps stale execution progress from overriding stopped Book/Downloads states, with
+two actual caller guards and revert failures. Signed draft APK2184 passes ordinary Pause/relaunch/discard/Resume
+progress checks; controlled acceptance remains open in the
 [download verification log](testing/2026-10-04-download-verification-cancellation.md); controlled
 replacement, storage and concurrent-attempt cases still leave R-123 open.
 

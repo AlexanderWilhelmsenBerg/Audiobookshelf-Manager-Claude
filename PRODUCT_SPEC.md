@@ -1,7 +1,7 @@
 # BookWave for Android
 ## Product Requirements and Technical Specification
 
-**Document status:** Build-ready baseline  
+**Document status:** Requirements baseline, refined by accepted ADRs and product decisions
 **Date:** 2026-08-04  
 **Working title:** BookWave (was ShelfPlayer until 2026-08-15; see ADR-0019)  
 **Product type:** Unofficial native Android client for an Audiobookshelf server  
@@ -11,6 +11,16 @@
 > The working title must not imply that the application is an official Audiobookshelf product. Do not use the Audiobookshelf logo or official branding without explicit permission.
 
 ---
+
+Current interpretation is governed by accepted [ADRs](docs/adr/) and
+[product decisions](docs/product-decisions.md) where they explicitly refine this baseline. In particular,
+ADR-0013 replaces the original finished-percentage preference with the library's authoritative completion
+rule; ADR-0010 defers dependency locking while strict artifact verification stays enabled; ADR-0018 and
+PD-004 make physical downloads device-wide with profile-scoped authorization/progress. ADR-0024 settles
+application identity, licence, distribution and minimum server version. PD-002/005/006 govern current
+sleep, History/series and browse behavior. This document states requirements, not delivery acceptance;
+the [roadmap](docs/roadmap.md) and [verification register](docs/testing/roadmap-verification-register.md)
+record merged/draft/accepted status. Android is the active scope; portability/cache experiments are excluded.
 
 # 1. Executive summary
 
@@ -1965,7 +1975,7 @@ Resolved decisions remain numbered here so ADRs and earlier reviews keep stable 
 4. **Resolved by ADR-0024:** minimum Audiobookshelf server version 2.26.0, enforced at sign-in and failing
    open only when a version string cannot be parsed.
 5. Whether custom CA certificate import is required for version 1.
-6. Whether physical offline files are deduplicated across profiles in version 1.
+6. **Resolved by ADR-0018 and PD-004:** physical copies are device-wide; claims, authorization and progress remain profile-scoped.
 7. Whether Android Auto ships in version 1 or 1.1.
 8. Whether full metadata candidate search is reliable enough across supported server versions.
 9. **Resolved by ADR-0021:** no source-file deletion feature ships without a distinct captured and tested

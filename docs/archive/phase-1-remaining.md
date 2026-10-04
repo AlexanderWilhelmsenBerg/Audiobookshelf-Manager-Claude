@@ -1,5 +1,8 @@
 # What is left to complete Phase 1
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 A gap audit of Phase 0 and Phase 1 against `PRODUCT_SPEC.md`, run after the websocket requirement
 (`LIB-001`, last acceptance criterion) was found to have been missed by the phase plan entirely.
 

@@ -1,5 +1,8 @@
 # Phase 2 wave 1 — device test, build 0.2.0-phase2w1
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 The first build of this project that can play a sound. Everything below needs hardware; nothing below is
 covered by the automated suite, which is the whole reason this document exists.
 

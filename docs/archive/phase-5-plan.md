@@ -1,5 +1,8 @@
 # Phase 5 — Management tools: the plan, and what has to happen first
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 **Status: Phase 5 is complete.** All eight slices are done, one of them correctly with no feature. The captures came back, the four questions they could not answer
 were settled from the Audiobookshelf project's own source, and one of those answers ended a slice with no
 feature — correctly. 

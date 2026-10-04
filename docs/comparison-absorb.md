@@ -1,5 +1,9 @@
 # What is worth taking from Absorb
 
+**Classification:** Historical product survey (2026-08-29); recommendations require current roadmap scope.
+
+Use [the roadmap](roadmap.md) and its verification register for current state.
+
 **Read 2026-08-29** at [`pounat/absorb`](https://github.com/pounat/absorb), commit `df4dc6e`. Another
 Audiobookshelf client — Flutter, Android and iOS, published on Play and the App Store.
 

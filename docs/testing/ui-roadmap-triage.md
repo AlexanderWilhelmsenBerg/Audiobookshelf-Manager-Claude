@@ -2,14 +2,14 @@
 
 **Classification:** Source reconciliation and future acceptance plan, not rendered acceptance.
 **Source snapshot:** GitHub main `81a06e1`; this table is dated source evidence.
-**Reconciled:** 2026-10-04 through main `a20bb5b9`. [The roadmap](../roadmap.md) owns sequencing.
+**Reconciled:** 2026-10-04 through main `8de931f0` (PR #226), with draft #230 evidence. [The roadmap](../roadmap.md) owns sequencing.
 PRs #220/#222 have delivered the shared series/card slice; [2179 phone evidence](2026-10-04-phone-2179.md)
 accepts selected compact/glow/large-text subcases. It does not close the broader #194/#195 audits or
 #187's all-card-family scope. Inspect current callers before implementing a remaining proposal.
 **Owner:** UI & Experience, with Test & Acceptance review.
 
 Critical playback/progress/privacy defects take precedence. Under the owner's 2026-10-04 ordering, fix
-the gesture/count bugs next while hardware acceptance remains pending, then return to performance/download
+the gesture/count acceptance gaps in draft #230 while hardware acceptance remains pending, then return to performance/download
 work. The author page is the first larger remaining UI slice. Preserve Material 3, repository-backed state,
 remembered-book ownership, author-before-title shelf ordering and existing destinations.
 The proposals in #194 do not authorize an authentication/navigation rebuild or changes to other Settings tabs.

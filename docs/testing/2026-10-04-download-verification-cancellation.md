@@ -1,5 +1,9 @@
 # Download verification cancellation — 2026-10-04
 
+**Classification:** Dated draft-candidate evidence; results apply only to the recorded source/APK.
+Imported during the 2026-10-04 reconciliation. The associated runtime PR remains unmerged;
+[the roadmap](../roadmap.md) owns current delivery status.
+
 **Classification:** Active verification log; software and physical evidence are separate.
 **Owner:** Offline & Downloads, implementation owner.
 **Requirements:** DL-001/002/003/004, AUTH-002; PRODUCT_SPEC 12/21; PD-003/004.

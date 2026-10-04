@@ -19,6 +19,10 @@ The repository has accumulated detailed investigation over time. Detail does **n
 | How is the current signed APK produced and accepted? | [`release.md`](release.md) current handoff, active `.github/workflows/apk.yml`, and [`testing/roadmap-verification-register.md`](testing/roadmap-verification-register.md) |
 | What did older phases investigate or prove? | [`archive/`](archive/), [`bugs/`](bugs/), [`reviews/`](reviews/), historical [`gaps.md`](gaps.md) / [`closeout.md`](closeout.md) / [`handover.md`](handover.md), and the superseded [`dependency-upgrade-plan.md`](dependency-upgrade-plan.md) |
 
+The [2026-10-04 reconciliation](reviews/2026-10-04-documentation-reconciliation.md) records the
+repository-wide authority/link/source audit and merge disposition. Draft reports are evidence for their
+recorded source, not proof their runtime is on main.
+
 ## Document classifications
 
 Every planning or investigation document should be readable as one of these states:

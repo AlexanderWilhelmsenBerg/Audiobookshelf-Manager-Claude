@@ -1,5 +1,8 @@
 # Enforce the existing security coverage rule — R-125
 
+**Classification:** Dated evidence snapshot; original source/build findings and results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Requirements: PRODUCT_SPEC 14.4/14.5 and 17.3. The root 80% domain/core aggregate was green while
 `:core:common`'s separate 90% redaction rule had no caller from ordinary verification. A fresh isolated
 measurement was **84.43%**, below the required security threshold. The earlier 92.7% note was stale.

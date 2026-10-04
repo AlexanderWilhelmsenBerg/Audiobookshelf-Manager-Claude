@@ -1,5 +1,8 @@
 # Audiobookshelf API compatibility
 
+**Classification:** Current captured-contract matrix with explicitly source-scoped draft evidence.
+**Reconciled:** 2026-10-04; server verification dates below are unchanged.
+
 `PRODUCT_SPEC 19` requires this file to record the server versions tested, the capabilities detected,
 known endpoint differences, the fixtures used, and the date last verified.
 
@@ -10,15 +13,15 @@ synthetic gateway, real Room and filesystem; no additional server version is cla
 
 The 2026-10-04 compact series cards and device-only Benchmark 1.5.0 repair add no server request,
 response, Room schema or capability changes. The [benchmark review](reviews/2026-10-04-benchmark-api36.md)
-records source/gate evidence and missing hardware tests; no additional server version is claimed.
+records source/gate evidence; the later 2179 report completes its bounded benchmark rerun, with scrolling/manual-audio/stress acceptance still open; no additional server version is claimed.
 
-The 2026-10-04 download verification-cancellation correction uses the existing file response metadata
+The unmerged PR #232 download verification-cancellation correction uses the existing file response metadata
 and local Room/filesystem protocol. It adds no endpoint, response field, capability, schema or permission.
 Range/If-Range, `200`/`206`/`416` validation and entitlement contracts remain unchanged. The
 [test log](testing/2026-10-04-download-verification-cancellation.md) separates synthetic real-filesystem
 regressions from pending device/parser/WorkManager/server acceptance; no new server version is claimed.
 
-The paused-percent follow-up changes only Book/Downloads presentation precedence: stopped recovery
+Draft PR #232 / APK2184's paused-percent follow-up changes only Book/Downloads presentation precedence: stopped recovery
 states use the durable manifest; active states retain live execution progress. No server contract,
 Room schema, permission or additional tested server version changes. The same download test log records
 its caller guards and separate source-matched physical acceptance.

@@ -1,7 +1,8 @@
 # Reliability acceptance
 
 **Classification:** Acceptance checklist, not a second roadmap.
-**Baseline:** main `8beec05c` includes #211–#218, including the R-122 correction.
+**Baseline reconciled:** main `8de931f0` includes #211–#225 and planning #226.
+Draft PR #232 adds cancellation/percent corrections that are not on main; use its dated report for APK2184 subcases.
 Record the exact candidate APK commit when executing.
 
 ## Evidence record
@@ -152,7 +153,7 @@ Local logs are under ignored `build/reliability-evidence/`; the full-gate log is
 - No device was attached. Notification, lock-screen, TalkBack/large text, Android Auto/headset, removable
   storage, download process restart/shared-copy and two-hour soak acceptance remain pending. Record the
   final merged APK commit and device/host versions before those checks; do not close their issues from this
-  automated evidence. The Silo pilot remains deferred for separate implications research.
+  automated evidence. Remote-cache experimentation is outside the active Android scope.
 
 ### Historical #36 / GitHub #128 verification handoff — 2026-10-03
 

@@ -1,5 +1,8 @@
 # Delta test — build 0.1.2-phase1
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Only what is **new or newly fixed** since the last device run. `docs/phase-1-acceptance.md` remains the
 full regression script; this does not replace it.
 

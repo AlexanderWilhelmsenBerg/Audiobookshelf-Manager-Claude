@@ -1,5 +1,9 @@
 # Device acceptance — issue #75 mini-player session reattachment
 
+**Classification:** Current session-reattachment acceptance procedure with historical issue provenance.
+The historical #75 label is retained; use the verification register P-02 for current execution/results.
+Use [the roadmap](roadmap.md) and its verification register for current state.
+
 **Scope:** Android notification/session entry and Activity lifecycle only.  
 **Automated proof:** `:playback` Media3/Robolectric existing-session attachment and stale-token rejection plus `:app` STARTED-lifecycle reachability.  
 **Still physical:** notification content intent, task/Activity recreation, real service lifetime and OEM media surfaces.
