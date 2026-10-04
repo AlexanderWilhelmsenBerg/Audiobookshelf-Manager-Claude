@@ -10,10 +10,10 @@ project on the day they were written. For where things stand now:
 
 | Question | Document |
 | --- | --- |
-| What is left to do | [`../closeout.md`](../closeout.md) |
+| What to work on next | [`../roadmap.md`](../roadmap.md) |
 | What is known to be wrong, and what was done about it | [`../risks.md`](../risks.md) |
-| What is built versus what the spec asks for | [`../gaps.md`](../gaps.md) |
-| How to test the current build on hardware | [`../device-test-0.9.14.md`](../device-test-0.9.14.md) |
+| Current requirements and acceptance | [`../../PRODUCT_SPEC.md`](../../PRODUCT_SPEC.md) and [`../testing/roadmap-verification-register.md`](../testing/roadmap-verification-register.md) |
+| How to test the current build on hardware | [`../testing/roadmap-verification-register.md`](../testing/roadmap-verification-register.md) |
 | How the code is arranged, and why | [`../architecture/overview.md`](../architecture/overview.md) |
 | What the server actually returns | [`../api-compatibility.md`](../api-compatibility.md) |
 

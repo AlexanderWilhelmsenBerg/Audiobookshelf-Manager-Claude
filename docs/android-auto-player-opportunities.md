@@ -9,7 +9,7 @@ built at the owner's request — see *What has since been built* — and the res
 Each item says what the platform documents, what BookWave does today, and what it would cost; where the
 documentation stops short it says so instead of guessing (product priority 6).
 
-**The numbering here is the recommended order**, which the sections now follow. An earlier draft numbered
+**The numbering here preserves the historical survey order; [the roadmap](roadmap.md) alone sequences work**, which the sections now follow. An earlier draft numbered
 them in the order they were written and then gave a different priority order at the end, which meant two
 schemes for the same five items.
 

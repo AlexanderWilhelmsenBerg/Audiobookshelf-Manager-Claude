@@ -1,13 +1,16 @@
 # Risk register
 
-**As of:** 2026-08-21, opening Phase 6.
+**Classification:** Live risk register with dated entries and preserved closure history.
+**Planning reconciliation:** 2026-10-04 against main `a20bb5b9`; later entry dates override the original
+2026-08-21 inventory. [The roadmap](roadmap.md) owns sequencing and the
+[verification register](testing/roadmap-verification-register.md) owns build-specific acceptance.
 
 A companion to `docs/gaps.md`, and not the same document. A **gap** is a requirement the build does not
 meet. A **risk** is something the build *does* — or does not know about itself — that could cost a user
 their data, their playback, or this project its release.
 
-Every entry below was verified against the tree on the date above, not inferred from a phase heading. Where
-a claim is "never run", that means no artifact in this repository shows it running.
+Use each entry's recorded date/source; this reconciliation is not a fresh full-risk audit. A historical
+"never run" claim must be checked against later device reports before nominating new work.
 
 Each row carries the three things that make a risk actionable: what goes wrong, how bad it is if it does,
 and the cheapest thing that would retire it. Ordered by blast radius within each group.
@@ -258,7 +261,7 @@ for visible progress, process restart and real storage/server acceptance.
 
 ---
 
-## 6. Performance, never measured
+## 6. Performance and remaining acceptance
 
 | # | Risk | If it bites | Retired by |
 | --- | --- | --- | --- |
@@ -290,7 +293,7 @@ for visible progress, process restart and real storage/server acceptance.
 | R-37 | **A test double that does not reproduce the shape of the real thing hides defects behind a passing test.** PR #28 found that catalogue reconciliation deleted an entire library on any unchanged refresh: `LibrarySnapshot.books` carries only *expanded* items, an item the server reports unchanged is deliberately skipped, so a second refresh produced an empty list and called `markAllBooksDeleted` — and every read filters `isDeleted = 0`. A test named `refresh is idempotent and does not duplicate rows` had existed for months, refreshed twice, and passed. | It passed because `FakeAudiobookshelfGateway.listBooks` **ignored its `cached` argument** and returned every book on every call, so the fake's `books` was never empty and the production shape never occurred. The fake was not a double; it was a second implementation that agreed with nothing. A 60-second OkHttp `callTimeout` bounding the Media3 stream — PR #28's other serious find — escaped for the sibling reason: nothing in the suite plays for sixty-one seconds. | **The sync half is closed.** The fake now honours `cached.isUpToDate`, and the fixture books carry a server stamp — without one `isUpToDate` can never return true and the skip path is unreachable, which is why the blind spot existed. Reverting the production fix now fails `refresh is idempotent` through the full repository path. The playback half still needs R-07. |
 | R-38 | **A defaulted parameter can preserve the bug it was added to fix.** `LibraryApi.listBooks` gained `onCatalogueBatch`, defaulting to `onBatch` so no implementer had to change. Any future persistence caller that does not pass a non-destructive sink silently gets the destructive behaviour the parameter exists to avoid. | Today there is exactly one persistence caller and it passes the sink. The trap is dormant, not absent, and it is the kind that reappears when a second caller is added by somebody reading the signature rather than the KDoc. | Removing the default once every caller is explicit, so the compiler asks the question instead of the reviewer. |
 | R-124 | **Automated wiring gap closed, 2026-10-03.** Five `BookViewModelDownloadTest` scenarios exercise the actual observer, menu, claims and Pause use case with repository/scheduler fixtures. | A refactor that drops execution evidence must fail rather than quietly restore the Failed label during retry. | All five tests failed when the ViewModel's observer projection was removed, then passed when restored. Retry/live progress, durable fallback/completion, Pause-before-cancel, shared claims and server/item changes are covered. Physical acceptance remains R-119. |
-| R-125 | **Resolved in the 2026-10-04 security-gate change.** Ordinary module/root verification now executes the existing 90% redaction koverVerify rule in addition to the root 80% aggregate. A fresh baseline was 84.43%, exposing the missing EventLog acceptance coverage. | Without the hook, a green aggregate could mask inadequate security coverage. | Four actual diagnostics tests bring the unchanged filtered report to 96.72%. Removing the hook makes the root graph guard fail; restoring it passes. See [review and verification](reviews/2026-10-04-security-coverage.md). Thresholds, filters and exclusions remain unchanged; final current-head full/CI verification is required. |
+| R-125 | **Resolved in the 2026-10-04 security-gate change.** Ordinary module/root verification now executes the existing 90% redaction koverVerify rule in addition to the root 80% aggregate. A fresh baseline was 84.43%, exposing the missing EventLog acceptance coverage. | Without the hook, a green aggregate could mask inadequate security coverage. | Four actual diagnostics tests bring the unchanged filtered report to 96.72%. Removing the hook makes the root graph guard fail; restoring it passes. See [review and verification](reviews/2026-10-04-security-coverage.md). Thresholds, filters and exclusions remain unchanged. PR #224 and final main `a20bb5b9` passed their full/CI gates; acceptance of unrelated security/device cases remains separate. |
 
 ### R-106 — inconclusive projection reads across a car lifecycle
 

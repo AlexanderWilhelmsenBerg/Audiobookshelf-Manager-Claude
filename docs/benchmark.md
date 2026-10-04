@@ -5,7 +5,9 @@ which of them a committed fixture cannot answer on its own.
 
 Nothing here runs in CI. Every command below needs a phone plugged in, and that is not a limitation of the
 tooling — a start-up figure measured on a shared runner describes the runner's contention. `docs/risks.md`
-R-25 remains open until usable measurements and a generated baseline profile are recorded.
+R-25 remains partially open: the 2026-10-04 measurements and stable generated profile are recorded,
+but scrolling exceeds the comparison budget and real cached-player/stress acceptance remains pending.
+The app-profile experiment stays outside production because it demonstrated no benefit.
 
 ---
 

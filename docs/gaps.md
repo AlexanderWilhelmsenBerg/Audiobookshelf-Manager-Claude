@@ -1,10 +1,14 @@
-# Open gaps
+# Historical requirement gaps — August 2026
+
+**Classification:** Dated gap inventory, not current backlog or acceptance. Reconciled as historical
+on 2026-10-04. Use [the roadmap](roadmap.md), [verification register](testing/roadmap-verification-register.md),
+[risks](risks.md) and PRODUCT_SPEC for present work. Findings below require current-source/evidence checks.
 
 **As of:** 2026-08-23, during Phase 6.
 
 The focused server-contact and Android Auto audit performed after this phase-entry inventory is recorded in
-[`reviews/2026-08-22-server-android-auto.md`](reviews/2026-08-22-server-android-auto.md). That review is the
-current authority for those two surfaces while its new findings are triaged into this longer inventory.
+[`reviews/2026-08-22-server-android-auto.md`](reviews/2026-08-22-server-android-auto.md). That review records dated
+evidence for those two surfaces; it does not supersede current contracts or the roadmap.
 The implementation/specification and signed-in phone review is
 [`reviews/2026-08-23-product-ui-ux-gap-analysis.md`](reviews/2026-08-23-product-ui-ux-gap-analysis.md).
 

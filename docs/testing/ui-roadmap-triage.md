@@ -1,7 +1,11 @@
 # Remaining Android UI work — 2026-10-03
 
 **Classification:** Source reconciliation and future acceptance plan, not rendered acceptance.
-**Baseline:** GitHub main `81a06e1`. [The roadmap](../roadmap.md) owns sequencing.
+**Source snapshot:** GitHub main `81a06e1`; this table is dated source evidence.
+**Reconciled:** 2026-10-04 through main `a20bb5b9`. [The roadmap](../roadmap.md) owns sequencing.
+PRs #220/#222 have delivered the shared series/card slice; [2179 phone evidence](2026-10-04-phone-2179.md)
+accepts selected compact/glow/large-text subcases. It does not close the broader #194/#195 audits or
+#187's all-card-family scope. Inspect current callers before implementing a remaining proposal.
 **Owner:** UI & Experience, with Test & Acceptance review.
 
 Complete the playback/download correctness gate before these presentation slices. Preserve Material 3,
@@ -54,7 +58,7 @@ targets, keyboard/system Back where relevant and reduced motion. Record APK comm
   compare standalone rendering and reduced motion, then try opaque-background/Haze isolation. The upstream
   explanation remains a hypothesis; choose a permanent mitigation only after the matrix identifies it.
 - #101 series formatting: change display copy separately, preserving primary series selection and ordering.
-- New system surfaces and iOS retain the roadmap's correctness gate; this UI audit does not advance them.
+- New Android system surfaces retain the roadmap's correctness gate; this UI audit does not advance them.
 
 No render, TalkBack, physical WebView or device acceptance was performed for the original reconciliation.
 The later [supplied-phone pass](2026-10-03-phone-acceptance.md), on main `8beec05c` / API 36, samples

@@ -1,8 +1,11 @@
 # Latest-stable toolchain and dependency upgrade plan
 
-Status: active staged migration program. Forgejo issue #42 is currently closed even though staged work remains; tracker state does not complete the plan.
+**Classification:** Active dependency child plan; [the Android roadmap](roadmap.md) owns product priority.
+GitHub #135 is closed; historical Forgejo #42 tracks the same migration. Tracker closure does not complete
+the staged plan.
 
-Roadmap last reconciled: 2026-09-19.
+**Reconciled:** 2026-10-04 through main `a20bb5b9`; no fresh full upstream version check is claimed.
+The version ledger retains each upstream check date; re-resolve before executing a phase.
 
 Live current/latest version state: [`/version-control.md`](../version-control.md).
 
@@ -32,12 +35,14 @@ Current phase state:
 - **Phase 4:** complete at the current compatible frontier.
 - **Phase 5:** complete at the current mutually compatible frontier.
 - **Phase 6:** **next executable dependency lane**.
-- **Phases 7–9:** remain staged; Phase 8 has already gained Forgejo-specific CI hardening but is not complete.
+- **Phases 7–9:** remain staged; Phase 8 has historical Forgejo hardening and the completed GitHub cutover/CI reliability slices, but is not a completed tooling-health audit.
 
 The 2026-10-04 reliability follow-up advances only the Benchmark pin from Phase 7 to repair a proven
 API-36 acceptance-harness incompatibility. It is not a broad Phase 7 upgrade or a change to the Phase 6
-sequence. Keep missing physical performance/profile checks open; details are in
-[the focused review](reviews/2026-10-04-benchmark-api36.md).
+sequence. The [2179 continuation](testing/2026-10-04-phone-2179.md) completes eight physical benchmark
+executions and 27 connected datastore cases. Startup meets the fixture target; scrolling/manual cached-audio
+and stress acceptance remain open. The [generated profile experiment](reviews/2026-10-04-generated-baseline-profile.md)
+is retained outside production because no benefit was demonstrated.
 
 Completed staged slices from the pre-migration GitHub history of BW-DEP-01 (now Forgejo #42):
 
@@ -69,7 +74,7 @@ re-run.
 
 - every version key in `gradle/libs.versions.toml`;
 - the Gradle wrapper, Android SDK levels/tools and JDK lanes;
-- every action implementation and pinned workflow dependency used by Forgejo Actions;
+- every action implementation/ref used by active GitHub Actions; historical Forgejo refs are provenance;
 - Gitleaks and other pinned CI/security tooling;
 - the Node/npm runtime used by the APK/Loopbound workflow; and
 - the Python runtime plus NumPy/Pillow used by launcher-asset generation.
@@ -107,7 +112,7 @@ Purpose: prove what is actually out of date before changing anything and keep th
 
 - Inventory every version key in `gradle/libs.versions.toml` and keep it represented in `/version-control.md`.
 - Inventory `gradle-wrapper.properties`.
-- Inventory all live `uses:` entries under `.forgejo/workflows/`; historical fallback workflows are not the active CI authority.
+- Inventory all live `uses:` entries under `.github/workflows/`; `.forgejo/workflows/` is historical, not the active CI authority.
 - Inventory versions pinned in `scripts/codex/`, release scripts and other shell/PowerShell tooling, plus repo-owned Node and Python tooling.
 - Resolve stable releases from authoritative sources and record the date/source in the implementation PR.
 - Reject prereleases automatically when generating the report.
@@ -304,16 +309,17 @@ only if the tool upgrade requires it; never overwrite them as incidental noise.
 
 ## Phase 8 — CI, Codex, SDK and security tooling
 
-**Status: partially advanced by the Forgejo migration, not complete.** Forgejo PRs #1–#4 and #52–#54 moved
-the active workflows to `.forgejo/workflows/`, established the self-hosted `linux-amd64` runner contract,
-introduced a digest-pinned BookWave Android CI image, pinned the primary Forgejo action implementations by
-commit SHA, and unified the PR-workflow Gitleaks version with the CI image/Codex line. Those migration
-changes satisfy real Phase-8 hardening goals but do not make the remaining ledger rows disappear.
+**Status: partially advanced, not complete.** Forgejo PRs #1–#4/#52–#54 are historical hardening.
+The 2026-10-01 GitHub cutover makes `.github/workflows/` authoritative. Current jobs use GitHub-hosted
+`ubuntu-latest`; Android PR/main-seed verification consumes the digest-pinned GHCR image. GitHub PRs
+#212/#214/#224 delivered cache seeding, debug coverage and the redaction hook. Record those as complete;
+retain the residual #188 timing/tier audit and fresh tooling/ref inventory. Current GitHub actions use
+moving major tags; do not inherit historical Forgejo SHA-pin or self-hosted-runner claims.
 
 Use the live ledger to reconcile the complete non-application tooling surface:
 
 - Android command-line tools, Build Tools and Platform Tools;
-- Forgejo Actions workflow dependencies (including checkout, cache and artifact actions), plus any retained compatibility action that still uses a moving tag;
+- GitHub Actions refs (checkout, Gradle/cache setup, Java/Node, artifact and Docker actions); explicitly review their moving major tags;
 - Gitleaks and other security tooling (the former Codex/PR Gitleaks divergence is already reconciled);
 - the Node/npm runtime used by the APK/Loopbound workflow;
 - the previously untracked Python runtime plus NumPy/Pillow launcher-asset requirements; and
@@ -321,7 +327,7 @@ Use the live ledger to reconcile the complete non-application tooling surface:
 
 Keep release/upload signing secrets out of ordinary Codex environments and keep
 `BOOKWAVE_DEBUG_KEYSTORE_BASE64` as the only optional Codex signing secret. Review mutable aliases and compatibility tags
-(such as the remaining `actions/download-artifact@v3`, SDK-manager moving packages, and mutable CI-image
+(such as the active GitHub action major tags, SDK-manager moving packages, and mutable CI-image
 build inputs) explicitly rather than treating them as exact pins.
 
 After the upgraded build stack is green, re-run the modern-JDK compatibility matrix and update
@@ -336,7 +342,7 @@ archaeological expedition.
 
 Recommended policy:
 
-- enable Renovate or equivalent for Gradle version catalogs, wrapper, Forgejo Actions workflow dependencies, pinned tool
+- enable Renovate or equivalent for Gradle version catalogs, wrapper, GitHub Actions refs, pinned tool
   versions and the Python requirements file;
 - stable releases only by default;
 - patch/minor updates can be grouped by ecosystem where tests provide confidence;
@@ -433,7 +439,7 @@ The migration is complete when:
   compatible release or has a documented reason not to be;
 - Gradle, AGP, Kotlin and KSP are on mutually supported current stable releases;
 - compileSdk/targetSdk are current stable Android levels with behavior changes reviewed;
-- Forgejo Actions workflow dependencies, the repository-owned CI image/tooling, and Codex-side tools are current stable or intentionally pinned with a documented compatibility reason;
+- GitHub Actions refs, the repository-owned CI image/tooling, and Codex-side tools are current stable or intentionally selected with a documented compatibility reason;
 - the highest fully verified modern JDK is the Codex baseline;
 - `verifyDebug --rerun-tasks` is green;
 - Room schema/migration tests are green;

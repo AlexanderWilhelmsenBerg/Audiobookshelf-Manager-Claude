@@ -3,8 +3,11 @@
 **Classification:** Test inventory and execution log; sequencing remains in [the roadmap](../roadmap.md).
 **Created:** 2026-10-03. The owner supplied an API-36 phone the same day. The
 [first phone execution](2026-10-03-phone-acceptance.md) records 27 passing instrumented cases, selected
-phone subcases, five failed benchmark cases and remaining NOT RUN steps. Parent rows below are inventories,
-not blanket passes; use that dated report for the exact tested APK and observed scope.
+phone subcases, five failed benchmark cases and remaining NOT RUN steps. The
+[2179 continuation](2026-10-04-phone-2179.md) supersedes the benchmark harness failure for its measured
+configuration: eight executions and 27 datastore cases pass, but scrolling remains over budget.
+**Reconciled:** 2026-10-04 through main `a20bb5b9`. Parent rows are inventories, not blanket passes;
+use each dated report for its exact tested APK/scope. Signed APK 2180 is verified but not phone-installed.
 
 This register covers the CI/reliability delivery, the historical issue #36 solution, and the remaining
 functional/release checks in PRODUCT_SPEC sections 17, 21 and 25. Merged code and passing JVM tests do not
@@ -19,8 +22,9 @@ records the exact revised completion/large-text/last-row, paused timer and offli
 recovery subcases that passed; other physical cases remain NOT RUN. Do not transfer those results to a
 later APK. The [compact-card revision](../reviews/2026-10-04-compact-series-cards.md) has fresh native/JVM
 evidence and its own missing phone matrix. The [Benchmark 1.5.0 repair](../reviews/2026-10-04-benchmark-api36.md)
-has source/strict forced-gate evidence; all five earlier measurement/profile failures still need a physical
-rerun. Under PD-002, C-07's focus-paused timer must remain frozen rather than expire during the pause.
+has source/strict forced-gate evidence and a completed physical rerun on 2179. Historical failures retain
+their dated result; see that continuation for library-only control, app-profile experiment and budget limits.
+Under PD-002, C-07's focus-paused timer must remain frozen rather than expire during the pause.
 Test late continuity recovery against that frozen timer and newer intent; test actual expiry only after
 audio resumes and consumes the saved remainder.
 
@@ -56,15 +60,19 @@ phone covers its own configuration; leave the other API/host rows pending until 
 | A-03 | CI policy fixtures, Actionlint and Bash syntax: main/PR/manual cancellation, previous-main classification, scoped cache pruning and immutable Room schemas. | All 16 policy tests passed, including real-Git stacked-PR/schema fixtures. Observe a trusted main seed and the next PR restore/save timings; first main seed `18c2e618` passed. |
 | A-04 | Prove each regression fails without its fix; inspect actual production callers. | R-115 generation/acceptance/lock/outbox, scheduled-car suppression, phone title and R-124 Book observer/Pause regressions have recorded red/green evidence. #128's actual monitor-to-service regression failed 3/5 on main `3e699786`, then passed 5/5 with the lifecycle latch. All 68 focused cases, formatter, playback ktlint and detekt passed; its combined full gate is recorded with the delivery. |
 | A-05 | Audiobookshelf contract fixtures, missing required fields/unknown fields, compatibility failures and migration tests. | Included in the full gate. Live selected-server-version acceptance remains pending; no new endpoint or schema was introduced by #211–#216. |
-| A-06 | `:core:datastore:connectedDebugAndroidTest`. | **PASS 27/27 on API 36, 2026-10-03**, using an isolated test application ID after the ordinary package hit a signer conflict. All names, scope and failed-install evidence are in the [phone report](2026-10-03-phone-acceptance.md). This tier does not test the whole app lifecycle. |
-| A-07 | Domain/core and security-policy coverage. | Debug/JVM gate enforces the existing 80% domain/core rule. R-125's separate 90% redaction hook is still a follow-up, not accepted from that gate. |
-| A-08 | Exact final-main APK: trusted `apk.yml`, stable signing, built version/About identity and downloadable artifact. | Main `8beec05c` passed trusted debug/cache, release/security and signed APK workflows. Installed 0.10.6.1 (2175) bytes match the artifact and About identifies that source; see [identity/CI record](2026-10-03-phone-acceptance.md). The [2178 continuation](2026-10-04-phone-2178.md) records an in-place 2177→2178 upgrade with data retained. Repeat handoff identity and upgrade checks for each later delivery. |
+| A-06 | `:core:datastore:connectedDebugAndroidTest`. | **PASS 27/27 on API 36, repeated 2026-10-04 on the [2179 continuation](2026-10-04-phone-2179.md)**, using an isolated test application ID after the ordinary package hit a signer conflict. All names, scope and failed-install evidence are in the [phone report](2026-10-03-phone-acceptance.md). This tier does not test the whole app lifecycle. |
+| A-07 | Domain/core and security-policy coverage. | PR #224 wires both the unchanged 80% aggregate and 90% redaction rule into ordinary verification. Fresh redaction coverage is 96.72%; four EventLog cases and the hook-removal regression passed. See [security evidence](../reviews/2026-10-04-security-coverage.md). |
+| A-08 | Exact final-main APK: trusted `apk.yml`, stable signing, built version/About identity and downloadable artifact. | Main `8beec05c` passed trusted debug/cache, release/security and signed APK workflows. Installed 0.10.6.1 (2175) bytes match the artifact and About identifies that source; see [identity/CI record](2026-10-03-phone-acceptance.md). The [2178 continuation](2026-10-04-phone-2178.md) records an in-place 2177→2178 upgrade with data retained. Final main `a20bb5b9` produced verified debug 2180 (APK SHA-256 `e8fa3cab6707cd3c72470d779889ee037402bf1930efad4e1e2a177e3d156e99`); installation, About and smoke are NOT RUN. Repeat handoff identity and upgrade checks for each later delivery. |
 
 2026-10-04 follow-up: compact series guards failed the old layout twice, then all 26 card/screen cases
 passed with native captures. Its full gate passed, followed by PR #222 and main CI. The isolated Benchmark
 pin change then passed formatter, strict harness/target assembly and `verifyDebug --rerun-tasks` with
-warnings as errors: 1,268 tasks executed in 8m56s, app 547 tests with zero failures/errors. Final current-head
-CI/APK evidence is recorded with the delivery; phone reruns remain NOT RUN while ADB has no device.
+warnings as errors: 1,268 tasks executed in 8m56s, app 547 tests with zero failures/errors. The [2179 continuation](2026-10-04-phone-2179.md) records the completed phone/benchmark rerun.
+PR #224 then passed its full gate (2,182 debug/JVM cases); #225 passed the final source gate.
+Main `a20bb5b9` passed [release/security](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37199316812),
+[debug cache seed](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37199316530)
+and [signed APK](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37199316879).
+A-08/Q-01 remain pending on the final 2180 phone installation; earlier phone results retain their original scope.
 
 For branch-only/main builds, use **Build APK** directly: the PR verification workflow's optional APK
 handoff requires an open PR number. Set `variant=debug` and `run_checks=true` when initiating final checks
@@ -193,8 +201,3 @@ established. Remaining UI/security/server/manual-performance matrices and final-
 Run the current scenarios above against the new APK. Historical evidence in `device-test-0.9.14.md`
 remains dated evidence, not an instruction to reproduce its obsolete hierarchy or uninstall/signing workarounds.
 Keep release section 25 pending until its applicable functional, security and quality cases are recorded.
-
-## Deferred scope
-
-Silo/shared-cache implications research remains a separate deferred decision. iOS (#121–#123) development
-is on hold by the owner’s2026-10-04 instruction. Neither lane starts in this roadmap batch.

@@ -16,7 +16,8 @@ The repository has accumulated detailed investigation over time. Detail does **n
 | How should the repository be tested now? | [`testing.md`](testing.md) |
 | What dependency-upgrade work is active? | [`../version-control.md`](../version-control.md) is the live version ledger; [`latest-stable-upgrade-plan.md`](latest-stable-upgrade-plan.md) owns sequencing and gates; [`dependency-compatibility-inventory.md`](dependency-compatibility-inventory.md) is dated Phase-0 evidence |
 | What Android Auto ideas still need experiments? | [`android-auto-player-opportunities.md`](android-auto-player-opportunities.md) |
-| What did older phases investigate or prove? | [`archive/`](archive/), [`bugs/`](bugs/), [`reviews/`](reviews/), historical [`gaps.md`](gaps.md) / [`closeout.md`](closeout.md), and the superseded [`dependency-upgrade-plan.md`](dependency-upgrade-plan.md) |
+| How is the current signed APK produced and accepted? | [`release.md`](release.md) current handoff, active `.github/workflows/apk.yml`, and [`testing/roadmap-verification-register.md`](testing/roadmap-verification-register.md) |
+| What did older phases investigate or prove? | [`archive/`](archive/), [`bugs/`](bugs/), [`reviews/`](reviews/), historical [`gaps.md`](gaps.md) / [`closeout.md`](closeout.md) / [`handover.md`](handover.md), and the superseded [`dependency-upgrade-plan.md`](dependency-upgrade-plan.md) |
 
 ## Document classifications
 

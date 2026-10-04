@@ -1,5 +1,9 @@
 # Dependency upgrade plan
 
+**Classification:** Superseded historical investigation (2026-09-06). Its waves, version targets and
+preview proposals are not active instructions. Use [the active upgrade plan](latest-stable-upgrade-plan.md)
+and [version-control.md](../version-control.md); [the Android roadmap](roadmap.md) owns product priority.
+
 > **Re-measured 2026-09-06.** Waves 1, 2 (partially) and 3 of the original plan have shipped, so the
 > measurement below replaces the one from 2026-08-29 rather than sitting beside it. The historical wave
 > records are kept further down, because what they found while running is the useful part.

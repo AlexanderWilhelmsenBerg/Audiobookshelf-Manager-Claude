@@ -1,11 +1,15 @@
-# Closeout — everything that is left
+# Historical closeout — August 2026
+
+**Classification:** Superseded sequencing snapshot, reconciled as historical on 2026-10-04.
+[The Android roadmap](roadmap.md) is the only current ordered list. [The verification register](testing/roadmap-verification-register.md)
+and [risks](risks.md) track current acceptance and uncertainty. Accepted ADR decisions remain binding.
 
 Written 2026-08-24, after `main` reached `26d4def` with no open pull requests. Phases 0 through 6 are
 delivered against `PRODUCT_SPEC.md`; this is the accounting of what is not.
 
 It exists because three documents each answer part of the question and none answers all of it:
 `docs/gaps.md` says what the build does not do, `docs/risks.md` says what it does that could go wrong, and
-`docs/release.md` says what a public release needs. This file is the single ordered list, and it is
+`docs/release.md` says what a public release needs. At that snapshot this file was the ordered list; it was
 deliberately blunt about which items are *work*, which are *waiting for hardware*, and which are decisions
 already taken that a later reader will mistake for omissions.
 
