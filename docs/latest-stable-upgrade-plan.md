@@ -34,6 +34,11 @@ Current phase state:
 - **Phase 6:** **next executable dependency lane**.
 - **Phases 7–9:** remain staged; Phase 8 has already gained Forgejo-specific CI hardening but is not complete.
 
+The 2026-10-04 reliability follow-up advances only the Benchmark pin from Phase 7 to repair a proven
+API-36 acceptance-harness incompatibility. It is not a broad Phase 7 upgrade or a change to the Phase 6
+sequence. Keep missing physical performance/profile checks open; details are in
+[the focused review](reviews/2026-10-04-benchmark-api36.md).
+
 Completed staged slices from the pre-migration GitHub history of BW-DEP-01 (now Forgejo #42):
 
 | Pre-migration GitHub PR | Component | From | To | Merged |
