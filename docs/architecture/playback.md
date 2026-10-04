@@ -1,7 +1,7 @@
 # Playback architecture
 
-**Classification:** Current contract for `main`, plus clearly marked pending contracts from the committed PR chain.  
-**Current as reviewed:** 2026-09-12.
+**Classification:** Current playback contract for merged `main`; hardware acceptance stays separate.
+**Current as reviewed:** 2026-10-04. Historical PR references describe provenance, not an unmerged queue.
 
 This document is the compact entry point for BookWave's playback correctness architecture. Detailed ADRs, bug investigations and reviews remain the evidence for why these rules exist.
 
@@ -126,7 +126,7 @@ Transport classification and semantic role are separate facts.
 
 Classic Bluetooth A2DP can represent headphones, a speaker or a projected-car route. BookWave must allow an ambiguous/unknown semantic answer where Android does not expose enough information.
 
-Issue #11 replaces the inference-heavy `HeadsetHold` / `heardAudio` / release-state combination with one service-owned `RouteHeardOwnership`. Its route record is bound to the currently loaded Media3 book generation and is invalidated when the book changes or the queue empties.
+GitHub #100 (historical Forgejo #11) tracks acceptance of the implemented replacement for the inference-heavy `HeadsetHold` / `heardAudio` / release-state combination with one service-owned `RouteHeardOwnership`. Its route record is bound to the currently loaded Media3 book generation and is invalidated when the book changes or the queue empties.
 
 The owner distinguishes explicit BookWave listener intent from weaker Android route-policy observation. Every explicit phone/Android Auto output choice enters through `AudioOutputRouter.select`; framework policy from `getAudioDevicesForAttributes` is considered only while BookWave playback is observed as running and is never described as proof of the exact AudioTrack sink. An explicit listener choice therefore outranks enumeration/order disagreement, and multiple ambiguous classic-A2DP routes never become ownership merely because one was listed first.
 

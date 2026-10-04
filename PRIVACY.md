@@ -1,7 +1,7 @@
 # Privacy
 
 BookWave is an unofficial client for an Audiobookshelf server **you** run. This describes what the app
-does with your data, as of version 0.9.11.
+does with your data. Reconciled against the 0.10.6.1 source on 2026-10-04.
 
 ## What leaves your device
 
@@ -21,6 +21,11 @@ What the app sends there, and nothing else:
 - Your bookmarks, and whether you marked a book finished.
 - Metadata edits, cover uploads, scans, and account changes — but only when you ask for them and only if
   your account holds the permission (`EPIC MGR`, `EPIC USER`).
+
+When a build includes the optional Loopbound game, its bundled files and saves run locally in a restricted
+asset-backed WebView. It does not download new game code while installed; new bundles arrive with an app
+upgrade. The game does not receive Audiobookshelf credentials. See
+[`docs/loopbound-embedding.md`](docs/loopbound-embedding.md) for the bundle/save boundary.
 
 Two of the management features cause **your server** to reach a third party on your behalf: searching for
 metadata matches queries the providers your server is configured with (Audible, Google Books and similar).

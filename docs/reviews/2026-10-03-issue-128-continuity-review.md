@@ -1,5 +1,8 @@
 # Issue #128 headset continuity review — 2026-10-03
 
+**Classification:** Dated evidence snapshot; original source/build findings and results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 **Owner:** Android System & Auto, with Test & Acceptance review.
 
 **Reviewed baseline:** GitHub main `3e6997866d800b7dc04e210a624c2f52e379c44b`.

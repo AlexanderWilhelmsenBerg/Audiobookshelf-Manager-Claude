@@ -1,5 +1,8 @@
 # Phase 2 wave 4 — device test, build 0.4.1-book-remaining
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Wave 4 is the controls a listener reaches for: speed, the two skips, a rewind after a pause, and the
 streaming buffer. Unlike wave 3, almost all of it is visible in the player — so this test is mostly a matter
 of using the app and noticing when something feels wrong.

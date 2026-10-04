@@ -23,7 +23,7 @@ physical files without sharing progress or authorization.
 can prove the deletion happened, so the app does not claim it did.
 
 **Not yet released.** BookWave is a feature-rich pre-release application with active correctness,
-platform-integration and UI work. The current committed PR chain and work after it are tracked in
+platform-integration and UI work. Merged work, draft candidates and remaining acceptance are tracked in
 [`docs/roadmap.md`](docs/roadmap.md). Historical closeout and phase documents remain in the repository
 for their engineering evidence, but they are not current work lists.
 
@@ -58,9 +58,11 @@ installs Android SDK packages through `sdkmanager`; it does not install a JDK, `
 ## What it is built from
 
 [`gradle/libs.versions.toml`](gradle/libs.versions.toml) is the dependency-version source of truth.
-Dynamic versions are forbidden and dependency verification runs in strict mode.
+Dynamic versions are forbidden and dependency verification runs in strict mode. The table below is a
+source snapshot reconciled on 2026-10-04, not an upstream latest-release check;
+[`version-control.md`](version-control.md) owns migration/check dates.
 
-**The product version is `0.9.6.1`.** CI build identity/version-code details are deliberately kept out
+**The product version is `0.10.6.1`.** CI build identity/version-code details are deliberately kept out
 of this README because they vary per build; Settings → About and [`docs/release.md`](docs/release.md)
 explain the current scheme. The debug application id is `org.homebord.bookwave.debug`.
 
@@ -68,23 +70,23 @@ explain the current scheme. The debug application id is `org.homebord.bookwave.d
 | --- | --- |
 | Kotlin | 2.2.0 |
 | Android Gradle Plugin | 8.12.0 |
-| KSP | 2.3.11 |
+| KSP | 2.3.12 |
 | Compose BOM | 2025.06.01 |
 | **Media3** | **1.11.0** |
-| **Benchmark** | **1.3.4** |
+| **Benchmark** | **1.5.0** |
 | UI Automator | 2.4.0 |
 | Hilt | 2.58 · androidx.hilt 1.3.0 |
-| Room | 2.7.2 |
-| DataStore / protobuf | 1.1.7 · 4.31.1 |
+| Room | 2.8.5 |
+| DataStore / protobuf | 1.2.1 · 4.36.1 |
 | WorkManager | 2.11.2 |
 | Navigation Compose | 2.9.8 |
 | Lifecycle | 2.10.0 |
-| Activity Compose | 1.12.4 |
+| Activity Compose | 1.13.0 |
 | androidx.core KTX | 1.17.0 |
-| Retrofit / OkHttp | 2.11.0 · 4.12.0 |
-| kotlinx.serialization / coroutines | 1.8.1 · 1.10.2 |
+| Retrofit / OkHttp | 3.0.0 · 5.4.0 |
+| kotlinx.serialization / coroutines | 1.9.0 · 1.11.0 |
 | Coil | 2.7.0 |
-| detekt / ktlint / Kover | 1.23.8 · 1.5.0 · 0.9.9 |
+| detekt / ktlint / Kover | 1.23.8 · 1.8.0 · 0.9.9 |
 | Robolectric / JUnit / Turbine | 4.15.1 · 4.13.2 · 1.2.1 |
 
 ## Build and run

@@ -311,7 +311,8 @@ and does not replace or weaken the current-position journal or profile ownership
 
 ## PD-006 — Browse selection, entity counts and grouped author details
 
-**Status:** Accepted product behavior; implementation and acceptance remain planned.
+**Status:** Accepted product behavior. Gesture/count implementation exists in draft PR #230 with scoped
+phone evidence; grouped author details #229 remain planned. The roadmap and case reports own delivery status.
 **Date:** 2026-10-04.
 **Scope:** Home axes and author detail; LIB-001/002/003/004, PLAY-004, AUTH-002.
 **Tracked by:** [#227](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/227), [#228](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/228),

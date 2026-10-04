@@ -1,5 +1,8 @@
 # Delta test script — 0.1.5-phase1
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Only what changed since 0.1.4. The 0.1.4 script (`docs/phase-1-delta-test.md`) and the full acceptance
 plan still apply; nothing here replaces them.
 

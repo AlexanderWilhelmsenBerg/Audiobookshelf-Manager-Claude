@@ -4,7 +4,7 @@
 GitHub #135 is closed; historical Forgejo #42 tracks the same migration. Tracker closure does not complete
 the staged plan.
 
-**Reconciled:** 2026-10-04 through main `a20bb5b9`; no fresh full upstream version check is claimed.
+**Reconciled:** 2026-10-04 through main `8de931f0` (PR #226); no fresh full upstream version check is claimed.
 The version ledger retains each upstream check date; re-resolve before executing a phase.
 
 Live current/latest version state: [`/version-control.md`](../version-control.md).
@@ -44,7 +44,7 @@ executions and 27 connected datastore cases. Startup meets the fixture target; s
 and stress acceptance remain open. The [generated profile experiment](reviews/2026-10-04-generated-baseline-profile.md)
 is retained outside production because no benefit was demonstrated.
 
-Completed staged slices from the pre-migration GitHub history of BW-DEP-01 (now Forgejo #42):
+Completed staged slices from the pre-migration GitHub history of BW-DEP-01 (GitHub #135; historical Forgejo #42):
 
 | Pre-migration GitHub PR | Component | From | To | Merged |
 | --- | --- | ---: | ---: | --- |

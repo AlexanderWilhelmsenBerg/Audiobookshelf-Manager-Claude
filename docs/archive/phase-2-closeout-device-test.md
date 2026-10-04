@@ -1,5 +1,8 @@
 # Phase 2 closeout — device test, build 0.6.0-phase2-closeout
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Nine of the twelve defects the 0.5.x runs found are fixed in this build, and one of them was serious enough
 to be worth reading about before testing:
 

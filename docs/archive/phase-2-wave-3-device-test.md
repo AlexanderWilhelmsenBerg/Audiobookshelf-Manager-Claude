@@ -1,5 +1,8 @@
 # Phase 2 wave 3 — device test, build 0.3.0-sync
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Wave 3 is progress reaching the server and never being lost on the way. Almost none of it is visible in
 the player: the whole wave shows up in **Settings → About → Testing → Progress sync**, which is the
 screen this test is really about.

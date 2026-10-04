@@ -1,5 +1,8 @@
 # Closing Phase 1 — remaining work, in waves
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Written after 0.1.7, with every line checked against the tree rather than carried forward from
 `docs/phase-1-remaining.md`. That document is the original audit; this one is the plan.
 

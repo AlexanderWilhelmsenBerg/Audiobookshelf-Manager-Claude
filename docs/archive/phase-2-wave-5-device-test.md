@@ -1,5 +1,8 @@
 # Phase 2 wave 5 — device test, build 0.5.1-one-timeline
 
+**Classification:** Historical phase evidence; original dated findings/results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 Wave 5's first slice is a correctness change, not a feature: **a book is now one timeline window**
 (ADR-0016). Media3 used to report the *current audio file's* position and duration to every control
 surface, so on a library with a file per chapter the notification and the lock screen read as "time left in

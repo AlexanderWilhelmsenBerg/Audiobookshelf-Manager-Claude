@@ -1,5 +1,8 @@
 # Android profile experiment — PRODUCT_SPEC 17.3 / R-25
 
+**Classification:** Dated evidence snapshot; original source/build findings and results are retained.
+Use [the current roadmap](../roadmap.md) for present delivery state and sequencing.
+
 The supplied API-36 phone completed five formerly failed benchmark cases after Benchmark1.5.0's
 process-discovery repair. Startup meets the measured <1 s fixture target. Scrolling exceeds the
 documented 16.7 ms P95 CPU comparison budget; memory has a recorded baseline and no invented threshold.
