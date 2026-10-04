@@ -156,3 +156,30 @@ second-cancellation replacement cases on a new source-matched APK. Keep legitima
 Running/Waiting/Retrying and prevent an older worker from overriding a new attempt. Do not mark the
 whole progress UI or R-123 accepted by this report. This observation does not invalidate the narrow
 verification-cancellation regression guards; PR #232 stays draft.
+
+## Paused percentage correction — source follow-up
+
+DL-001/002 and R-123: Book button policy and Downloads row projection now use manifest progress for
+stopped recovery states. Only in-flight recovery selects live WorkManager progress. This fixes the stale
+28% observation without changing bytes, execution ownership, Range validation or transfer constraints.
+The actual Book policy and actual Downloads ViewModel are guarded: stale Running/Cancelled/Finished
+progress must not override Paused; Failed plus Retrying still carries current live progress. Both new
+guards fail before correction and when the correction is actually reverted. Fixed source is restored.
+NotificationCoordinator posts only in-flight states and cancels Paused notifications, so its live policy
+already matches this rule; no stopped notification counter or new owner was added. Caller audit reaches
+BookViewModel/book download button and Downloads uiState/row progress. No endpoint/schema change.
+
+Formatter/full strict verifyDebug: PASS in 1m 57s; 1122 actionable tasks: 47 executed, 16 from cache, 1059 up-to-date. Both caller suites pass.
+
+The initial full-gate invocation was rejected before verification by PowerShell splitting an unquoted
+Gradle property; the correctly quoted invocation is the passing gate. This is not an accepted failed gate.
+The first compile also caught a missing existing isInFlight extension import, corrected before the gate.
+
+| Follow-up physical case | Procedure | Status |
+| --- | --- | --- |
+| PP-P01 | New exact-source signed APK; real multi-track Pause; read settled Room/disk and Book percent. Stop-state percentage must equal floored durable bytes/known total. | NOT RUN on correction yet. |
+| PP-P02 | Force-stop/relaunch while Paused; Book and Downloads numeric progress match checkpoint and Resume remains explicit. | NOT RUN on correction yet. |
+| PP-P03 | Cancel/confirm partial discard; committed tracks/claims retained and percentage reconstructs after partial count decreases. | NOT RUN on correction yet. |
+| PP-P04 | Resume after stopped checkpoint; active live progress and completion remain correct; clean up test-only copy. | NOT RUN on correction yet. |
+| PP-P05 | Controlled no-ETag/changed-validator replacement, second Pause before recovering old count, old-work/new-attempt and terminal failure; compare Book/Downloads/notification. | NOT RUN; controlled fixtures required. |
+| PP-P06 | Notifications, two jobs, TalkBack, large font, remaining API/storage/credential/timeout and audible playback matrix. | NOT RUN; use DC-P/register steps. |

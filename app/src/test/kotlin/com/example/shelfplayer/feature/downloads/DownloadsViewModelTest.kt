@@ -13,6 +13,7 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.SyncState
 import com.example.shelfplayer.core.model.auth.AccountProgress
+import com.example.shelfplayer.core.model.download.DownloadProgress
 import com.example.shelfplayer.core.model.download.DownloadState
 import com.example.shelfplayer.core.model.download.DownloadStorageState
 import com.example.shelfplayer.core.model.download.OfflineBook
@@ -74,6 +75,30 @@ class DownloadsViewModelTest {
     private val verification = FakeVerification()
     private val library = FakeLibraries()
     private val execution = FakeExecutionObserver()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `paused row uses durable checkpoint while active retry retains live progress`() = runTest {
+        val stored = offlineBook("tidewatch", state = DownloadState.Paused)
+        downloads.emit(listOf(stored))
+        val stale = DownloadProgress(287, 1_024, 0.28f)
+        execution.emit(stored, DownloadExecutionEvidence.Running, stale)
+
+        viewModel().uiState.test {
+            val state = awaitItem().takeIf { it.isLoaded } ?: awaitItem()
+            assertEquals(DownloadRecoveryState.Paused, state.books.single().recoveryState)
+            assertEquals(DownloadProgress(512, 1_024, 0.5f), state.books.single().progress)
+            execution.emit(stored, DownloadExecutionEvidence.Cancelled, stale)
+            advanceUntilIdle()
+            expectNoEvents()
+            downloads.emit(listOf(stored.copy(state = DownloadState.Failed)))
+            execution.emit(stored, DownloadExecutionEvidence.Retrying, stale)
+            advanceUntilIdle()
+            val resumed = expectMostRecentItem().books.single()
+            assertEquals(DownloadRecoveryState.Retrying, resumed.recoveryState)
+            assertEquals(stale, resumed.progress)
+        }
+    }
 
     @Test
     fun `lists a download this profile can see, with its title`() = runTest {
@@ -560,9 +585,9 @@ class DownloadsViewModelTest {
         ): Flow<Map<DownloadExecutionKey, DownloadExecutionSnapshot>> =
             evidence.map { current -> current.filterKeys(keys::contains) }
 
-        fun emit(book: OfflineBook, state: DownloadExecutionEvidence) {
+        fun emit(book: OfflineBook, state: DownloadExecutionEvidence, progress: DownloadProgress? = null) {
             evidence.value = mapOf(
-                DownloadExecutionKey(book.serverId, book.itemId) to DownloadExecutionSnapshot(state),
+                DownloadExecutionKey(book.serverId, book.itemId) to DownloadExecutionSnapshot(state, progress),
             )
         }
     }

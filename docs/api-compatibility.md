@@ -18,6 +18,11 @@ Range/If-Range, `200`/`206`/`416` validation and entitlement contracts remain un
 [test log](testing/2026-10-04-download-verification-cancellation.md) separates synthetic real-filesystem
 regressions from pending device/parser/WorkManager/server acceptance; no new server version is claimed.
 
+The paused-percent follow-up changes only Book/Downloads presentation precedence: stopped recovery
+states use the durable manifest; active states retain live execution progress. No server contract,
+Room schema, permission or additional tested server version changes. The same download test log records
+its caller guards and separate source-matched physical acceptance.
+
 ## Server versions tested
 
 The 2026-10-03 series/history/sleep revision changes local presentation and playback policy only. Rolling

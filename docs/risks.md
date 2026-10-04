@@ -183,6 +183,12 @@ still available; absent-owner and pre-sink cases retain known progress. See the
 [review and pending physical cases](reviews/2026-10-04-download-restart-progress.md). R-123 remains open
 for visible progress, process restart and real storage/server acceptance.
 
+APK2183 exposed a paused Book percentage of 28% versus 31% from the correct durable bytes. The
+follow-up now keeps stale execution progress from overriding stopped Book/Downloads states, with
+two actual caller guards and revert failures. New-binary physical acceptance is tracked in the
+[download verification log](testing/2026-10-04-download-verification-cancellation.md); controlled
+replacement, storage and concurrent-attempt cases still leave R-123 open.
+
 | # | Risk | If it bites | Retired by |
 | --- | --- | --- | --- |
 | R-17 | **`accountType` defaults to `''` for any install that upgraded through migration 18**, until a sign-in or a permission refresh rewrites it — and `ProfileRole.ofAccountType("")` is `Listener`. | Nothing today: the UI gates on the `role` column, which sign-in writes. It stays a loaded gun for the next reader, because gating on `accountType` instead would silently demote every upgraded admin until their next refresh — the exact shape of the defect that hid the account-management row on a device. | **Named in a test rather than left in prose:** `version 18 leaves the account type empty, which is the least privileged role` asserts the default, the mapping, and that `role` is the column a permission check should read. A backfill on first launch would retire it entirely. |

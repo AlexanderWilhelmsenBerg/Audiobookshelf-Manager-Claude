@@ -174,5 +174,23 @@
       "No multi-profile/concurrent-transfer/removable/low-space matrix",
       "No audible playback or TalkBack/large-font acceptance"
     ]
+  },
+  "pausedProgressSoftware": {
+    "callerGuards": 2,
+    "revertedFailures": 2,
+    "fixedSuites": [
+      {
+        "suite": "DownloadButtonStateTest",
+        "tests": 19
+      },
+      {
+        "suite": "DownloadsViewModelTest",
+        "tests": 33
+      }
+    ],
+    "fullStrictGate": "PASS",
+    "elapsed": "1m 57s",
+    "tasks": "1122 actionable tasks: 47 executed, 16 from cache, 1059 up-to-date",
+    "physicalCorrection": "PENDING source-matched APK"
   }
 }
