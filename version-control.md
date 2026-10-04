@@ -172,7 +172,7 @@ Append to this table whenever a tracked migration slice merges. The live tables 
 | 2026-09-16 | #167 | Retrofit kotlinx.serialization converter | Jake Wharton 1.0.0 | Square 2.11.0 | ✅ Archived converter retired; first-party converter adopted without changing Retrofit or OkHttp major versions |
 | 2026-09-16 | #168 | Retrofit core + first-party converter | 2.11.0 | 3.0.0 | ✅ Latest stable reached; OkHttp intentionally held at 4.12.0 for the next independent network-major slice |
 | 2026-09-16 | #169 | OkHttp family | 4.12.0 | 5.4.0 | 🎯 Latest stable compatible with API 36 / AGP 8; 5.5.0 remains ADR-0011/platform-gated |
-| 2026-10-04 | GitHub `fix/benchmark-api36` focused repair | AndroidX Benchmark | 1.3.4 | 1.5.0 | Strict forced gates and harness/target assembly pass; physical rerun/profile acceptance pending. |
+| 2026-10-04 | [GitHub PR #223](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/223) focused repair | AndroidX Benchmark | 1.3.4 | 1.5.0 | Strict forced gates and harness/target assembly pass; physical rerun/profile acceptance pending. |
 
 ## Update discipline for future PRs
 
