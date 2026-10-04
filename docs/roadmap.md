@@ -137,6 +137,7 @@ process-recreation and playback-continuity checks. No second player, progress or
 
 **Owner:** Test & Acceptance, with Build & Dependencies. **Requirements:** specification 17/18/21/25.
 
+Run this acceptance lane alongside optional system-surface work; PRODUCT_SPEC 25 owns release scope.
 Complete the remaining API-26/31/34/36, server-version/permission, management, biometric/privacy,
 release/R8, signed-upgrade and quality cases Q-01–Q-06 and PRODUCT_SPEC 25. A verified debug APK,
 successful source gates or one phone configuration do not prove a public release. Retain the accepted
