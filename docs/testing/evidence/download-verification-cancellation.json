@@ -47,5 +47,124 @@
     "elapsedSeconds": 279,
     "tasks": 1122
   },
-  "physicalResult": "NOT RUN"
+  "physicalResult": "PARTIAL \u2014 scoped API36 checks pass; controlled timing and full device matrix remain pending",
+  "browseIntegration": {
+    "source": "ace3da2bab10016943f7a25e0fb6c4a1e39adf3d",
+    "base": "69d0a3cad45ed75e200e488c344cf0a82ff5524d",
+    "result": "PASS",
+    "elapsedSeconds": 214,
+    "tasks": 1122
+  },
+  "phone": {
+    "device": {
+      "model": "SM-S928B",
+      "api": 36,
+      "android": "16"
+    },
+    "artifact": {
+      "source": "ace3da2bab10016943f7a25e0fb6c4a1e39adf3d",
+      "embeddedSource": "ace3da2bab10",
+      "version": "0.10.6.1",
+      "versionCode": 2183,
+      "package": "org.homebord.bookwave.debug",
+      "sha256": "5a565604d41f07b1897437d4fd572a12693bfbe4e8e267584cfdbd77492730c8",
+      "signerSha256": "c63c72cb2c4b32a8ed3775e4cc0b5754abf06b5beb4481ea5a8f5c5c0dd9217c",
+      "loopbound": "7e24529b2a9e419218d2a1423d832b1bf587c8ef",
+      "run": 37218423235,
+      "artifactId": 11309325674,
+      "artifactDigestMatched": true,
+      "runEvent": "repository_dispatch",
+      "trustedSourceJobVerified": true
+    },
+    "instrumentedSecurity": {
+      "tests": 27,
+      "failures": 0,
+      "skipped": 0,
+      "elapsedSeconds": 99,
+      "isolatedOwnerData": true
+    },
+    "upgrade": {
+      "beforeCounts": {
+        "profiles": 2,
+        "servers": 1,
+        "downloaded_books": 2,
+        "downloaded_files": 2,
+        "download_requests": 2,
+        "media_progress": 55
+      },
+      "afterCleanupCounts": {
+        "profiles": 2,
+        "servers": 1,
+        "downloaded_books": 2,
+        "downloaded_files": 2,
+        "download_requests": 2,
+        "media_progress": 55
+      },
+      "serversOriginalDownloadsClaimsProgressUnchanged": true,
+      "profileRowsByteIdentical": false,
+      "preferenceBaselineAvailable": false,
+      "pausedMediaSessionHolderRetained": false,
+      "activePlaybackUpgradeTestRun": false
+    },
+    "normalTransfer": {
+      "tracks": 21,
+      "completedFiles": 21,
+      "totalBytes": 148140184,
+      "allFinalSizesMatch": true,
+      "noPartsRemain": true,
+      "utc": "2026-10-04T17:33:11.421461+00:00"
+    },
+    "pauseForceStopRelaunch": {
+      "committedFiles": 6,
+      "partialBytes": 5807993,
+      "partialMatchesRoom": true,
+      "pausedAfterRestart": true,
+      "explicitResumeCompleted": true,
+      "savedPartialValidator": false,
+      "confirmedRange206": false,
+      "utc": "2026-10-04T17:32:32.668325+00:00"
+    },
+    "discard": {
+      "cancelPreservedAllFileRows": true,
+      "confirmKeptCommittedFiles": 7,
+      "confirmKeptClaims": 1,
+      "remainingPartBytes": 0,
+      "discardedPartBytes": 7635182,
+      "progressUnchanged": true,
+      "utc": "2026-10-04T17:36:29.816490+00:00"
+    },
+    "nativeVerification": [
+      {
+        "event": "Downloads fully verified",
+        "counters": {
+          "books": 2,
+          "files": 2,
+          "brokenBooks": 0
+        }
+      },
+      {
+        "event": "Downloads fully verified",
+        "counters": {
+          "books": 3,
+          "files": 23,
+          "brokenBooks": 0
+        }
+      }
+    ],
+    "cleanup": {
+      "fixtureRemoved": true,
+      "physicalDirectoryRemoved": true,
+      "originalDownloadsAndClaimsUnchanged": true,
+      "listeningProgressUnchanged": true,
+      "utc": "2026-10-04T17:38:11.482601+00:00"
+    },
+    "limitations": [
+      "No controlled verifier-phase cancellation on phone",
+      "No confirmed Range/If-Range 206 trace",
+      "No changed-validator 200/416 fault server",
+      "No SIGKILL/reboot or dataSync timeout",
+      "No multi-profile/concurrent-transfer/removable/low-space matrix",
+      "No audible playback or TalkBack/large-font acceptance"
+    ]
+  }
 }

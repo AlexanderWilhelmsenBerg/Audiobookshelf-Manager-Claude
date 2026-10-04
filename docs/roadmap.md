@@ -127,10 +127,14 @@ PD-003/004. **Cases:** D-01–D-15 in the verification register and [reliability
 | R-122 | Run the [credential handoff matrix](reviews/2026-10-03-shared-download-ownership.md) after original-owner sign-out/removal. Only currently eligible same-server/item claims authorize each request. |
 | R-123 | Run the [restart/second-cancellation cases](reviews/2026-10-04-download-restart-progress.md) for no ETag and refused range; visible percentages reflect actual replacement bytes. Never resume unvalidated bytes to preserve a monotonic percent. |
 
-A bounded verification-cancellation correction is prepared on `fix/download-cancellation-commit`:
+A bounded verification-cancellation correction is prepared in [draft PR #232](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/232)
+on `fix/download-cancellation-commit`, stacked on browse PR #230:
 real Room/filesystem guards reproduced synchronous validation renaming or clearing a part after worker
 cancellation. The [download test log](testing/2026-10-04-download-verification-cancellation.md) tracks the
-checkpoint/rethrow correction, software gates and DC-P01–13 device cases, all physical cases NOT RUN.
+checkpoint/rethrow correction, passing strict/CI/signed-APK gates and scoped API36 phone evidence:
+normal 21-track transfer, Pause/force-stop/relaunch/Resume, cancel/confirm partial discard, native verification
+and test-copy cleanup. Controlled verifier timing, response/storage/sharing/playback/accessibility cases
+remain NOT RUN; no full download acceptance is claimed.
 This lane proceeds independently of the unaccepted scroll candidate; no prior phone result accepts it.
 R-120's WorkManager stop/delete and new-claim windows remain open; the correction adds no cross-owner lock.
 

@@ -145,12 +145,15 @@ overnight, civil-clock and lifecycle steps rather than replacing them.
 
 The [verification-cancellation log](2026-10-04-download-verification-cancellation.md) records reproduced
 late verification/rename and invalid-416-clear regressions with actual Job cancellation, real Room and
-filesystem. DC-A01–07 distinguish source gates from DC-P01–13 physical obligations. All physical cases
-remain NOT RUN; D-10's asynchronous removal/new-claim acceptance is still open. Use this log alongside
-D-01–D-15, not as whole-matrix acceptance.
+filesystem. DC-A01–07 pass; DC-P01–13 distinguish scoped API36 phone evidence from remaining physical
+obligations. APK2183 passes real transfer, Pause/force-stop/relaunch/Resume, cancel/confirm partial discard,
+native full verification, cleanup and 27 isolated security tests. Controlled timing, response, sharing,
+storage, playback and accessibility matrices remain NOT RUN; D-10's asynchronous removal/new-claim
+acceptance stays open. Use this log alongside D-01–D-15, not as whole-matrix acceptance.
 
 Stored-copy verification navigation was sampled in the [phone report](2026-10-03-phone-acceptance.md).
-Transfer/claim/storage transition cases below remain NOT RUN; existing complete copies are not those fixtures.
+APK2183 adds bounded transfer/recovery/discard evidence in the log above. Remaining steps below are
+NOT RUN; existing complete copies and one disposable fixture do not accept every transition.
 
 | ID | Scenario | Pass condition / requirement |
 | --- | --- | --- |
