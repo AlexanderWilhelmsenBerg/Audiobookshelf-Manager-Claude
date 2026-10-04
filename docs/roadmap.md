@@ -136,7 +136,11 @@ normal 21-track transfer, Pause/force-stop/relaunch/Resume, cancel/confirm parti
 and test-copy cleanup. Controlled verifier timing, response/storage/sharing/playback/accessibility cases
 remain NOT RUN; no full download acceptance is claimed.
 This lane proceeds independently of the unaccepted scroll candidate; no prior phone result accepts it.
-R-120's WorkManager stop/delete and new-claim windows remain open; the correction adds no cross-owner lock.
+The phone audit also found a paused Book percentage mismatch (28% displayed versus 31% from durable
+bytes). The next R-123 slice must guard stale/terminal execution progress precedence in Book/Downloads
+and repeat Pause/relaunch/Resume on a new source-matched APK. Retained bytes are correct; percentage
+acceptance stays open. R-120's WorkManager stop/delete and new-claim windows remain open; the correction
+adds no cross-owner lock.
 
 **Exit:** physical recovery, authorization, file integrity and displayed state agree. Fix reproduced gaps;
 do not build a second execution adapter or persist WorkManager's execution state as another Room owner.

@@ -149,7 +149,9 @@ filesystem. DC-A01–07 pass; DC-P01–13 distinguish scoped API36 phone evidenc
 obligations. APK2183 passes real transfer, Pause/force-stop/relaunch/Resume, cancel/confirm partial discard,
 native full verification, cleanup and 27 isolated security tests. Controlled timing, response, sharing,
 storage, playback and accessibility matrices remain NOT RUN; D-10's asynchronous removal/new-claim
-acceptance stays open. Use this log alongside D-01–D-15, not as whole-matrix acceptance.
+acceptance stays open. A paused Book capture shows 28% versus 31% from durable bytes: R-123 progress
+precedence and fresh numeric Book/Downloads assertions need the next slice. Use this log alongside
+D-01–D-15, not as whole-matrix acceptance.
 
 Stored-copy verification navigation was sampled in the [phone report](2026-10-03-phone-acceptance.md).
 APK2183 adds bounded transfer/recovery/discard evidence in the log above. Remaining steps below are

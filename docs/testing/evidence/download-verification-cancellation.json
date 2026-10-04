@@ -122,7 +122,15 @@
       "explicitResumeCompleted": true,
       "savedPartialValidator": false,
       "confirmedRange206": false,
-      "utc": "2026-10-04T17:32:32.668325+00:00"
+      "utc": "2026-10-04T17:32:32.668325+00:00",
+      "pausedBookPercentObservation": {
+        "observed": 28,
+        "durableExpected": 31,
+        "durableBytes": 46304286,
+        "expectedTotalBytes": 148140184,
+        "consistent": false,
+        "followUp": "R-123: verify terminal/stale WorkManager progress selection and fresh UI after Pause/relaunch"
+      }
     },
     "discard": {
       "cancelPreservedAllFileRows": true,

@@ -52,7 +52,7 @@ to prepare a fixture. Changes to server responses/storage must use disposable fi
 | Case | Steps and required result | Register |
 | --- | --- | --- |
 | DC-P01 | Verify signed APK, upgrade in place, About/source and retained profiles/settings/downloads/progress. | Q-01/A-08/D-09; PARTIAL PASS: in-place upgrade/About/counts and original downloads/claims/progress; full preference baseline NOT RUN; paused MediaSession holder was not retained by APK replacement. |
-| DC-P02 | Download normally, Pause repeatedly near the last byte and media-validation interval; check Book and Downloads stay Paused with truthful bytes, no premature Downloaded, no new final file after observed cancellation. Resume verifies and commits once. A timing attempt without proof of the verifier phase does not accept the specific boundary. | D-03/D-10; PARTIAL PASS: real mid-file Pause/explicit Resume; controlled last-byte/verifier-phase acceptance NOT RUN. |
+| DC-P02 | Download normally, Pause repeatedly near the last byte and media-validation interval; check Book and Downloads stay Paused with truthful bytes, no premature Downloaded, no new final file after observed cancellation. Resume verifies and commits once. A timing attempt without proof of the verifier phase does not accept the specific boundary. | D-03/D-10; PARTIAL PASS: real mid-file Pause/explicit Resume and retained bytes; observed Book percentage mismatch requires follow-up; controlled last-byte/verifier-phase acceptance NOT RUN. |
 | DC-P03 | Controlled slow validation/storage fixture: trigger actual worker cancellation during valid container verification and invalid complete-416 verification. Confirm no rename or stale-part deletion after cancellation, current partial checkpoint and no full replacement request. If the phase cannot be observed/controlled with the shipped build, record NOT RUN and use an isolated device harness; do not infer it from random taps. | D-10; NOT RUN. |
 | DC-P04 | Range/If-Range `206` resume after Pause, then force a changed-validator `200` replacement; cancel near validation. Recorded percent may decrease to actual replacement bytes; committed sibling retained; clean resume does not splice old/new bytes. | D-03/D-12; NOT RUN. |
 | DC-P05 | No ETag response, short/invalid body and complete/stale `416` responses. Pause and Retry through process restart. No unvalidated resume, invalid media never playable; known current response metadata retained only with available storage. | D-12; NOT RUN. |
@@ -139,3 +139,20 @@ not issue Play. Listening progress remained intact, but active playback/holder c
 is not accepted. Controlled verification cancellation, changed response/416 fixtures, Range tracing,
 SIGKILL/reboot, sharing/credentials/concurrent transfers, removable/low-space storage, timeout, audible
 playback and accessibility matrices remain NOT RUN. R-120–R-123 stay open; no whole D-case is closed.
+
+## New physical finding — paused Book percentage
+
+The 17:30:59 UTC Book capture says Paused at 28%, while the preceding 17:30:57 Room snapshot and
+later stable disk snapshot record 46,304,286 of 148,140,184 bytes (31% floored). The retained part
+is correct; the displayed Book percentage is not accepted. The Downloads percentage after relaunch
+was not separately captured as a numeric assertion. Inspect Book/Downloads progress precedence:
+both prefer `execution?.progress` over durable progress, and the observer reads WorkManager progress
+even for terminal work. Stale execution progress is a suspected cause, not a proven fix.
+
+Next R-123 slice: add a failing policy guard for Paused plus stale/cancelled execution progress, audit
+both Book/Downloads callers and notification behavior, use durable counts where execution is no longer
+authoritative, and repeat immediate Pause, settled Pause, force-stop/relaunch, explicit Resume and
+second-cancellation replacement cases on a new source-matched APK. Keep legitimate live progress while
+Running/Waiting/Retrying and prevent an older worker from overriding a new attempt. Do not mark the
+whole progress UI or R-123 accepted by this report. This observation does not invalidate the narrow
+verification-cancellation regression guards; PR #232 stays draft.
