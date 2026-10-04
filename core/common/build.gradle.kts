@@ -17,11 +17,7 @@ dependencies {
  * than in the root aggregate because a threshold scoped to one package needs a report filter, and a
  * filter belongs to the report of the module that owns the package.
  *
- * Measured at 92.7% when this was wired. The bound is 17.3's number, not that one.
- *
- * **Not enforced by `verifyDebug` today.** Nothing makes `verifyDebug` depend on this module's
- * `koverVerify`, so the rule below only runs when someone invokes `:core:common:koverVerify` by hand
- * (docs/risks.md R-57). The audit's proposed hook is deliberately not added until the owner decides.
+ * The bound is 17.3's number. Ordinary module/root verification executes this rule (R-125).
  */
 kover {
     // The root `gate` variant aggregates this module's JVM classes (see the root build file). This module's
@@ -50,4 +46,9 @@ kover {
             }
         }
     }
+}
+
+// PRODUCT_SPEC 17.3 / R-125: the aggregate 80% rule does not replace this security threshold.
+tasks.named("verifyDebug") {
+    dependsOn(tasks.named("koverVerify"))
 }

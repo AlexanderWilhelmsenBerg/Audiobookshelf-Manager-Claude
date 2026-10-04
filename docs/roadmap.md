@@ -20,7 +20,7 @@ records 27 passing instrumented tests and local playback/restart/manual timer su
 cases failed in the harness; actual car/headset, transfer/account fixtures and two-hour soak remain pending.
 Use the [verification register](testing/roadmap-verification-register.md)
 to log every required case and its evidence. Include a verified debug APK with the final CI handoff for each
-delivery batch; keep iOS low priority after Android correctness and system-surface work.
+delivery batch; keep iOS development on hold alongside Silo, as requested on 2026-10-04.
 
 ## 0. CI efficiency before feature expansion
 
@@ -47,7 +47,8 @@ without restoring fixed-height truncation; large text remains content-driven.
   cache cleanup and prune obsolete main home-state generations without deleting shared content blobs.
 - #214 implements the debug/JVM coverage gate with the same filters/modules/80% threshold, explicit release/benchmark
   compilation on PRs and release unit tests on main. Its app unit sandbox fix isolates production collectors;
-  preserve the existing overspill regression. R-125's unenforced 90% redaction rule remains a separate follow-up.
+  preserve the existing overspill regression. The [R-125 security follow-up](reviews/2026-10-04-security-coverage.md)
+  hooks the existing 90% redaction rule into ordinary verification; its unchanged report reaches 96.72%.
 - Record queue delay, verification duration and cache restore/save time separately under #188. Quick remains
   formatting evidence; Standard retains the full regression gate and local `verifyDebug` includes assembly.
   [Three dated timing samples](reviews/2026-10-03-ci-timing-baseline.md) establish the measurement fields,
