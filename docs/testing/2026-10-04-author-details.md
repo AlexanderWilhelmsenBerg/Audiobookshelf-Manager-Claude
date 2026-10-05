@@ -92,3 +92,11 @@ Privacy-safe native fixtures: [320 dp / 200% dark](evidence/author-320dp-font2-d
 [375 dp / 130% Norwegian light](evidence/author-375dp-font1_3-nb-light.png). All 16 added author-related
 tests pass, along with the existing 25 series-card cases. CI/APK identity is recorded on the draft PR;
 physical U-08-01–07 remain NOT RUN. No issue closure claimed.
+
+
+### 2026-10-05 caller correction
+
+The [observation/key correction](2026-10-05-author-observation.md) on this same author PR distinguishes
+pending queries from unavailable content and prevents opaque identities colliding with section keys.
+It adds two actual ViewModel/render guards; initial source-specific results above remain historical.
+Author acceptance must include this correction, with all physical U-08-01–07 still NOT RUN.

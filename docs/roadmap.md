@@ -176,7 +176,8 @@ specification 17.2/21. Follow the [child-slice triage](testing/ui-roadmap-triage
    Use the inward green cue without checkmarks and readable/spoken completion information. U-08-01–07
    now has implementation and automated evidence on `feature/author-series-standalone`, stacked on #230.
    [Author verification log](testing/2026-10-04-author-details.md) records grouping, caller, privacy and native-render
-   coverage plus every pending phone case. All physical U-08-01–07 remain NOT RUN; #229 stays open.
+   coverage plus every pending phone case. The [2026-10-05 caller correction](testing/2026-10-05-author-observation.md)
+   adds explicit pending-query state and collision-free section keys (18 author cases total). All physical U-08-01–07 remain NOT RUN; #229 stays open.
    No endpoint/schema change. While these candidates await physical acceptance, the next software UI slice
    is #176's root/pushed Sign-in Back context.
 2. Address #176's root/pushed Sign-in Back context; reproduce landscape player contrast, clipping/player
