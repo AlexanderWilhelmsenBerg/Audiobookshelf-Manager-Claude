@@ -70,3 +70,19 @@ Prepared10:33:36UTC on the isolated local test app (`2d567b17`, code2000), not o
 Profiles → Add Profile → Address. Cancelled edge Back should stay on Sign-in; completed Back should
 return Profiles. Awaiting explicit owner finding; phone automation is paused for this observation.
 Automatic success/configuration results are in the [Sign-in phone log](2026-10-05-signin-phone-success.md).
+
+
+## Sign-in predictive Back owner result
+
+U-03-06 on the isolated source2d567b17/code2000 app: **PASS** — cancelled edge Back stays
+on Sign-in; completed Back returns Profiles. Owner: “Pass — cancellation stays, full Back returns
+to Profiles”. A later Home capture prevented the driver’s post-gesture Profiles/database check;
+that independent confirmation remains unperformed.
+
+
+## Pending Sign-in large-text observation
+
+The isolated test app is prepared at simulated320dp width (900×1950px at450dpi) and
+fontScale2.0 on the pushed Address screen. Awaiting owner title/readability, Back usability
+and form/Continue reachability finding; no unanswered question counts as PASS. Display size
+and font will be restored to native1080×2340/font1.0 after the observation.

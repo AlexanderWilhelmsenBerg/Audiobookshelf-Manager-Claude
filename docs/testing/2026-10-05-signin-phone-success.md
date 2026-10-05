@@ -25,7 +25,7 @@ verification change is introduced. Accounts have no owner titles, downloads or c
 | U-03-04/07 credentials/configuration |08:14:50–08:15:03, font1.3, landscape→portrait |Entered username/password fields retain contents; original font1.0, rotation0, automatic rotation1 restored/read back. Rotation is manifest-handled; explicit Activity recreation lifecycle was not captured. |Selected draft/configuration PASS |
 | U-03-06 keyboard first Back |08:13:20 |Back dismisses keyboard while credential form and entered password remain. |PASS |
 | U-03-05 successful reauth |10:32:58–10:33:01, font1.0 |Home opens, same two profile IDs remain; requiresReauthentication1→0. Subsequent Back returns Profiles with no credential screen. |PASS |
-| U-03-06 predictive Back |Prepared10:33:36, pushed Add Profile address |Cancelled edge swipe must stay; full swipe must return Profiles. |Awaiting owner finding |
+| U-03-06 predictive Back |Prepared10:33:36, pushed Add Profile address |Cancelled edge swipe must stay; full swipe must return Profiles. |Owner PASS: cancellation stays; full Back returns Profiles |
 
 Private captures/databases/request hashes and configuration logs remain ignored local evidence.
 An earlier automatic approval review could not run because of a usage limit; that login command
@@ -38,3 +38,8 @@ controlled authentication errors/offline cases, full widths/themes/languages/lar
 predictive credential/busy paths. Manual TalkBack is excluded from this session at the owner's
 request after its selected-tab/count check passed; dedicated unperformed speech cases are not
 falsely claimed as run. No PR is marked ready/merged and no issue is closed by these subsets.
+
+Owner predictive Back finding: “Pass — cancellation stays, full Back returns to Profiles”.
+A later capture at10:42:55UTC showed Home, so the driver stopped before its expected-Profile
+assertion and database snapshot. That later navigation does not invalidate the owner observation;
+no post-gesture database audit or independently captured final Profiles screen is claimed.

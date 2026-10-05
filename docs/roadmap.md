@@ -32,8 +32,8 @@ Open issues can contain merged implementation and missing acceptance; this recon
 | [#230](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/230) | Draft, based on main | Selected count/localization and axis checks pass. A 100ms fling followed by a newer Books tap fails on APK2189/2191; correction `cf8db633` passes four rendered regressions, actual-source reversion and strict verification. Signed APK2192 passes five fast-tap repeats and all-axis selection/count checks; owner animation and selected heard browse/Author navigation PASS; owner TalkBack selection/count check PASS; remaining restoration/live authorization/count cases are pending. #227/#228 stay open. |
 | [#231](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/231) | Draft, based on #230 | Forty alternating benchmark executions show CPU P95 improvement of 8.94%/6.80% and overrun P95 improvement of 17.04%/27.91%. Every round remains above 16.7ms. Visual quality, playback/accessibility/configuration and older-API/startup-memory checks remain; keep/reject decision pending. |
 | [#232](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/232) | Draft, based on #230 | Cancellation checkpoint guards and stopped-progress precedence implemented. 87 downloads and 52 caller tests pass; APK2184 ordinary Pause/relaunch/discard/Resume/file verification passes. Controlled phase/response/race/storage/credential/notification/accessibility cases remain. |
-| [#234](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/234) | Draft, based on #230 | Grouped Author destination and 19 author guards pass. The APK2189 scroll-return failure is corrected in `0c8fb994`; the same chain passes on signed APK2191. Selected grouped/completed/offline routes pass; remaining U-08, actual TalkBack/heard audio and configuration/privacy cases stay open. |
-| [#235](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/235) | Draft, based on #234 | Root/pushed Back and title implementation; corrected-parent head `5dac7e17` passes strict verification/CI. Isolated `2d567b17` phone checks pass selected root/pushed cancellation, 320dp/200% text, delayed login and empty password after process death. Selected isolated successful Add/reauth, keyboard-first Back and credential font/rotation checks pass; predictive owner finding, explicit recreation and remaining U-03 cases stay open. Further manual TalkBack is excluded per owner preference. |
+| [#234](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/234) | Draft, based on #230 | Grouped Author destination and 19 author guards pass. The APK2189 scroll-return failure is corrected in `0c8fb994`; the same chain passes on signed APK2191. Selected grouped/completed/offline routes and owner normal/200% layouts pass; selected heard browse/Author navigation passes on2192. Remaining U-08 restoration/configuration/privacy cases stay open. Further manual TalkBack is excluded per owner preference. |
+| [#235](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/235) | Draft, based on #234 | Root/pushed Back and title implementation; corrected-parent head `5dac7e17` passes strict verification/CI. Isolated `2d567b17` phone checks pass selected root/pushed cancellation, 320dp/200% text, delayed login and empty password after process death. Selected isolated successful Add/reauth, keyboard-first Back and credential font/rotation checks pass; owner predictive Back cancellation/completion PASS; explicit recreation and remaining U-03 cases stay open. Further manual TalkBack is excluded per owner preference. |
 
 The draft dependencies are **main → #230 → #231, #232 or the author-details branch**;
 performance, downloads and author implementation are independent siblings; Sign-in Back is stacked on the author branch. [Author evidence](testing/2026-10-04-author-details.md) records pending physical acceptance.
@@ -53,7 +53,7 @@ The owner requested automated execution followed by a pause for each visual, aco
 check, with a Pass/finding question. No unanswered question counts as acceptance. The completed Author-card visual checks at normal/200% text pass on APK2191;
 the mixed Author-page grouping/readability/bottom check also passes. See the [owner finding log](testing/2026-10-05-owner-phone-checks.md).
 The corrected combined APK (`4f2edb36`) passes strict local verification/signed APK CI, is installed as2192 and passes five fast-tap repeats; owner animation finding passes; selected heard browse/Author navigation passes; requested TalkBack check is complete;
-then repeat the fast-tap blocker on that exact signed source. Stay focused on existing PR acceptance.
+the corrected fast-tap defect is accepted for the recorded sequences on that exact signed source. Stay focused on existing PR acceptance.
 No feature/issue is declared complete and no PR is merged by these selected checks.
 
 ## Ordered delivery lanes
@@ -99,8 +99,8 @@ playback/progress/privacy defect. Hardware-dependent reliability acceptance rema
 1. [#227 gesture selection](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/227): reproduce Books → Series → Books, where the
    pill reaches Books but Series stays highlighted. The actual stable-callback route regression confirmed
    the settled-page listener captured the initial axis. PR #230 reads the latest axis/callback while keeping
-   its listener stable; return, cancelled and rapid/mixed-intent checks pass. Preserve continuous motion
-   and settled semantics; remaining TalkBack/restoration acceptance stays open.
+   its listener stable; selected return, cancelled and rapid/mixed-intent checks pass. Preserve continuous motion
+   and settled semantics; requested TalkBack check passes, remaining restoration acceptance stays open.
 2. [#228 entity counts](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/228): Books counts books, Series counts series,
    Authors counts authors and Genres counts genres within the active authorized library/search/filter
    scope. Focused book results count books. Retain uncapped Books shelf totals, localized plurals and
@@ -125,7 +125,7 @@ ADR-0025/0026, R-25/R-27.
 
 Draft PR #231 prepares one bounded sampling candidate; physical comparison remains the next performance
 step while hardware-dependent reliability checks are pending. See the
-[PERF-01–10 log](testing/2026-10-04-card-blur-sampling.md); no speedup or visual acceptance is claimed.
+[PERF-01–10 log](testing/2026-10-04-card-blur-sampling.md). The paired phone measurements above show benefit; visual acceptance and the 16.7ms budget remain open.
 Inspect saved frame traces, isolate flat-list/card rendering cost, make one bounded change and compare on the
 same device/fixture/compilation mode. Report CPU timing and actual frame overruns separately. Passing benchmark
 methods do not accept the exceeded comparison budget. Keep manual cached-player latency and ANR stress pending
