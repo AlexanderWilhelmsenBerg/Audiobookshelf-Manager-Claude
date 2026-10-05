@@ -27,7 +27,7 @@
     <string name="home_server_unreachable">Serveren svarer ikke</string>
     <string name="home_server_unknown">Ukjent serverstatus</string>
     <string name="home_server_offline">Enheten er frakoblet, serverstatus er ukjent</string>
-    <string name="home_offline_caption">Frakoblet — viser det bufrede biblioteket</string>
+    <string name="home_offline_caption">%1$s. Frakoblet — viser mellomlagret bibliotek</string>
     <string name="home_no_profile_title">Ingen server tilkoblet</string>
     <string name="home_no_profile_body">Logg på en Audiobookshelf-server for å se bøkene dine.</string>
     <string name="home_error_title">Kunne ikke laste bøkene dine</string>
@@ -922,4 +922,29 @@
     <string name="settings_contrast_auto">Automatisk</string>
     <string name="settings_contrast_high">H\u00f8y</string>
     <string name="settings_contrast_soft">Myk</string>
+    <!-- LIB-001/002 / #228 — counts name the displayed browse entity. -->
+    <plurals name="home_library_series">
+        <item quantity="one">%1$d serie</item>
+        <item quantity="other">%1$d serier</item>
+    </plurals>
+    <plurals name="home_sync_partial_series">
+        <item quantity="one">%1$d serie. Den siste oppdateringen nådde ikke alle.</item>
+        <item quantity="other">%1$d serier. Den siste oppdateringen nådde ikke alle.</item>
+    </plurals>
+    <plurals name="home_library_authors">
+        <item quantity="one">%1$d forfatter</item>
+        <item quantity="other">%1$d forfattere</item>
+    </plurals>
+    <plurals name="home_sync_partial_authors">
+        <item quantity="one">%1$d forfatter. Den siste oppdateringen nådde ikke alle.</item>
+        <item quantity="other">%1$d forfattere. Den siste oppdateringen nådde ikke alle.</item>
+    </plurals>
+    <plurals name="home_library_genres">
+        <item quantity="one">%1$d sjanger</item>
+        <item quantity="other">%1$d sjangre</item>
+    </plurals>
+    <plurals name="home_sync_partial_genres">
+        <item quantity="one">%1$d sjanger. Den siste oppdateringen nådde ikke alle.</item>
+        <item quantity="other">%1$d sjangre. Den siste oppdateringen nådde ikke alle.</item>
+    </plurals>
 </resources>

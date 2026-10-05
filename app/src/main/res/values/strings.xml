@@ -28,7 +28,7 @@
     <string name="home_server_unreachable">Server not reachable</string>
     <string name="home_server_unknown">Server status unknown</string>
     <string name="home_server_offline">Device offline, server status unknown</string>
-    <string name="home_offline_caption">Offline — showing your cached library</string>
+    <string name="home_offline_caption">%1$s. Offline — showing cached library</string>
     <string name="home_no_profile_title">No server connected</string>
     <string name="home_no_profile_body">Sign in to an Audiobookshelf server to see your books.</string>
     <string name="home_error_title">Could not load your books</string>
@@ -1175,4 +1175,29 @@
     <string name="settings_contrast_auto">Automatic</string>
     <string name="settings_contrast_high">High</string>
     <string name="settings_contrast_soft">Soft</string>
+    <!-- LIB-001/002 / #228 — counts name the displayed browse entity. -->
+    <plurals name="home_library_series">
+        <item quantity="one">%1$d series</item>
+        <item quantity="other">%1$d series</item>
+    </plurals>
+    <plurals name="home_sync_partial_series">
+        <item quantity="one">%1$d series. The last refresh could not reach all of them.</item>
+        <item quantity="other">%1$d series. The last refresh could not reach all of them.</item>
+    </plurals>
+    <plurals name="home_library_authors">
+        <item quantity="one">%1$d author</item>
+        <item quantity="other">%1$d authors</item>
+    </plurals>
+    <plurals name="home_sync_partial_authors">
+        <item quantity="one">%1$d author. The last refresh could not reach all of them.</item>
+        <item quantity="other">%1$d authors. The last refresh could not reach all of them.</item>
+    </plurals>
+    <plurals name="home_library_genres">
+        <item quantity="one">%1$d genre</item>
+        <item quantity="other">%1$d genres</item>
+    </plurals>
+    <plurals name="home_sync_partial_genres">
+        <item quantity="one">%1$d genre. The last refresh could not reach all of them.</item>
+        <item quantity="other">%1$d genres. The last refresh could not reach all of them.</item>
+    </plurals>
 </resources>
