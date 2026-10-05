@@ -37,6 +37,12 @@ Selected owner TalkBack checks are complete; further manual TalkBack is excluded
 accepting unperformed wider speech checks. Earlier historical issue36 is GitHub #128, with hardware
 continuity gates still open. Merged implementation is not final release acceptance.
 
+## Home recovery follow-up — #195
+
+The [source-scoped Home recovery log](2026-10-05-home-status-recovery.md) records native shapes/recovery,
+contrast checks and every remaining physical case U-09-01–05. It covers only #195 findings4/7.
+No owner-phone tests run in this slice; previous APK findings are not transferred.
+
 ## Record a result for every case
 
 The owner's new series/history/sleep prerequisite has its own complete

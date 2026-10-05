@@ -132,5 +132,22 @@
     "allTasksExecuted": true,
     "forcedRerun": true,
     "formatterSeconds": 15
+  },
+  "finalMainWorkflows": {
+    "source": "df2c80a8a311dd492f49d5c8c7c3143209c04e22",
+    "standard": {
+      "run": 37321586918,
+      "result": "PASS"
+    },
+    "releaseSecurity": {
+      "run": 37321586687,
+      "result": "PASS"
+    },
+    "checkedSignedAPK": {
+      "run": 37321588592,
+      "result": "PASS",
+      "code": 2196,
+      "installed": false
+    }
   }
 }

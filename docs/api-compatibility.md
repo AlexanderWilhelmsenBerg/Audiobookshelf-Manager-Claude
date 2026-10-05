@@ -1704,3 +1704,10 @@ The [metadata correction](testing/2026-10-05-book-row-metadata.md) changes prese
 only. No server endpoint/field, supported version, Room schema, dependency, permission or credential
 format changes; captured contracts remain authoritative. Four native-render height/bounds guards
 pass with actual-source reversion proof. Verified signed2195 upgrade/retention, normal-font owner readability and cached offline/detail/Back pass; other configurations remain pending. PR #236 is merged; see the current merge record.
+
+## Home status and recovery slice — 2026-10-05
+
+Partial #195 uses existing localized status and Home control actions. It changes no server probe,
+reachability derivation, endpoint/field, response fixture, permission, Room schema or playback policy.
+The [Home recovery log](testing/2026-10-05-home-status-recovery.md) distinguishes native/contrast checks
+from remaining effective-glass and physical continuity cases. No new server version is claimed.

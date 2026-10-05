@@ -49,7 +49,7 @@
     <string name="shelf_resume_book">Fortsett %1$s</string>
     <string name="shelf_series_next">Neste: %1$s · %2$s</string>
     <string name="home_no_matches_title">Ingen treff</string>
-    <string name="home_no_matches_body">Ingen bok i bibliotekene dine passer med det søket.</string>
+    <string name="home_no_matches_body">Prøv å endre søket, filtrene eller utvalget.</string>
     <string name="home_sync_never">Ikke synkronisert ennå</string>
     <string name="home_sync_failed">Viser bufret innhold. Den siste oppdateringen mislyktes.</string>
     <string name="home_sync_running">Oppdaterer…</string>
@@ -950,4 +950,7 @@
         <item quantity="one">%1$d sjanger. Den siste oppdateringen nådde ikke alle.</item>
         <item quantity="other">%1$d sjangre. Den siste oppdateringen nådde ikke alle.</item>
     </plurals>
+    <string name="home_clear_search">Tøm søk</string>
+    <string name="home_reset_filters">Tilbakestill filtre</string>
+    <string name="home_clear_selection">Fjern utvalg</string>
 </resources>
