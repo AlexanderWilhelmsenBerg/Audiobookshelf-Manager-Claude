@@ -1,4 +1,10 @@
-# PR phone acceptance and merge requirements — 2026-10-05
+# PR acceptance inventory — 2026-10-05
+
+**Current disposition:** All six PRs are merged on2026-10-05 under the owner’s explicit direction to
+merge despite uncertainty and report what remains. The following earlier session notes retain their
+original source scope; their draft/no-merge statements are historical, not current blockers.
+[Current merge record and watch list](2026-10-05-merge-delivery.md). Phone testing is stopped.
+Remaining tests below are follow-up/release obligations, not assumed passes.
 
 Scope: Android runtime PRs #230, #231, #232, #234 and #235. iOS, Silo and Garmin are outside this work.
 This is a source-specific acceptance supplement to the canonical [roadmap](../roadmap.md)
@@ -41,7 +47,7 @@ original source scope: APK2191 does not contain the newly guarded fast-tap corre
 
 ## Remaining changed-slice physical work
 
-| PR | Work needed before declaring the slice ready |
+| PR | Remaining follow-up acceptance work |
 | --- | --- |
 | #230 Browse selection/counts | Accept the corrected 100ms fling → newer tap, cancelled drags, rapid directions/taps and all axes on the new signed source. U-06: Book/Author return, recreation/restoration, actual TalkBack selection/count speech and heard playback continuity. U-07: zero/one/many plurals, search/filter/focused counts, library/profile changes, revoked/hidden items, live Room changes and controlled loading/partial/failed/never-synced states. |
 | #231 Backdrop sampling | PERF-06: human control/candidate quality comparison across blur 0, below 7, 7, default 28 and maximum, tint on/off, themes/gradients, artwork/parallax edges, grain and contrast. PERF-07: covers, flat/focused/offline lists, rapid/detail/Back paths and heard audio/progress/queue. PERF-08: English/Norwegian, large text, rotation, reduced motion and TalkBack. PERF-09: API26–30 fallback, API31+ blur, startup/memory and low-memory hardware if available. Decide keep/reject from benefit plus quality; remaining 16.7ms failure stays disclosed. |

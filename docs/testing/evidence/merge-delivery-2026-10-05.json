@@ -1,0 +1,136 @@
+{
+  "date": "2026-10-05",
+  "runtimeMain": "cd432f4296af8cfd724cc7da5ffd7e9754bb05c0",
+  "mergedPRs": [
+    {
+      "headRefOid": "cf8db633b89727346d340af6e6f157dde2672fd2",
+      "mergeCommit": {
+        "oid": "fe23195beacdfdebb359f3f287436a2d349c2385"
+      },
+      "mergedAt": "2026-10-05T13:50:18Z",
+      "number": 230,
+      "state": "MERGED",
+      "title": "Fix Home gesture selection and browse entity counts",
+      "url": "https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/230"
+    },
+    {
+      "headRefOid": "c2258229984209892a08cf3e6f5b41b3d0802d30",
+      "mergeCommit": {
+        "oid": "7dc17e338a129ee8aca788e884dac2133982a56f"
+      },
+      "mergedAt": "2026-10-05T13:51:16Z",
+      "number": 231,
+      "state": "MERGED",
+      "title": "Evaluate automatic backdrop sampling for book rows",
+      "url": "https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/231"
+    },
+    {
+      "headRefOid": "218417cc358671dfe422e9eab256548231f83bdb",
+      "mergeCommit": {
+        "oid": "5f48f581d27100d7b6096286551095beff4ef740"
+      },
+      "mergedAt": "2026-10-05T13:51:21Z",
+      "number": 232,
+      "state": "MERGED",
+      "title": "Preserve paused download checkpoints and display durable progress",
+      "url": "https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/232"
+    },
+    {
+      "headRefOid": "7f5b82e49103d9a8685bd6653a871464eab000bd",
+      "mergeCommit": {
+        "oid": "5d9d8478acc7db4c582e30d4b16ddd06ebd3e6bf"
+      },
+      "mergedAt": "2026-10-05T13:51:26Z",
+      "number": 234,
+      "state": "MERGED",
+      "title": "Show grouped author details from both browse entry points",
+      "url": "https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/234"
+    },
+    {
+      "headRefOid": "a55c693178f3951577071e1e6525b415b5fd34ad",
+      "mergeCommit": {
+        "oid": "33eb204b35f8e28763c5b5a0a1a10524953516b8"
+      },
+      "mergedAt": "2026-10-05T13:51:59Z",
+      "number": 235,
+      "state": "MERGED",
+      "title": "Show route Back for pushed Sign-in and preserve full toolbar titles",
+      "url": "https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/235"
+    },
+    {
+      "headRefOid": "1d4ba3bf0b8cdb92809224a172945dcc398e9939",
+      "mergeCommit": {
+        "oid": "cd432f4296af8cfd724cc7da5ffd7e9754bb05c0"
+      },
+      "mergedAt": "2026-10-05T13:52:04Z",
+      "number": 236,
+      "state": "MERGED",
+      "title": "Keep book-row duration and progress visible when text wraps",
+      "url": "https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/236"
+    }
+  ],
+  "phone2195": {
+    "run": "37316723646",
+    "source": "eedcbd1ed44d7fcc2f5be594c76d74a45758e6f2",
+    "workflowSource": "eedcbd1ed44d7fcc2f5be594c76d74a45758e6f2",
+    "artifactId": 11347844783,
+    "artifactDigest": "sha256:6633cd39d16b89434b1bca4d1f0e40716b5174b9c5687c17a3b5721964e14e54",
+    "apk": "bookwave-debug-0.10.6.1-2195.apk",
+    "apkSha256": "6633cd39d16b89434b1bca4d1f0e40716b5174b9c5687c17a3b5721964e14e54",
+    "package": "org.homebord.bookwave.debug",
+    "versionCode": 2195,
+    "versionName": "0.10.6.1",
+    "signerSha256": "c63c72cb2c4b32a8ed3775e4cc0b5754abf06b5beb4481ea5a8f5c5c0dd9217c",
+    "loopbound": "7e24529b2a9e419218d2a1423d832b1bf587c8ef",
+    "sourceEmbedded": true,
+    "archiveDigestVerified": true,
+    "phoneInstalled": true,
+    "utc": "2026-10-05T13:34:55.614822+00:00",
+    "retainedAllCounts": true,
+    "retainedTenNonProfileFingerprints": true,
+    "retainedProfilesExceptLastUsedAt": true,
+    "retainedExactSettings": true,
+    "bookListCount": 222,
+    "noActivePlaybackUpgradeClaim": true
+  },
+  "phone2195Navigation": {
+    "utc": "2026-10-05T13:36:22.968725+00:00",
+    "apk": 2195,
+    "detailReturnSameTitleBounds": "PASS",
+    "cachedOfflineListDetailReturn": "PASS",
+    "noActivePlayback": "PASS",
+    "retainedCountsTenNonProfileFingerprintsAndSettings": "PASS",
+    "networkSettingsRestored": true,
+    "scope": "Normal-font Norwegian general row; no Play request; no broader focused/Author/hardware matrix claim"
+  },
+  "owner2195Finding": "Looks good; bottom lines readable",
+  "phoneTestingStoppedAtOwnerRequest": true,
+  "physical200PercentOn2195": "NOT RUN",
+  "issuesClosedByMergeSession": 0,
+  "checkedCandidateCI": {
+    "run": 37312350651,
+    "conclusion": "CANCELLED",
+    "lastTask": ":app:verifyDebug",
+    "noFinalGradleSuccess": true
+  },
+  "packaging2195": {
+    "run": 37316723646,
+    "conclusion": "SUCCESS",
+    "runChecks": false
+  },
+  "combinedLocalStrict": {
+    "source": "eedcbd1ed44d7fcc2f5be594c76d74a45758e6f2",
+    "result": "PASS",
+    "seconds": 204,
+    "tasks": 1022
+  },
+  "mergedMainStrict": {
+    "source": "cd432f4296af8cfd724cc7da5ffd7e9754bb05c0",
+    "result": "PASS",
+    "seconds": 452,
+    "tasks": 1024,
+    "allTasksExecuted": true,
+    "forcedRerun": true,
+    "formatterSeconds": 15
+  }
+}

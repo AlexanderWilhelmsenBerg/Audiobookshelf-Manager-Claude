@@ -21,7 +21,8 @@ The repository has accumulated detailed investigation over time. Detail does **n
 
 The [2026-10-04 reconciliation](reviews/2026-10-04-documentation-reconciliation.md) records the
 repository-wide authority/link/source audit and merge disposition. Draft reports are evidence for their
-recorded source, not proof their runtime is on main.
+recorded source; the [2026-10-05 merge record](testing/2026-10-05-merge-delivery.md) confirms
+PRs #230/#231/#232/#234/#235/#236 are now on main and lists remaining acceptance.
 
 ## Document classifications
 
