@@ -1,9 +1,9 @@
 # PR phone acceptance and merge requirements — 2026-10-05
 
-Scope: Android runtime PRs #230, #231, #232, #234 and #235. iOS, Silo and Garmin are outside this work.
+Scope: Android runtime PRs #230, #231, #232, #234, #235 and the later clipping fix #236. iOS, Silo and Garmin are outside this work.
 This is a source-specific acceptance supplement to the canonical [roadmap](../roadmap.md)
 and [verification register](roadmap-verification-register.md), not blanket acceptance.
-An explicitly requested read-only subagent audited all five PRs and their physical gates.
+An explicitly requested read-only subagent audited the five original PRs and their physical gates. #236 was added after the owner visual finding.
 
 ## Current findings
 
@@ -50,6 +50,7 @@ original source scope: APK2191 does not contain the newly guarded fast-tap corre
 | #232 Download cancellation | Selected DC-P03 native valid fresh-body/valid416/invalid416 parser cancellation PASS, including actual-source reversion proof. Remaining DC-P02/03: actual Worker stop/scheduling and end-to-end network boundary observation. Controlled 206/If-Range, replacement 200, missing ETag, short/invalid bodies, stale/complete416, second Pause, old/new Worker attempts and terminal failure; compare Book/Downloads/notification bytes. Stop/delete/new-claim races; current/shared/expired/revoked credentials; independent jobs, notification denial, retry/backoff; low-space/write/storage/removable failures; heard offline playback during management; TalkBack/large text/privacy; separate SIGKILL/reboot and long dataSync timeout. Ordinary Pause cannot establish the precise verifier boundary. |
 | #234 Author detail | Coauthor/series-only/multiple memberships/missing identity and ordering. Finished/in-progress/unstarted/unknown and incomplete/failed catalogue completion, filtering, borders-off and spoken labels. Heard playback/queue/progress during navigation. Remaining toolbar/system/predictive return, query/filter/sort/scroll, recreation/cold restore. Slow profile changes, lock/sign-out/revocation/artwork privacy. Further manual TalkBack is excluded per owner preference; dedicated unperformed headings/completion speech is not claimed PASS. Remaining display configurations stay open. |
 | #235 Sign-in Back/title | Successful Add/reauth cleanup and subsequent Back, IME-first Back, selected credential font/rotation, process-death password clearing and owner predictive Address cancel/complete PASS on the isolated source. Address/Credentials background and confirmed Activity recreation PASS; connection-refused probe/error/Back PASS. Remaining stages, authentication/permission/error cases and configurations; remaining widths/languages/themes/reduced-motion/error/cleartext configurations. 320dp/200% Address title/form owner finding PASS; credential/error states remain unaccepted. Further manual TalkBack is excluded per owner preference. |
+| #236 Book-row height | Four metadata/bar layout guards PASS with actual-source reversion proof; six combined render/layout cases PASS. Strict source gates and code-head PR CI PASS. Checked signed candidate delivery, normal/200% text readability, scoped detail/Back/offline/Author regressions and affected timing remain pending. The broader #192 design remains open. |
 
 ## Fixtures and merge sequence
 

@@ -362,3 +362,11 @@ Signed2193/ba51ab46 checked APK CI PASS; in-place retained counts/data/settings 
 Owner default-settings texture judgement PASS, with pre-existing bottom metadata clipping reported; no quality acceptance,
 keep/reject decision or transfer of2192 findings to unperformed2193 cases.
 [Exact source, artifact and remaining cases](2026-10-05-phone-2193-backdrop.md).
+
+
+## Book-row metadata follow-up — #236
+
+Owner saved-settings texture on2193 PASS; bottom metadata clipping also in2192. Adaptive row
+height with bounded covers passes four native layout guards with actual-source reversion proof,
+and six combined render/layout cases. Strict source gate PASS; checked signed fixed delivery and
+physical cases pending. [Current source evidence and physical log](2026-10-05-book-row-metadata.md).
