@@ -72,3 +72,11 @@ All five PRs were OPEN/DRAFT with green checks and no formal reviews in the suba
 Those checks precede this newest source correction. No PR is merged or issue closed by this report.
 Broad headset/car/two-hour/sensor/release cases remain tracked; they are not automatically asserted
 as a new blocker for every unrelated slice. Explicit slice obligations must not be silently waived.
+
+
+## Corrected signed phone continuation
+
+APK2192 (`4f2edb36`) now passes five100ms fling→newer Books tap repeats, selected cancelled/rapid
+sequences and the all-axis walk. Its in-place upgrade retains progress/History/downloads/settings.
+See [exact signed evidence and driver corrections](2026-10-05-phone-2192-gestures.md).
+The owner animation observation is pending; remaining physical obligations above are unchanged.

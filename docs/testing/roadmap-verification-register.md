@@ -23,8 +23,8 @@ to final-main acceptance. Main through #233 contains documentation reconciliatio
 remain drafts. Existing dated rows below retain their original evidence scope.
 
 - #230: 100ms fling → newer Books tap FAIL on APK2189/2191. `cf8db633` fixes the request ordering;
-  four rendered cases, actual production-source reversion and strict verifyDebug pass. New signed
-  phone acceptance is pending. Selected English/Norwegian counts/search and cached offline checks pass.
+  four rendered cases, actual production-source reversion and strict verifyDebug pass. Signed APK2192 passes five fast-tap repeats and the all-axis selection/count walk;
+  [exact evidence](2026-10-05-phone-2192-gestures.md). Owner animation finding remains pending. Selected English/Norwegian counts/search and cached offline checks pass.
 - #231: 40 alternating benchmark executions are complete with measured improvement; every CPU P95
   still exceeds 16.7ms. Visual quality, playback, accessibility, old APIs and startup/memory remain open.
 - #232: ordinary APK2184 Pause/relaunch/discard/Resume and size verification retain their narrow PASS.
@@ -41,7 +41,7 @@ remain drafts. Existing dated rows below retain their original evidence scope.
 Human checks pause the phone automation. Each answer is recorded with case, source/APK and findings;
 unanswered/preselected options are not results. Completed Author-card normal/200% text checks
 on APK2191 pass with explicit owner findings in the [owner log](2026-10-05-owner-phone-checks.md).
-The mixed Author-page check also passes; corrected `4f2edb36` has green signed APK CI and awaits installation.
+The mixed Author-page check also passes; corrected `4f2edb36` is installed as2192 and passes the selected gesture checks; owner animation finding is pending.
 
 ## Record a result for every case
 
