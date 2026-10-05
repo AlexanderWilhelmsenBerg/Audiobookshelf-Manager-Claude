@@ -22,6 +22,7 @@ import com.example.shelfplayer.domain.download.DownloadRecoveryPolicy
 import com.example.shelfplayer.domain.download.DownloadRecoveryState
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.download.OfflineVerification
+import com.example.shelfplayer.domain.download.isInFlight
 import com.example.shelfplayer.domain.download.recoveryAction
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -328,7 +329,12 @@ class DownloadsViewModel @Inject constructor(
             safeFailureSummary = failureSummary,
             executionEvidence = execution?.evidence,
         )
-        val progress = execution?.progress ?: durableDownloadProgress()
+        // A stopped worker's last progress can precede the final cancellation checkpoint.
+        val progress = if (recovery.state.isInFlight) {
+            execution?.progress ?: durableDownloadProgress()
+        } else {
+            durableDownloadProgress()
+        }
         val claimedByActiveProfile = activeProfileId != null && activeProfileId in requestedBy
         val sharedWithAnotherProfile =
             claimedByActiveProfile && requestedBy.any { profileId -> profileId != activeProfileId }
