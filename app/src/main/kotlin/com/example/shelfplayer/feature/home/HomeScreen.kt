@@ -71,6 +71,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
@@ -216,8 +217,10 @@ fun HomeScreen(
     ReportDrawnWhen { uiState.profile != null }
     val snackbars = remember { SnackbarHostState() }
     val axisPages = HomeAxis.entries
+    val axisTapCount = remember { mutableIntStateOf(0) }
     val pagerState = rememberAxisPager(
         axis = uiState.axis,
+        axisTapCount = axisTapCount.intValue,
         onAxisChanged = actions.onAxisChanged,
         onSwipeStarted = onSwipeStarted,
     )
@@ -371,7 +374,10 @@ fun HomeScreen(
                     // pulling over"* — so the pill is at 1.4 when the drag is 40% of the way from Series
                     // to Authors, and it comes back to 1.0 by itself if the drag springs back.
                     position = pagerState.currentPage + pagerState.currentPageOffsetFraction,
-                    onAxisChanged = actions.onAxisChanged,
+                    onAxisChanged = {
+                        actions.onAxisChanged(it)
+                        axisTapCount.intValue++
+                    },
                     motion = axisBarMotion,
                     haze = axisBarHaze,
                     bottomInset = systemBarInset + playerInset,
@@ -683,6 +689,7 @@ private fun GenreEditChangeSummary(request: GenreEditRequest) {
 @Composable
 private fun rememberAxisPager(
     axis: HomeAxis,
+    axisTapCount: Int,
     onAxisChanged: (HomeAxis) -> Unit,
     onSwipeStarted: () -> Unit,
 ): PagerState {
@@ -691,9 +698,11 @@ private fun rememberAxisPager(
         initialPage = pages.indexOf(axis).coerceAtLeast(0),
         pageCount = { pages.size },
     )
-    LaunchedEffect(axis) {
+    // LIB-002 / #227: a tap is a new request even when its selected axis has not changed yet.
+    // Cancelling a pending fling must use the same pager animation that moves the pill.
+    LaunchedEffect(axis, axisTapCount) {
         val target = pages.indexOf(axis).coerceAtLeast(0)
-        if (target != state.currentPage) state.animateScrollToPage(target)
+        if (target != state.currentPage || state.isScrollInProgress) state.animateScrollToPage(target)
     }
     // LIB-002 / #227: stable route callbacks must compare against the current axis, not the
     // axis captured when the observer started. Read these outside snapshotFlow so axis updates
