@@ -80,3 +80,15 @@ animation-quality acceptance is inferred. No owner account or media was contacte
 This executes the functional gestures autonomously per the owner's clarified protocol. The earlier
 human Address/Credentials results remain scoped observations, not a requirement to repeat manual
 functional tests. Remaining recreation/error/configuration cases remain open.
+
+
+## Address/Credentials background and confirmed recreation — 2026-10-05
+
+U-03-04/07, isolated source2d567b17/code2000, SM-S928B/API36/Norwegian:
+Address and entered Credentials drafts survive Home/background/resume and fontScale1.0→1.3→1.0.
+One new Android platform Activity relaunch event is captured for each stage. This run explicitly
+confirms recreation, unlike the earlier rotation-only evidence. Change Server remains within the
+wizard, preserves the normalized URL, and clears username/password before probing back to Credentials.
+Final Back returns Profiles; all11 table counts/fingerprints and settings match baseline. **PASS**.
+Native font1.0 is restored/read back. The first driver attempt stopped on a foreground precondition;
+resuming the observed isolated Profiles route and repeating succeeds. No owner account was used.

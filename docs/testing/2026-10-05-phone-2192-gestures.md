@@ -53,3 +53,11 @@ afterward shows Genres/paused. One saved book position advances48.9seconds; all 
 rows, downloads and settings remain. See the [owner log](2026-10-05-owner-phone-checks.md).
 This does not accept headset controls, both author entry routes, offline audio or the two-hour matrix.
 Actual TalkBack selected destination/count speech is the next pending owner check.
+
+
+## About identity check — 2026-10-05
+
+At11:27:34UTC About displays0.10.6.1(2192), debug·4f2edb36de85, and the expected acceptance
+branch. This matches the verified signed artifact. Read-only navigation retains all11 counts,
+10non-profile fingerprints, progress/History/downloads and428-byte settings hash. Profile differences
+are confined to lastUsedAt; the remaining fields are compared privately. **PASS**. No Play is requested.

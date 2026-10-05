@@ -95,3 +95,18 @@ for preserved setup failures, remaining matrix and owner predictive-Back PASS.
 Automated functional edge Back cancellation/completion now passes at Address, Credentials and
 pending login on the isolated source; every table/settings fingerprint is unchanged. See the
 [exact Sign-in result](2026-10-05-signin-phone-success.md). Remaining matrix stays open.
+
+
+## Dependency integration and current source gates
+
+Each existing PR retains its history and now includes browse correctioncf8db633. Formatter and full
+warnings-as-errors verifyDebug pass: Author7f5b82e4(3m36s), Sign-ina55c6931(2m19s),
+Downloadsd99c772d(2m52s), Performancec2258229(2m43s);1,122 tasks in each run. All are pushed;
+fresh CI is evaluated separately. No classpath change was present in those integration gates.
+Sign-in onboarding/Nav runtime matches signed2192; Author/Home runtime comparison also matches.
+The isolated Address/Credentials background and confirmed Activity-recreation checks now PASS.
+
+A new isolated downloads instrumented harness is being prepared for native parser/Job cancellation;
+that addition changes test classpaths, so its final gate must use--rerun-tasks. It is not covered by
+the earlierd99c772d green result. Actual WorkManager scheduling, wire responses/storage races and
+other pending physical cases remain open. No PR is merged or issue closed by these results.
