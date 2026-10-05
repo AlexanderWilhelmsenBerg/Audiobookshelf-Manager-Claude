@@ -14,8 +14,16 @@ No private media/account names are included. Original private captures are ignor
 | Case subset | Preparation UTC / configuration | Owner result |
 | --- | --- | --- |
 | U-08-03/07: completed Author series card | 07:28:25, font1.0; full title/completion, subtle green inward border, no clipped card content | PASS: “Pass — readable, glow visible, no clipping.” |
-| U-08-07: same Author at200% text | 07:31:57, font2.0; full Author title/completion/card text readable, no overlap, Back usable | Awaiting owner finding. |
+| U-08-07: same Author at200% text | 07:31:57, font2.0; full Author title/completion/card text readable, no overlap, Back usable | PASS: “Pass — readable and usable at 200%.” |
 
 These are selected visual checks, not completion-policy, TalkBack, all themes/widths or heard-audio
 acceptance. No runtime PR is marked ready/merged and no issue is closed from these two checks.
-Normal font will be restored after the second finding before other phone automation resumes.
+Normal font1.0 is restored and read back before preparing the next check.
+
+
+Current pending owner check: U-08-02/07 mixed Author layout on APK2191, prepared07:35:39UTC,
+font1.0. Nine Series and one Standalone should form clear sections with readable titles/counts;
+the bottom standalone book must remain reachable. Phone automation is paused for this observation.
+The combined fast-tap correction `4f2edb36` passes strict local verifyDebug (3m16s,1,022 tasks).
+Its [signed APK workflow](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37277738486)
+is still building; that source is not installed or physically accepted by the above APK2191 findings.

@@ -39,8 +39,9 @@ remain drafts. Existing dated rows below retain their original evidence scope.
   History and downloads; active profile lastUsedAt changes. No active-playback upgrade acceptance.
 
 Human checks pause the phone automation. Each answer is recorded with case, source/APK and findings;
-unanswered/preselected options are not results. The first completed Author-card check on APK2191
-is awaiting the owner's observation. The corrected combined source `4f2edb36` is building separately.
+unanswered/preselected options are not results. Completed Author-card normal/200% text checks
+on APK2191 pass with explicit owner findings in the [owner log](2026-10-05-owner-phone-checks.md).
+The mixed Author-page check awaits the owner; corrected `4f2edb36` is building separately.
 
 ## Record a result for every case
 
