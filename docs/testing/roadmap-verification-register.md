@@ -22,7 +22,7 @@ PRs #230/#231/#232/#234/#235. It records selected later results without promotin
 to final-main acceptance. Main through #233 contains documentation reconciliation; runtime PRs
 remain drafts. Existing dated rows below retain their original evidence scope.
 
-- #230: 100ms fling â†’ newer Books tap FAIL on APK2189/2191. `cf8db633` fixes the request ordering;
+- #230: 100ms fling → newer Books tap FAIL on APK2189/2191. `cf8db633` fixes the request ordering;
   four rendered cases, actual production-source reversion and strict verifyDebug pass. Signed APK2192 passes five fast-tap repeats and the all-axis selection/count walk;
   [exact evidence](2026-10-05-phone-2192-gestures.md). Owner reports smooth pill and correct final highlight; selected heard browse/Author navigation passes; broader audio matrix and actual TalkBack remain open. Selected English/Norwegian counts/search and cached offline checks pass.
 - #231: 40 alternating benchmark executions are complete with measured improvement; every CPU P95
@@ -84,14 +84,14 @@ phone covers its own configuration; leave the other API/host rows pending until 
 
 | ID | Required check | Current evidence / remaining action |
 | --- | --- | --- |
-| A-01 | `ktlintFormat`, then `verifyDebug -Pshelfplayer.warningsAsErrors=true`; force `--rerun-tasks` after classpath changes. | Combined #211â€“#216 candidate `c6236833` passed all 1,119 tasks in 7m 21s. The #128 follow-up source at `297965b3` passed the forced full gate in 6m 59s: all 1,119 tasks executed, app 521 and playback 516 tests, zero failures/errors. Subsequent documentation does not change that source; record current-head CI and final-main results too. |
+| A-01 | `ktlintFormat`, then `verifyDebug -Pshelfplayer.warningsAsErrors=true`; force `--rerun-tasks` after classpath changes. | Combined #211–#216 candidate `c6236833` passed all 1,119 tasks in 7m 21s. The #128 follow-up source at `297965b3` passed the forced full gate in 6m 59s: all 1,119 tasks executed, app 521 and playback 516 tests, zero failures/errors. Subsequent documentation does not change that source; record current-head CI and final-main results too. |
 | A-02 | Release lint, `testReleaseUnitTest`, release assembly, SBOM and vulnerability checks. | Main `d3596b2f` completed all tiers; combined `d81de778` release tests reran all 394 tasks in 1m 56s, 1,376 tests with zero failures/errors. Record the final main run separately. |
 | A-03 | CI policy fixtures, Actionlint and Bash syntax: main/PR/manual cancellation, previous-main classification, scoped cache pruning and immutable Room schemas. | All 16 policy tests passed, including real-Git stacked-PR/schema fixtures. Observe a trusted main seed and the next PR restore/save timings; first main seed `18c2e618` passed. |
 | A-04 | Prove each regression fails without its fix; inspect actual production callers. | R-115 generation/acceptance/lock/outbox, scheduled-car suppression, phone title and R-124 Book observer/Pause regressions have recorded red/green evidence. #128's actual monitor-to-service regression failed 3/5 on main `3e699786`, then passed 5/5 with the lifecycle latch. All 68 focused cases, formatter, playback ktlint and detekt passed; its combined full gate is recorded with the delivery. |
-| A-05 | Audiobookshelf contract fixtures, missing required fields/unknown fields, compatibility failures and migration tests. | Included in the full gate. Live selected-server-version acceptance remains pending; no new endpoint or schema was introduced by #211â€“#216. |
+| A-05 | Audiobookshelf contract fixtures, missing required fields/unknown fields, compatibility failures and migration tests. | Included in the full gate. Live selected-server-version acceptance remains pending; no new endpoint or schema was introduced by #211–#216. |
 | A-06 | `:core:datastore:connectedDebugAndroidTest`. | **PASS 27/27 on API 36, repeated 2026-10-04 on the [2179 continuation](2026-10-04-phone-2179.md)**, using an isolated test application ID after the ordinary package hit a signer conflict. All names, scope and failed-install evidence are in the [phone report](2026-10-03-phone-acceptance.md). This tier does not test the whole app lifecycle. |
 | A-07 | Domain/core and security-policy coverage. | PR #224 wires both the unchanged 80% aggregate and 90% redaction rule into ordinary verification. Fresh redaction coverage is 96.72%; four EventLog cases and the hook-removal regression passed. See [security evidence](../reviews/2026-10-04-security-coverage.md). |
-| A-08 | Exact final-main APK: trusted `apk.yml`, stable signing, built version/About identity and downloadable artifact. | Main `8beec05c` passed trusted debug/cache, release/security and signed APK workflows. Installed 0.10.6.1 (2175) bytes match the artifact and About identifies that source; see [identity/CI record](2026-10-03-phone-acceptance.md). The [2178 continuation](2026-10-04-phone-2178.md) records an in-place 2177â†’2178 upgrade with data retained. Final main `a20bb5b9` produced verified debug 2180 (APK SHA-256 `e8fa3cab6707cd3c72470d779889ee037402bf1930efad4e1e2a177e3d156e99`); installation, About and smoke were NOT RUN before it was superseded. Later draft 2181/2184 results are recorded below. The [browse delivery](2026-10-04-browse-selection-counts.md) records trusted signed 2181/source `00ee58c6`, 2179â†’2181 upgrade with unchanged pre-launch data/progress, and scoped phone smoke; About UI remains NOT RUN. Repeat handoff identity and upgrade checks for each later delivery. |
+| A-08 | Exact final-main APK: trusted `apk.yml`, stable signing, built version/About identity and downloadable artifact. | Main `8beec05c` passed trusted debug/cache, release/security and signed APK workflows. Installed 0.10.6.1 (2175) bytes match the artifact and About identifies that source; see [identity/CI record](2026-10-03-phone-acceptance.md). The [2178 continuation](2026-10-04-phone-2178.md) records an in-place 2177→2178 upgrade with data retained. Final main `a20bb5b9` produced verified debug 2180 (APK SHA-256 `e8fa3cab6707cd3c72470d779889ee037402bf1930efad4e1e2a177e3d156e99`); installation, About and smoke were NOT RUN before it was superseded. Later draft 2181/2184 results are recorded below. The [browse delivery](2026-10-04-browse-selection-counts.md) records trusted signed 2181/source `00ee58c6`, 2179→2181 upgrade with unchanged pre-launch data/progress, and scoped phone smoke; About UI remains NOT RUN. Repeat handoff identity and upgrade checks for each later delivery. |
 
 2026-10-04 follow-up: compact series guards failed the old layout twice, then all 26 card/screen cases
 passed with native captures. Its full gate passed, followed by PR #222 and main CI. The isolated Benchmark
@@ -126,31 +126,31 @@ remain NOT RUN; complete each parent matrix before closing it.
 | P-05 | Offline listening, reconnect, retry sync, and compare server history/progress. | Captured-profile sessions are uploaded once with correct listened time/position; no cross-profile attribution or duplicate history. PLAY-005. |
 | P-06 | Multi-file chapters, seek across boundaries, end of book, speed and configured skips. | Global timeline and resumed position remain correct; Previous/Rewind/Fast-forward use configured intervals, clamped at zero. PLAY-003/007, GitHub #197 / PR #204. |
 | P-07 | Audio-focus loss/return, calls, noisy/wired unplug, Bluetooth reconnect and explicit output selection. | Respect focus and pause intent; explicit route wins; merely connected devices do not prove the heard route. PLAY-002, ROUTE-001/002. |
-| P-08 | Switch A â†’ B, A â†’ B â†’ A, lock/remove profile during holder/candidate/queue/final identity/local session opening. | Superseded restore never publishes old book, title, timer, position or live session. Returning to A does not reauthorize it. AUTH-002, R-115. |
+| P-08 | Switch A → B, A → B → A, lock/remove profile during holder/candidate/queue/final identity/local session opening. | Superseded restore never publishes old book, title, timer, position or live session. Returning to A does not reauthorize it. AUTH-002, R-115. |
 | P-09 | New Play/Pause/Stop while an idle restore is suspended. | Latest transport wins; a deliberately paused book stays paused; no stale installation/restart. R-115. |
 | P-10 | Reject durable session opening; then accept another book while a timer runs. | Rejection preserves old live session/baseline/timer; acceptance resets the old timer before installation. A prepared server/local row stays captured-owner scoped; outgoing close already sent is not reversible. R-115. |
 | P-11 | Cold car restore with an existing item, empty/locked/missing candidate, Never, Arm and ArmAndPlay. | Existing playback survives; Never is metadata-only, Arm stays paused, ArmAndPlay obeys route/lock policy; no unauthorized library exposure. #185. |
 | P-12 | Car-only switch, same-active-profile selection and stale browse subscriptions. | Same profile is a no-op; outgoing progress flushes; unlocked switch stays paused; locked profile is not exposed; old titles/artwork/children are evicted. #99/#191. |
 
-## Historical #36 / GitHub #128 â€” headset continuity
+## Historical #36 / GitHub #128 — headset continuity
 
 The source review found a departure edge when a positive projection is followed by an inconclusive
 provider read and then a positive disconnection. The focused follow-up must prove the actual service
 callback cleans up ownership once; **Unknown alone must not disconnect**. Keep #128 open for hardware
 acceptance even after that regression passes.
 Run and log every step of the [focused review's complete matrix](../reviews/2026-10-03-issue-128-continuity-review.md)
-alongside C-01â€“C-08; its focus/boundary order, two-headset, fallback, late-return and diagnostic cases are required.
+alongside C-01–C-08; its focus/boundary order, two-headset, fallback, late-return and diagnostic cases are required.
 
 | ID | Scenario | Required evidence / pass condition |
 | --- | --- | --- |
 | C-01 | Play through a heard Bluetooth headset, then connect projected Auto; repeat USB/wireless. | Same book/position continues in that headset. No unintended phone/car reroute, pause or duplicate Play. |
 | C-02 | Deliberately pause before connecting, and pause while continuity recovery is pending. | Remains paused after connect, focus return and provider/controller updates. |
 | C-03 | Headset merely connected while speaker is heard; explicitly choose speaker or car before arrival. | No inferred headset takeover; preserve explicit choice and actual heard-route ownership. |
-| C-04 | Projection â†’ Unknown â†’ NotConnected; repeat Automotive â†’ Unknown â†’ NotConnected in an appropriate host. | Unknown preserves ownership; confirmed disconnect releases it and balances connection/timer bookkeeping exactly once. Automated injection plus a device/provider trace if reproducible. Do not claim the provider failure occurred if it could not be induced. |
-| C-05 | Projection â†’ Unknown â†’ Projection; repeated disconnect and multiple car-controller clients. | No false departure/rearrival, duplicate recovery or negative/stale connection count; final-client cleanup still works. |
+| C-04 | Projection → Unknown → NotConnected; repeat Automotive → Unknown → NotConnected in an appropriate host. | Unknown preserves ownership; confirmed disconnect releases it and balances connection/timer bookkeeping exactly once. Automated injection plus a device/provider trace if reproducible. Do not claim the provider failure occurred if it could not be induced. |
+| C-05 | Projection → Unknown → Projection; repeated disconnect and multiple car-controller clients. | No false departure/rearrival, duplicate recovery or negative/stale connection count; final-client cleanup still works. |
 | C-06 | Lost focus on car arrival, rebind/recreate the car controller, then disconnect or reconnect. | Recovery respects profile/transport and route intent; no lingering car state suppresses later schedule eligibility. |
 | C-07 | Focus pauses ExoPlayer with an active timer, then late continuity recovery arrives; repeat manual Pause/Stop/book/profile change and actual expiry after resumed audio. | Paused timer stays frozen. Recovery respects newer intent; actual expiry cannot be undone by automatic Play. This cross-policy scenario needs a regression/device run; source review alone is not a pass. |
-| C-08 | Car browse/player surfaces, profiles, output indicator, absent Queue, artwork and same-count invalidation. | Run every step of [combined drive acceptance](../android-auto-pd001-drive-acceptance.md) and [browse invalidation](../android-auto-browse-invalidation-acceptance.md). PD-001 root is exactly Continue â†’ Series â†’ Authors â†’ Profiles. No Library/History replacement. |
+| C-08 | Car browse/player surfaces, profiles, output indicator, absent Queue, artwork and same-count invalidation. | Run every step of [combined drive acceptance](../android-auto-pd001-drive-acceptance.md) and [browse invalidation](../android-auto-browse-invalidation-acceptance.md). PD-001 root is exactly Continue → Series → Authors → Profiles. No Library/History replacement. |
 
 ## Sleep
 
@@ -174,14 +174,14 @@ overnight, civil-clock and lifecycle steps rather than replacing them.
 
 The [verification-cancellation log](2026-10-04-download-verification-cancellation.md) records reproduced
 late verification/rename and invalid-416-clear regressions with actual Job cancellation, real Room and
-filesystem. DC-A01â€“07 pass; DC-P01â€“13 distinguish scoped API36 phone evidence from remaining physical
+filesystem. DC-A01–07 pass; DC-P01–13 distinguish scoped API36 phone evidence from remaining physical
 obligations. APK2183 passes real transfer, Pause/force-stop/relaunch/Resume, cancel/confirm partial discard,
 native full verification, cleanup and 27 isolated security tests. Controlled timing, response, sharing,
 storage, playback and accessibility matrices remain NOT RUN; D-10's asynchronous removal/new-claim
 acceptance stays open. APK2183 exposed 28% versus 31% from durable bytes. The correction on APK2184 passes actual caller
-guards and numeric Book/Downloads Pause, force-stop/relaunch, discard and Resume assertions (45% â†’ 41%).
+guards and numeric Book/Downloads Pause, force-stop/relaunch, discard and Resume assertions (45% → 41%).
 Controlled R-123 response/replacement/old-attempt cases remain pending. Use this log alongside
-D-01â€“D-15, not as whole-matrix acceptance.
+D-01–D-15, not as whole-matrix acceptance.
 
 Stored-copy verification navigation was sampled in the [phone report](2026-10-03-phone-acceptance.md).
 APK2183 adds bounded transfer/recovery/discard evidence in the log above. Remaining steps below are
@@ -229,20 +229,20 @@ established. Remaining UI/security/server/manual-performance matrices and final-
 | --- | --- | --- |
 | U-01 | 320/375/414/768 dp, scales 1.0/1.3/2.0, portrait/landscape, long English/Norwegian, light/dark/AMOLED/dynamic/background packs. | Apply the [UI triage matrix](ui-roadmap-triage.md): effective contrast, minimum/content geometry, player clearance, theme-preview parity, missing/loading/failed covers and reduced motion. #194/#195. |
 | U-02 | TalkBack order/labels/values, whole-book/chapter seek, nested actions, 48 dp targets and keyboard/Back. | Full controls remain reachable and coherent. Record actual speech/focus rather than a semantics-tree-only result. |
-| U-03 | Root and pushed Sign in; success/cancel/drafts and predictive/system/toolbar Back. | Explicit navigation context gives the expected destination; root has no Back arrow. #176 is implemented on PR #235, stacked on #234; [Sign-in log](2026-10-04-sign-in-back.md) records software evidence and pending physical U-03-01â€“07. |
+| U-03 | Root and pushed Sign in; success/cancel/drafts and predictive/system/toolbar Back. | Explicit navigation context gives the expected destination; root has no Back arrow. #176 is implemented on PR #235, stacked on #234; [Sign-in log](2026-10-04-sign-in-back.md) records software evidence and pending physical U-03-01–07. |
 | U-04 | Empty/filter/no-results recovery, offline/loading/error, connection status and app appearance. | States and recovery remain distinct; active appearance and a non-color status cue are required. Unimplemented #195 residuals stay planned. |
 | U-05 | WebView/provider/version, opaque background, reduced motion, standalone/Haze isolation. | Reproduce #190 on an affected device before selecting a permanent mitigation; record provider and each matrix result. |
-| U-06 | Gesture navigation â€” #227. | Implemented on the browse branch; see the dated browse delivery report for scoped source/render/phone results and missing acceptance. |
-| U-07 | Browse counts â€” #228. | Implemented on the browse branch; see the dated browse delivery report for scoped source/render/phone results and missing acceptance. |
-| U-08 | Author details â€” #229. | Draft implementation with automated/caller/native-render evidence in [author log](2026-10-04-author-details.md), plus [pending-query/key correction](2026-10-05-author-observation.md). Selected later phone subcases and remaining U-08 obligations are in the [current merge plan](2026-10-05-pr-merge-test-plan.md); issue stays open. |
-| Q-01 | Existing-install upgrade, About identity/version, stored profiles/passcode/progress/downloads and Loopbound bundle. | APK signer/version allow an in-place upgrade; data survives; About and artifact describe actual bytes/source. 2178 installed bytes and 2177â†’2178 in-place upgrade/data retention passed in the linked continuation; repeat against the new signed APK. Earlier About/Loopbound first-page results retain their original build scope. |
+| U-06 | Gesture navigation — #227. | Implemented on the browse branch; see the dated browse delivery report for scoped source/render/phone results and missing acceptance. |
+| U-07 | Browse counts — #228. | Implemented on the browse branch; see the dated browse delivery report for scoped source/render/phone results and missing acceptance. |
+| U-08 | Author details — #229. | Draft implementation with automated/caller/native-render evidence in [author log](2026-10-04-author-details.md), plus [pending-query/key correction](2026-10-05-author-observation.md). Selected later phone subcases and remaining U-08 obligations are in the [current merge plan](2026-10-05-pr-merge-test-plan.md); issue stays open. |
+| Q-01 | Existing-install upgrade, About identity/version, stored profiles/passcode/progress/downloads and Loopbound bundle. | APK signer/version allow an in-place upgrade; data survives; About and artifact describe actual bytes/source. 2178 installed bytes and 2177→2178 in-place upgrade/data retention passed in the linked continuation; repeat against the new signed APK. Earlier About/Loopbound first-page results retain their original build scope. |
 | Q-02 | Auth expiry/reauthentication, locked profiles, app-switcher privacy and controller/exported-command boundaries. | Offline data/passcode survive ordinary reauth; unauthorised controllers cannot browse/clear privileged state; no secrets/private metadata in shared logs. AUTH-002/003/004, section 5.2. |
 | Q-03 | Selected Audiobookshelf versions: local/remote progress/history, server compatibility and offline sync. | Fixture-backed endpoints match live selected versions; missing fields/capabilities fail compatibly, with no invented endpoints or ignored TLS checks. |
 | Q-04 | Metadata/cover/match/scan, permission denial, admin user writes, database-only removal versus source-file deletion. | Repository and UI enforce permission; write errors are typed; confirmation precisely describes action; source deletion is safe or absent. Section 25. |
 | Q-05 | Cached local player and library startup, 2,000-book list frame timing, baseline profile and download/playback stress. | Run [benchmark procedures](../benchmark.md): cached start/interactive under 1 s where specified, recorded frame timing and no ANR. Use the benchmark variant rather than inferring these from a debug APK. |
 | Q-06 | API 26/31/34/36, Bluetooth/wired routes, DHU and actual car/Automotive where available. | Record each supported configuration separately; an unavailable host remains NOT RUN. |
 
-## Browse acceptance â€” planned 2026-10-04; scoped implementation/results below
+## Browse acceptance — planned 2026-10-04; scoped implementation/results below
 
 Owner decisions PD-006/007 define the acceptance obligations. #227/#228 implementation and scoped results now exist on PR #230; #229 has a draft implementation stacked on #230; selected later physical results are recorded in the current merge plan.
 The original issue-registration change claimed no app-function or phone test. The subsequent #227/#228
@@ -253,18 +253,18 @@ APK/configuration, expected/observed behavior, UTC/evidence and regressions. Gua
 bug tests must fail on the old behavior. Source/UI semantics checks do not replace physical gesture,
 TalkBack or rendering evidence. All new work preserves Room/profile/playback ownership and adds no endpoint/schema here.
 
-### Gesture navigation â€” #227
+### Gesture navigation — #227
 
 | Case | Scenario | Required result | Current result |
 | --- | --- | --- | --- |
-| U-06-01 | Books â†’ Series â†’ Books | After each settle content/pill/icon-label highlight/selected semantics agree. Exercise the actual HomeScreen/ViewModel callback path; record the reported failure before the fix. | Scoped automatic/phone results and remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
+| U-06-01 | Books → Series → Books | After each settle content/pill/icon-label highlight/selected semantics agree. Exercise the actual HomeScreen/ViewModel callback path; record the reported failure before the fix. | Scoped automatic/phone results and remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
 | U-06-02 | All axes and edge overspill | Traverse Books/Series/Authors/Genres in both directions; Books/Genres overspill springs back without committing another axis. | Scoped automatic/phone results and remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
 | U-06-03 | Interrupted gesture and tap intent | Partial/cancelled drags, rapid reversals/repeated swipes and a tab tap during settlement end at the final destination without oscillation or stale highlights. | Scoped automatic/phone results and remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
 | U-06-04 | Restoration and return from details | Restore a non-default axis, recreate the Activity and return from Book/Series/Author details; displayed content and selection remain aligned. | Scoped automatic/phone results and remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
 | U-06-05 | Selected accessibility state | Exactly one settled destination is selected; actual TalkBack focus/announcement matches the visible page, including cancelled gestures. | Scoped automatic/phone results and remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
 | U-06-06 | Appearance and playback continuity | Normal/200% text, portrait/landscape and reduced motion, offline and active audio; record privacy-safe state capture/video and no audio/queue/progress interruption. | Scoped automatic/phone results and remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
 
-### Browse counts â€” #228
+### Browse counts — #228
 
 | Case | Scenario | Required result | Current result |
 | --- | --- | --- | --- |
@@ -274,7 +274,7 @@ TalkBack or rendering evidence. All new work preserves Room/profile/playback own
 | U-07-04 | Sync and unloaded states | Loading, success, partial success, failure and never-synced fixtures; retain partial caveat and never show fabricated zero counts for unloaded pages. | Scoped automatic/phone results and remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
 | U-07-05 | Updates, gestures and accessibility | Axis taps/swipes, Room updates and cached offline state; count settles with displayed axis, stays readable at large text, is spoken correctly and preserves playback. | Scoped automatic/phone results and remaining portions in [dated report](2026-10-04-browse-selection-counts.md). |
 
-### Author details â€” #229
+### Author details — #229
 
 | Case | Scenario | Required result | Current result |
 | --- | --- | --- | --- |
@@ -313,13 +313,13 @@ remain in scope. See the [owner finding log](2026-10-05-owner-phone-checks.md).
 U-03-06 Address predictive Back cancellation/completion: owner PASS. U-03-07 Address title,
 Back and form reachability at320dp/font2.0: owner PASS; native size/font1.0 restored/read back.
 U-03-02/03 toolbar Back during an observed12-second pending login: returns Profiles, stays there
-after delayed response, and every disposable table/settings fingerprint is unchanged â€” PASS.
+after delayed response, and every disposable table/settings fingerprint is unchanged — PASS.
 Local isolated source2d567b17/code2000; onboarding/Nav runtime matches signed2192, other source
 acceptance is not transferred. Credentials predictive Back is awaiting its own owner finding;
 the remaining configuration/recreation/error matrix is open. See the [exact Sign-in log](2026-10-05-signin-phone-success.md).
 
 
-## Automated functional edge Back â€” 2026-10-05
+## Automated functional edge Back — 2026-10-05
 
 U-03-02/06, isolated source2d567b17/code2000, SM-S928B/API36, Norwegian/font1.0:
 ADB touchscreen DOWN/MOVE away from and back to the edge/UP cancels; a full500ms edge swipe
@@ -335,10 +335,10 @@ human Address/Credentials results remain scoped observations, not a requirement 
 functional tests. Remaining recreation/error/configuration cases remain open.
 
 
-## Address/Credentials background and confirmed recreation â€” 2026-10-05
+## Address/Credentials background and confirmed recreation — 2026-10-05
 
 U-03-04/07, isolated source2d567b17/code2000, SM-S928B/API36/Norwegian:
-Address and entered Credentials drafts survive Home/background/resume and fontScale1.0â†’1.3â†’1.0.
+Address and entered Credentials drafts survive Home/background/resume and fontScale1.0→1.3→1.0.
 One new Android platform Activity relaunch event is captured for each stage. This run explicitly
 confirms recreation, unlike the earlier rotation-only evidence. Change Server remains within the
 wizard, preserves the normalized URL, and clears username/password before probing back to Credentials.
@@ -359,6 +359,6 @@ table/settings fingerprints unchanged. Remaining authentication/error/configurat
 ## Verified backdrop candidate delivery — 2026-10-05
 
 Signed2193/ba51ab46 checked APK CI PASS; in-place retained counts/data/settings PASS.
-Owner default-settings static texture/edge/contrast comparison pending; no quality acceptance,
+Owner default-settings texture judgement PASS, with pre-existing bottom metadata clipping reported; no quality acceptance,
 keep/reject decision or transfer of2192 findings to unperformed2193 cases.
 [Exact source, artifact and remaining cases](2026-10-05-phone-2193-backdrop.md).

@@ -19,7 +19,7 @@ No active-playback upgrade, playback-audibility or complete device-matrix claim 
 
 The actual saved appearance settings, Norwegian, font1.0/native1080x2340 book list shows222 books
 on both control and candidate. Private control/candidate screenshots are preserved locally.
-The agent sees coarser card grain in the candidate; owner static visual judgement is pending.
+The agent sees coarser card grain in the candidate; owner says the texture looks good but the bottom metadata line is clipped (also present in control).
 This is an observation, not visual acceptance or a keep/reject decision. No owner catalogue is published.
 The card-text truncation is present in both captures and remains the existing general-row layout gap.
 

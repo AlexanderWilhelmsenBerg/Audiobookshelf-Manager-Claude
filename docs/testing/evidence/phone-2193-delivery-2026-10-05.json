@@ -19,5 +19,6 @@
   "retainedProfilesExceptLastUsedAt": true,
   "retainedExactSettings": true,
   "bookListCount": 222,
-  "noActivePlaybackUpgradeClaim": true
+  "noActivePlaybackUpgradeClaim": true,
+  "ownerVisual": "Texture looks good; bottom metadata clipped in both builds"
 }
