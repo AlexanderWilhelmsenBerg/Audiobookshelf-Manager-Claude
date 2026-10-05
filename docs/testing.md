@@ -22,13 +22,15 @@ With an authorized physical device or emulator:
 
 ```bash
 ./gradlew :core:datastore:connectedDebugAndroidTest
+./gradlew :data:downloads:connectedDebugAndroidTest
 ```
 
 The first physical run completed on 2026-08-23 against a Samsung SM-S928B running Android 16: **27 tests,
 0 failures, 0 errors, 0 skipped**. `KeystoreLockCipherTest` and `ProfilePasscodeStoreTest` exercise the real
 AndroidKeyStore wrap, staged lock-record write, tamper/deleted-key handling, and encrypted rate limit. The
 test APK has a different package/UID from the installed app, so it cannot erase the user's BookWave records.
-This tier never runs in CI and no other module currently has an `androidTest` source set.
+Both connected tiers run only with a device and never in CI. The downloads module adds three
+native parser/Room/file cancellation guards; see the [exact scope and regression proof](testing/2026-10-05-native-download-cancellation.md).
 
 ### The manual tier
 

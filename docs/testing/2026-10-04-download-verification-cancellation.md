@@ -219,3 +219,11 @@ captures/configuration remain ignored. The isolated capture app is removed after
 Font/power settings remain at baseline 1.0/15. PP-P05/06 and the unobserved DC-P steps remain NOT RUN.
 R-120 removal races and R-123 controlled replacement/second-cancellation/concurrency matrices stay open;
 ordinary API36 stopped-progress acceptance does not close these risks or the whole download lane.
+
+
+## Native continuation — 2026-10-05
+
+Three isolated native parser/Room/file cancellation boundary cases now PASS, fail with the actual
+production correction reverted, and PASS after byte-for-byte restoration. Strict forced verification
+passes in6m46s. [Exact harness and scope](2026-10-05-native-download-cancellation.md). Actual
+WorkManager scheduling and other unperformed wire/claim/storage/UI/playback cases remain open.

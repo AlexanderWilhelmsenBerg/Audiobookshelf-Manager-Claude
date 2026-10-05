@@ -118,6 +118,7 @@ test compilation up to date after a classpath-only change (`docs/risks.md` R-31)
 
 ```bash
 ./gradlew :core:datastore:connectedDebugAndroidTest
+./gradlew :data:downloads:connectedDebugAndroidTest
 ./gradlew :benchmark:connectedBenchmarkAndroidTest
 ```
 

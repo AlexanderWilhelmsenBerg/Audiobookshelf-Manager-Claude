@@ -153,6 +153,7 @@ else
   if (( DEVICES > 0 )); then
     ok "$DEVICES device(s) attached and authorised"
     note "./gradlew :core:datastore:connectedDebugAndroidTest"
+    note "./gradlew :data:downloads:connectedDebugAndroidTest"
   elif (( UNAUTHORISED > 0 )); then
     warn "A device is attached but unauthorised."
     note "Unlock it and accept the 'Allow USB debugging' prompt, then re-run."
@@ -207,6 +208,7 @@ cat <<'NEXT'
     ./gradlew verifyDebug -Pshelfplayer.warningsAsErrors=true  the gate CI runs — 5-8 min cold
     ./gradlew :app:assembleDebug                              the APK
     ./gradlew :core:datastore:connectedDebugAndroidTest        needs a device; the Keystore tests
+    ./gradlew :data:downloads:connectedDebugAndroidTest        needs a device; native cancellation
     ./gradlew :app:sbom && ./scripts/vulnerability-scan.sh     supply chain
 
   docs/handover.md, "Running this locally", has the rest.

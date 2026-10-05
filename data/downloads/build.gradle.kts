@@ -40,4 +40,11 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.turbine)
     testImplementation(libs.okhttp.mockwebserver)
+
+    // DL-002: native container parsing and cancellation cannot be exercised by Robolectric.
+    androidTestImplementation(projects.core.testing)
+    androidTestImplementation(libs.androidx.room.runtime)
+    androidTestImplementation(libs.androidx.room.ktx)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.runner)
 }

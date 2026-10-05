@@ -1,0 +1,17 @@
+{
+  "base": "d99c772d323efc20a0568783e1212f9f119a4c3b",
+  "device": "SM-S928B/API36",
+  "requirements": [
+    "DL-001",
+    "DL-002"
+  ],
+  "nativeTests": 3,
+  "fixedFirst": "PASS",
+  "actualSourceReversionFailures": 3,
+  "restored": "PASS",
+  "strictVerify": "PASS --rerun-tasks,6m46s,1157tasks all executed",
+  "productionSourceSha256": "488a3618d79f9b1a2d5fe9b77af9a9a360a1accc2c41f09e713428bac36289c2",
+  "testSourceSha256": "b0f50ba658d9ed90954f71471b12076976ed06da50ef1d59117fec3c7284f3c0",
+  "testApkSha256": "d88a3b169f3b9b087365603d72580a2d1dc3e36d26696e980ef75989628da83b",
+  "scope": "Native parser, real Room, app-private files and externally cancelled child Job; fake typed transfer response; not WorkManager scheduling or HTTP wire acceptance"
+}
