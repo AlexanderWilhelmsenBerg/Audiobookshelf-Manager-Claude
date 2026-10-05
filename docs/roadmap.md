@@ -178,7 +178,8 @@ specification 17.2/21. Follow the [child-slice triage](testing/ui-roadmap-triage
    Use the inward green cue without checkmarks and readable/spoken completion information. #229
    now has implementation and automated evidence on `feature/author-series-standalone`, stacked on #230.
    [Author verification log](testing/2026-10-04-author-details.md) records grouping, caller, privacy and native-render
-   coverage plus every pending phone case. The [2026-10-05 caller correction](testing/2026-10-05-author-observation.md) adds explicit pending-query state and collision-free section keys (18 author cases total). All physical U-08-01–07 remain NOT RUN; #229 stays open.
+   coverage plus every pending phone case. The [2026-10-05 caller correction](testing/2026-10-05-author-observation.md)
+   adds explicit pending-query state and collision-free section keys (19 author cases total). APK2189 supplies selected route/grouping evidence but fails author scroll restoration. The new state-retention correction passes its regression/full gate; an exact-source phone repeat is required. Remaining U-08 portions stay open; #229 stays open.
    No endpoint/schema change. While these candidates await physical acceptance, software work has advanced to #176's root/pushed Sign-in Back context on `fix/sign-in-navigation-back` (stacked on #234).
 2. #176 now has explicit navigation capability, root/pushed toolbar Back, independent wizard Back and
    adaptive title height. [Sign-in verification](testing/2026-10-04-sign-in-back.md) logs software coverage

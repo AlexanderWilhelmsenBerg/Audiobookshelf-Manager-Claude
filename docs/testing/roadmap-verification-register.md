@@ -275,3 +275,7 @@ lane. Its eventual device/transfer/progress matrix must be agreed then; there is
 Run the current scenarios above against the new APK. Historical evidence in `device-test-0.9.14.md`
 remains dated evidence, not an instruction to reproduce its obsolete hierarchy or uninstall/signing workarounds.
 Keep release section 25 pending until its applicable functional, security and quality cases are recorded.
+
+2026-10-05 U-08-05: signed combined APK2189 failed author-scroll restoration after the Book/Author/Series
+Back chain. The [correction log](2026-10-05-author-observation.md) records the actual-screen red/fixed/reverted
+guard and strict gate. Physical repeat on a corrected combined APK remains pending.

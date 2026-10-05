@@ -99,7 +99,11 @@ physical U-08-01–07 remain NOT RUN. No issue closure claimed.
 The [observation/key correction](2026-10-05-author-observation.md) on this same author PR distinguishes
 pending queries from unavailable content and prevents opaque identities colliding with section keys.
 It adds two actual ViewModel/render guards; initial source-specific results above remain historical.
-Author acceptance must include this correction, with all physical U-08-01–07 still NOT RUN.
+Author acceptance must include this correction. The dated 2026-10-05 continuation records subsequent physical results; earlier results remain historical.
+
+The same 2026-10-05 report now logs APK2189's failed author-scroll return, its actual-screen
+reversion guard and the restored strict gate. The correction retains list state through pending
+queries; 19 author cases pass. Physical scroll reacceptance requires the corrected combined APK.
 
 ### Delivery prepared during the next software slice
 

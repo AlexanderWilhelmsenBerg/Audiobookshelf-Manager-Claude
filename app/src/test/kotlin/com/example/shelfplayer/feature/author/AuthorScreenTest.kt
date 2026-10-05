@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.view.View
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.assertCountEquals
@@ -70,6 +71,23 @@ class AuthorScreenTest {
         compose.onAllNodesWithContentDescription("Play", substring = true).assertCountEquals(0)
         compose.onNodeWithContentDescription("Back").performClick()
         assertTrue(back)
+    }
+
+    @Test
+    fun `transient loading preserves author list scroll position`() {
+        val base = shelf(true)
+        val books = (1..40).map { index ->
+            base.standaloneBooks.single().copy(id = LibraryItemId("standalone-$index"), title = "Standalone $index")
+        }
+        val loaded = AuthorUiState(base.copy(books = books, series = emptyList()), false)
+        val observed = mutableStateOf(loaded)
+        compose.setContent { AuthorScreen(observed.value, {}, {}, {}) }
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Standalone 40"))
+        compose.onNodeWithText("Standalone 40").assertIsDisplayed()
+        compose.runOnIdle { observed.value = AuthorUiState(isLoading = true) }
+        compose.onNodeWithText("Standalone 40").assertDoesNotExist()
+        compose.runOnIdle { observed.value = loaded }
+        compose.onNodeWithText("Standalone 40").assertIsDisplayed()
     }
 
     @Test

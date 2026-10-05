@@ -37,6 +37,10 @@ handoff and lazy-list keys. Existing authorized Room queries, sync status, APIs,
 server fixtures remain unchanged. [Caller regression evidence](testing/2026-10-05-author-observation.md)
 is separate from pending phone acceptance; no additional tested server version is claimed.
 
+The phone-discovered author scroll correction retains local Compose list state through a pending query.
+It changes no authorized catalogue read, server response, endpoint, schema or permission; source-specific
+phone failure and reacceptance are recorded in [the correction log](testing/2026-10-05-author-observation.md).
+
 The #176 Sign-in Back draft changes only navigation capability and toolbar layout. Existing server probes,
 authentication/reauthentication, fixtures, profile/password/draft policy and success cleanup are unchanged.
 No endpoint, schema, permission or newly tested server version is introduced. The

@@ -41,3 +41,23 @@ containing both date year and time separator; runtime History code is unchanged.
 is required to clear the full gate and preserves the date/time obligation.
 
 Restored strict verifyDebug with warnings as errors passes (1m 51s; 1,022 tasks). The scoped author/History regression run also passes after the timestamp matcher correction. CI on the updated PR head and physical acceptance remain pending; no issue closure claimed.
+
+## Phone-discovered scroll regression and correction
+
+On source `2d567b17` / signed APK2189, 06:01–06:03 UTC, the supplied SM-S928B/API36
+showed the mixed author's final standalone row. Opening that Book, its credited Author, a Series,
+and returning through the stack restored the original author page at the top. The briefly pending
+Room query removed AuthorBooks and its locally remembered LazyColumn state. This is a failed
+U-08-05 subcase; the old APK does not accept the correction below.
+
+AuthorScreen now owns rememberLazyListState outside the loading/content branches and passes it
+through AuthorBooks to LazyColumn. Private metadata still clears during pending/revoked queries.
+The actual-screen guard scrolls through 40 standalone rows, clears the shelf while loading, and
+requires the same final row visible when authorized data returns. It fails before the fix, passes
+after it, and fails alone (eight other screen cases pass) when the fix is actually reverted.
+Fixed source bytes are restored before verification. Caller audit reaches the actual LazyColumn state.
+
+ktlintFormat and restored strict verifyDebug pass (2m28s; 1,023 tasks). Author coverage is now
+19 added cases; combined with Sign-in it is 25. A new exact-source signed combined APK and physical
+repeat of the same Book/Author/Series Back chain are required. Existing APK2189 results remain
+source-specific; U-08-05 scroll restoration stays pending until that repeat passes.

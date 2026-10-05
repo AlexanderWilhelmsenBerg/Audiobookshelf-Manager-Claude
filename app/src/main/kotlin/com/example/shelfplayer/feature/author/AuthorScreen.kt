@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -70,6 +72,8 @@ fun AuthorScreen(
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Keep the saved position when a re-subscribed authorized query temporarily clears content.
+    val listState = rememberLazyListState()
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -101,6 +105,7 @@ fun AuthorScreen(
 
             else -> AuthorBooks(
                 shelf = shelf,
+                listState = listState,
                 onBookSelected = onBookSelected,
                 onSeriesSelected = onSeriesSelected,
                 contentPadding = innerPadding,
@@ -112,12 +117,14 @@ fun AuthorScreen(
 @Composable
 private fun AuthorBooks(
     shelf: AuthorShelf,
+    listState: LazyListState,
     onBookSelected: (LibraryItemId) -> Unit,
     onSeriesSelected: (SeriesId) -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
+        state = listState,
         modifier = modifier.fillMaxSize().padding(contentPadding),
         // The mini player floats over this screen; the list has to be able to scroll clear of it.
         contentPadding = PaddingValues(
