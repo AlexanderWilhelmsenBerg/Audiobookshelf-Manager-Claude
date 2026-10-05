@@ -4,7 +4,7 @@ import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.model.AuthorId
 import com.example.shelfplayer.core.model.SyncStatus
-import com.example.shelfplayer.domain.library.AuthorShelf
+import com.example.shelfplayer.domain.library.AuthorShelfObservation
 import com.example.shelfplayer.domain.library.authorShelfFor
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
@@ -24,8 +24,9 @@ import javax.inject.Inject
  * The same shape as [ObserveSeriesUseCase] and for the same reasons: reading `observeAccessibleBooks` means
  * the route carries only an author id, and the answer is filtered by the profile's grant twice over — item
  * visibility in the query, library grant in the repository. An author whose books have all been revoked
- * resolves to `null`, which the screen renders as "not available" rather than as a name with nothing under
- * it (PRODUCT_SPEC 5.2).
+ * resolves to an unavailable observation, which the screen renders as "not available" rather than as a
+ * name with nothing under it (PRODUCT_SPEC 5.2). Pending profile-scoped queries clear private content
+ * while reporting loading, so a slow query cannot falsely announce a revoked/missing author.
  */
 class ObserveAuthorUseCase @Inject constructor(
     private val profileRepository: ProfileRepository,
@@ -33,17 +34,23 @@ class ObserveAuthorUseCase @Inject constructor(
     @param:Dispatcher(ShelfDispatcher.Default) private val defaultDispatcher: CoroutineDispatcher,
 ) {
     @OptIn(ExperimentalCoroutinesApi::class)
-    operator fun invoke(authorId: AuthorId): Flow<AuthorShelf?> =
+    operator fun invoke(authorId: AuthorId): Flow<AuthorShelfObservation> =
         profileRepository.observeActiveProfile().flatMapLatest { profile ->
             if (profile == null) {
-                flowOf(null)
+                flowOf(AuthorShelfObservation())
             } else {
                 combine(
                     libraryRepository.observeAccessibleBooks(profile.id),
                     libraryRepository.observeSyncState(profile.id),
                 ) { books, sync ->
-                    authorShelfFor(books, authorId, catalogueComplete = sync.status == SyncStatus.Succeeded)
-                }.onStart { emit(null) }
+                    AuthorShelfObservation(
+                        shelf = authorShelfFor(
+                            books,
+                            authorId,
+                            catalogueComplete = sync.status == SyncStatus.Succeeded,
+                        ),
+                    )
+                }.onStart { emit(AuthorShelfObservation(isLoading = true)) }
             }
         }.flowOn(defaultDispatcher)
 }

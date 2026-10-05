@@ -10,7 +10,7 @@ import com.example.shelfplayer.domain.FakeProfileRepository
 import com.example.shelfplayer.domain.TEST_PROFILE
 import com.example.shelfplayer.domain.TEST_SERVER
 import com.example.shelfplayer.domain.book
-import com.example.shelfplayer.domain.library.AuthorShelf
+import com.example.shelfplayer.domain.library.AuthorShelfObservation
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -36,7 +36,7 @@ class ObserveAuthorUseCaseTest {
             override fun observeAccessibleBooks(profileId: ProfileId): Flow<List<Book>> = books
             override fun observeSyncState(profileId: ProfileId): Flow<SyncState> = sync
         }
-        var latest: AuthorShelf? = null
+        var latest: AuthorShelfObservation? = null
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             ObserveAuthorUseCase(
                 profiles,
@@ -47,9 +47,9 @@ class ObserveAuthorUseCaseTest {
                     it
             }
         }
-        assertFalse(requireNotNull(latest).catalogueComplete)
+        assertFalse(requireNotNull(latest?.shelf).catalogueComplete)
         sync.value = sync.value.copy(status = SyncStatus.Succeeded)
-        assertTrue(requireNotNull(latest).catalogueComplete)
+        assertTrue(requireNotNull(latest?.shelf).catalogueComplete)
         listOf(
             SyncStatus.Syncing,
             SyncStatus.PartiallySucceeded,
@@ -57,10 +57,10 @@ class ObserveAuthorUseCaseTest {
             SyncStatus.NeverSynced,
         ).forEach { status ->
             sync.value = sync.value.copy(status = status)
-            assertFalse(requireNotNull(latest).catalogueComplete, status.name)
+            assertFalse(requireNotNull(latest?.shelf).catalogueComplete, status.name)
         }
         books.value = emptyList()
-        assertNull(latest)
+        assertNull(latest?.shelf)
     }
 
     @Test
@@ -74,7 +74,7 @@ class ObserveAuthorUseCaseTest {
                 return if (profileId == TEST_PROFILE) MutableStateFlow(listOf(book("private"))) else incoming
             }
         }
-        var latest: AuthorShelf? = null
+        var latest: AuthorShelfObservation? = null
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             ObserveAuthorUseCase(
                 profiles,
@@ -85,13 +85,14 @@ class ObserveAuthorUseCaseTest {
                     it
             }
         }
-        assertEquals("private", requireNotNull(latest).books.single().id.value)
+        assertEquals("private", requireNotNull(latest?.shelf).books.single().id.value)
         profiles.setActiveProfile(ProfileId("incoming"))
-        assertNull(latest)
+        assertNull(latest?.shelf)
+        assertTrue(requireNotNull(latest).isLoading)
         assertEquals(listOf(TEST_PROFILE, ProfileId("incoming")), requested)
         incoming.emit(listOf(book("incoming")))
-        assertEquals("incoming", requireNotNull(latest).books.single().id.value)
+        assertEquals("incoming", requireNotNull(latest?.shelf).books.single().id.value)
         profiles.signOut()
-        assertNull(latest)
+        assertNull(latest?.shelf)
     }
 }

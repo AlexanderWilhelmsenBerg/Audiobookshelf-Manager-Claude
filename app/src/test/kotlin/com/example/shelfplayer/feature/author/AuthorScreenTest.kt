@@ -73,6 +73,15 @@ class AuthorScreenTest {
     }
 
     @Test
+    fun `opaque series identity cannot collide with the section heading key`() {
+        val base = shelf(true)
+        val shelf = base.copy(series = base.series.map { it.copy(series = it.series.copy(id = SeriesId("heading"))) })
+        compose.setContent { AuthorScreen(AuthorUiState(shelf, false), {}, {}, {}) }
+        compose.onNodeWithText("Voyage").assertIsDisplayed()
+        compose.onNodeWithText("Standalone books").assertIsDisplayed()
+    }
+
+    @Test
     fun `unverified catalogue never announces a series as completed`() {
         compose.setContent { AuthorScreen(AuthorUiState(shelf(false), false), {}, {}, {}) }
         compose.onNodeWithText("Completion not verified").assertIsDisplayed()

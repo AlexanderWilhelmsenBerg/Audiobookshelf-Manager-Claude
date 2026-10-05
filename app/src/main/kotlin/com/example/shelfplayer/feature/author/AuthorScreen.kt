@@ -130,7 +130,7 @@ private fun AuthorBooks(
     ) {
         item(key = HEADER_KEY) { AuthorHeader(shelf = shelf) }
         if (shelf.series.isNotEmpty()) {
-            item(key = "series-heading") { AuthorSectionTitle(R.string.author_series_section) }
+            item(key = "author-section-series") { AuthorSectionTitle(R.string.author_series_section) }
             items(items = shelf.series, key = { "series-${it.series.id.value}" }) { series ->
                 SeriesCard(
                     shelf = series,
@@ -140,7 +140,7 @@ private fun AuthorBooks(
             }
         }
         if (shelf.standaloneBooks.isNotEmpty()) {
-            item(key = "standalone-heading") { AuthorSectionTitle(R.string.author_standalone_section) }
+            item(key = "author-section-standalone") { AuthorSectionTitle(R.string.author_standalone_section) }
             items(items = shelf.standaloneBooks, key = { "book-${it.id.value}" }) { book ->
                 SeriesBookCard(book = book, onClick = { onBookSelected(book.id) }, membership = null)
             }
