@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import org.junit.Rule
@@ -75,6 +76,23 @@ class HomeSelectionRegressionScreenTest {
         }
         compose.waitForIdle()
         assertEquals(HomeAxis.Books, axis)
+        compose.onNodeWithText("Books").assertIsSelected()
+    }
+
+    @Test
+    fun `a current tab tap cancels an unfinished fling`() {
+        var axis by mutableStateOf(HomeAxis.Books)
+        val actions = noActions().copy(onAxisChanged = { axis = it })
+        compose.setContent { HomeScreen(uiState = state(axis = axis), actions = actions) }
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag(HOME_AXIS_LIST_TEST_TAG).performTouchInput {
+            swipe(centerRight, centerRight - Offset(width * 0.35f, 0f), durationMillis = 50)
+        }
+        assertEquals(HomeAxis.Books, axis, "the gesture must still be pending when Books is tapped")
+        compose.onNodeWithText("Books").performClick()
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertEquals(HomeAxis.Books, axis, "settling the gesture overwrote the newer Books tap")
         compose.onNodeWithText("Books").assertIsSelected()
     }
 }
