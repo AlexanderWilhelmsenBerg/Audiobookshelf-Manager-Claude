@@ -1,7 +1,7 @@
 # Audiobookshelf API compatibility
 
-**Classification:** Current captured-contract matrix with explicitly source-scoped draft evidence.
-**Reconciled:** 2026-10-04; server verification dates below are unchanged.
+**Classification:** Current captured-contract matrix with explicitly source-scoped evidence.
+**Reconciled:** 2026-10-05; server verification dates below are unchanged.
 
 `PRODUCT_SPEC 19` requires this file to record the server versions tested, the capabilities detected,
 known endpoint differences, the fixtures used, and the date last verified.
@@ -15,18 +15,18 @@ The 2026-10-04 compact series cards and device-only Benchmark 1.5.0 repair add n
 response, Room schema or capability changes. The [benchmark review](reviews/2026-10-04-benchmark-api36.md)
 records source/gate evidence; the later 2179 report completes its bounded benchmark rerun, with scrolling/manual-audio/stress acceptance still open; no additional server version is claimed.
 
-The unmerged PR #232 download verification-cancellation correction uses the existing file response metadata
+The merged PR #232 download verification-cancellation correction uses the existing file response metadata
 and local Room/filesystem protocol. It adds no endpoint, response field, capability, schema or permission.
 Range/If-Range, `200`/`206`/`416` validation and entitlement contracts remain unchanged. The
 [test log](testing/2026-10-04-download-verification-cancellation.md) separates synthetic real-filesystem
 regressions from pending device/parser/WorkManager/server acceptance; no new server version is claimed.
 
-Draft PR #232 / APK2184's paused-percent follow-up changes only Book/Downloads presentation precedence: stopped recovery
+Merged PR #232 / APK2184's paused-percent follow-up changes only Book/Downloads presentation precedence: stopped recovery
 states use the durable manifest; active states retain live execution progress. No server contract,
 Room schema, permission or additional tested server version changes. The same download test log records
 its caller guards and separate source-matched physical acceptance.
 
-The draft #229 author-details implementation reads existing profile-authorized Room catalogue/progress
+The #229 author-details implementation merged in PR #234 reads existing profile-authorized Room catalogue/progress
 and sync status. Author navigation, Series/Standalone grouping, local completion rendering and clearing
 on profile change add no endpoint, response field, fixture, schema or permission. No new server version
 is verified; [the author log](testing/2026-10-04-author-details.md) distinguishes synthetic fixtures/native
@@ -41,7 +41,7 @@ The phone-discovered author scroll correction retains local Compose list state t
 It changes no authorized catalogue read, server response, endpoint, schema or permission; source-specific
 phone failure and reacceptance are recorded in [the correction log](testing/2026-10-05-author-observation.md).
 
-The #176 Sign-in Back draft changes only navigation capability and toolbar layout. Existing server probes,
+The #176 Sign-in Back implementation merged in PR #235 changes only navigation capability and toolbar layout. Existing server probes,
 authentication/reauthentication, fixtures, profile/password/draft policy and success cleanup are unchanged.
 No endpoint, schema, permission or newly tested server version is introduced. The
 [Sign-in log](testing/2026-10-04-sign-in-back.md) records source/scoped tests and pending phone acceptance.
@@ -1703,4 +1703,4 @@ The [2179 phone continuation](testing/2026-10-04-phone-2179.md) physically verif
 The [metadata correction](testing/2026-10-05-book-row-metadata.md) changes presentation constraints
 only. No server endpoint/field, supported version, Room schema, dependency, permission or credential
 format changes; captured contracts remain authoritative. Four native-render height/bounds guards
-pass with actual-source reversion proof. Fixed APK acceptance is logged separately and pending.
+pass with actual-source reversion proof. Verified signed2195 upgrade/retention, normal-font owner readability and cached offline/detail/Back pass; other configurations remain pending. PR #236 is merged; see the current merge record.

@@ -6,24 +6,36 @@
 phone subcases, five failed benchmark cases and remaining NOT RUN steps. The
 [2179 continuation](2026-10-04-phone-2179.md) supersedes the benchmark harness failure for its measured
 configuration: eight executions and 27 datastore cases pass, but scrolling remains over budget.
-**Reconciled:** 2026-10-04 through merged main `9ced43ae` (PR #233), plus source-scoped draft evidence. Parent rows are inventories, not blanket passes;
-use each dated report for its exact tested APK/scope. Signed main APK2180 was superseded without installation. Browse draft APK2181 and downloads draft
-APK2184 have their own bounded phone results; neither establishes final-main acceptance. Signed main APK2186 remains uninstalled; author/Sign-in candidates have separate source-scoped evidence.
+**Reconciled:** 2026-10-05 through merged main `cd432f42` (runtime PRs #230/#231/#232/#234/#235/#236).
+Parent rows are inventories, not blanket passes. Dated results retain exact source/APK scope.
+The owner authorized merging while carrying unverified cases forward. No test gap is relabelled PASS.
 
-This register covers the CI/reliability delivery, the historical issue #36 solution, and the remaining
-functional/release checks in PRODUCT_SPEC sections 17, 21 and 25. Merged code and passing JVM tests do not
-transfer physical acceptance from an older APK. GitHub #128 is historical Forgejo #36; GitHub PR #36 is an
-unrelated privileged-write contract change.
+## Current delivery and follow-up obligations
 
-## Current candidate obligations
+All six runtime PRs are merged. [Merge record/watch list](2026-10-05-merge-delivery.md) records passing
+PR gates, exact merge commits, carried risks and final-main workflow status. The
+[merge test inventory](2026-10-05-pr-merge-test-plan.md) remains the detailed follow-up checklist.
+No issue is closed by this merge session.
 
-- Main includes PR #226's documentation only. PR #230 remains draft; its browse case rows below use APK2181 evidence.
-- Draft PR #231 has [PERF-01â€“10](2026-10-04-card-blur-sampling.md): software/source-labelled artifacts pass;
-  all candidate phone timing/quality/upgrade/accessibility obligations remain NOT RUN.
-- Draft PR #232 has [DC-P01â€“13 and PP-P01â€“06](2026-10-04-download-verification-cancellation.md):
-  ordinary APK2184 Pause/relaunch/discard/Resume and exact-size verification pass; controlled cases remain open.
-- New main APK identity/packaging and checks belong to the [reconciliation report](../reviews/2026-10-04-documentation-reconciliation.md).
-  No physical case was rerun for this docs-only merge. Historical build results are never promoted to this APK.
+- #230: corrected fast-fling/newer-tap, selected count/localization/offline, owner animation and
+  tab/count TalkBack PASS on 2192; remaining restoration and live authorization/catalogue states pending.
+- #231: 40 paired executions show benefit; CPU P95 still exceeds16.7ms. Owner saved-settings texture
+  PASS on 2193. Other visual/configuration/API/startup-memory cases and timing after #236 pending.
+- #232: selected2184 Pause/relaunch/discard/Resume PASS; three native parser/Room/file cancellation
+  guards PASS with actual-source reversion and forced gate. Actual WorkManager/wire/claim/storage races pending.
+- #234: owner normal/200% completion and mixed groups PASS on 2191; corrected scroll return and offline
+  checks PASS. Other restoration/completion/privacy/configuration cases pending.
+- #235: selected isolated Add/reauth, IME/predictive Back, delayed cancellation, process death,
+  background/recreation and connection-refused error PASS on `2d567b17`. Other auth/configurations pending.
+- #236: four native layout guards and six combined renders PASS, actual-source reversion fails.
+  Verified signed 2195 upgrade/retention, owner bottom-line readability and normal Norwegian
+  detail/Back/offline PASS. Physical 2195 200%/focused/Author standalone/other configuration/timing NOT RUN.
+- API36 datastore/Keystore:27/27 PASS on the earlier combined runtime. Active-playback upgrade NOT RUN.
+
+Phone testing is stopped at owner request. Automate functional checks and request only visual judgement.
+Selected owner TalkBack checks are complete; further manual TalkBack is excluded by preference without
+accepting unperformed wider speech checks. Earlier historical issue36 is GitHub #128, with hardware
+continuity gates still open. Merged implementation is not final release acceptance.
 
 ## Record a result for every case
 

@@ -2,31 +2,31 @@
 
 **Classification:** Source reconciliation and future acceptance plan, not rendered acceptance.
 **Source snapshot:** GitHub main `81a06e1`; this table is dated source evidence.
-**Reconciled:** 2026-10-04 through main `8de931f0` (PR #226), with draft #230 evidence. [The roadmap](../roadmap.md) owns sequencing.
+**Reconciled:** 2026-10-05 through main `cd432f42` (runtime PRs #230/#231/#232/#234/#235/#236 merged). [The roadmap](../roadmap.md) owns sequencing.
 PRs #220/#222 have delivered the shared series/card slice; [2179 phone evidence](2026-10-04-phone-2179.md)
 accepts selected compact/glow/large-text subcases. It does not close the broader #194/#195 audits or
 #187's all-card-family scope. Inspect current callers before implementing a remaining proposal.
 **Owner:** UI & Experience, with Test & Acceptance review.
 
-Critical playback/progress/privacy defects take precedence. Under the owner's 2026-10-04 ordering, fix
-the gesture/count acceptance gaps in draft #230 while hardware acceptance remains pending, then return to performance/download
-work. The author page is the first larger remaining UI slice. Preserve Material 3, repository-backed state,
+Critical playback/progress/privacy defects take precedence. The browse/count and Author slices are merged with
+remaining acceptance carried forward. The next software slice is #195 non-color connection status and
+no-results recovery; hardware acceptance stays pending alongside independent software work. Preserve Material 3, repository-backed state,
 remembered-book ownership, author-before-title shelf ordering and existing destinations.
 The proposals in #194 do not authorize an authentication/navigation rebuild or changes to other Settings tabs.
 
 ## Owner-requested child issues — 2026-10-04
 
-These began as planned scopes. The [browse delivery report](2026-10-04-browse-selection-counts.md) now records #227/#228 implementation and scoped results; #229 has draft implementation/render evidence in the [author log](2026-10-04-author-details.md), with phone acceptance pending. PD-006 adds the browse/navigation behavior to LIB-002.
+These began as planned scopes. The [browse delivery report](2026-10-04-browse-selection-counts.md) now records #227/#228 implementation and scoped results; #229 has merged implementation/render evidence in #234 in the [author log](2026-10-04-author-details.md), with selected phone checks passing and remaining acceptance open. PD-006 adds the browse/navigation behavior to LIB-002.
 The original registration included no runtime changes; the subsequent browse fix adds no endpoint or schema change.
 
 | Issue | Current source / report | Delivery boundary and test log |
 | --- | --- | --- |
 | [#227 gesture highlighting](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/227) | Owner: Books → Series → Books leaves Series highlighted although the pill returns to Books. The real stable-callback route confirmed that the settled-page listener captured the initial axis; PR #230 reads the current axis/callback. Controlled physical return/rapid/mixed-intent checks pass. | First small bug. Guard the actual pager/ViewModel callback path; keep taps/cancelled gestures/recreation/settled semantics and playback consistent. U-06-01–06: scoped implementation evidence in the dated report; incomplete physical criteria remain pending. |
 | [#228 browse entity counts](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/228) | Main originally flattened represented books and used book plurals for every axis. PR #230 counts distinct displayed entity identities and localizes each noun; populated phone counts match the authorized cached scope. | Second small bug. Count books/series/authors/genres for the displayed authorized scope; retain uncapped source totals and partial/loading status. U-07-01–05: scoped implementation evidence in the dated report; incomplete physical criteria remain pending. |
-| [#229 grouped author page](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/229) | `feature/author-series-standalone`, stacked on #230, pushes the shared author destination and groups Series/Standalone from full accessible Room state. Conservative catalogue completion and profile-switch clearing have regression coverage. | [Source/render verification and phone checklist](2026-10-04-author-details.md). Physical U-08-01–07 remain NOT RUN; issue stays open. |
+| [#229 grouped author page](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/229) | Merged PR #234 pushes the shared author destination and groups Series/Standalone from full accessible Room state. Conservative catalogue completion and profile-switch clearing have regression coverage. | [Source/render verification and phone checklist](2026-10-04-author-details.md). Selected U-08 completion/grouping/scroll/offline checks pass; other privacy/restoration/configuration cases remain pending; issue stays open. |
 
-The draft author page supersedes the earlier in-place Authors behavior under PD-006; obsolete source
-comments are reconciled in its feature branch. Genre focus and legacy saved author-focus compatibility remain. Completion remains based on authoritative
+The merged author page supersedes the earlier in-place Authors behavior under PD-006; obsolete source
+comments are reconciled on main. Genre focus and legacy saved author-focus compatibility remain. Completion remains based on authoritative
 progress and full accessible series membership, not a filtered/author-only subset. Preserve PD-005's subtle
 inward green cue without checkmarks and provide readable/spoken completion information.
 
@@ -40,7 +40,7 @@ inward green cue without checkmarks and provide readable/spoken completion infor
 | #195 connection status | `ServerStatusDot` still uses one circular shape and chooses reachable/unreachable colors with `isSystemInDarkTheme()`. | Add a visible cue beyond color and resolve status colors against the active app appearance. Verify offline/unknown/reachable/unreachable and spoken detail. |
 | #195 whole-book seek meaning | `FullPlayer.kt` now supplies `player_book_progress` with elapsed/remaining values to the whole-book `ThinSlider`; chapter semantics are also present. | Retain the implementation and validate actual TalkBack speech, focus and seek behavior. No duplicate label implementation is needed. |
 | #195 no-results recovery | `AxisEmptyState` still renders its constrained-results message without an action. | Add recovery appropriate to the active query/filter/focus, preserving the chosen library. Verify empty/offline/error branches remain distinct. |
-| #176 pushed Sign in | `fix/sign-in-navigation-back`, stacked on #234, supplies explicit NavHost Back capability; root has no arrow, pushed screen has a 48 dp Back action. The toolbar grows for wrapped large text. Wizard Back remains separate. | [Sign-in verification and phone checklist](2026-10-04-sign-in-back.md): real NavHost/screen guards exist, U-03-01–07 physical acceptance remains NOT RUN. |
+| #176 pushed Sign in | Merged PR #235 supplies explicit NavHost Back capability; root has no arrow, pushed screen has a 48 dp Back action. The toolbar grows for wrapped large text. Wizard Back remains separate. | [Sign-in verification and phone checklist](2026-10-04-sign-in-back.md): real NavHost/screen guards exist, selected physical checks pass; remaining U-03 configurations/authentication stages remain pending (see the current merge record). |
 
 These are child-sized delivery slices under their existing issues, not duplicate audit issues. An existing
 implementation stays pending physical acceptance when its evidence is only source/JVM review.
@@ -49,9 +49,9 @@ implementation stays pending physical acceptance when its evidence is only sourc
 
 Work #194 in the following order, keeping each change reviewable:
 
-1. Reproduce the fixed-height flat-list risk (`BookListUi.kt` still uses `Modifier.height(ROW_HEIGHT)`),
-   profile content behind the player, and the pack/light-dark preview discrepancy. Use minimum/content-driven
-   geometry where reproduction supports it; ensure preview and actual theme use the same resolution owner.
+1. PR #236 now uses minimum/content-driven flat-row geometry, with owner2195 last-line readability PASS.
+   Carry remaining widths/font/theme/timing checks forward. Reproduce profile content behind the player
+   and the pack/light-dark preview discrepancy; ensure preview and actual theme use the same resolution owner.
 2. Compare representative prototypes for Continue listening, quieter flat rows, narrower collection artwork
    and profile action hierarchy against the current presentation. Use real state and metadata; retain the
    settled details-versus-play distinction, current/security status, switching feedback and destructive copy.
