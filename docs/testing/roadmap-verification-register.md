@@ -244,11 +244,11 @@ established. Remaining UI/security/server/manual-performance matrices and final-
 
 ## Browse acceptance — planned 2026-10-04; scoped implementation/results below
 
-Owner decisions PD-006/007 define the acceptance obligations. #227/#228 implementation and scoped results now exist on PR #230; #229 has a draft implementation stacked on #230, with all physical acceptance still pending.
+Owner decisions PD-006/007 define the acceptance obligations. #227/#228 implementation and scoped results now exist on PR #230; #229 has a draft implementation stacked on #230; selected later physical results are recorded in the current merge plan.
 The original issue-registration change claimed no app-function or phone test. The subsequent #227/#228
 implementation and its scoped automatic/device results are tracked in the
 [browse delivery report](2026-10-04-browse-selection-counts.md); use its exact APK and pending portions.
-#229's author-detail cases have scoped software evidence in the [author log](2026-10-04-author-details.md); **physical acceptance remains NOT RUN**. Use the existing result template for exact
+#229's author-detail cases have scoped software evidence in the [author log](2026-10-04-author-details.md); selected physical grouping/completion/Back/offline and owner layout findings pass in the [current merge plan](2026-10-05-pr-merge-test-plan.md), with the remaining matrix open. Use the existing result template for exact
 APK/configuration, expected/observed behavior, UTC/evidence and regressions. Guard actual callers; future
 bug tests must fail on the old behavior. Source/UI semantics checks do not replace physical gesture,
 TalkBack or rendering evidence. All new work preserves Room/profile/playback ownership and adds no endpoint/schema here.
@@ -296,7 +296,7 @@ Keep release section 25 pending until its applicable functional, security and qu
 
 2026-10-05 U-08-05: signed combined APK2189 failed author-scroll restoration after the Book/Author/Series
 Back chain. The [correction log](2026-10-05-author-observation.md) records the actual-screen red/fixed/reverted
-guard and strict gate. Physical repeat on a corrected combined APK remains pending.
+guard and strict gate. The same chain passes on signed combined APK2191; the [current merge plan](2026-10-05-pr-merge-test-plan.md) records exact scope and remaining restoration cases.
 
 
 ## 2026-10-05 owner TalkBack completion
@@ -306,3 +306,14 @@ owner PASS; requested manual check complete. Per the owner's subsequent preferen
 manual TalkBack test is required in this session. Other speech-specific inventories remain
 unperformed rather than being promoted to PASS. Native/Compose semantics and large-text gates
 remain in scope. See the [owner finding log](2026-10-05-owner-phone-checks.md).
+
+
+## 2026-10-05 Sign-in owner and cancellation continuation
+
+U-03-06 Address predictive Back cancellation/completion: owner PASS. U-03-07 Address title,
+Back and form reachability at320dp/font2.0: owner PASS; native size/font1.0 restored/read back.
+U-03-02/03 toolbar Back during an observed12-second pending login: returns Profiles, stays there
+after delayed response, and every disposable table/settings fingerprint is unchanged — PASS.
+Local isolated source2d567b17/code2000; onboarding/Nav runtime matches signed2192, other source
+acceptance is not transferred. Credentials predictive Back is awaiting its own owner finding;
+the remaining configuration/recreation/error matrix is open. See the [exact Sign-in log](2026-10-05-signin-phone-success.md).

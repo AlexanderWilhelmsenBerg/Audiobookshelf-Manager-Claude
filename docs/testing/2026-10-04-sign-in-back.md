@@ -81,4 +81,4 @@ Rebased onto the verified author observation/key correction and History timestam
 Selected successful Add/reauth, post-success Back, keyboard-first Back and credential drafts through
 font1.3/rotation now PASS on the isolated `2d567b17` artifact. Its Sign-in runtime matches signed
 owner2192; other runtime acceptance is not transferred. See the [exact phone success log](2026-10-05-signin-phone-success.md)
-for preserved setup failures, remaining matrix and pending owner predictive-Back observation.
+for preserved setup failures, remaining matrix, passed owner Address predictive Back and large-text observations.

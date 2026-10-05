@@ -43,3 +43,21 @@ Owner predictive Back finding: “Pass — cancellation stays, full Back returns
 A later capture at10:42:55UTC showed Home, so the driver stopped before its expected-Profile
 assertion and database snapshot. That later navigation does not invalidate the owner observation;
 no post-gesture database audit or independently captured final Profiles screen is claimed.
+
+U-03-07 owner Address layout at simulated320dp width/fontScale2.0: PASS — full title readable,
+Back usable, server field/Continue reachable. Native size/font1.0 restored and read back.
+
+
+## Additional in-flight toolbar Back — 2026-10-05
+
+U-03-02/03, isolated source2d567b17/code2000, API36/Norwegian/font1.0:
+at10:53:45UTC both credential fields are disabled during a12-second loopback login delay.
+Toolbar Back returns Profiles at10:53:48; after the delayed response, Profiles remains at10:54:04.
+All11 table counts and fingerprints and settings hash match the pre-login snapshot: **PASS**.
+Fixture delay is restored to0. No real owner account or library was contacted.
+
+The subsequent Credentials gesture preparation initially sent an unnecessary system Back after
+Continue had already closed the keyboard. The driver correctly stopped its credential assertion
+on Profiles; removing that redundant action prepares the expected empty Credentials screen.
+This setup error supplies no app-failure or predictive-gesture acceptance. Owner Credentials-stage
+predictive Back cancellation/completion is pending separately.

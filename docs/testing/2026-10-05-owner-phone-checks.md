@@ -86,3 +86,25 @@ The isolated test app is prepared at simulated320dp width (900×1950px at450dpi)
 fontScale2.0 on the pushed Address screen. Awaiting owner title/readability, Back usability
 and form/Continue reachability finding; no unanswered question counts as PASS. Display size
 and font will be restored to native1080×2340/font1.0 after the observation.
+
+
+## Sign-in 320dp/200% text owner result
+
+U-03-07 isolated source2d567b17/code2000 Address screen: **PASS** — “Pass — title readable,
+Back usable, form reachable”. Native1080×2340 and fontScale1.0 restored and read back. This
+accepts the observed Address layout, not every credential/busy/error or language/theme state.
+
+
+## Additional in-flight toolbar Back — 2026-10-05
+
+U-03-02/03, isolated source2d567b17/code2000, API36/Norwegian/font1.0:
+at10:53:45UTC both credential fields are disabled during a12-second loopback login delay.
+Toolbar Back returns Profiles at10:53:48; after the delayed response, Profiles remains at10:54:04.
+All11 table counts and fingerprints and settings hash match the pre-login snapshot: **PASS**.
+Fixture delay is restored to0. No real owner account or library was contacted.
+
+The subsequent Credentials gesture preparation initially sent an unnecessary system Back after
+Continue had already closed the keyboard. The driver correctly stopped its credential assertion
+on Profiles; removing that redundant action prepares the expected empty Credentials screen.
+This setup error supplies no app-failure or predictive-gesture acceptance. Owner Credentials-stage
+predictive Back cancellation/completion is pending separately.
