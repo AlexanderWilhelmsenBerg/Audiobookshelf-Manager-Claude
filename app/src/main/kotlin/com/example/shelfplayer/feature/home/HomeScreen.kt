@@ -9,7 +9,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -109,7 +108,6 @@ import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
 import com.example.shelfplayer.core.model.AuthorId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.SeriesId
-import com.example.shelfplayer.core.model.ServerStatus
 import com.example.shelfplayer.core.model.SyncStatus
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.domain.library.BookFilter
@@ -315,7 +313,7 @@ fun HomeScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
-                                ServerStatusDot(
+                                ServerStatusIndicator(
                                     status = uiState.serverStatus,
                                     isOffline = uiState.isOffline,
                                     modifier = Modifier.padding(start = 8.dp),
@@ -1275,12 +1273,25 @@ private fun AxisContent(
 private fun AxisEmptyState(uiState: HomeUiState, actions: HomeActions, modifier: Modifier = Modifier) {
     val content = modifier.fillMaxSize()
     when {
-        uiState.query.isNotBlank() || uiState.focus != null || uiState.filter != BookFilter.All ->
+        uiState.query.isNotBlank() || uiState.focus != null || uiState.filter != BookFilter.All -> {
+            // Recover one constraint at a time; existing actions preserve library, sort and axis.
+            val (label, recover) = when {
+                uiState.query.isNotBlank() ->
+                    stringResource(R.string.home_clear_search) to { actions.onQueryChanged("") }
+
+                uiState.filter != BookFilter.All ->
+                    stringResource(R.string.home_reset_filters) to { actions.onFilterChanged(BookFilter.All) }
+
+                else -> stringResource(R.string.home_clear_selection) to actions.onFocusCleared
+            }
             ShelfEmptyState(
                 title = stringResource(R.string.home_no_matches_title),
                 body = stringResource(R.string.home_no_matches_body),
                 modifier = content,
+                actionLabel = label,
+                onAction = recover,
             )
+        }
 
         uiState.axis != HomeAxis.Books -> ShelfEmptyState(
             title = stringResource(uiState.axis.emptyTitleRes()),
@@ -1333,46 +1344,6 @@ private fun EmptyOrFailed(uiState: HomeUiState, onRefresh: () -> Unit, modifier:
             modifier = content,
         )
     }
-}
-
-/**
- * PRODUCT_SPEC LIB-002 / 14.4 — the reachability indicator, asked for from a device run.
- *
- * A dot rather than a word because it sits beside a title, and a `contentDescription` rather than only
- * a colour because PRODUCT_SPEC 21 requires the state to be available to TalkBack and to a user who
- * cannot distinguish red from green — a colour-only indicator says nothing to either.
- *
- * Offline outranks the server's own state: with no network the app has learned nothing about the
- * server, and showing it red would blame the wrong thing.
- */
-@Composable
-private fun ServerStatusDot(status: ServerStatus, isOffline: Boolean, modifier: Modifier = Modifier) {
-    val effective = if (isOffline) ServerStatus.Unknown else status
-    // Fixed colours rather than the theme's, and that is the point of them.
-    //
-    // `colorScheme.primary` is whatever the palette says — light blue in this app's dark scheme, a
-    // muted green in light — and a status light has to mean the same thing in both. These two are
-    // chosen to stay legible on either background: a device run reported the dark-mode dot reading as
-    // blue and the light-mode one as too dark to call green.
-    val colour = when (effective) {
-        ServerStatus.Reachable -> if (isSystemInDarkTheme()) ReachableDark else ReachableLight
-        ServerStatus.Unreachable -> if (isSystemInDarkTheme()) UnreachableDark else UnreachableLight
-        ServerStatus.Unknown -> MaterialTheme.colorScheme.outlineVariant
-    }
-    val description = stringResource(
-        when {
-            isOffline -> R.string.home_server_offline
-            effective == ServerStatus.Reachable -> R.string.home_server_reachable
-            effective == ServerStatus.Unreachable -> R.string.home_server_unreachable
-            else -> R.string.home_server_unknown
-        },
-    )
-    Box(
-        modifier = modifier
-            .size(10.dp)
-            .background(color = colour, shape = CircleShape)
-            .semantics { contentDescription = description },
-    )
 }
 
 @Composable
@@ -1434,20 +1405,6 @@ private fun HomeUiState.entityCountLabel(partial: Boolean): String {
     }
     return pluralStringResource(resource, visibleEntityCount, visibleEntityCount)
 }
-
-/**
- * PRODUCT_SPEC 21 — a status light that means the same thing in both themes.
- *
- * Green and red at luminances that stay readable on a dark and on a light surface respectively. They
- * are not in the design-system palette on purpose: they are semaphore colours rather than brand ones,
- * and pulling them from `colorScheme` is what made the dot blue in dark mode.
- *
- * Colour is never the only signal — every state also carries a `contentDescription`.
- */
-private val ReachableDark = Color(0xFF6EE7A0)
-private val ReachableLight = Color(0xFF15803D)
-private val UnreachableDark = Color(0xFFFF8A80)
-private val UnreachableLight = Color(0xFFC62828)
 
 /** The visual mark stays compact and gives way before the title or top-bar actions do. */
 private val HOME_MARK_SIZE = 40.dp

@@ -58,9 +58,9 @@ import kotlin.test.assertTrue
  *
  * ### The rule it exists to defend
  *
- * PRODUCT_SPEC 3.2 and 21: colour is never the only signal. The server dot is a coloured circle with no
- * text beside it, which is precisely the control that goes wrong — it is easy to add a state, give it a
- * colour, and forget the description that makes it perceivable at all.
+ * PRODUCT_SPEC 3.2 and 21: colour is never the only signal. The server indicator has distinct symbols and
+ * localized descriptions. These guards cover the descriptions; HomeRecoveryScreenTest separately
+ * checks rendered shapes for sighted users who cannot distinguish the status colors.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -102,9 +102,9 @@ class HomeScreenTest {
     }
 
     /**
-     * PRODUCT_SPEC 3.2 — the server indicator is a coloured dot, so it carries a description.
+     * PRODUCT_SPEC 3.2 — the server indicator carries a localized description alongside its symbol.
      *
-     * Every state, described. A dot that gained a colour and not a description would be invisible to a
+     * Every state, described. A symbol that gained a color and not a description would be invisible to a
      * screen reader and to anyone who cannot tell the two colours apart, and nothing else in the suite
      * would notice. `ServerStatus.entries` rather than a written-out list, so adding a state to the enum
      * and forgetting its wording fails here.
@@ -133,7 +133,7 @@ class HomeScreenTest {
     /**
      * Offline outranks the server's own state, and says something different.
      *
-     * With no network the app has learned nothing about the server, so a red dot would blame the wrong
+     * With no network the app has learned nothing about the server, so a server-failure mark would blame the wrong
      * thing. The description has to say that rather than reuse "not reachable".
      */
     @Test

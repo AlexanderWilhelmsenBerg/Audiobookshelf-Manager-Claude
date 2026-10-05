@@ -1,0 +1,103 @@
+{
+  "date": "2026-10-05",
+  "baseMain": "df2c80a8a311dd492f49d5c8c7c3143209c04e22",
+  "requirementIds": [
+    "LIB-001",
+    "LIB-002",
+    "SET-002",
+    "spec21"
+  ],
+  "issue": 195,
+  "scope": "Findings4/7 only",
+  "strictGate": {
+    "result": "PASS",
+    "elapsed": "1m 49s",
+    "tasks": 1024,
+    "warningsAsErrors": true
+  },
+  "nativeAndContrastCases": [
+    {
+      "name": "offline Norwegian large text exposes search recovery without requesting refresh",
+      "result": "PASS"
+    },
+    {
+      "name": "reachable unreachable unknown and offline have different monochrome silhouettes",
+      "result": "PASS"
+    },
+    {
+      "name": "no matches clears one constraint at a time without changing library or starting work",
+      "result": "PASS"
+    },
+    {
+      "name": "all statuses retain three to one contrast over grayscale and tinted surfaces",
+      "result": "PASS"
+    },
+    {
+      "name": "offline color does not claim reachability and follows the supplied surface",
+      "result": "PASS"
+    },
+    {
+      "name": "translucent pack surface resolves against the selected app ground",
+      "result": "PASS"
+    }
+  ],
+  "actualHomeScreenReversion": {
+    "tests": 3,
+    "failures": 3,
+    "errors": 0,
+    "restoredExactFixedBytes": true
+  },
+  "firstStrictFailure": "Deprecated HelpOutline API; corrected to supported AutoMirrored icon",
+  "secondStrictFailure": "Bitmap.getPixel lint UseKtx in test capture; corrected to Bitmap.get",
+  "previousCorrectedStrictGate": {
+    "result": "PASS",
+    "elapsed": "1m50s",
+    "tasks": 1024
+  },
+  "physicalCases": {
+    "U-09-01": "NOT RUN",
+    "U-09-02": "NOT RUN",
+    "U-09-03": "NOT RUN",
+    "U-09-04": "NOT RUN",
+    "U-09-05": "NOT RUN"
+  },
+  "phoneUsed": false,
+  "runtimeFileSha256": {
+    "app/src/main/kotlin/com/example/shelfplayer/feature/home/HomeScreen.kt": "355e4b6af7d54249b8b802c9594d1a756d7ca16078e72e25f502382fab261d75",
+    "app/src/main/kotlin/com/example/shelfplayer/feature/home/HomeConnectionStatus.kt": "177a76c2f741358f39752a272494d4b2c15ed3dc2c6070babaa3a0bc9de6643c",
+    "app/src/main/res/values/strings.xml": "27c9fdb1ce509fb19c78d61846b7bb47e4a01d7a13659eb472ed1fcfafd93192",
+    "app/src/main/res/values-nb/strings.xml": "d22d10107060585b91235a4d79c5674f3519ae22f383e9bc45ebac4fb15d812c"
+  },
+  "captures": [
+    {
+      "name": "recovery-en-375dp.png",
+      "sha256": "0eb4dbce9e7956a698c2c99861437fd98cb645e099cc740cd72e3ee2e138a6ed",
+      "syntheticOnly": true
+    },
+    {
+      "name": "recovery-nb-320dp-font2.png",
+      "sha256": "5c9ff0f3c4403b2c94eaa4f66f48ccfa6ee4654137094c27c1980236ec98c4a9",
+      "syntheticOnly": true
+    },
+    {
+      "name": "status-0.png",
+      "sha256": "fd3af7c0c9b3976f45e926d6c95029c7be719db4c235d5524c4048025d9ed179",
+      "syntheticOnly": true
+    },
+    {
+      "name": "status-1.png",
+      "sha256": "efd5c8ba26df6330106f0e8a1b4b1c9a950686c4838e41fe3d697a4aa843b0cb",
+      "syntheticOnly": true
+    },
+    {
+      "name": "status-2.png",
+      "sha256": "c3f1bc67bf5653fb739c16d9d3c711cf549204c2e141bd3177abd26b0893ed2e",
+      "syntheticOnly": true
+    },
+    {
+      "name": "status-3.png",
+      "sha256": "91dcaf3b95ac0cee9737cfd298dbf0e0d4ae12513cae11610ae2250bc3dfd5b8",
+      "syntheticOnly": true
+    }
+  ]
+}

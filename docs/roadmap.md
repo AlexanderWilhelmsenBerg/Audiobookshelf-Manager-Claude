@@ -52,8 +52,9 @@ speech cases are not converted to passes. Physical 2195 200% text remains NOT RU
 geometry guards passing. [Row evidence](testing/2026-10-05-book-row-metadata.md).
 
 Merged runtime main passes formatter and forced strict verifyDebug (7m32s;1,024 executed tasks).
-Main CI, release/security checks and a signed APK are initiated after the documentation
-merge. A started workflow is not a passing result; see the [merge record](testing/2026-10-05-merge-delivery.md).
+Final-main Standard CI37321586918 and checked signed APK37321588592 pass. Verified main
+APK2196 is downloaded, not installed; it does not contain the later #195 slice. Release/security
+run37321586687 also passes. A started workflow is not a passing result; see the [merge record](testing/2026-10-05-merge-delivery.md).
 
 ## Ordered delivery lanes
 
@@ -166,8 +167,13 @@ specification 17.2/21. Follow the [child-slice triage](testing/ui-roadmap-triage
 2. #176 pushed Sign-in Back/title is implemented on main through #235. Selected Add/reauth, IME,
    predictive Back, delayed-login cancellation, process-death/recreation and error checks pass on the
    isolated recorded runtime. Remaining authentication/configuration cases stay open.
-   **Next software slice: #195 non-color connection status and no-results recovery.** Reproduce current
-   states, preserve authorized Room scope and existing library, and add only the missing cues/actions.
+   **Current software slice: #195 non-color connection status and no-results recovery.**
+   `codex/home-status-recovery-195` adds distinct symbols using the active app surface and contextual
+   Clear search/Reset filters/Clear selection without changing library. Three native regressions pass
+   and fail on actual-source reversion; contrast fixtures and full gate are recorded in the
+   [delivery/test log](testing/2026-10-05-home-status-recovery.md). Physical U-09-01–05 stay pending.
+   Next independent software work is #194 profile/player clearance and real-theme preview parity;
+   reproduce those existing states before choosing a layout change.
 3. #236 fixes general-row bottom metadata clipping under #192/#194. Owner normal-font appearance
    passes on 2195; large-text native guards pass. Continue profile/player clearance and real-theme preview
    parity checks before comparing

@@ -59,3 +59,10 @@ Keep download wire/storage/claim races and navigation/profile restoration in the
 [test inventory](2026-10-05-pr-merge-test-plan.md); no phone work until the owner offers it again.
 Next software slice is #195 non-color connection status and no-results recovery, after any reproduced
 playback/progress/privacy defect. iOS/Silo are excluded; Garmin stays parked.
+
+## Final merged-main continuation
+
+Standard debug CI37321586918 PASS. Checked signed APK run37321588592 PASS on main df2c80a8;
+verified APK2196 has the established signer and pinned Loopbound bundle. Source/digest/certificate
+checks PASS. The APK is downloaded locally, not installed or physically accepted. It contains the six
+merged runtime PRs, not the later #195 Home status/recovery slice. Release/security run37321586687 also PASS. [Exact APK identity](evidence/main-apk-2196-2026-10-05.json).

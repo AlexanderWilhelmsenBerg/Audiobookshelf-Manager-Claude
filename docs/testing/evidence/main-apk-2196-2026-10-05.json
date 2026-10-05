@@ -1,0 +1,17 @@
+{
+  "run": "37321588592",
+  "source": "df2c80a8a311dd492f49d5c8c7c3143209c04e22",
+  "workflowSource": "df2c80a8a311dd492f49d5c8c7c3143209c04e22",
+  "artifactId": 11350938111,
+  "artifactDigest": "sha256:ca7c1b2ef3a22eb34e860811d1e657c83275494a62764f2fd12c464dfca01c8a",
+  "apk": "bookwave-debug-0.10.6.1-2196.apk",
+  "apkSha256": "ca7c1b2ef3a22eb34e860811d1e657c83275494a62764f2fd12c464dfca01c8a",
+  "package": "org.homebord.bookwave.debug",
+  "versionCode": 2196,
+  "versionName": "0.10.6.1",
+  "signerSha256": "c63c72cb2c4b32a8ed3775e4cc0b5754abf06b5beb4481ea5a8f5c5c0dd9217c",
+  "loopbound": "7e24529b2a9e419218d2a1423d832b1bf587c8ef",
+  "sourceEmbedded": true,
+  "archiveDigestVerified": true,
+  "phoneInstalled": false
+}
