@@ -288,3 +288,14 @@ handoff failed before producing an artifact; supported checked Build APK run3730
 Verified signed APK2193 is installed with progress/history/downloads/settings retained. Recorded2192
 findings retain their source scope; the owner default-settings texture judgement PASS; pre-existing bottom metadata clipping is under correction.
 [Exact delivery](testing/2026-10-05-phone-2193-backdrop.md). All five runtime PRs remain drafts with explicit remaining gates.
+
+
+## Owner-observed book-row clipping — PR #236
+
+Owner saved-settings texture judgement on2193 PASS, with bottom metadata clipping also visible on
+control2192. [Draft #236](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/236)
+partially addresses #192/#194 using adaptive row height and bounded covers. Four native-render guards
+pass, fail with actual-source reversion, and pass after restoration; final strict gate passes in3m16s.
+The combined acceptance runtime now includes the correction; checked signed delivery and phone
+appearance/regression checks are pending. Broader compact-list/sort design remains open.
+[Exact source evidence and every required physical case](testing/2026-10-05-book-row-metadata.md).

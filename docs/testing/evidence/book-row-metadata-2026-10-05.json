@@ -1,0 +1,26 @@
+{
+  "base": "cf8db633b89727346d340af6e6f157dde2672fd2",
+  "requirements": [
+    "LIB-002",
+    "LIB-004",
+    "spec2.10",
+    "spec21"
+  ],
+  "originalTests": 4,
+  "originalFailures": 4,
+  "fixedFocusedTests": 4,
+  "fixedFocusedFailures": 0,
+  "actualSourceRevertedTests": 4,
+  "actualSourceRevertedFailures": 4,
+  "restoredTests": 4,
+  "restoredFailures": 0,
+  "verifyDebug": "PASS",
+  "initialVerifySeconds": 128,
+  "verifySeconds": 196,
+  "verifyTasks": 1022,
+  "productionSha256": "70f1e16dc467372246354590525d611cdbfdbb0e7b52607807103b30d8c74a2b",
+  "testSha256": "3d1a9b1133d4cb23ea9cb5199a7bb809b2cb42fa81effabf94ab2154c476ea0c",
+  "physicalFixedApk": "NOT RUN",
+  "harnessSetup": "Initial invalid onNode extension import corrected before red run; edit-helper file decoding corrected to UTF-8 before publication; not app failure",
+  "scope": "Height clipping of wrapped series/progress and progress bar; existing title/author ellipsis policy unchanged"
+}

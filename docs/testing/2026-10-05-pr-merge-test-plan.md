@@ -127,3 +127,11 @@ by that handoff. Supported checked Build APK run37307167906 PASSES with the same
 bundle as2192. Verified signed2193 is installed in place; all recorded counts/settings and retained
 data checks PASS. The owner default-settings texture judgement PASS; pre-existing bottom metadata clipping is under correction.
 [Exact delivery and remaining cases](2026-10-05-phone-2193-backdrop.md). No merge or issue closure follows.
+
+
+## Book-row clipping follow-up — #236
+
+Owner2193 texture judgement PASS; bottom-line clipping is also in2192. Four adaptive-height
+native-render guards PASS with actual-source reversion proof; final strict source gate PASS.
+Physical fixed-APK cases are logged in the [row report](2026-10-05-book-row-metadata.md).
+Current combined runtime includes the correction; verified signed delivery/phone acceptance pending.
