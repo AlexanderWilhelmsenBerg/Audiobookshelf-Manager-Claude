@@ -108,3 +108,14 @@ Continue had already closed the keyboard. The driver correctly stopped its crede
 on Profiles; removing that redundant action prepares the expected empty Credentials screen.
 This setup error supplies no app-failure or predictive-gesture acceptance. Owner Credentials-stage
 predictive Back cancellation/completion is pending separately.
+
+
+## Credentials predictive Back result and revised testing protocol
+
+U-03-02/06 isolated source2d567b17/code2000 Credentials stage: owner PASS — cancelled
+gesture stays; completed Back returns Profiles. Both Address and Credentials observations now pass.
+
+The owner clarified the protocol: automate functional gestures/navigation/state checks, including
+Back, rather than asking the owner to perform them. Ask the owner only for visual judgement such
+as clipping, glow, contrast or animation quality. Existing human findings retain their exact scope;
+future functional checks use observed UI/state and automated input. No further manual TalkBack.

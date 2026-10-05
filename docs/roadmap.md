@@ -49,8 +49,8 @@ original FAIL/NOT RUN entries even when a later run passes.
 ## Current phone acceptance session
 
 The [current merge test plan](testing/2026-10-05-pr-merge-test-plan.md) records all five PRs' remaining physical work, required fixtures and merge order.
-The owner requested automated execution followed by a pause for each visual, acoustic or interaction
-check, with a Pass/finding question. No unanswered question counts as acceptance. The completed Author-card visual checks at normal/200% text pass on APK2191;
+The owner clarified that functional navigation/gesture/state checks must be automated; pause only
+for visual judgement such as clipping, glow, contrast or animation quality. No unanswered question counts as acceptance. The completed Author-card visual checks at normal/200% text pass on APK2191;
 the mixed Author-page grouping/readability/bottom check also passes. See the [owner finding log](testing/2026-10-05-owner-phone-checks.md).
 The corrected combined APK (`4f2edb36`) passes strict local verification/signed APK CI, is installed as2192 and passes five fast-tap repeats; owner animation finding passes; selected heard browse/Author navigation passes; requested TalkBack check is complete;
 the corrected fast-tap defect is accepted for the recorded sequences on that exact signed source. Stay focused on existing PR acceptance.
