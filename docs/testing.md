@@ -1,7 +1,7 @@
 # Testing
 
 **Classification:** Current testing contract; dated reports retain their original build scope.
-**Reconciled:** 2026-10-04 against main, the verification register and draft delivery reports.
+**Reconciled:** 2026-10-05, including the native downloads continuation and its exact scope.
 
 `PRODUCT_SPEC.md` section 17 defines the pyramid, device matrix, and thresholds. This file records the
 current tiers and how to run them; a green JVM gate is not evidence for an absent hardware tier.
@@ -32,7 +32,7 @@ test APK has a different package/UID from the installed app, so it cannot erase 
 Both connected tiers run only with a device and never in CI. The downloads module adds three
 native parser/Room/file cancellation guards; see the [exact scope and regression proof](testing/2026-10-05-native-download-cancellation.md).
 
-### The manual tier
+### Phone acceptance
 
 The [reliability checklist](testing/reliability-acceptance.md) covers the current car, profile and download
 follow-ups. It distinguishes merged implementation from pending device acceptance and links the combined
