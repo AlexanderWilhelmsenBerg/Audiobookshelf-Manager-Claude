@@ -110,3 +110,19 @@ A new isolated downloads instrumented harness is being prepared for native parse
 that addition changes test classpaths, so its final gate must use--rerun-tasks. It is not covered by
 the earlierd99c772d green result. Actual WorkManager scheduling, wire responses/storage races and
 other pending physical cases remain open. No PR is merged or issue closed by these results.
+
+
+## Native guard and candidate delivery continuation
+
+PR #232 now adds three isolated Android parser/Room/file cancellation guards. Fixed, actual-source
+reverted, and restored device results are respectively 3 PASS / 3 expected FAIL / 3 PASS. Forced
+full strict verification passes in 6m46s (1,157 executed tasks). The [native report](2026-10-05-native-download-cancellation.md)
+states remaining WorkManager, wire, claim, storage and UI/audio boundaries explicitly. Current PR
+head 218417cc includes documentation-only follow-up; fresh CI is evaluated separately.
+
+The combined visual candidate ba51ab46 adds the already verified PR #231 backdrop code to the
+browse/download/Author/Sign-in runtime. Standard verification in run 37305093783 PASSES; the
+overall run FAILS only because the automatic APK handoff requires a PR number. No APK was produced
+by that handoff. Supported branch Build APK run 37307167906 is requested with checks enabled and
+the same pinned Loopbound bundle as 2192. It is pending; owner 2192 remains installed. No candidate
+installation, visual acceptance, merge or issue closure is claimed before artifact verification.

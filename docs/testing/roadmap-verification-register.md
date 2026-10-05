@@ -345,3 +345,12 @@ wizard, preserves the normalized URL, and clears username/password before probin
 Final Back returns Profiles; all11 table counts/fingerprints and settings match baseline. **PASS**.
 Native font1.0 is restored/read back. The first driver attempt stopped on a foreground precondition;
 resuming the observed isolated Profiles route and repeating succeeds. No owner account was used.
+
+
+## 2026-10-05 native cancellation and Sign-in error continuation
+
+Selected DC-P03 native parser/Room/file boundary: three fixed PASS, three actual-source reverted FAIL,
+three restored PASS; full strict forced gate PASS. This isolated child-Job harness does not establish
+actual WorkManager stop timing or HTTP wire behavior. [Exact scope](2026-10-05-native-download-cancellation.md).
+U-03 connection-refused probe/error/toolbar Back also PASS on the isolated Sign-in artifact, with all
+table/settings fingerprints unchanged. Remaining authentication/error/configuration cases are open.

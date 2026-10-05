@@ -92,3 +92,11 @@ wizard, preserves the normalized URL, and clears username/password before probin
 Final Back returns Profiles; all11 table counts/fingerprints and settings match baseline. **PASS**.
 Native font1.0 is restored/read back. The first driver attempt stopped on a foreground precondition;
 resuming the observed isolated Profiles route and repeating succeeds. No owner account was used.
+
+
+## Unreachable probe and Back — 2026-10-05
+
+At 12:10:09 UTC, isolated source 2d567b17/code 2000 on API36: an unused loopback port produces
+the typed network error, leaves Address editable, and toolbar Back returns Profiles. All 11 table
+counts/fingerprints and settings remain unchanged: PASS. This is a connection-refused probe, not
+an authentication denial, timeout or global offline-network claim.
