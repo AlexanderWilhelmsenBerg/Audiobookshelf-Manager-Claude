@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -93,7 +94,11 @@ class HistoryRecoveryScreenTest {
         }
         compose.onNodeWithText("Chapter crossed", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithText("50% of book", useUnmergedTree = true).assertIsDisplayed()
-        compose.onNodeWithText("2026", substring = true, useUnmergedTree = true).assertIsDisplayed()
+        // The day heading also contains the year once this fixture is older than yesterday.
+        compose.onNode(
+            hasText("2026", substring = true) and hasText(":", substring = true),
+            useUnmergedTree = true,
+        ).assertIsDisplayed()
     }
 
     @Test
