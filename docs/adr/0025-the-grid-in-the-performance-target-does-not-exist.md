@@ -48,7 +48,9 @@ risk that actually threatens it.**
 
 ### 1. The scroll target measures `BooksView.List`
 
-A flat `LazyColumn` of `BookCard`s at a fixed 132.dp row height, over a 2,000-item library. This is the
+A flat `LazyColumn` of `BookCard`s, over a 2,000-item library. The original measurements used fixed
+132.dp rows. The2026-10-05 [metadata correction](../testing/2026-10-05-book-row-metadata.md) makes
+132.dp a minimum and bounds cover size; repeat affected timing on the final layout. This is the
 nearest real thing to what 17.3 describes, it is the screen a user with a large library will actually
 scroll, and measuring it needs no new UI.
 

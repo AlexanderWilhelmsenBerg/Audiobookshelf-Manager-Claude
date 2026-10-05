@@ -258,3 +258,13 @@ secret scanning, existing thresholds and complete Standard acceptance; avoid ano
   record phone upgrade/smoke separately. A docs-only reconciliation does not itself require a new phone run.
 - Update affected roadmap, decision/risk/compatibility prose and issue criteria with each delivery.
   Preserve dated plans/reviews as history; they do not independently order new work.
+
+
+## 2026-10-05 owner-observed book-row clipping correction
+
+Owner actual-settings texture judgement on signed2193 PASS; bottom metadata remains clipped in
+both2192/2193. The [partial #192/#194 correction](testing/2026-10-05-book-row-metadata.md) lets
+general rows grow with text while bounding their covers. Four native-render guards pass, fail with
+actual-source reversion, and pass after restoration; strict verifyDebug passes. Fixed signed delivery
+and physical regression/appearance checks remain pending. The broader compact-list/sort design is
+still open. Earlier performance numbers retain their measured source/layout scope.
