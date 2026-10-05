@@ -64,3 +64,19 @@ predictive Back cancellation/completion is pending separately.
 
 U-03-02/06 Credentials predictive Back: owner PASS — cancellation stays on Credentials; completed
 Back returns directly Profiles. Future functional gesture tests will be automated per owner correction.
+
+
+## Automated functional edge Back — 2026-10-05
+
+U-03-02/06, isolated source2d567b17/code2000, SM-S928B/API36, Norwegian/font1.0:
+ADB touchscreen DOWN/MOVE away from and back to the edge/UP cancels; a full500ms edge swipe
+completes Back. Address and Credentials cancellation preserve their stage; completion returns
+directly Profiles. During an observed25-second delayed login, cancellation preserves both disabled
+credential fields; completion returns Profiles. Profiles remains after the delayed response at
+11:02:38UTC. Every11 table count/fingerprint and settings hash matches the pre-test snapshot.
+**All three stage pairs PASS**. Delay restored to0. Functional navigation/state only; no new
+animation-quality acceptance is inferred. No owner account or media was contacted.
+
+This executes the functional gestures autonomously per the owner's clarified protocol. The earlier
+human Address/Credentials results remain scoped observations, not a requirement to repeat manual
+functional tests. Remaining recreation/error/configuration cases remain open.
