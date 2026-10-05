@@ -44,3 +44,12 @@ This clears the recorded fast-tap failure in the exercised automatic sequences; 
 animation, TalkBack, broader restoration/authorization/live-count states and heard playback remain
 separate. [Owner findings](2026-10-05-owner-phone-checks.md) retain APK2191 scope. All five runtime
 PRs remain drafts; no merge or issue closure is inferred from these selected results.
+
+
+## Owner continuation
+
+Owner confirms general heard browse/Author navigation PASS. Audio route is unspecified; capture
+afterward shows Genres/paused. One saved book position advances48.9seconds; all other progress
+rows, downloads and settings remain. See the [owner log](2026-10-05-owner-phone-checks.md).
+This does not accept headset controls, both author entry routes, offline audio or the two-hour matrix.
+Actual TalkBack selected destination/count speech is the next pending owner check.

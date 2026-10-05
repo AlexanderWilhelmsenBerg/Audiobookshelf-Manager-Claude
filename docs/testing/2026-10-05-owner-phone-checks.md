@@ -35,9 +35,20 @@ Exact2192 identity/source/signing evidence is in the [gesture delivery report](2
 Owner PASS for U-06-01/03 visual/manual subset: “Pass — smooth pill and correct final highlight.”
 This covers normal Books/Series swipes, quick reversal and newer Books tap during settlement.
 
-Current pending test is heard playback continuity on APK2192, prepared07:50:20UTC. Owner plays
+Heard playback continuity on APK2192 was prepared07:50:20UTC. Owner plays
 the current book and navigates Books → Series → Authors → Author detail → Back → Genres → Books
 for approximately one minute, then pauses. Expected: same book with no audible gap/restart/skip.
-Speaker/headphone result must be explicit. This intentionally advances listening progress normally;
-the pre-test baseline is captured privately. Phone automation is paused until the finding arrives.
+Owner reports PASS: “the test passed, continue.” Speaker/headphone route was not supplied, so this accepts general heard navigation only. This intentionally advances listening progress normally;
+the pre-test baseline is captured privately. After-test capture07:53:39UTC shows Genres and Resume (paused); exact route execution was owner-observed, not independently captured.
 No two-hour/headset-control/car/offline or whole-playback matrix acceptance is inferred.
+
+
+Saved progress corroboration07:53:35UTC: exactly one existing progress row advances48,900ms;
+no progress row is added/removed. History remains124rows with an updated fingerprint; downloaded
+book/file/request hashes and settings remain unchanged. No progress rollback was performed.
+
+Current pending test: U-06-05/U-07 actual TalkBack selected-tab and count speech, APK2192,
+prepared07:55:47UTC at Books222. Owner enables installed Samsung TalkBack and assesses all four
+tabs/counts. TalkBack was off before this test (other accessibility services are not changed).
+Phone automation is paused while the owner enables/uses the screen reader. An unanswered or
+skipped check does not accept speech or restore the original TalkBack preference automatically.
