@@ -37,6 +37,10 @@ handoff and lazy-list keys. Existing authorized Room queries, sync status, APIs,
 server fixtures remain unchanged. [Caller regression evidence](testing/2026-10-05-author-observation.md)
 is separate from pending phone acceptance; no additional tested server version is claimed.
 
+The phone-discovered author scroll correction retains local Compose list state through a pending query.
+It changes no authorized catalogue read, server response, endpoint, schema or permission; source-specific
+phone failure and reacceptance are recorded in [the correction log](testing/2026-10-05-author-observation.md).
+
 ## Server versions tested
 
 The 2026-10-03 series/history/sleep revision changes local presentation and playback policy only. Rolling
