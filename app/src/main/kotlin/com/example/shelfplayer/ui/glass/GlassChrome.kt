@@ -9,6 +9,8 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.ExperimentalHazeApi
+import dev.chrisbanes.haze.HazeInputScale
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -132,6 +134,7 @@ internal object GlassDefaults {
  * effect declines — no state, a preview, Robolectric — the fallback must still be the same shape, or the
  * chrome changes silhouette between devices. Passing the shape here keeps the two paths honest.
  */
+@OptIn(ExperimentalHazeApi::class)
 internal fun Modifier.frostedGlass(
     state: HazeState?,
     backgroundColor: Color,
@@ -140,6 +143,8 @@ internal fun Modifier.frostedGlass(
     fallbackTintAlpha: Float = GlassDefaults.FALLBACK_TINT_ALPHA,
     blurRadius: Dp = GlassDefaults.BlurRadius,
     noiseFactor: Float = GlassDefaults.NOISE_FACTOR,
+    // LIB-002 / 17.3: only the backdrop input is sampled; foreground content is never scaled.
+    scaleBlurInput: Boolean = false,
     /**
      * What the wash is made of. White is what every frosted surface used before the reader could choose,
      * and is still the default — see `GlassTint`.
@@ -157,7 +162,9 @@ internal fun Modifier.frostedGlass(
             noiseFactor = noiseFactor,
             fallbackTint = HazeTint(tintColor.copy(alpha = fallbackTintAlpha)),
         ),
-    )
+    ) {
+        inputScale = if (scaleBlurInput) HazeInputScale.Auto else HazeInputScale.Default
+    }
 }
 
 /**
