@@ -52,3 +52,13 @@ prepared07:55:47UTC at Books222. Owner enables installed Samsung TalkBack and as
 tabs/counts. TalkBack was off before this test (other accessibility services are not changed).
 Phone automation is paused while the owner enables/uses the screen reader. An unanswered or
 skipped check does not accept speech or restore the original TalkBack preference automatically.
+
+
+## TalkBack completion and owner preference
+
+Owner PASS for U-06-05/U-07 selected-tab and four cached-scope spoken counts on APK2192:
+“Talkback works. I will never use talkback, so log it as completed.continue”. This requested check
+is complete. Further manual TalkBack procedures are excluded from this session at the owner's
+request; unperformed Author/Sign-in-specific speech cases are not falsely recorded as executed.
+Automated accessibility semantics and large-text verification continue. TalkBack is restored off,
+as before the test, without changing other enabled accessibility services.

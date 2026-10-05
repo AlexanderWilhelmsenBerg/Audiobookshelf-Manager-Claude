@@ -297,3 +297,12 @@ Keep release section 25 pending until its applicable functional, security and qu
 2026-10-05 U-08-05: signed combined APK2189 failed author-scroll restoration after the Book/Author/Series
 Back chain. The [correction log](2026-10-05-author-observation.md) records the actual-screen red/fixed/reverted
 guard and strict gate. Physical repeat on a corrected combined APK remains pending.
+
+
+## 2026-10-05 owner TalkBack completion
+
+U-06-05/U-07 selected destinations and four cached-scope spoken counts on signed APK2192:
+owner PASS; requested manual check complete. Per the owner's subsequent preference, no further
+manual TalkBack test is required in this session. Other speech-specific inventories remain
+unperformed rather than being promoted to PASS. Native/Compose semantics and large-text gates
+remain in scope. See the [owner finding log](2026-10-05-owner-phone-checks.md).
