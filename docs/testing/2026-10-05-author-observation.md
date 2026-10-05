@@ -61,3 +61,17 @@ ktlintFormat and restored strict verifyDebug pass (2m28s; 1,023 tasks). Author c
 19 added cases; combined with Sign-in it is 25. A new exact-source signed combined APK and physical
 repeat of the same Book/Author/Series Back chain are required. Existing APK2189 results remain
 source-specific; U-08-05 scroll restoration stays pending until that repeat passes.
+
+
+## 2026-10-05 signed correction repeat and owner findings
+
+The corrected parent `0c8fb994` has19 author guards and green CI. Combined signed APK2191
+(`6997293f`) repeats the same original Author → Book → credited Author → Series → Back chain
+successfully at06:48–06:50UTC; the original final standalone row retains its visible bounds.
+The earlier APK2189 FAIL is retained above. Selected offline metadata and completed/standalone
+routes pass; no acoustic continuity or full U-08 matrix acceptance is inferred.
+
+The owner explicitly passes completed Author-card readability/inward glow/no clipping at normal
+text, the same screen at200% text with usable Back, and the mixed nine-Series/one-Standalone page
+with clear groups/readable text/reachable bottom. See the [owner log](2026-10-05-owner-phone-checks.md)
+and [remaining physical merge work](2026-10-05-pr-merge-test-plan.md). #229 remains open.

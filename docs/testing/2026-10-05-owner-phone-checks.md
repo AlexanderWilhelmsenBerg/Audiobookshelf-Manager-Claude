@@ -21,9 +21,9 @@ acceptance. No runtime PR is marked ready/merged and no issue is closed from the
 Normal font1.0 is restored and read back before preparing the next check.
 
 
-Current pending owner check: U-08-02/07 mixed Author layout on APK2191, prepared07:35:39UTC,
-font1.0. Nine Series and one Standalone should form clear sections with readable titles/counts;
-the bottom standalone book must remain reachable. Phone automation is paused for this observation.
+U-08-02/07 mixed Author layout on APK2191, prepared07:35:39UTC, font1.0: owner PASS —
+“Pass — clear groups, readable, bottom reachable.” This accepts the nine-Series/one-Standalone
+visual subset, without accepting coauthor/multi-membership/privacy/TalkBack or other configurations.
 The combined fast-tap correction `4f2edb36` passes strict local verifyDebug (3m16s,1,022 tasks).
 Its [signed APK workflow](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37277738486)
-is still building; that source is not installed or physically accepted by the above APK2191 findings.
+passed CI; that source is not yet installed or physically accepted by the above APK2191 findings.

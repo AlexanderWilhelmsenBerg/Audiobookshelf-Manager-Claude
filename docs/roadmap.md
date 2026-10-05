@@ -51,8 +51,8 @@ original FAIL/NOT RUN entries even when a later run passes.
 The [current merge test plan](testing/2026-10-05-pr-merge-test-plan.md) records all five PRs' remaining physical work, required fixtures and merge order.
 The owner requested automated execution followed by a pause for each visual, acoustic or interaction
 check, with a Pass/finding question. No unanswered question counts as acceptance. The completed Author-card visual checks at normal/200% text pass on APK2191;
-the mixed Author-page check is awaiting the owner. See the [owner finding log](testing/2026-10-05-owner-phone-checks.md).
-The corrected combined APK (`4f2edb36`) passes strict local verification and is building;
+the mixed Author-page grouping/readability/bottom check also passes. See the [owner finding log](testing/2026-10-05-owner-phone-checks.md).
+The corrected combined APK (`4f2edb36`) passes strict local verification and signed APK CI; installation and fast-tap repeat are next;
 then repeat the fast-tap blocker on that exact signed source. Stay focused on existing PR acceptance.
 No feature/issue is declared complete and no PR is merged by these selected checks.
 
