@@ -51,7 +51,8 @@ completed per owner confirmation; no further manual TalkBack session is requeste
 speech cases are not converted to passes. Physical 2195 200% text remains NOT RUN, with native large-text
 geometry guards passing. [Row evidence](testing/2026-10-05-book-row-metadata.md).
 
-Main debug verification, release/security checks and a signed APK are initiated after the documentation
+Merged runtime main passes formatter and forced strict verifyDebug (7m32s;1,024 executed tasks).
+Main CI, release/security checks and a signed APK are initiated after the documentation
 merge. A started workflow is not a passing result; see the [merge record](testing/2026-10-05-merge-delivery.md).
 
 ## Ordered delivery lanes

@@ -50,7 +50,7 @@ No new functional or visual phone prompt is pending.
 
 Formatter and forced full `verifyDebug -Pshelfplayer.warningsAsErrors=true --rerun-tasks`: PENDING.
 Forced rerun covers the #232 Android-test classpath addition after the prior combined source gate.
-Final-main Standard CI, release/security and checked signed APK: TO BE INITIATED after documentation merge.
+Final-main Standard CI and release/security run automatically on the documentation merge; a checked signed debug APK is dispatched alongside them. Live results are available in the repository Actions page.
 Started/cancelled workflows are not passes. Final-main APK is not installed or physically accepted.
 
 ## Next work

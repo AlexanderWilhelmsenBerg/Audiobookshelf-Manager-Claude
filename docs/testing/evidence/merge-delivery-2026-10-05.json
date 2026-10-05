@@ -124,5 +124,13 @@
     "seconds": 204,
     "tasks": 1022
   },
-  "mergedMainStrict": "PENDING"
+  "mergedMainStrict": {
+    "source": "cd432f4296af8cfd724cc7da5ffd7e9754bb05c0",
+    "result": "PASS",
+    "seconds": 452,
+    "tasks": 1024,
+    "allTasksExecuted": true,
+    "forcedRerun": true,
+    "formatterSeconds": 15
+  }
 }
