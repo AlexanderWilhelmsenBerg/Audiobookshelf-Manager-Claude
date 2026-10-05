@@ -27,7 +27,7 @@ Requirement LIB-002/AUTH-002, PD-006, spec17.2/21; U-06 selection/count subcases
 | U-06-03 cancelled drag, rapid left/right and repeated tabs | Final Books selection and222books caption agree. | Selected sequences PASS |
 | U-06-01/02 forward/backward axes and Genres overspill | Books222, Series48, Authors41, Genres44; selected destination matches each caption; final Books restored. | PASS after correcting driver encoding |
 | Upgrade retention | All11 table counts and10 non-profile hashes unchanged;55 progress/124History/two downloaded books retain exact hashes. Profile differences are solely lastUsedAt. Settings remain428bytes with original SHA. | PASS for paused upgrade |
-| U-06 pill smoothness/manual newer intent | Owner asked to assess normal swipe, reversal and swipe→Books tap on the prepared phone. | Awaiting explicit owner finding |
+| U-06 pill smoothness/manual newer intent | Owner asked to assess normal swipe, reversal and swipe→Books tap on the prepared phone. | PASS: owner reports smooth pill and correct final highlight |
 
 The generated walk driver initially misread UTF8 Norwegian “Books” as mojibake and failed its
 final caption argument while actual Books was selected. The original failure log is retained;

@@ -79,4 +79,4 @@ as a new blocker for every unrelated slice. Explicit slice obligations must not 
 APK2192 (`4f2edb36`) now passes five100ms fling→newer Books tap repeats, selected cancelled/rapid
 sequences and the all-axis walk. Its in-place upgrade retains progress/History/downloads/settings.
 See [exact signed evidence and driver corrections](2026-10-05-phone-2192-gestures.md).
-The owner animation observation is pending; remaining physical obligations above are unchanged.
+The owner animation observation passes; remaining physical obligations above are unchanged.

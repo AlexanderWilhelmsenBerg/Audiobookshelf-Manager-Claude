@@ -27,3 +27,17 @@ visual subset, without accepting coauthor/multi-membership/privacy/TalkBack or o
 The combined fast-tap correction `4f2edb36` passes strict local verifyDebug (3m16s,1,022 tasks).
 Its [signed APK workflow](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37277738486)
 passed CI; that source is not yet installed or physically accepted by the above APK2191 findings.
+
+
+## Corrected APK2192 owner gesture result and next test
+
+Exact2192 identity/source/signing evidence is in the [gesture delivery report](2026-10-05-phone-2192-gestures.md).
+Owner PASS for U-06-01/03 visual/manual subset: “Pass — smooth pill and correct final highlight.”
+This covers normal Books/Series swipes, quick reversal and newer Books tap during settlement.
+
+Current pending test is heard playback continuity on APK2192, prepared07:50:20UTC. Owner plays
+the current book and navigates Books → Series → Authors → Author detail → Back → Genres → Books
+for approximately one minute, then pauses. Expected: same book with no audible gap/restart/skip.
+Speaker/headphone result must be explicit. This intentionally advances listening progress normally;
+the pre-test baseline is captured privately. Phone automation is paused until the finding arrives.
+No two-hour/headset-control/car/offline or whole-playback matrix acceptance is inferred.
