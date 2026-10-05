@@ -120,3 +120,13 @@ Original display/network/locale settings were read back again after this retry. 
 `com.example.shelfplayer.benchmark.browsecapture` helper was uninstalled and its device temporary files
 removed. BookWave remains installed and paused. No complete TalkBack, profile/permission, theme,
 process-death restoration or broad release acceptance is claimed; pending portions remain open.
+
+
+## 2026-10-05 acceptance correction
+
+The later API36 phone run reproduces a 100ms fling followed immediately by a newer Books tap
+overwritten by Series on APK2189 and APK2191. Prior PASS rows retain their narrower recorded scope.
+The new four-case rendered selection guard passes; actual HomeScreen source reversion fails only
+the unfinished-fling test, and restoring the correction passes strict verifyDebug. Corrected signed
+phone acceptance is pending. See the [current merge test plan](2026-10-05-pr-merge-test-plan.md)
+for selected later results and every remaining physical requirement.
