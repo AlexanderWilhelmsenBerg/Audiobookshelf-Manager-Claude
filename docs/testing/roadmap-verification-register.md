@@ -17,13 +17,30 @@ unrelated privileged-write contract change.
 
 ## Current candidate obligations
 
-- Main includes PR #226's documentation only. PR #230 remains draft; its browse case rows below use APK2181 evidence.
-- Draft PR #231 has [PERF-01â€“10](2026-10-04-card-blur-sampling.md): software/source-labelled artifacts pass;
-  all candidate phone timing/quality/upgrade/accessibility obligations remain NOT RUN.
-- Draft PR #232 has [DC-P01â€“13 and PP-P01â€“06](2026-10-04-download-verification-cancellation.md):
-  ordinary APK2184 Pause/relaunch/discard/Resume and exact-size verification pass; controlled cases remain open.
-- New main APK identity/packaging and checks belong to the [reconciliation report](../reviews/2026-10-04-documentation-reconciliation.md).
-  No physical case was rerun for this docs-only merge. Historical build results are never promoted to this APK.
+The [2026-10-05 merge test plan](2026-10-05-pr-merge-test-plan.md) is the current supplement for
+PRs #230/#231/#232/#234/#235. It records selected later results without promoting earlier builds
+to final-main acceptance. Main through #233 contains documentation reconciliation; runtime PRs
+remain drafts. Existing dated rows below retain their original evidence scope.
+
+- #230: 100ms fling → newer Books tap FAIL on APK2189/2191. `cf8db633` fixes the request ordering;
+  four rendered cases, actual production-source reversion and strict verifyDebug pass. New signed
+  phone acceptance is pending. Selected English/Norwegian counts/search and cached offline checks pass.
+- #231: 40 alternating benchmark executions are complete with measured improvement; every CPU P95
+  still exceeds 16.7ms. Visual quality, playback, accessibility, old APIs and startup/memory remain open.
+- #232: ordinary APK2184 Pause/relaunch/discard/Resume and size verification retain their narrow PASS.
+  Controlled verifier-phase/response/race/storage/credential/notification/accessibility cases remain open.
+- #234: 19 author guards; selected mixed/standalone/completed/offline routes pass. APK2189 scroll
+  return FAIL is corrected in `0c8fb994` and repeated successfully on signed APK2191. Remaining
+  U-08 privacy, restoration, configuration, actual TalkBack and heard playback are NOT RUN.
+- #235: selected isolated synthetic Sign-in Back/large-text/delayed-login cancellation/process-death
+  checks pass on `2d567b17`; remaining successful Add/reauth, recreation, predictive/IME, configuration
+  and actual TalkBack cases are NOT RUN. Current corrected-parent strict/CI source is `5dac7e17`.
+- API36 datastore/Keystore: 27/27 PASS on combined `2d567b17`. Signed upgrades preserve progress,
+  History and downloads; active profile lastUsedAt changes. No active-playback upgrade acceptance.
+
+Human checks pause the phone automation. Each answer is recorded with case, source/APK and findings;
+unanswered/preselected options are not results. The first completed Author-card check on APK2191
+is awaiting the owner's observation. The corrected combined source `4f2edb36` is building separately.
 
 ## Record a result for every case
 
@@ -216,7 +233,7 @@ established. Remaining UI/security/server/manual-performance matrices and final-
 | U-05 | WebView/provider/version, opaque background, reduced motion, standalone/Haze isolation. | Reproduce #190 on an affected device before selecting a permanent mitigation; record provider and each matrix result. |
 | U-06 | Gesture navigation — #227. | Implemented on the browse branch; see the dated browse delivery report for scoped source/render/phone results and missing acceptance. |
 | U-07 | Browse counts — #228. | Implemented on the browse branch; see the dated browse delivery report for scoped source/render/phone results and missing acceptance. |
-| U-08 | Author details — #229. | Draft implementation with automated/caller/native-render evidence in [author log](2026-10-04-author-details.md), plus [pending-query/key correction](2026-10-05-author-observation.md). Physical U-08-01–07 all NOT RUN; issue stays open. |
+| U-08 | Author details — #229. | Draft implementation with automated/caller/native-render evidence in [author log](2026-10-04-author-details.md), plus [pending-query/key correction](2026-10-05-author-observation.md). Selected later phone subcases and remaining U-08 obligations are in the [current merge plan](2026-10-05-pr-merge-test-plan.md); issue stays open. |
 | Q-01 | Existing-install upgrade, About identity/version, stored profiles/passcode/progress/downloads and Loopbound bundle. | APK signer/version allow an in-place upgrade; data survives; About and artifact describe actual bytes/source. 2178 installed bytes and 2177→2178 in-place upgrade/data retention passed in the linked continuation; repeat against the new signed APK. Earlier About/Loopbound first-page results retain their original build scope. |
 | Q-02 | Auth expiry/reauthentication, locked profiles, app-switcher privacy and controller/exported-command boundaries. | Offline data/passcode survive ordinary reauth; unauthorised controllers cannot browse/clear privileged state; no secrets/private metadata in shared logs. AUTH-002/003/004, section 5.2. |
 | Q-03 | Selected Audiobookshelf versions: local/remote progress/history, server compatibility and offline sync. | Fixture-backed endpoints match live selected versions; missing fields/capabilities fail compatibly, with no invented endpoints or ignored TLS checks. |

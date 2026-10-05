@@ -1,0 +1,138 @@
+{
+  "device": "SM-S928B",
+  "api": 36,
+  "date": "2026-10-05",
+  "fixtureBooks": 2000,
+  "coversPresent": false,
+  "charging": true,
+  "rounds": [
+    {
+      "round": "control-a",
+      "source": "69d0a3cad45ed75e200e488c344cf0a82ff5524d",
+      "iterations": 10,
+      "thermalThrottleSleepSeconds": 0,
+      "cpuLocked": false,
+      "rawJsonSha256": "4a3a8b2f8b2a8f1506cd02bdc2725e0bb8c1b78ab19f72397be735b146f96a45",
+      "metrics": {
+        "frameDurationCpuMs": {
+          "P50": 14.000625,
+          "P90": 18.6950308,
+          "P95": 20.8935206,
+          "P99": 29.3158192
+        },
+        "frameOverrunMs": {
+          "P50": 2.952138,
+          "P90": 7.776476600000001,
+          "P95": 9.910089599999989,
+          "P99": 17.65067
+        }
+      },
+      "frames": 5633,
+      "cpuFramesOver16_7ms": 1105,
+      "framesWithPositiveOverrun": 4888,
+      "cpuP95BudgetPassed": false
+    },
+    {
+      "round": "candidate-a",
+      "source": "a70bfdf7e7690270c03ef553f722a2ec4c56eeb6",
+      "iterations": 10,
+      "thermalThrottleSleepSeconds": 0,
+      "cpuLocked": false,
+      "rawJsonSha256": "4ec7c0920121b40eded417d4d470b3f069d16813d4743007afce6e65b7ac2e72",
+      "metrics": {
+        "frameDurationCpuMs": {
+          "P50": 13.621354,
+          "P90": 17.524531399999997,
+          "P95": 19.0265313,
+          "P99": 25.0319795
+        },
+        "frameOverrunMs": {
+          "P50": 1.322071,
+          "P90": 5.591465999999999,
+          "P95": 8.221556099999948,
+          "P99": 13.29586101999999
+        }
+      },
+      "frames": 5739,
+      "cpuFramesOver16_7ms": 782,
+      "framesWithPositiveOverrun": 4106,
+      "cpuP95BudgetPassed": false,
+      "startTemperatureTenthsC": 291,
+      "startBatteryPercent": 53,
+      "endTemperatureTenthsC": 303,
+      "endBatteryPercent": 53
+    },
+    {
+      "round": "control-b",
+      "source": "69d0a3cad45ed75e200e488c344cf0a82ff5524d",
+      "iterations": 10,
+      "thermalThrottleSleepSeconds": 0,
+      "cpuLocked": false,
+      "rawJsonSha256": "fe3ebb003c3708fc71b5a68a34c2ba79dd13a987e40c5524cbe14ee286d9c413",
+      "metrics": {
+        "frameDurationCpuMs": {
+          "P50": 14.3118485,
+          "P90": 18.7475,
+          "P95": 20.20502625,
+          "P99": 28.536856800000017
+        },
+        "frameOverrunMs": {
+          "P50": 3.3352304999999998,
+          "P90": 7.8492935,
+          "P95": 9.435097249999998,
+          "P99": 17.60804755000004
+        }
+      },
+      "frames": 5616,
+      "cpuFramesOver16_7ms": 1372,
+      "framesWithPositiveOverrun": 5076,
+      "cpuP95BudgetPassed": false,
+      "startTemperatureTenthsC": 301,
+      "startBatteryPercent": 53,
+      "endTemperatureTenthsC": 307,
+      "endBatteryPercent": 54
+    },
+    {
+      "round": "candidate-b",
+      "source": "a70bfdf7e7690270c03ef553f722a2ec4c56eeb6",
+      "iterations": 10,
+      "thermalThrottleSleepSeconds": 0,
+      "cpuLocked": false,
+      "rawJsonSha256": "2c4b87ff905fa634bd4470d829e7e2687ddc9e8734c4f781e6b853d254d356b4",
+      "metrics": {
+        "frameDurationCpuMs": {
+          "P50": 13.802552,
+          "P90": 17.348313000000005,
+          "P95": 18.831905999999996,
+          "P99": 26.069093679999977
+        },
+        "frameOverrunMs": {
+          "P50": 1.508912,
+          "P90": 5.246560200000001,
+          "P95": 6.801430399999996,
+          "P99": 13.738219799999866
+        }
+      },
+      "frames": 5757,
+      "cpuFramesOver16_7ms": 756,
+      "framesWithPositiveOverrun": 4501,
+      "cpuP95BudgetPassed": false,
+      "startTemperatureTenthsC": 306,
+      "startBatteryPercent": 55,
+      "endTemperatureTenthsC": 311,
+      "endBatteryPercent": 55
+    }
+  ],
+  "pairedChanges": [
+    {
+      "pair": "a",
+      "cpuP95PercentChange": -8.935733406269508,
+      "overrunP95PercentChange": -17.03852909664957
+    },
+    {
+      "pair": "b",
+      "cpuP95PercentChange": -6.795934006767268,
+      "overrunP95PercentChange": -27.91351037743679
+    }
+  ]
+}
