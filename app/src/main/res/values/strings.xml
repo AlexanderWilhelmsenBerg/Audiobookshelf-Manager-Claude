@@ -195,6 +195,9 @@
       PRODUCT_SPEC §62 "author view" — one author opened into their books, reached from a book's own
       author line. Mirrors the series screen above, because the two lines sit next to each other.
     -->
+    <string name="author_series_section">Series</string>
+    <string name="author_standalone_section">Standalone books</string>
+    <string name="author_completion_unverified">Completion not verified</string>
     <string name="author_title">Author</string>
     <plurals name="author_progress">
         <item quantity="one">%1$d of %2$d book finished</item>

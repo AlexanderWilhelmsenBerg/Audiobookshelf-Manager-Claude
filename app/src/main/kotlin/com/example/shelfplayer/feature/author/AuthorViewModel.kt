@@ -26,7 +26,7 @@ class AuthorViewModel @Inject constructor(savedStateHandle: SavedStateHandle, ob
     )
 
     val uiState: StateFlow<AuthorUiState> = observeAuthor(authorId)
-        .map { shelf -> AuthorUiState(shelf = shelf, isLoading = false) }
+        .map { observed -> AuthorUiState(shelf = observed.shelf, isLoading = observed.isLoading) }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),

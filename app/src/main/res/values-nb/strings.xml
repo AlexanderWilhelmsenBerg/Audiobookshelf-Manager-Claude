@@ -169,6 +169,9 @@
     <string name="series_continue">Fortsett med %1$s</string>
     <string name="book_play_named">Spill %1$s</string>
     <string name="series_loading">Laster serier</string>
+    <string name="author_series_section">Serier</string>
+    <string name="author_standalone_section">Frittstående bøker</string>
+    <string name="author_completion_unverified">Fullføring er ikke bekreftet</string>
     <string name="author_title">Forfatter</string>
     <plurals name="author_progress">
         <item quantity="one">%1$d av %2$d bok fullf\u00f8rt</item>

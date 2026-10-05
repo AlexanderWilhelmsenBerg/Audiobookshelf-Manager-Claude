@@ -475,8 +475,8 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
-     * PRODUCT_SPEC LIB-002 — opening an author or a genre narrows the book list rather than pushing a
-     * screen, so the search field, the sort chips and the filter chips keep working inside it.
+     * PRODUCT_SPEC LIB-002 — genre cards narrow Home while preserving its search, sort and filters.
+     * Legacy saved author focus remains readable; new author taps push the shared author destination.
      */
     fun onGroupSelected(group: BookGroup) {
         controls.update {

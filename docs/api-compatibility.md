@@ -26,6 +26,21 @@ states use the durable manifest; active states retain live execution progress. N
 Room schema, permission or additional tested server version changes. The same download test log records
 its caller guards and separate source-matched physical acceptance.
 
+The draft #229 author-details implementation reads existing profile-authorized Room catalogue/progress
+and sync status. Author navigation, Series/Standalone grouping, local completion rendering and clearing
+on profile change add no endpoint, response field, fixture, schema or permission. No new server version
+is verified; [the author log](testing/2026-10-04-author-details.md) distinguishes synthetic fixtures/native
+renders from the pending physical/offline/permission checks.
+
+The 2026-10-05 author observation/key correction changes only the internal domain Flow/ViewModel loading
+handoff and lazy-list keys. Existing authorized Room queries, sync status, APIs, schema, permissions and
+server fixtures remain unchanged. [Caller regression evidence](testing/2026-10-05-author-observation.md)
+is separate from pending phone acceptance; no additional tested server version is claimed.
+
+The phone-discovered author scroll correction retains local Compose list state through a pending query.
+It changes no authorized catalogue read, server response, endpoint, schema or permission; source-specific
+phone failure and reacceptance are recorded in [the correction log](testing/2026-10-05-author-observation.md).
+
 ## Server versions tested
 
 The 2026-10-03 series/history/sleep revision changes local presentation and playback policy only. Rolling

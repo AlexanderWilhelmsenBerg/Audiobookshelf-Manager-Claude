@@ -41,7 +41,7 @@ object ShelfDestinations {
     const val EDIT_METADATA = "book/{bookId}/metadata"
     const val SERIES = "series/{seriesId}"
 
-    /** PRODUCT_SPEC §62 "author view" — one author's books, reached from a book's own author line. */
+    /** PRODUCT_SPEC §62 "author view" — shared grouped author destination reached from Home or Book details. */
     const val AUTHOR = "author/{authorId}"
 
     const val ARG_BOOK_ID = "bookId"
