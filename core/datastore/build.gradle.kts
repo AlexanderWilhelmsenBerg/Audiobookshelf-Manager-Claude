@@ -27,8 +27,8 @@ dependencies {
     testImplementation(libs.robolectric)
 
     /*
-     * PRODUCT_SPEC 17.2 / AUTH-005 — the instrumented tier, and the one place in this repository that
-     * has a reason to exist.
+     * PRODUCT_SPEC 17.2 / AUTH-005 — the instrumented Keystore tier. The downloads module separately
+     * exercises native media parsing; this tier owns lock storage.
      *
      * Robolectric has no `AndroidKeyStore` provider, so `KeystoreLockCipher` and everything built on it
      * — which is the whole profile lock's storage — is unreachable from the JVM suite. `docs/risks.md`

@@ -25,7 +25,9 @@ import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -267,6 +269,92 @@ class FileDownloaderTest {
 
         assertTrue(job.isCancelled)
         assertEquals(300L, storedFile().downloadedBytes)
+    }
+
+    /** DL-001/002: a synchronous container check can finish after its worker is cancelled. */
+    @Test
+    fun `cancellation during verification keeps a fresh file partial and checkpoints its response`() = runTest {
+        assertVerificationCancellation(replacement = false, unsatisfiedRange = false)
+    }
+
+    @Test
+    fun `cancellation during verification checkpoints a smaller declined range replacement`() = runTest {
+        assertVerificationCancellation(replacement = true, unsatisfiedRange = false)
+    }
+
+    @Test
+    fun `cancellation while verifying a complete unsatisfied range part does not commit it`() = runTest {
+        assertVerificationCancellation(replacement = false, unsatisfiedRange = true)
+    }
+
+    @Test
+    fun `cancellation while verifying an invalid unsatisfied range part does not clear it`() = runTest {
+        assertVerificationCancellation(replacement = false, unsatisfiedRange = true, readable = false)
+    }
+
+    @Test
+    fun `cancellation during verification with an unavailable owner preserves the old checkpoint`() = runTest {
+        assertVerificationCancellation(replacement = true, unsatisfiedRange = false, available = false)
+    }
+
+    private suspend fun assertVerificationCancellation(
+        replacement: Boolean,
+        unsatisfiedRange: Boolean,
+        readable: Boolean = true,
+        available: Boolean = true,
+    ) = coroutineScope {
+        val file = queuedFile(eTag = if (replacement || unsatisfiedRange) "\"v1\"" else null)
+            .copy(expectedBytes = 1_000, downloadedBytes = if (replacement) 1_000 else 0)
+        if (replacement) part().writeBytes(ByteArray(1_000))
+        if (unsatisfiedRange) part().writeBytes(ByteArray(300))
+        repository.updateFile(SERVER, BOOK, file)
+        repository.markPaused(SERVER, BOOK)
+        val siblingPart = storage.partFor(SERVER.value, BOOK.value, "finished-sibling", "audio/mpeg")
+        val sibling = storage.finalFor(siblingPart).apply { writeText("committed sibling") }
+        verifier.isReadable = readable
+        api.body = ByteArray(300)
+        api.eTag = if (unsatisfiedRange) "\"v1\"" else "\"v2\""
+        api.rangeNotSatisfiableOnce = unsatisfiedRange
+        api.rangeNotSatisfiableTotalBytes = 300
+        api.rangeNotSatisfiableETag = "\"v1\""
+
+        val job = launch {
+            val owner = checkNotNull(currentCoroutineContext()[Job])
+            verifier.onRead = {
+                ownerAvailable = available
+                owner.cancel()
+            }
+            download(file)
+        }
+        job.join()
+
+        assertTrue(job.isCancelled)
+        assertFalse(committed().exists(), "a cancelled verification must never rename the part")
+        assertTrue(part().exists(), "Pause keeps the verified bytes for a later attempt")
+        assertEquals(300L, part().length())
+        assertEquals(1, api.requests.size, "cancelled validation must not start a replacement request")
+        val book = assertNotNull(repository.observe(SERVER, BOOK).first())
+        assertEquals(DownloadState.Paused, book.state)
+        val checkpoint = book.files.single()
+        assertEquals(if (available) 300L else file.downloadedBytes, checkpoint.downloadedBytes)
+        assertEquals(if (available) 300L else file.expectedBytes, checkpoint.expectedBytes)
+        assertEquals(if (available) api.eTag else file.eTag, checkpoint.eTag)
+        assertEquals(DownloadState.Queued, checkpoint.state)
+        assertEquals("committed sibling", sibling.readText())
+
+        // A later worker must still take the ordinary validator-guarded resume/verification path.
+        verifier.onRead = {}
+        verifier.isReadable = true
+        ownerAvailable = true
+        api.wasResumed = available
+        api.body = if (available) "tail".toByteArray() else ByteArray(304)
+        api.totalBytes = 304
+        val resumed = assertNotNull(download(checkpoint).getOrNull())
+        assertEquals(300L, api.lastResumeFrom)
+        assertEquals(checkpoint.eTag, api.lastValidator)
+        assertEquals(DownloadState.Complete, resumed.state)
+        assertEquals(304L, committed().length())
+        assertFalse(part().exists())
     }
 
     @Test
@@ -730,7 +818,12 @@ class FileDownloaderTest {
     private class FakeVerifier : MediaContainerVerifier {
         var isReadable: Boolean = true
 
-        override fun isReadable(file: File): Boolean = isReadable
+        var onRead: () -> Unit = {}
+
+        override fun isReadable(file: File): Boolean {
+            onRead()
+            return isReadable
+        }
     }
 
     private companion object {

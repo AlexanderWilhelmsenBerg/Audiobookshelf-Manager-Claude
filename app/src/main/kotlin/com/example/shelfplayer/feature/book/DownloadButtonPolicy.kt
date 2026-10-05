@@ -25,7 +25,7 @@ import com.example.shelfplayer.domain.download.isInFlight
  *     [DownloadRecoveryPolicy] the Downloads rows use. A durable `Paused` beats stale evidence, and a
  *     manifest that says `Failed` while WorkManager is backing off to retry is truthfully *downloading*.
  *
- * Progress is the live WorkManager snapshot when there is one and the manifest's own byte count otherwise.
+ * In-flight progress uses the live WorkManager snapshot; stopped states use the durable checkpoint.
  * The percent is the in-flight one, which never reads 100 before the Downloaded state takes over.
  */
 internal fun downloadButtonStateOf(
@@ -54,7 +54,12 @@ private fun activeStateOf(offline: OfflineBook, execution: DownloadExecutionSnap
         safeFailureSummary = offline.failureSummary,
         executionEvidence = execution?.evidence,
     ).state
-    val progress = execution?.progress ?: offline.durableDownloadProgress()
+    // A stopped worker's last progress can precede the final cancellation checkpoint.
+    val progress = if (recovery.isInFlight) {
+        execution?.progress ?: offline.durableDownloadProgress()
+    } else {
+        offline.durableDownloadProgress()
+    }
     return when {
         recovery == DownloadRecoveryState.Paused ->
             DownloadButtonState.Paused(progress = progress.fractionOrNull(), percent = progress.inFlightPercent)

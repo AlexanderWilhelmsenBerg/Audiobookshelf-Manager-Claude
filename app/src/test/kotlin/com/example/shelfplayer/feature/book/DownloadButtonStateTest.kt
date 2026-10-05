@@ -97,6 +97,24 @@ class DownloadButtonStateTest {
     }
 
     @Test
+    fun `paused checkpoint outranks older execution percent even before cancellation settles`() {
+        listOf(
+            DownloadExecutionEvidence.Running,
+            DownloadExecutionEvidence.Cancelled,
+            DownloadExecutionEvidence.Finished,
+        )
+            .forEach { evidence ->
+                val state = downloadButtonStateOf(
+                    offline = offlineBook(DownloadState.Paused),
+                    profileId = ADA,
+                    execution = snapshot(evidence, DownloadProgress(287, 1_024, 0.28f)),
+                )
+
+                assertEquals(DownloadButtonState.Paused(progress = 0.5f, percent = 50), state, "$evidence")
+            }
+    }
+
+    @Test
     fun `a paused download shown while a tap is pending reads as starting`() {
         val paused = downloadButtonStateOf(offlineBook(DownloadState.Paused), ADA, execution = null)
 

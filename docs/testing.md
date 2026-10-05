@@ -1,7 +1,7 @@
 # Testing
 
 **Classification:** Current testing contract; dated reports retain their original build scope.
-**Reconciled:** 2026-10-04 against main, the verification register and draft delivery reports.
+**Reconciled:** 2026-10-05, including the native downloads continuation and its exact scope.
 
 `PRODUCT_SPEC.md` section 17 defines the pyramid, device matrix, and thresholds. This file records the
 current tiers and how to run them; a green JVM gate is not evidence for an absent hardware tier.
@@ -22,15 +22,17 @@ With an authorized physical device or emulator:
 
 ```bash
 ./gradlew :core:datastore:connectedDebugAndroidTest
+./gradlew :data:downloads:connectedDebugAndroidTest
 ```
 
 The first physical run completed on 2026-08-23 against a Samsung SM-S928B running Android 16: **27 tests,
 0 failures, 0 errors, 0 skipped**. `KeystoreLockCipherTest` and `ProfilePasscodeStoreTest` exercise the real
 AndroidKeyStore wrap, staged lock-record write, tamper/deleted-key handling, and encrypted rate limit. The
 test APK has a different package/UID from the installed app, so it cannot erase the user's BookWave records.
-This tier never runs in CI and no other module currently has an `androidTest` source set.
+Both connected tiers run only with a device and never in CI. The downloads module adds three
+native parser/Room/file cancellation guards; see the [exact scope and regression proof](testing/2026-10-05-native-download-cancellation.md).
 
-### The manual tier
+### Phone acceptance
 
 The [reliability checklist](testing/reliability-acceptance.md) covers the current car, profile and download
 follow-ups. It distinguishes merged implementation from pending device acceptance and links the combined
