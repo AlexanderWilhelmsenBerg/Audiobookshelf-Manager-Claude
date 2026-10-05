@@ -74,3 +74,11 @@ Implementation source: `012291ff` (the PR head may include documentation-only cl
 ## 2026-10-05 corrected parent integration
 
 Rebased onto the verified author observation/key correction and History timestamp test repair. Restored strict verifyDebug with warnings as errors passes in 2m52s (1,022 tasks). The author and Sign-in slices now contain 24 added cases. Current phone focus is existing PR acceptance; U-03 physical cases remain pending until the exact combined build is installed. Original implementation/artifact evidence above remains historical.
+
+
+## 2026-10-05 physical continuation
+
+Selected successful Add/reauth, post-success Back, keyboard-first Back and credential drafts through
+font1.3/rotation now PASS on the isolated `2d567b17` artifact. Its Sign-in runtime matches signed
+owner2192; other runtime acceptance is not transferred. See the [exact phone success log](2026-10-05-signin-phone-success.md)
+for preserved setup failures, remaining matrix and pending owner predictive-Back observation.

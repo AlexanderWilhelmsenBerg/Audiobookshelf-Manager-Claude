@@ -62,3 +62,11 @@ is complete. Further manual TalkBack procedures are excluded from this session a
 request; unperformed Author/Sign-in-specific speech cases are not falsely recorded as executed.
 Automated accessibility semantics and large-text verification continue. TalkBack is restored off,
 as before the test, without changing other enabled accessibility services.
+
+
+## Next owner check: Sign-in predictive Back
+
+Prepared10:33:36UTC on the isolated local test app (`2d567b17`, code2000), not owner APK2192:
+Profiles → Add Profile → Address. Cancelled edge Back should stay on Sign-in; completed Back should
+return Profiles. Awaiting explicit owner finding; phone automation is paused for this observation.
+Automatic success/configuration results are in the [Sign-in phone log](2026-10-05-signin-phone-success.md).

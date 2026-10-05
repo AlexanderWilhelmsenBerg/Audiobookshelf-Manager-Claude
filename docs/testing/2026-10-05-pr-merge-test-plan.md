@@ -80,3 +80,11 @@ APK2192 (`4f2edb36`) now passes five100ms fling→newer Books tap repeats, selec
 sequences and the all-axis walk. Its in-place upgrade retains progress/History/downloads/settings.
 See [exact signed evidence and driver corrections](2026-10-05-phone-2192-gestures.md).
 The owner animation observation passes; remaining physical obligations above are unchanged.
+
+
+## 2026-10-05 physical continuation
+
+Selected successful Add/reauth, post-success Back, keyboard-first Back and credential drafts through
+font1.3/rotation now PASS on the isolated `2d567b17` artifact. Its Sign-in runtime matches signed
+owner2192; other runtime acceptance is not transferred. See the [exact phone success log](2026-10-05-signin-phone-success.md)
+for preserved setup failures, remaining matrix and pending owner predictive-Back observation.
