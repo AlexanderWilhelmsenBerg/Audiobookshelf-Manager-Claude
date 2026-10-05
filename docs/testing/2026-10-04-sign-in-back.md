@@ -70,3 +70,7 @@ CI and signed APK identity will be recorded on the draft PR. Physical U-03-01–
 #176 remains open. No authentication/password/profile policy change or device acceptance is claimed.
 
 Implementation source: `012291ff` (the PR head may include documentation-only closeout commits).
+
+## 2026-10-05 corrected parent integration
+
+Rebased onto the verified author observation/key correction and History timestamp test repair. Restored strict verifyDebug with warnings as errors passes in 2m52s (1,022 tasks). The author and Sign-in slices now contain 24 added cases. Current phone focus is existing PR acceptance; U-03 physical cases remain pending until the exact combined build is installed. Original implementation/artifact evidence above remains historical.
