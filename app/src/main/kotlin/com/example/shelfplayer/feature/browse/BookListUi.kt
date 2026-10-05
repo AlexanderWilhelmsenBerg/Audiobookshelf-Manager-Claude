@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -39,15 +40,9 @@ import kotlin.time.Duration
  * composable. Two copies would drift, and the first thing to drift would be the progress line — the
  * part a user checks against what they were actually listening to.
  *
- * The cover runs the **full height of the card**, flush to its left edge, against a fixed [ROW_HEIGHT].
- *
- * Fixed rather than measured from the text. Intrinsic height made a row's height depend on how long its
- * title was and on whether it had an author and a series at all, so a list of them was visibly ragged
- * and the covers came out at different sizes down the page. Every row is now identical: two lines of
- * title whether or not the title needs them, one line of author whether or not there is one.
- *
- * A book with no cover still gets the box, so the text column starts in the same place on every row —
- * a list where some rows indent and some do not is harder to scan than one with a few empty squares.
+ * Rows keep a minimum height but grow with their metadata, including wrapped series/progress and
+ * large fonts. The cover keeps a bounded square rather than taking space away from the text as a row
+ * grows. Missing cover artwork retains the same geometry.
  */
 @Composable
 internal fun BookCard(
@@ -59,7 +54,7 @@ internal fun BookCard(
      *
      * Defaults to the first, which is all a general shelf can know. A scoped caller can select a
      * membership: a book can be third in one series and first in another. Series detail now uses
-     * its own adaptive SeriesBookCard rather than this fixed-height general browsing row.
+     * its own compact SeriesBookCard rather than this general browsing row.
      */
     membership: SeriesMembership? = book.seriesMemberships.firstOrNull(),
     /**
@@ -77,16 +72,11 @@ internal fun BookCard(
     // their default. See docs/testing/2026-10-04-card-blur-sampling.md.
     GlassCard(onClick = onClick, modifier = modifier.fillMaxWidth(), scaleBlurInput = true) {
         Row(
-            // A **fixed** height rather than `IntrinsicSize.Min`.
-            //
-            // Intrinsic height measured the text column, so a card's height depended on how many lines
-            // its title took and on whether it had an author and a series at all — which made a list of
-            // them visibly ragged, with the covers at different sizes down the page. Fixing the height
-            // makes every row identical and gives the cover a definite box to fill.
-            modifier = Modifier.height(ROW_HEIGHT),
+            // LIB-002/004, spec2.10: the last metadata line must have room to wrap and draw.
+            modifier = Modifier.heightIn(min = ROW_MIN_HEIGHT),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            BookCoverThumbnail(book = book, modifier = Modifier.coverPadding())
+            BookCoverThumbnail(book = book, modifier = Modifier.coverPadding().height(ROW_MIN_HEIGHT))
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -188,14 +178,8 @@ internal fun Duration.readable(): String {
 
 private const val MINUTES_PER_HOUR = 60
 
-/**
- * Every row in the flat list, whatever its book.
- *
- * Enough for a two-line title, a line of author, a line of series and the progress bar at the
- * type scale the card uses. Fixed rather than measured, which is the only way a list of them is
- * uniform — see `BookCard`.
- */
-private val ROW_HEIGHT = 132.dp
+/** Baseline density; metadata may require a taller row. The cover remains this bounded size. */
+private val ROW_MIN_HEIGHT = 132.dp
 
 /** Two lines, always. */
 private const val TITLE_LINES = 2

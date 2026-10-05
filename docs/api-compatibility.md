@@ -1696,3 +1696,11 @@ authoritative. See the [security review](reviews/2026-10-04-security-coverage.md
 ## Android performance acceptance — 2026-10-04
 
 The [2179 phone continuation](testing/2026-10-04-phone-2179.md) physically verifies Benchmark1.5.0 on API36 and records startup/frame/memory measurements. An app-profile experiment remains outside production after failing to establish benefit. No server endpoint, response, supported-version range, Room schema, permission or credential-format changes; existing fixture-backed API compatibility remains authoritative.
+
+
+## General book-row height correction — 2026-10-05
+
+The [metadata correction](testing/2026-10-05-book-row-metadata.md) changes presentation constraints
+only. No server endpoint/field, supported version, Room schema, dependency, permission or credential
+format changes; captured contracts remain authoritative. Four native-render height/bounds guards
+pass with actual-source reversion proof. Fixed APK acceptance is logged separately and pending.

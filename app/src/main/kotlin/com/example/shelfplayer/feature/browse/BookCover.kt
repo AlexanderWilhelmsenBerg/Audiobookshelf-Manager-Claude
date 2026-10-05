@@ -65,10 +65,8 @@ internal fun BookCover(book: Book, modifier: Modifier = Modifier, aspect: Float 
 /**
  * A cover for a list row, sized to the full height of the row beside it.
  *
- * The caller has to give the row `Modifier.height(IntrinsicSize.Min)`, which is what lets
- * `fillMaxHeight` mean "as tall as the text column" rather than "as tall as the screen". The square
- * then follows from the height, so a row with a two-line title gets a larger cover than one with a
- * single line and neither has to be told a number.
+ * The caller supplies a bounded height. The thumbnail fills that box, and its aspect ratio keeps
+ * it square; expanding metadata must not expand the cover and compress the text column.
  *
  * Square-cornered, unlike [BookCover]'s default: this one sits flush against the left edge of a card
  * that is already rounding its own corners, and a rounded rectangle inside a rounded rectangle reads
