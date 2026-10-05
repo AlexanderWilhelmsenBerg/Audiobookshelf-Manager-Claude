@@ -1,0 +1,20 @@
+{
+  "source": "eedcbd1ed44d7fcc2f5be594c76d74a45758e6f2",
+  "combinedRenderedTests": 6,
+  "failures": 0,
+  "seconds": 66,
+  "tasks": 235,
+  "images": [
+    {
+      "name": "flat-book-en-375dp.png",
+      "sha256": "c6bf6af8f4ed7073f4228e28155891336cb0f70b54972e653b5d872b56d832c9",
+      "bytes": 28427
+    },
+    {
+      "name": "flat-book-nb-375dp-font2.png",
+      "sha256": "d07859468169dde0f98449291193ddd902b93a7504ec32c970571f31a55ca5ae",
+      "bytes": 38656
+    }
+  ],
+  "scope": "Synthetic native fixture geometry/semantics only. Robolectric fallback colors differ from real device; not blur/contrast quality acceptance. No owner catalogue in fixtures."
+}
