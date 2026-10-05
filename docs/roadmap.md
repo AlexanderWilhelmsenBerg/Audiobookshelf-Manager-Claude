@@ -1,6 +1,6 @@
 # BookWave Android roadmap
 
-**Classification:** Active plan — canonical sequencing authority.
+**Classification:** Active plan â€” canonical sequencing authority.
 **Reconciled:** 2026-10-05 against GitHub main `9ced43ae` (merged through PR #233),
 all open PRs/issues, current build source and dated phone/performance evidence.
 PRs #226/#233's planning/documentation reconciliations are merged. Runtime PRs #230/#231/#232/#234/#235 remain drafts with acceptance gaps.
@@ -19,7 +19,7 @@ Open issues can contain merged implementation and missing acceptance; this recon
 | --- | --- | --- |
 | Series, History and sleep | PRs #220/#222: compact, content-driven series rows; inward green completion glow without a checkmark; dated/progress/chapter History and local rolling checkpoints; playing-only timer creation, frozen countdown during pauses, Extra high/Ultra high sensitivity. | #187 covers other card families too. Full appearance/TalkBack, sensor/bedside, power-loss and account/sync matrices are not accepted by the selected phone checks. |
 | Playback and car continuity | PRs #205/#211/#213/#216/#217: guarded restore/profile/transport ownership, correct book title and car timer presentation, schedule eligibility and projection lifecycle latch. | Heard headset/projected car, idle restore, controller/privacy and two-hour acceptance. Historical Forgejo issue #36 is GitHub #128; its source regression is fixed, its hardware gate is open. |
-| Downloads | Existing execution observer, recovery actions, claims/device pin and discard flow; PRs #207/#209/#215/#218/#221 add UI wiring, current-claim credentials and actual replacement-byte checkpointing. #111 is closed. | Physical transfers, storage, sharing/privacy and R-119–R-123. Closed ownership implementation does not accept its device matrix. |
+| Downloads | Existing execution observer, recovery actions, claims/device pin and discard flow; PRs #207/#209/#215/#218/#221 add UI wiring, current-claim credentials and actual replacement-byte checkpointing. #111 is closed. | Physical transfers, storage, sharing/privacy and R-119â€“R-123. Closed ownership implementation does not accept its device matrix. |
 | CI and security | Main cache seeding, verification tiers, debug aggregate coverage, release/security checks and the existing 90% redaction gate are wired. PR #224 records 96.72% redaction coverage. | #188's residual audit/timing evidence; no controlled CI speedup is claimed. Quick alone is insufficient for runtime acceptance. |
 | Phone/performance | Build 2179: selected compact-series checks and 27 connected datastore cases pass. Benchmark 1.5.0 repairs API-36 discovery; eight benchmark executions pass. | Startup fixture meets <1 s; list CPU P95 is 19.145 ms before / 20.560 ms in the profile experiment, above the 16.7 ms comparison budget. Manual cached-audio startup and concurrent download/playback stress are NOT RUN. |
 | Delivery | Main `a20bb5b9` passed delivery workflows and produced 2180. Draft browse 2181 and downloads 2184 were installed/tested with retained data; each report identifies its exact runtime. PR #226 is merged at `8de931f0`. | PR #233/main debug, release/security and signed APK2186 pass; exact identity is in the reconciliation report. A main APK does not contain draft fixes; later phone acceptance remains source-specific. 2180 was superseded without a phone run. |
@@ -30,12 +30,12 @@ Open issues can contain merged implementation and missing acceptance; this recon
 | --- | --- | --- |
 | #226 / #233 | Merged, `8de931f0` / `9ced43ae` | Canonical Android ordering, issue inventory, PD-006/007 and repository documentation reconciliation. No runtime change or issue closure. |
 | [#230](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/230) | Draft, based on main | Selected count/localization and axis checks pass. A 100ms fling followed by a newer Books tap fails on APK2189/2191; correction `cf8db633` passes four rendered regressions, actual-source reversion and strict verification. Signed APK2192 passes five fast-tap repeats and all-axis selection/count checks; owner animation and selected heard browse/Author navigation PASS; owner TalkBack selection/count check PASS; remaining restoration/live authorization/count cases are pending. #227/#228 stay open. |
-| [#231](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/231) | Draft, based on #230 | Forty alternating benchmark executions show CPU P95 improvement of 8.94%/6.80% and overrun P95 improvement of 17.04%/27.91%. Every round remains above 16.7ms. Visual quality, playback/accessibility/configuration and older-API/startup-memory checks remain; keep/reject decision pending. |
+| [#231](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/231) | Draft, based on #230 | Forty alternating benchmark executions show CPU P95 improvement of 8.94%/6.80% and overrun P95 improvement of 17.04%/27.91%. Every round remains above 16.7ms. Verified signed APK2193 is installed with retained data/settings; owner default-settings visual comparison is pending. Visual quality, playback/accessibility/configuration and older-API/startup-memory checks remain; keep/reject decision pending. |
 | [#232](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/232) | Draft, based on #230 | Cancellation checkpoint guards and stopped-progress precedence implemented. 87 downloads and 52 caller tests pass; APK2184 ordinary Pause/relaunch/discard/Resume/file verification passes. Three native parser/Room/file cancellation guards pass, fail with actual-source reversion, and pass after restoration; forced strict gate passes. Actual WorkManager/wire/race/storage/credential/notification/UI cases remain. |
 | [#234](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/234) | Draft, based on #230 | Grouped Author destination and 19 author guards pass. The APK2189 scroll-return failure is corrected in `0c8fb994`; the same chain passes on signed APK2191. Selected grouped/completed/offline routes and owner normal/200% layouts pass; selected heard browse/Author navigation passes on2192. Remaining U-08 restoration/configuration/privacy cases stay open. Further manual TalkBack is excluded per owner preference. |
 | [#235](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/235) | Draft, based on #234 | Root/pushed Back and title implementation; updated-parent head `a55c6931` passes strict local verification; fresh CI is tracked separately. Isolated `2d567b17` phone checks pass selected root/pushed cancellation, 320dp/200% text, delayed login and empty password after process death. Selected isolated successful Add/reauth, keyboard-first Back and credential font/rotation checks pass; owner predictive Back cancellation/completion PASS; Address/Credentials background and confirmed recreation PASS; connection-refused probe/error/Back PASS; remaining authentication/error/configuration cases stay open. Further manual TalkBack is excluded per owner preference. |
 
-The draft dependencies are **main → #230 → #231, #232 or the author-details branch**;
+The draft dependencies are **main â†’ #230 â†’ #231, #232 or the author-details branch**;
 performance, downloads and author implementation are independent siblings; Sign-in Back is stacked on the author branch. [Author evidence](testing/2026-10-04-author-details.md) records pending physical acceptance.
 Green CI alone does not clear explicit acceptance gaps. Do not merge drafts or close their issues from
 this document's evidence import. Source/APK details and the repository-wide audit are in the
@@ -70,16 +70,16 @@ ROUTE-001/002/003, AUTH-002/003, LIB-002/003; specification 5.2, 6.5, 17 and 21.
 - Begin the next phone delivery with Q-01/A-08: verify the exact signed APK, in-place upgrade/data retention,
   About/source identity and the affected smoke cases. Reproduce the inherited warm Starting state before
   selecting a playback fix; it is an observation, not a diagnosed cause.
-- Complete P-01–P-12 and C-01–C-08 with controlled local/remote/profile fixtures: offline outbox reconciliation,
+- Complete P-01â€“P-12 and C-01â€“C-08 with controlled local/remote/profile fixtures: offline outbox reconciliation,
   server/local history, power loss/reboot, multi-file chapters and the two-hour soak. Preserve captured profile
   ownership, paused intent and progress-loss limits. Selected offline SIGKILL recovery already passed on 2178;
   that is not power-loss, remote or whole-matrix acceptance.
 - #128/#100/#185/#126/#196/#130/#99/#191 await heard-route and projected-host evidence. Run the
   [drive checklist](android-auto-pd001-drive-acceptance.md), [browse checks](android-auto-browse-invalidation-acceptance.md)
   and [continuity matrix](reviews/2026-10-03-issue-128-continuity-review.md). Preserve PD-001's
-  Continue → Series → Authors → Profiles root; no History or replacement Queue. Unknown projection reads
+  Continue â†’ Series â†’ Authors â†’ Profiles root; no History or replacement Queue. Unknown projection reads
   preserve the positive lifecycle latch; they do not independently disconnect or repeat arrival.
-- #124/#189 await S-01–S-05 and the [sleep runbook](device-test-sleep-schedule.md): schedules/civil boundaries,
+- #124/#189 await S-01â€“S-05 and the [sleep runbook](device-test-sleep-schedule.md): schedules/civil boundaries,
   phone notification/lock screen, car suppression, grace ownership and actual sensor/bedside false positives.
   A timer starts only with playing audio; pause/focus loss/buffering freeze its countdown. A car connection
   suppresses presentation/new automatic timers while preserving existing/manual timers (PD-002).
@@ -96,7 +96,7 @@ Do not close the host, sensor or account criteria with source/JVM evidence alone
 The owner selected these small functional fixes as the next implementation slices after any critical
 playback/progress/privacy defect. Hardware-dependent reliability acceptance remains open alongside them.
 
-1. [#227 gesture selection](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/227): reproduce Books → Series → Books, where the
+1. [#227 gesture selection](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/227): reproduce Books â†’ Series â†’ Books, where the
    pill reaches Books but Series stays highlighted. The actual stable-callback route regression confirmed
    the settled-page listener captured the initial axis. PR #230 reads the latest axis/callback while keeping
    its listener stable; selected return, cancelled and rapid/mixed-intent checks pass. Preserve continuous motion
@@ -115,7 +115,7 @@ retained. All-axis, rapid/mixed gesture, Series Back, large-text/orientation/red
 active media-state checks pass in their recorded scope. The measured scrolling candidate is now draft PR #231; pending TalkBack, live English/profile/permission and broad appearance cases
 remain explicit obligations rather than being inferred from this phone run.
 
-**Exit:** U-06-01–06 and U-07-01–05 have source-gate and applicable physical gesture/localization/TalkBack
+**Exit:** U-06-01â€“06 and U-07-01â€“05 have source-gate and applicable physical gesture/localization/TalkBack
 evidence; fix gesture selection before counts, then return to measured performance/download work.
 
 ### 3. Resolve measured scrolling cost
@@ -125,7 +125,7 @@ ADR-0025/0026, R-25/R-27.
 
 Draft PR #231 prepares one bounded sampling candidate; physical comparison remains the next performance
 step while hardware-dependent reliability checks are pending. See the
-[PERF-01–10 log](testing/2026-10-04-card-blur-sampling.md). The paired phone measurements above show benefit; visual acceptance and the 16.7ms budget remain open.
+[PERF-01â€“10 log](testing/2026-10-04-card-blur-sampling.md). The paired phone measurements above show benefit; visual acceptance and the 16.7ms budget remain open.
 Inspect saved frame traces, isolate flat-list/card rendering cost, make one bounded change and compare on the
 same device/fixture/compilation mode. Report CPU timing and actual frame overruns separately. Passing benchmark
 methods do not accept the exceeded comparison budget. Keep manual cached-player latency and ANR stress pending
@@ -142,7 +142,7 @@ and no readability, accessibility, offline-cover or playback regression.
 ### 4. Accept download recovery, storage and ownership
 
 **Owner:** Offline & Downloads. **Requirements:** DL-001/002/003/004/005/006, AUTH-002; specification 5.2;
-PD-003/004. **Cases:** D-01–D-15 in the verification register and [reliability acceptance](testing/reliability-acceptance.md).
+PD-003/004. **Cases:** D-01â€“D-15 in the verification register and [reliability acceptance](testing/reliability-acceptance.md).
 
 | Issues/risk | Next action |
 | --- | --- |
@@ -166,7 +166,7 @@ This lane proceeds independently of the unaccepted scroll candidate; no prior ph
 The phone audit also found a paused Book percentage mismatch (28% displayed versus 31% from durable
 bytes). The R-123 follow-up now guards stale/terminal progress precedence in both actual Book/Downloads
 callers and passes the strict gate/CI. Signed APK2184 physically matches Book/Downloads to durable
-bytes after Pause, force-stop/relaunch and partial discard (45% → 41%); explicit Resume completes.
+bytes after Pause, force-stop/relaunch and partial discard (45% â†’ 41%); explicit Resume completes.
 The [same log](testing/2026-10-04-download-verification-cancellation.md) separates this scoped acceptance
 from remaining controlled replacement, concurrent attempt, storage and notification cases. R-120's WorkManager stop/delete and new-claim windows remain open; the correction
 adds no cross-owner lock.
@@ -193,7 +193,7 @@ specification 17.2/21. Follow the [child-slice triage](testing/ui-roadmap-triage
    No endpoint/schema change. While these candidates await physical acceptance, software work has advanced to #176's root/pushed Sign-in Back context on `fix/sign-in-navigation-back` (stacked on #234).
 2. #176 now has explicit navigation capability, root/pushed toolbar Back, independent wizard Back and
    adaptive title height. [Sign-in verification](testing/2026-10-04-sign-in-back.md) logs software coverage
-   and pending U-03-01–07 phone acceptance; it remains a draft and the issue stays open. The current focus is phone acceptance for the existing PRs before further software work. The next queued
+   and pending U-03-01â€“07 phone acceptance; it remains a draft and the issue stays open. The current focus is phone acceptance for the existing PRs before further software work. The next queued
    software slice is #195's non-color connection state/no-results recovery. Reproduce landscape player contrast, clipping/player
    clearance and preview/theme mismatch.
    Whole-book/chapter seek labels already exist; verify actual TalkBack rather than reimplementing labels.
@@ -209,7 +209,7 @@ specification 17.2/21. Follow the [child-slice triage](testing/ui-roadmap-triage
    reduced motion and Haze isolation before choosing a permanent WebView mitigation. Keep #101 display formatting
    separate from primary series membership/ordering.
 
-**Exit:** U-01–U-05 and U-08-01–07 record applicable 320/375/414/768 dp, 1.0/1.3/2.0 text, English/Norwegian, landscape,
+**Exit:** U-01â€“U-05 and U-08-01â€“07 record applicable 320/375/414/768 dp, 1.0/1.3/2.0 text, English/Norwegian, landscape,
 theme/artwork/offline/error, TalkBack and reduced-motion evidence. The 2179 series subset is not this whole matrix.
 
 ### 6. Add Android system surfaces through one action contract
@@ -231,21 +231,21 @@ process-recreation and playback-continuity checks. No second player, progress or
 
 Run this acceptance lane alongside optional system-surface work; PRODUCT_SPEC 25 owns release scope.
 Complete the remaining API-26/31/34/36, server-version/permission, management, biometric/privacy,
-release/R8, signed-upgrade and quality cases Q-01–Q-06 and PRODUCT_SPEC 25. A verified debug APK,
+release/R8, signed-upgrade and quality cases Q-01â€“Q-06 and PRODUCT_SPEC 25. A verified debug APK,
 successful source gates or one phone configuration do not prove a public release. Retain the accepted
 release decisions and source-file-deletion boundary; do not reopen completed feature phases.
 
 **Exit:** applicable acceptance is evidenced, release artifacts/signing/identity/security are verified,
 and unresolved risks are explicitly dispositioned before publication.
 
-## Parked Garmin proposal — owner evaluation first
+## Parked Garmin proposal â€” owner evaluation first
 
 [#119](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/119) is **low priority / parked**
 under PD-007. The owner will test the existing watch app and its sidecar for a while to learn the tradeoffs.
 No BookWave Garmin research, prototype, development or agent-run watch acceptance starts until the owner
 returns with findings and explicitly resumes the lane. Do not create a separate research child issue now.
 
-Retain the future goal: BookWave-managed preparation/transfers to fēnix 8, downloaded playback without
+Retain the future goal: BookWave-managed preparation/transfers to fÄ“nix 8, downloaded playback without
 the phone and later progress reconciliation through BookWave with Audiobookshelf. Replacing a separate
 helper is a target with unproven feasibility, not an accepted transport/transcoder/hosting design.
 Fully independent watch downloads/direct server sync are outside the initial target. Phone remote controls
@@ -257,7 +257,7 @@ The [latest-stable upgrade plan](latest-stable-upgrade-plan.md) owns dependency 
 owns product priority. Phases 4/5 are complete at the compatible frontier. Phase 6 (images/effects) is the
 next dependency lane: re-resolve stable targets and isolate Coil/Haze changes, retaining offline artwork,
 scrolling/memory and host evidence. Do not mix upgrades into the measured rendering fix or #190's diagnosis.
-ADR-0011 continues to gate the build/compiler/API major migration; phases 7–9 remain staged. Benchmark #223
+ADR-0011 continues to gate the build/compiler/API major migration; phases 7â€“9 remain staged. Benchmark #223
 was a proven harness repair, not completion of Phase 7. No new upstream version check is claimed here.
 
 #188 audits residual CI tier/coverage/timing requirements on the active `.github/workflows/` source.
@@ -284,6 +284,7 @@ secret scanning, existing thresholds and complete Standard acceptance; avoid ano
 
 Native download cancellation evidence is in the [2026-10-05 report](testing/2026-10-05-native-download-cancellation.md).
 The combined backdrop candidate ba51ab46 passes Standard source verification. Its branch-only APK
-handoff failed before producing an artifact; supported checked Build APK run 37307167906 is pending.
-Installed owner APK2192 remains the accepted baseline for its recorded subsets. Visual comparison
-waits for a verified signed candidate; all five runtime PRs remain drafts with explicit remaining gates.
+handoff failed before producing an artifact; supported checked Build APK run37307167906 PASSES.
+Verified signed APK2193 is installed with progress/history/downloads/settings retained. Recorded2192
+findings retain their source scope; the owner default-settings visual comparison is pending.
+[Exact delivery](testing/2026-10-05-phone-2193-backdrop.md). All five runtime PRs remain drafts with explicit remaining gates.

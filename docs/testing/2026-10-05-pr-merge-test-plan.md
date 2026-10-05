@@ -1,4 +1,4 @@
-# PR phone acceptance and merge requirements — 2026-10-05
+# PR phone acceptance and merge requirements â€” 2026-10-05
 
 Scope: Android runtime PRs #230, #231, #232, #234 and #235. iOS, Silo and Garmin are outside this work.
 This is a source-specific acceptance supplement to the canonical [roadmap](../roadmap.md)
@@ -19,7 +19,7 @@ An explicitly requested read-only subagent audited all five PRs and their physic
   The calendar-sensitive History test matcher now distinguishes the timestamp from its day heading;
   History runtime is unchanged. No endpoint, schema, dependency or compatibility-version change.
 - APK2189 loses Author scroll on detail return. The hoisted Author list state in #234 passes the
-  same original Author → Book → credited Author → Series → Back chain on signed APK2191, with
+  same original Author â†’ Book â†’ credited Author â†’ Series â†’ Back chain on signed APK2191, with
   the original final row and bounds retained. Remaining restoration paths are unaccepted.
 - Selected API36 checks pass: 27 datastore/Keystore tests; all four cached-scope counts in English
   and Norwegian; cached offline Author navigation; selected mixed/standalone/completed Author
@@ -46,10 +46,10 @@ original source scope: APK2191 does not contain the newly guarded fast-tap corre
 | PR | Work needed before declaring the slice ready |
 | --- | --- |
 | #230 Browse selection/counts | Corrected fast-tap, selected cancelled/rapid sequences, all axes, owner animation, selected TalkBack tab/count speech and heard browse/Author playback PASS on signed2192. Remaining U-06: other detail-return and recreation/restoration paths. U-07: zero/one/many plurals, search/filter/focused counts, library/profile changes, revoked/hidden items, live Room changes and controlled loading/partial/failed/never-synced states. |
-| #231 Backdrop sampling | PERF-06: human control/candidate quality comparison across blur 0, below 7, 7, default 28 and maximum, tint on/off, themes/gradients, artwork/parallax edges, grain and contrast. PERF-07: covers, flat/focused/offline lists, rapid/detail/Back paths and heard audio/progress/queue. PERF-08: English/Norwegian, large text, rotation, reduced motion and TalkBack. PERF-09: API26–30 fallback, API31+ blur, startup/memory and low-memory hardware if available. Decide keep/reject from benefit plus quality; remaining 16.7ms failure stays disclosed. |
-| #232 Download cancellation | DC-P02/03: observe cooperative cancellation inside valid final verification and invalid complete-416 verification; prove no rename/delete after cancellation. Controlled 206/If-Range, replacement 200, missing ETag, short/invalid bodies, stale/complete416, second Pause, old/new Worker attempts and terminal failure; compare Book/Downloads/notification bytes. Stop/delete/new-claim races; current/shared/expired/revoked credentials; independent jobs, notification denial, retry/backoff; low-space/write/storage/removable failures; heard offline playback during management; TalkBack/large text/privacy; separate SIGKILL/reboot and long dataSync timeout. Ordinary Pause cannot establish the precise verifier boundary. |
+| #231 Backdrop sampling | PERF-06: human control/candidate quality comparison across blur 0, below 7, 7, default 28 and maximum, tint on/off, themes/gradients, artwork/parallax edges, grain and contrast. PERF-07: covers, flat/focused/offline lists, rapid/detail/Back paths and heard audio/progress/queue. PERF-08: English/Norwegian, large text, rotation, reduced motion and TalkBack. PERF-09: API26â€“30 fallback, API31+ blur, startup/memory and low-memory hardware if available. Decide keep/reject from benefit plus quality; remaining 16.7ms failure stays disclosed. |
+| #232 Download cancellation | Selected DC-P03 native valid fresh-body/valid416/invalid416 parser cancellation PASS, including actual-source reversion proof. Remaining DC-P02/03: actual Worker stop/scheduling and end-to-end network boundary observation. Controlled 206/If-Range, replacement 200, missing ETag, short/invalid bodies, stale/complete416, second Pause, old/new Worker attempts and terminal failure; compare Book/Downloads/notification bytes. Stop/delete/new-claim races; current/shared/expired/revoked credentials; independent jobs, notification denial, retry/backoff; low-space/write/storage/removable failures; heard offline playback during management; TalkBack/large text/privacy; separate SIGKILL/reboot and long dataSync timeout. Ordinary Pause cannot establish the precise verifier boundary. |
 | #234 Author detail | Coauthor/series-only/multiple memberships/missing identity and ordering. Finished/in-progress/unstarted/unknown and incomplete/failed catalogue completion, filtering, borders-off and spoken labels. Heard playback/queue/progress during navigation. Remaining toolbar/system/predictive return, query/filter/sort/scroll, recreation/cold restore. Slow profile changes, lock/sign-out/revocation/artwork privacy. Further manual TalkBack is excluded per owner preference; dedicated unperformed headings/completion speech is not claimed PASS. Remaining display configurations stay open. |
-| #235 Sign-in Back/title | Successful Add/reauth cleanup and subsequent Back, IME-first Back, selected credential font/rotation, process-death password clearing and owner predictive Address cancel/complete PASS on the isolated source. Remaining stage-by-stage background/explicit recreation, controlled offline/error/permission and remaining controlled error/configuration cases; remaining widths/languages/themes/reduced-motion/error/cleartext configurations. 320dp/200% Address title/form owner finding PASS; credential/error states remain unaccepted. Further manual TalkBack is excluded per owner preference. |
+| #235 Sign-in Back/title | Successful Add/reauth cleanup and subsequent Back, IME-first Back, selected credential font/rotation, process-death password clearing and owner predictive Address cancel/complete PASS on the isolated source. Address/Credentials background and confirmed Activity recreation PASS; connection-refused probe/error/Back PASS. Remaining stages, authentication/permission/error cases and configurations; remaining widths/languages/themes/reduced-motion/error/cleartext configurations. 320dp/200% Address title/form owner finding PASS; credential/error states remain unaccepted. Further manual TalkBack is excluded per owner preference. |
 
 ## Fixtures and merge sequence
 
@@ -61,10 +61,10 @@ only for the applicable outstanding matrix, not assumed present on this API36 ph
 
 1. Publish and physically accept #230's corrected fast-tap behavior.
 2. Reconcile #231/#232/#234 against final #230, then #235 against final #234; resolve conflicts and
-   repeat affected strict checks. Dependency: main → #230 → {#231, #232, #234}; #234 → #235.
+   repeat affected strict checks. Dependency: main â†’ #230 â†’ {#231, #232, #234}; #234 â†’ #235.
 3. Verify signed APK source/certificate/digest, install in place and record affected tests against that
    exact source. Run independent automated checks without asking the owner to observe them.
-4. Per the owner’s latest clarification, automate functional gestures, navigation and state checks.
+4. Per the ownerâ€™s latest clarification, automate functional gestures, navigation and state checks.
    Pause only for visual judgement (for example clipping, glow, contrast or animation quality); ask
    for a finding and log it with case/build. An unanswered question never supplies acceptance.
 5. Update the verification register, roadmap and PR descriptions; assess the diff/review and remaining
@@ -79,7 +79,7 @@ as a new blocker for every unrelated slice. Explicit slice obligations must not 
 
 ## Corrected signed phone continuation
 
-APK2192 (`4f2edb36`) now passes five100ms fling→newer Books tap repeats, selected cancelled/rapid
+APK2192 (`4f2edb36`) now passes five100ms flingâ†’newer Books tap repeats, selected cancelled/rapid
 sequences and the all-axis walk. Its in-place upgrade retains progress/History/downloads/settings.
 See [exact signed evidence and driver corrections](2026-10-05-phone-2192-gestures.md).
 The owner animation observation passes; remaining physical obligations above are unchanged.
@@ -106,9 +106,9 @@ fresh CI is evaluated separately. No classpath change was present in those integ
 Sign-in onboarding/Nav runtime matches signed2192; Author/Home runtime comparison also matches.
 The isolated Address/Credentials background and confirmed Activity-recreation checks now PASS.
 
-A new isolated downloads instrumented harness is being prepared for native parser/Job cancellation;
-that addition changes test classpaths, so its final gate must use--rerun-tasks. It is not covered by
-the earlierd99c772d green result. Actual WorkManager scheduling, wire responses/storage races and
+The isolated native parser/Job cancellation harness is now complete for its three stated boundaries.
+Its classpath change was checked with a forced full strict gate; the earlierd99c772d integration
+result alone does not cover it. See the native continuation below. Actual WorkManager scheduling, wire responses/storage races and
 other pending physical cases remain open. No PR is merged or issue closed by these results.
 
 
@@ -118,11 +118,12 @@ PR #232 now adds three isolated Android parser/Room/file cancellation guards. Fi
 reverted, and restored device results are respectively 3 PASS / 3 expected FAIL / 3 PASS. Forced
 full strict verification passes in 6m46s (1,157 executed tasks). The [native report](2026-10-05-native-download-cancellation.md)
 states remaining WorkManager, wire, claim, storage and UI/audio boundaries explicitly. Current PR
-head 218417cc includes documentation-only follow-up; fresh CI is evaluated separately.
+head218417cc includes documentation-only follow-up; current PR CI37307775306 PASSES.
 
 The combined visual candidate ba51ab46 adds the already verified PR #231 backdrop code to the
 browse/download/Author/Sign-in runtime. Standard verification in run 37305093783 PASSES; the
 overall run FAILS only because the automatic APK handoff requires a PR number. No APK was produced
-by that handoff. Supported branch Build APK run 37307167906 is requested with checks enabled and
-the same pinned Loopbound bundle as 2192. It is pending; owner 2192 remains installed. No candidate
-installation, visual acceptance, merge or issue closure is claimed before artifact verification.
+by that handoff. Supported checked Build APK run37307167906 PASSES with the same pinned Loopbound
+bundle as2192. Verified signed2193 is installed in place; all recorded counts/settings and retained
+data checks PASS. The owner default-settings visual comparison is pending.
+[Exact delivery and remaining cases](2026-10-05-phone-2193-backdrop.md). No merge or issue closure follows.

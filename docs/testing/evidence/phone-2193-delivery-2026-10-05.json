@@ -1,0 +1,23 @@
+{
+  "run": "37307167906",
+  "source": "ba51ab460bf1c9036377ce019106d67b55f19fa5",
+  "workflowSource": "ba51ab460bf1c9036377ce019106d67b55f19fa5",
+  "artifactId": 11344393006,
+  "artifactDigest": "sha256:de7b537467591860bfbc772e7d2f09b876e3cc72d6076b9773652365a5b162ab",
+  "apkSha256": "de7b537467591860bfbc772e7d2f09b876e3cc72d6076b9773652365a5b162ab",
+  "package": "org.homebord.bookwave.debug",
+  "versionCode": 2193,
+  "versionName": "0.10.6.1",
+  "signerSha256": "c63c72cb2c4b32a8ed3775e4cc0b5754abf06b5beb4481ea5a8f5c5c0dd9217c",
+  "loopbound": "7e24529b2a9e419218d2a1423d832b1bf587c8ef",
+  "sourceEmbedded": true,
+  "archiveDigestVerified": true,
+  "phoneInstalled": true,
+  "utc": "2026-10-05T12:27:04.729967+00:00",
+  "retainedAllCounts": true,
+  "retainedTenNonProfileFingerprints": true,
+  "retainedProfilesExceptLastUsedAt": true,
+  "retainedExactSettings": true,
+  "bookListCount": 222,
+  "noActivePlaybackUpgradeClaim": true
+}
