@@ -49,7 +49,10 @@ import kotlin.math.roundToInt
  * than one that ignores the preference on a device that could never show the effect anyway.
  */
 @Composable
-internal fun Modifier.cardGlass(shape: Shape = RoundedCornerShape(GlassDefaults.CardCornerRadius)): Modifier {
+internal fun Modifier.cardGlass(
+    shape: Shape = RoundedCornerShape(GlassDefaults.CardCornerRadius),
+    scaleBlurInput: Boolean = false,
+): Modifier {
     val preferences = LocalGlassPreferences.current
     val hazeState = LocalCardHazeState.current
     val hasBlur = hazeState != null
@@ -64,6 +67,7 @@ internal fun Modifier.cardGlass(shape: Shape = RoundedCornerShape(GlassDefaults.
             fallbackTintAlpha = GlassDefaults.FALLBACK_TINT_ALPHA,
             blurRadius = preferences.blurRadius,
             tintColor = preferences.tint,
+            scaleBlurInput = scaleBlurInput,
         )
         .border(
             width = 1.dp,
@@ -92,11 +96,12 @@ internal fun GlassCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     shape: Shape = RoundedCornerShape(GlassDefaults.CardCornerRadius),
+    scaleBlurInput: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     val elevation = CardDefaults.cardElevation(defaultElevation = 0.dp, pressedElevation = 0.dp)
-    val glass = modifier.cardGlass(shape)
+    val glass = modifier.cardGlass(shape, scaleBlurInput)
     if (onClick == null) {
         Card(modifier = glass, shape = shape, colors = colors, elevation = elevation, content = content)
     } else {
