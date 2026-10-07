@@ -29,8 +29,7 @@ and persists PHONE snapshots and uses a redaction tombstone for clear; failed wr
   capability failure, durable clear gate, wrong/malformed acks, lost/failed send, paused retry, latest rewind,
   device/reconnect and bounded attempts. Playback cadence accounts for speed.
 - Formatter runs. The new SDK's AAR/POM SHA256 values are pinned in strict verification metadata;
-  no verification bypass/trust wildcard is introduced. Forced full verifyDebug is required and its result
-  is recorded below before completion.
+  no verification bypass/trust wildcard is introduced. Forced full verifyDebug passes; exact task counts and source heads are recorded below.
 - Garmin PR5 run37630137658 passes repository guardrails, both fenix targets, test-enabled compilation
   and package export. The first compile failed on callback typing and was corrected. Six new Run No Evil
   methods are compiled, not executed. A local simulator/SDK is unavailable; execution remains NOT RUN.
@@ -45,8 +44,8 @@ The GitHub repo and exact pinned source7e24529b2a9e419218d2a1423d832b1bf587c8ef 
 replaced LOOPBOUND_READ_TOKEN with a GitHub fine-grained Contents:Read token scoped to Loopbound.
 Attempt2 passes private checkout, Loopbound validation/tests/build, verifyDebug and signed packaging.
 It produces APK2199 from de56857d with Loopbound. No secret value was read or recorded.
-The final bridge APK will use the same ordinary Loopbound pin; identity/signing/checksum is recorded
-below. No phone installation or physical result is claimed.
+The checked bridge APK uses the same ordinary Loopbound pin; final artifact identity and checksums
+are retained by the Actions run and current delivery issue linked below. No phone installation or physical result is claimed.
 
 ## Physical/simulator obligations — all NOT RUN in this slice
 
@@ -75,4 +74,37 @@ APK SHA256: 685502b5acc69f0bfd2c6079fd75f58a4b300131af23386e6b90e650bb104e1e.
 apksigner verifies certificate SHA256 c63c72cb2c4b32a8ed3775e4cc0b5754abf06b5beb4481ea5a8f5c5c0dd9217c.
 The APK contains assets/loopbound/index.html and BOOKWAVE_LOOPBOUND_VERSION equal to the exact pin
 7e24529b2a9e419218d2a1423d832b1bf587c8ef. The Actions artifact is the APK itself here; archive extraction
-alone cannot verify its signer. The final bridge artifact is a separate build below.
+alone cannot verify its signer. The bridge artifact is a separate checked build; APK2199 proves credential recovery only.
+
+## Final automated gates and merges
+
+- Forced `ktlintFormat` and `verifyDebug -Pshelfplayer.warningsAsErrors=true --rerun-tasks`
+  pass on runtime head `d1fa5e79`: 1,126 tasks executed in 11m54s. This is the required fresh
+  classpath gate for Mobile SDK2.4.0, including tests, coverage, Android Lint, ktlint and detekt.
+- The unsupported-major regression fails before its fix. Final runtime head `8cc94ae6` passes
+  the full strict gate in 5m26s: 1,126 tasks, 51 executed, 13 from cache and 1,062 up-to-date.
+  All 23 Garmin JVM/native Android methods pass; native golden parsing consumes nine shared cases.
+- Removing the actual Media3 captured-owner projection makes the owner regression fail. Restoring
+  the original source byte-for-byte and forcing the whole ExistingSessionAttachmentTest tier passes
+  all seven methods: 74 tasks executed in 1m42s. No projection mutation remains.
+- [Android PR240](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/240)
+  passes [PR CI37632205395](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37632205395)
+  at `8cc94ae65fd34fc6ef3fc5c53bf0f87e532a2cb7` and merges as
+  `bd6e66af392c2363904f8ed9b51fce123d6eaece` on October 7.
+- Garmin PR5 passes [final CI37632190070](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/actions/runs/37632190070)
+  and merges as `d32c8c2399f7e09940db9c9e5848663ef9891772`.
+  [PR6](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/pull/6) then adds retained test binaries
+  and merges as `8b654547ce0c9dc1337c971837a59263299a30f4` after
+  [CI37634432060](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/actions/runs/37634432060).
+  Four artifacts contain both supported fenix PRGs, the test-enabled PRG and exported IQ package,
+  plus source/hash/public signing-key fingerprint provenance. Temporary CI signing is not a store release.
+  The first artifact step failed on a Docker-created output directory; creating the runner-owned output
+  before compilation fixes it. This is a pipeline fix, not an executed watch test.
+- Android main merge starts [checked bridge APK37635140991](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37635140991)
+  with Loopbound pin `7e24529b2a9e419218d2a1423d832b1bf587c8ef`. The last documentation merge
+  also receives a checked main APK. Current artifact run/source/version/checksum/signer and bundle
+  verification are recorded in [delivery issue119](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/119)
+  and the relevant Actions artifacts; a dispatched run is not a passed packaging result.
+
+All physical/simulator rows above remain NOT RUN. No phone was installed, no production signing key
+was exported and no issue was closed. The owner's primary checkout and existing WIP remain unchanged.

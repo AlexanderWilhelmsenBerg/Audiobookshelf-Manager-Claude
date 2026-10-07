@@ -5,14 +5,14 @@
 PRODUCT_SPEC17/19/21. Companion transport adds no version-1 release requirement.
 
 The owner authorized completion of the Android Phase 2 bridge and its Garmin counterpart.
-The original candidate `6239a148` is integrated with privacy, retry and lifecycle corrections.
+Merged [Android PR #240](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/240) integrates the original candidate `6239a148` with privacy, retry and lifecycle corrections.
 [Garmin PR #5](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/pull/5) implements the receiver;
 both repositories carry [the same transport contract](garmin-transport-contract.md).
 
 | Area | Implemented scope | Remaining obligation |
 | --- | --- | --- |
 | Android | Application startup, Mobile SDK2.4.0 adapter, existing Media3 snapshot projection, profile/privacy guard, ordered delivery and bounded ack retry. | Strict forced gate/PR CI and source-matched phone/watch acceptance are recorded in the [delivery log](testing/2026-10-07-garmin-bridge.md). |
-| Garmin Companion | Foreground Communications receiver, nonce negotiation, ordered snapshot/clear handling, valid-state persistence, durable acks and stored/waiting UI. | Target builds/test-method compilation/export pass on PR5; Run No Evil execution and G-01/G-02 hardware remain NOT RUN. |
+| Garmin Companion | Foreground Communications receiver, nonce negotiation, ordered snapshot/clear handling, valid-state persistence, durable acks and stored/waiting UI. | PR5/PR6 merged; target builds/test compilation/export and retained artifact checks pass; Run No Evil execution and G-01/G-02 hardware remain NOT RUN. |
 | Playback and accounts | Existing Android Media3, captured queue owner, profile/lock repositories and ABS/session owners remain authoritative. | Garmin failure must not disturb heard audio or progress; no credentials/hosts travel to the watch. |
 | Offline watch audio | WatchShelf + Sidecar remain the initial coexistence policy. | Provider/helper replacement and direct watch ABS authentication are deferred. |
 
