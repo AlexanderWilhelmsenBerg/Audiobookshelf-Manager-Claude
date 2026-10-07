@@ -16,7 +16,7 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "en-w400dp-h1000dp", application = android.app.Application::class)
-class GarminDeviceCardTest {
+class GarminDeviceCardScreenTest {
     @get:Rule val compose = createComposeRule()
 
     @Test fun inlineExpansionReachesForceSyncAndPickerDispatchesTheSelectedBook() {

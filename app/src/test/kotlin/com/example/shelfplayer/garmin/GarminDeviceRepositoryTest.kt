@@ -115,6 +115,30 @@ class GarminDeviceRepositoryTest {
         assertTrue(repository.observe().first().downloads.isEmpty())
     }
 
+    @Test fun anAcceptedDownloadMissingFromAFreshFullReportFailsSoTheUserCanRetry() = runTest {
+        val f = Fixture()
+        f.records.put(
+            listOf(
+                com.example.shelfplayer.core.model.garmin.GarminRecord(
+                    "profile",
+                    "1",
+                    "command",
+                    "old-download",
+                    """{"type":"download","b":"book","state":"accepted"}""",
+                    1,
+                ),
+            ),
+        )
+        f.answer(backgroundScope, event = false)
+        val repository = f.repository(backgroundScope, StandardTestDispatcher(testScheduler))
+        repository.start()
+        runCurrent()
+        advanceTimeBy(30_001)
+        runCurrent()
+        val command = f.records.rows.value.single { it.kind == "command" }
+        assertEquals("failed", GarminDeviceDocuments.read(command.payload).optString("state"))
+    }
+
     @Test fun sharedGoldenProviderMessagesAndRowsAreAccepted() {
         val stream = checkNotNull(javaClass.getResourceAsStream("/garmin/provider-v1.json"))
         val fixtures = org.json.JSONArray(stream.bufferedReader().use { it.readText() })

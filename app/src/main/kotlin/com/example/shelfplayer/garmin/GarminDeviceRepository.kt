@@ -353,7 +353,12 @@ internal class GarminDeviceRepository @Inject constructor(
                     ),
                 ] == "downloaded"
             }
-            val failed = if (sync) command.recordId == failedSync else states[document.optString("b")] == "failed"
+            val failed = if (sync) {
+                command.recordId == failedSync
+            } else {
+                val reported = states[document.optString("b")]
+                reported == null || reported == "failed"
+            }
             val status = when {
                 failed -> "failed"
                 complete -> "completed"

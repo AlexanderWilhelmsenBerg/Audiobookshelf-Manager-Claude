@@ -3,6 +3,7 @@
 BookWave has two separate apps: **BookWave Audio** is a music provider that downloads/plays books;
 **BookWave Companion** displays phone playback. Installing Companion alone does not enable watch audio.
 These are development builds, not Connect IQ Store releases. Physical acceptance is still pending.
+Upgrade the phone to the matching BookWave Android APK with device controls before pairing; keep app data.
 
 1. Download the artifacts from the successful [Garmin Verification run](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/actions/workflows/garmin-verification.yml)
    for the source revision recorded in the test report. Choose `audio-provider` and optionally `companion`.
