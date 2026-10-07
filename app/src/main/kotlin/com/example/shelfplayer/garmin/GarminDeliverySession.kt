@@ -53,8 +53,16 @@ internal class GarminDeliverySession @Inject constructor(
 
     fun receive(raw: Any, send: (Map<String, Any>) -> Boolean) {
         if (device == null) return
-        val decoded = codec.decode(raw) as? GarminDecodeResult.Success ?: return
-        val message = decoded.envelope
+        val decoded = codec.decode(raw)
+        if (decoded is GarminDecodeResult.Failure) {
+            if (decoded.reason == "unsupported_protocol_major") {
+                incompatible = true
+                pending = null
+                state = GarminBridgeState.ProtocolIncompatible(requireNotNull(device).name)
+            }
+            return
+        }
+        val message = (decoded as GarminDecodeResult.Success).envelope
         when (message.type) {
             GarminMessageType.Hello -> negotiate(message, send)
 

@@ -119,6 +119,18 @@ class GarminDeliverySessionTest {
         assertEquals(count, f.sent.size)
     }
 
+    @Test
+    fun unsupportedMajorIsVisibleAndCannotRequestPrivateState() {
+        val f = Fixture().ready()
+        f.session.receive(f.envelope("hello", "unsupported", mapOf("majors" to listOf(2))) + ("v" to 2), f.send)
+        assertIs<GarminBridgeState.ProtocolIncompatible>(f.session.state)
+        val count = f.sent.size
+        f.session.receive(f.envelope("state_request", "request", emptyMap()) + ("s" to "watch-1"), f.send)
+        f.clock.elapsed = 10.seconds
+        f.session.tick(f.send)
+        assertEquals(count, f.sent.size)
+    }
+
     private class Fixture {
         val clock = Clock()
         val session = GarminDeliverySession(GarminMessageCodec(clock), GarminSnapshotSendPolicy(), clock)
