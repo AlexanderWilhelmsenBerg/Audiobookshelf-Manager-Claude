@@ -15,6 +15,7 @@ The repository has accumulated detailed investigation over time. Detail does **n
 | What risks remain open? | [`risks.md`](risks.md) |
 | How should the repository be tested now? | [`testing.md`](testing.md) |
 | What dependency-upgrade work is active? | [`../version-control.md`](../version-control.md) is the live version ledger; [`latest-stable-upgrade-plan.md`](latest-stable-upgrade-plan.md) owns sequencing and gates; [`dependency-compatibility-inventory.md`](dependency-compatibility-inventory.md) is dated Phase-0 evidence |
+| How do Android and Garmin plans relate? | [`garmin-integration.md`](garmin-integration.md) and the [Garmin plan](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/blob/main/plan.md); Garmin source and acceptance stay in its repository |
 | What Android Auto ideas still need experiments? | [`android-auto-player-opportunities.md`](android-auto-player-opportunities.md) |
 | How is the current signed APK produced and accepted? | [`release.md`](release.md) current handoff, active `.github/workflows/apk.yml`, and [`testing/roadmap-verification-register.md`](testing/roadmap-verification-register.md) |
 | What did older phases investigate or prove? | [`archive/`](archive/), [`bugs/`](bugs/), [`reviews/`](reviews/), historical [`gaps.md`](gaps.md) / [`closeout.md`](closeout.md) / [`handover.md`](handover.md), and the superseded [`dependency-upgrade-plan.md`](dependency-upgrade-plan.md) |
@@ -22,7 +23,9 @@ The repository has accumulated detailed investigation over time. Detail does **n
 The [2026-10-04 reconciliation](reviews/2026-10-04-documentation-reconciliation.md) records the
 repository-wide authority/link/source audit and merge disposition. Draft reports are evidence for their
 recorded source; the [2026-10-05 merge record](testing/2026-10-05-merge-delivery.md) confirms
-PRs #230/#231/#232/#234/#235/#236 are now on main and lists remaining acceptance.
+PRs #230/#231/#232/#234/#235/#236 are now on main and lists remaining acceptance. The
+[2026-10-07 cross-repository reconciliation](reviews/2026-10-07-cross-repo-reconciliation.md) adds merged
+#238, current main workflow/APK status, every issue disposition and the separate Garmin delivery boundary.
 
 ## Document classifications
 

@@ -1,5 +1,8 @@
 # General book-row metadata clipping — 2026-10-05
 
+> **Historical source-scoped evidence.** Reconciled 2026-10-07: the relevant runtime PR is now merged. Original failures, draft build identities and NOT RUN statements below describe their recorded sources/dates. Later scoped results and current obligations are in the [verification register](roadmap-verification-register.md), [merge record](2026-10-05-merge-delivery.md) and [cross-repository audit](../reviews/2026-10-07-cross-repo-reconciliation.md).
+
+
 Requirements LIB-002/004, spec 2.10/21; partial #192/#194. Base browsecf8db633.
 The owner accepts the actual-settings card texture on signed 2193, but reports only the top pixel
 of the bottom metadata line. Control 2192 also clips that line; this predates the sampling candidate.

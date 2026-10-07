@@ -1,7 +1,7 @@
 # Testing
 
 **Classification:** Current testing contract; dated reports retain their original build scope.
-**Reconciled:** 2026-10-05, including the native downloads continuation and its exact scope.
+**Reconciled:** 2026-10-07, including merged #238 and cross-repository test boundaries; dated device results retain their exact scope.
 
 `PRODUCT_SPEC.md` section 17 defines the pyramid, device matrix, and thresholds. This file records the
 current tiers and how to run them; a green JVM gate is not evidence for an absent hardware tier.
@@ -113,3 +113,13 @@ without explicit approval and redaction.
 
 The full gap/risk accounting is in `docs/gaps.md`, `docs/risks.md`, and the dated documents under
 `docs/reviews/`.
+
+
+## Garmin verification boundary
+
+Garmin PR #1/main compile/export gates pass; its Run No Evil execution, simulator and physical watch
+checks do not. The [Garmin Phase 1 log](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/blob/main/docs/testing/phase-1-companion.md) and
+[Phase 2 inventory](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/blob/main/docs/testing/phase-2-transport.md) own those tiers. Android
+bridge test methods at `6239a148` are source inventory only: no passing execution is recorded here.
+Require forced strict verification after its classpath change, common wire fixtures and actual caller/
+lifecycle/privacy coverage before transport acceptance. Documentation reconciliation runs no phone tests.

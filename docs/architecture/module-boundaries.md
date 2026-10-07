@@ -1,7 +1,7 @@
 # Module boundaries
 
 **Classification:** Current contract.  
-**Current as reviewed:** 2026-10-04 against merged main; draft changes add no module/API boundary.
+**Current as reviewed:** 2026-10-07 against main `36c25043`; the Garmin bridge candidate is excluded from the merged architecture.
 
 `PRODUCT_SPEC 9.3` defines the dependency direction. This document records how the current repository
 implements it. Older phase documents may describe modules as prospective that are now real; `main` is the

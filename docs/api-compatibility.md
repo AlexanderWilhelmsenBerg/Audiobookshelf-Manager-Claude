@@ -1,7 +1,7 @@
 # Audiobookshelf API compatibility
 
 **Classification:** Current captured-contract matrix with explicitly source-scoped evidence.
-**Reconciled:** 2026-10-05; server verification dates below are unchanged.
+**Reconciled:** 2026-10-07; server verification dates below are unchanged. PR #238 is merged. The Android Garmin bridge remains outside main.
 
 `PRODUCT_SPEC 19` requires this file to record the server versions tested, the capabilities detected,
 known endpoint differences, the fixtures used, and the date last verified.
@@ -1711,3 +1711,14 @@ Partial #195 uses existing localized status and Home control actions. It changes
 reachability derivation, endpoint/field, response fixture, permission, Room schema or playback policy.
 The [Home recovery log](testing/2026-10-05-home-status-recovery.md) distinguishes native/contrast checks
 from remaining effective-glass and physical continuity cases. No new server version is claimed.
+
+
+## Garmin cross-repository candidate — 2026-10-07
+
+Android main `36c25043` contains no Garmin SDK/transport. Candidate bridge `6239a148` introduces
+Connect IQ Mobile SDK 2.4.0 and narrow Garmin Connect Mobile package visibility; it projects existing
+playback/profile state and defines a proposed envelope. This is not an Audiobookshelf API change or a
+tested watch protocol. Garmin Phase 1's persisted representation is documented separately; its main has
+no envelope receiver. [Integration boundaries/gaps](garmin-integration.md) require common fixtures and
+physical evidence before compatibility is claimed. No new server endpoint, captured server version,
+schema or released wire contract is added by this documentation reconciliation.

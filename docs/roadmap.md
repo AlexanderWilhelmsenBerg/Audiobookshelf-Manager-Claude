@@ -1,15 +1,13 @@
 # BookWave Android roadmap
 
 **Classification:** Active plan — canonical sequencing authority.
-**Reconciled:** 2026-10-05 against main `cd432f42`, after merging runtime PRs #230/#231/#232/#234/#235/#236.
+**Reconciled:** 2026-10-07 against Android main `36c25043` (through #238), Garmin main `d8de6fb8` (PR #1), and Android bridge candidate `6239a148`. [Cross-repository audit](reviews/2026-10-07-cross-repo-reconciliation.md).
 
 This is the only document ordering the next work. [PRODUCT_SPEC](../PRODUCT_SPEC.md) supplies requirements;
 [product decisions](product-decisions.md) and accepted [ADRs](adr/) own settled behavior. GitHub is the
-delivery authority. Android remains the active scope; iOS/Silo are excluded and Garmin #119 remains parked.
+delivery authority. Android remains the primary delivery scope; iOS/Silo are excluded. Garmin now has a separate Companion-first implementation lane; optional offline Audio Provider replacement remains deferred.
 
-The tracker has **46 open issues: 42 active Android, three excluded iOS and parked Garmin #119**.
-There are 23 closed tickets (22 substantive closures). This merge session closes no issues: merged
-implementation and complete product acceptance remain separate. The runtime PR queue is cleared.
+The Android tracker has **46 open issues: 42 Android, three excluded iOS and cross-repository Garmin #119**; 23 closed tickets (22 substantive closures). Garmin has two open acceptance/integration issues, [#2](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/2) and [#3](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/3). This reconciliation closes no issues. Android has no open PR at this snapshot; the owner-confirmed bridge branch is an unmerged candidate, not an accepted integration. Garmin PR #1 is merged. [All issue dispositions](reviews/2026-10-07-cross-repo-reconciliation.md).
 
 ## Delivered and remaining acceptance
 
@@ -31,8 +29,9 @@ its source fix is merged, with its heard-route/projected-host gate still open.
 | [#234](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/234) | Merged `5d9d8478` | Grouped Author screen and detail-return scroll retention. 19 Author guards, strict verification and PR CI pass. Selected normal/200% completion glow, mixed grouping, offline navigation and corrected scroll-return chain pass on 2191. | Other restoration/configuration, coauthor/completion edge cases and profile/privacy transitions. |
 | [#235](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/235) | Merged `33eb204b` | Pushed Sign-in Back and readable toolbar title. 31 scoped cases, strict verification and PR CI pass. Isolated successful Add/reauth, IME/predictive Back, delayed-login cancellation, process death, background/recreation and refused connection checks pass. | Other authentication/error stages, widths/themes/languages and restoration configurations. |
 | [#236](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/236) | Merged `cd432f42` | Fully visible book-row duration/progress metadata. Four native geometry guards fail before/reverted source and pass fixed; six combined renders and strict verification/PR CI pass. Verified signed 2195 retains data/settings; normal Norwegian owner appearance and cached offline/detail/Back checks pass. | Physical 2195 200% text, focused/Author standalone coverage and other configurations/affected timing remain NOT RUN. Broader #192/#194 redesign remains open. |
+| [#238](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/238) | Merged `36c25043` | Four non-color connection symbols and scoped no-results recovery; native/source-reversion/contrast checks and strict PR/main gates pass. | U-09-01–05 effective-background, width/player, state and heard-continuity phone cases remain NOT RUN; broader #195 stays open. |
 
-All six had passing PR CI at their merge heads. The owner explicitly requested merging despite remaining
+All seven runtime changes had passing PR CI at their merge heads. The owner explicitly requested merging despite remaining
 uncertainty and reporting what to watch; these gaps are carried forward rather than labelled PASS.
 The measured sampling change is retained on that basis. The 16.7ms scrolling target is still unmet.
 [Merge record and watch list](testing/2026-10-05-merge-delivery.md) retains exact heads/merge commits.
@@ -51,10 +50,12 @@ completed per owner confirmation; no further manual TalkBack session is requeste
 speech cases are not converted to passes. Physical 2195 200% text remains NOT RUN, with native large-text
 geometry guards passing. [Row evidence](testing/2026-10-05-book-row-metadata.md).
 
-Merged runtime main passes formatter and forced strict verifyDebug (7m32s;1,024 executed tasks).
-Final-main Standard CI37321586918 and checked signed APK37321588592 pass. Verified main
-APK2196 is downloaded, not installed; it does not contain the later #195 slice. Release/security
-run37321586687 also passes. A started workflow is not a passing result; see the [merge record](testing/2026-10-05-merge-delivery.md).
+The six-change main gate and APK2196 remain historical evidence. Current source `36c25043` includes
+#238 and passes main Standard CI37330126779, release/security37330126716 and checked APK37330127469.
+That run publishes **APK2198**; its Actions artifact digest is recorded in the
+[reconciliation report](reviews/2026-10-07-cross-repo-reconciliation.md). It has not been installed or
+physically accepted. Artifact digest is not a separately verified APK checksum/signer. No phone test is
+claimed for this reconciliation.
 
 ## Ordered delivery lanes
 
@@ -167,13 +168,11 @@ specification 17.2/21. Follow the [child-slice triage](testing/ui-roadmap-triage
 2. #176 pushed Sign-in Back/title is implemented on main through #235. Selected Add/reauth, IME,
    predictive Back, delayed-login cancellation, process-death/recreation and error checks pass on the
    isolated recorded runtime. Remaining authentication/configuration cases stay open.
-   **Current software slice: #195 non-color connection status and no-results recovery.**
-   `codex/home-status-recovery-195` adds distinct symbols using the active app surface and contextual
-   Clear search/Reset filters/Clear selection without changing library. Three native regressions pass
-   and fail on actual-source reversion; contrast fixtures and full gate are recorded in the
-   [delivery/test log](testing/2026-10-05-home-status-recovery.md). Physical U-09-01–05 stay pending.
-   Next independent software work is #194 profile/player clearance and real-theme preview parity;
-   reproduce those existing states before choosing a layout change.
+   **Merged #195 child slice:** PR #238 delivers distinct connection symbols and scoped Clear search/
+   Reset filters/Clear selection. Native/source-reversion and contrast tests, strict verification and
+   PR/main CI pass; [U-09-01–05](testing/2026-10-05-home-status-recovery.md) remain pending on hardware.
+   Next independent Android software slice is **#194 profile/player clearance and effective-theme
+   preview parity**. It is planned, not implemented; reproduce existing states before selecting a fix.
 3. #236 fixes general-row bottom metadata clipping under #192/#194. Owner normal-font appearance
    passes on 2195; large-text native guards pass. Continue profile/player clearance and real-theme preview
    parity checks before comparing
@@ -199,7 +198,7 @@ specification 3.3/5.2. **Prerequisite:** relevant playback/profile/permission co
 Implement #114's typed shortcut/automation contract using existing remembered-book and resume-freshness owners.
 Validate exported parameters, lock/profile access and stale intent; never accept arbitrary media URLs or credentials.
 Then #117 widget and #118 Quick Settings project the same state/actions, followed by #116's opt-in headset
-automation. Garmin #119 is parked outside this execution lane; see the owner-evaluation gate below.
+automation. Garmin transport is tracked separately below; future watch playback commands reuse this action contract.
 
 **Exit:** each alternate entry reaches the same guarded behavior and passes offline, locked-profile,
 process-recreation and playback-continuity checks. No second player, progress or timer owner.
@@ -217,18 +216,36 @@ release decisions and source-file-deletion boundary; do not reopen completed fea
 **Exit:** applicable acceptance is evidenced, release artifacts/signing/identity/security are verified,
 and unresolved risks are explicitly dispositioned before publication.
 
-## Parked Garmin proposal — owner evaluation first
+## Garmin Companion lane — reconcile both repositories
 
-[#119](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/119) is **low priority / parked**
-under PD-007. The owner will test the existing watch app and its sidecar for a while to learn the tradeoffs.
-No BookWave Garmin research, prototype, development or agent-run watch acceptance starts until the owner
-returns with findings and explicitly resumes the lane. Do not create a separate research child issue now.
+Garmin [PR #1](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/pull/1) is merged on `d8de6fb8`: Companion Device App,
+validated/persisted last-known snapshot and disconnected-state display. Both fēnix AMOLED target builds,
+test-enabled compilation and package export pass. **Run No Evil execution, simulator and physical watch
+acceptance remain NOT RUN**, tracked by [Garmin #2](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/2).
 
-Retain the future goal: BookWave-managed preparation/transfers to fēnix 8, downloaded playback without
-the phone and later progress reconciliation through BookWave with Audiobookshelf. Replacing a separate
-helper is a target with unproven feasibility, not an accepted transport/transcoder/hosting design.
-Fully independent watch downloads/direct server sync are outside the initial target. Phone remote controls
-remain optional; #114 governs that adapter only. This parked proposal does not block an Android release.
+The owner-confirmed Android branch `mcp/garmin-phase-2-mobile-bridge` at `6239a148` contains a Mobile SDK
+adapter, lifecycle wiring, versioned envelope, snapshot projection/privacy/send policy and eight test
+methods. It is absent from Android main; no open PR or Actions result was returned for that head. Tests
+present in source are not an execution result. Garmin main has no receiver/transport permissions or ack
+counterpart. End-to-end handshake is therefore not delivered.
+
+Next Garmin integration slice: jointly review/finalize the wire contract, review the Android candidate
+with a forced full gate after its classpath change, then add the Garmin receiver/handshake/redaction/ack
+counterpart with shared fixtures. Follow [Garmin #3](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/3) and the
+[Android integration plan](garmin-integration.md); log the physical pairing/reconnect/privacy/battery matrix.
+This documentation reconciliation starts no transport implementation or device campaign.
+
+After transport acceptance: allowlisted commands through #114; legitimate-event reconciliation and
+Android Settings Force sync without automatic Play; complication publishing; watch face; Running Data
+Field. The Garmin repository's `plan.md` owns that internal sequence; Android's roadmap owns Android priority.
+No new Garmin priority over Android reliability has been inferred.
+
+Initial offline audiobook playback stays with WatchShelf + Sidecar under Garmin's current repository
+agreement. Replacing the provider/helper is optional future work after physical coexistence evaluation,
+not something Phase 1 or the Android bridge delivers. Phone-free downloaded playback is a future target;
+independent watch downloads/direct ABS authentication are not delivered. #119 is the cross-repository
+umbrella; PD-007 retains its historical deferral with a dated status reconciliation, not a blanket claim
+that no Garmin work exists. Garmin does not block an Android release.
 
 ## Dependency and CI maintenance alongside the delivery lanes
 

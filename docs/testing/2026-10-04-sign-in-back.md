@@ -1,5 +1,8 @@
 # Sign-in route Back — 2026-10-04
 
+> **Historical source-scoped evidence.** Reconciled 2026-10-07: the relevant runtime PR is now merged. Original failures, draft build identities and NOT RUN statements below describe their recorded sources/dates. Later scoped results and current obligations are in the [verification register](roadmap-verification-register.md), [merge record](2026-10-05-merge-delivery.md) and [cross-repository audit](../reviews/2026-10-07-cross-repo-reconciliation.md).
+
+
 **Classification:** Draft source/automated evidence; physical acceptance pending.
 **Owner:** UI & Experience, implementation owner. Requirements: AUTH-001/004, PRODUCT_SPEC 6.1/16.2/17.2/21;
 GitHub #176, U-03. Draft [PR #235](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/235),

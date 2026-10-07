@@ -1,7 +1,7 @@
 # Architecture overview
 
 **Classification:** Current contract.  
-**Current as reviewed:** 2026-10-04 against merged main; draft runtime is excluded.
+**Current as reviewed:** 2026-10-07 against main `36c25043`; the Garmin bridge candidate is excluded from the merged architecture.
 
 This is the current architectural map of BookWave. Historical phase documents remain useful evidence, but
 this file no longer describes only the original Phase 0 vertical slice.
@@ -173,3 +173,12 @@ Portability work is outside the active scope. Android remains the required imple
 no cross-platform foundation or common playback/storage rewrite is queued.
 
 See [`../roadmap.md`](../roadmap.md) for sequencing rather than using this architecture overview as a backlog.
+
+
+## Garmin cross-repository boundary
+
+Garmin source/persistence/builds are owned by the [separate repository](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin). Android retains
+playback, profile authorization, Audiobookshelf access and reconciliation authority. The proposed Mobile
+SDK bridge belongs at an Android adapter boundary; `6239a148` has not landed in main. It must not create
+a second player/progress owner. Watch faces/Data Fields remain presentation surfaces. See the
+[integration plan](../garmin-integration.md) for candidate protocol and acceptance dependencies.

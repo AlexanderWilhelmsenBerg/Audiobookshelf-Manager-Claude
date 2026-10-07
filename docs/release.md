@@ -4,8 +4,8 @@
 process, what it already does, and what still blocks a public build.
 
 **Classification:** Release contract/process notes with historical pipeline sections.
-**Current handoff reconciled:** 2026-10-04, main `8de931f0`, merged through PR #226.
-The reconciliation report records later documentation-merge checks/artifact identity.
+**Current handoff reconciled:** 2026-10-07, main `36c25043`, through PR #238.
+[Cross-repository delivery snapshot](reviews/2026-10-07-cross-repo-reconciliation.md).
 
 The active pipeline is `.github/workflows/`, since the 2026-10-01 GitHub cutover. Use
 [`main.yml`](../.github/workflows/main.yml) for release/security checks,
@@ -14,14 +14,14 @@ The active pipeline is `.github/workflows/`, since the 2026-10-01 GitHub cutover
 runner/cache and action-ref descriptions below preserve historical process evidence, not current
 invocation instructions. Current build source/workflows win over older prose.
 
-Main `a20bb5b9` passed delivery workflows and produced signed debug 2180; it was superseded without a
-phone installation. Draft browse APK2181 and downloads APK2184 were installed and tested on API36 with
-retained data, but those fixes are not merged. Latest phone APK2184 is source `df5e708c`, SHA-256
-`bf0e927e9786835f42caf614752e4777fed827f8bd1df1225dd7909b3e0811b7`;
-the [download report](testing/2026-10-04-download-verification-cancellation.md) owns its exact acceptance scope.
-The [reconciliation report](reviews/2026-10-04-documentation-reconciliation.md) records current merged-main
-checks/APK packaging. A newer main build does not contain draft fixes. Do not replace the tested draft
-APK on the owner's phone merely because a documentation merge produced a larger version code.
+Runtime PRs #230/#231/#232/#234/#235/#236/#238 are merged. Latest recorded phone build is signed
+APK2195 (`eedcbd1e`), with scoped owner bottom-line readability and upgrade/offline results; it excludes
+#238. The six-change main APK2196 is downloaded but not installed. Current main `36c25043` passes
+Standard37330126779, release/security37330126716 and checked APK37330127469, publishing APK2198.
+Its artifact digest is `2902e9292f115825b9c9249853ec1f352e4269f2275958e7ae92cc5878d33717`;
+this is the Actions archive digest, not a newly verified APK-file checksum/signer. No physical acceptance
+or installation of2198 is recorded. Older2180/2181/2184 handoffs remain historical in their dated logs.
+Do not install a documentation build or touch the owner's phone without a renewed test session.
 
 The [roadmap](roadmap.md) and [verification register](testing/roadmap-verification-register.md) own current
 release work/acceptance. Signed debug delivery does not establish PRODUCT_SPEC 25 public-release acceptance.

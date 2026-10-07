@@ -6,13 +6,13 @@
 phone subcases, five failed benchmark cases and remaining NOT RUN steps. The
 [2179 continuation](2026-10-04-phone-2179.md) supersedes the benchmark harness failure for its measured
 configuration: eight executions and 27 datastore cases pass, but scrolling remains over budget.
-**Reconciled:** 2026-10-05 through merged main `cd432f42` (runtime PRs #230/#231/#232/#234/#235/#236).
+**Reconciled:** 2026-10-07 through merged main `36c25043` (#238 and prior six runtime PRs); Garmin/bridge evidence is kept separate.
 Parent rows are inventories, not blanket passes. Dated results retain exact source/APK scope.
 The owner authorized merging while carrying unverified cases forward. No test gap is relabelled PASS.
 
 ## Current delivery and follow-up obligations
 
-All six runtime PRs are merged. [Merge record/watch list](2026-10-05-merge-delivery.md) records passing
+All six October 5 batch runtime PRs and the subsequent Home PR #238 are merged. [Merge record/watch list](2026-10-05-merge-delivery.md) records passing
 PR gates, exact merge commits, carried risks and final-main workflow status. The
 [merge test inventory](2026-10-05-pr-merge-test-plan.md) remains the detailed follow-up checklist.
 No issue is closed by this merge session.
@@ -41,7 +41,7 @@ continuity gates still open. Merged implementation is not final release acceptan
 
 The [source-scoped Home recovery log](2026-10-05-home-status-recovery.md) records native shapes/recovery,
 contrast checks and every remaining physical case U-09-01–05. It covers only #195 findings4/7.
-No owner-phone tests run in this slice; previous APK findings are not transferred.
+PR #238 is merged. Current main Standard37330126779, release/security37330126716 and checked APK37330127469 pass; artifact APK2198 is not installed. No owner-phone tests run in this slice; previous APK findings are not transferred.
 
 ## Record a result for every case
 
@@ -278,17 +278,20 @@ TalkBack or rendering evidence. All new work preserves Room/profile/playback own
 
 | Case | Scenario | Required result | Current result |
 | --- | --- | --- | --- |
-| U-08-01 | Both route entry points | Home author card and Book-detail author link open the same existing destination with the correct author and Series/Standalone sections; missing author state remains truthful. | Scoped source/JVM/render coverage in [author log](2026-10-04-author-details.md); physical acceptance NOT RUN. |
-| U-08-02 | Grouping and identity | Series-only, standalone-only, mixed, coauthored and multi-membership fixtures; stable identities/order, no false standalone duplication and no primary-series/sequence policy change. | Scoped source/JVM/render coverage in [author log](2026-10-04-author-details.md); physical acceptance NOT RUN. |
-| U-08-03 | Completion truth | Finished/in-progress/unstarted/unknown books and complete/partial/unknown series, filters and incomplete catalogue; all accessible series members determine completion. Inward green cue/no checkmarks plus readable/spoken state. | Scoped source/JVM/render coverage in [author log](2026-10-04-author-details.md); physical acceptance NOT RUN. |
-| U-08-04 | Existing detail destinations | Series and standalone taps open correct existing detail routes; details navigation never issues Play, replaces the queue or changes progress. | Scoped source/JVM/render coverage in [author log](2026-10-04-author-details.md); physical acceptance NOT RUN. |
-| U-08-05 | Back and recreation | Toolbar/system/predictive Back restore Home axis/query/filter/sort/scroll, both entry points survive Activity recreation and remain reachable. | Scoped source/JVM/render coverage in [author log](2026-10-04-author-details.md); physical acceptance NOT RUN. |
-| U-08-06 | Offline and privacy states | Offline cached data, loading/error/missing covers, locked/switched/revoked profile; no stale private author/book information, UI API calls or unauthorized artwork access. | Scoped source/JVM/render coverage in [author log](2026-10-04-author-details.md); physical acceptance NOT RUN. |
-| U-08-07 | Adaptive/rendered accessibility | 320/375/414/768 dp; font 1.0/1.3/2.0; English/Norwegian; portrait/landscape; light/dark/AMOLED/dynamic/artwork; active mini-player; reduced motion; 48 dp targets and actual TalkBack ordering/completion speech. | Scoped source/JVM/render coverage in [author log](2026-10-04-author-details.md); physical acceptance NOT RUN. |
+| U-08-01 | Both route entry points | Home author card and Book-detail author link open the same existing destination with the correct author and Series/Standalone sections; missing author state remains truthful. | Selected phone entry/route checks PASS on recorded source; unavailable-author and wider route configurations remain pending. [Exact source/case log](2026-10-05-merge-delivery.md). |
+| U-08-02 | Grouping and identity | Series-only, standalone-only, mixed, coauthored and multi-membership fixtures; stable identities/order, no false standalone duplication and no primary-series/sequence policy change. | Owner mixed nine-series/one-standalone layout PASS on APK2191; full coauthor/multi-membership device matrix pending. [Exact source/case log](2026-10-05-merge-delivery.md). |
+| U-08-03 | Completion truth | Finished/in-progress/unstarted/unknown books and complete/partial/unknown series, filters and incomplete catalogue; all accessible series members determine completion. Inward green cue/no checkmarks plus readable/spoken state. | Owner completed-series text/glow PASS normal and 200% on APK2191; partial/unknown/filter/catalogue matrix pending. [Exact source/case log](2026-10-05-merge-delivery.md). |
+| U-08-04 | Existing detail destinations | Series and standalone taps open correct existing detail routes; details navigation never issues Play, replaces the queue or changes progress. | Selected Book/Author/Series destinations and normal offline route checks PASS on APK2191/2195; whole matrix pending. [Exact source/case log](2026-10-05-merge-delivery.md). |
+| U-08-05 | Back and recreation | Toolbar/system/predictive Back restore Home axis/query/filter/sort/scroll, both entry points survive Activity recreation and remain reachable. | 2191 corrected scroll return PASS after APK2189 failure; full predictive/recreation/origin-state matrix pending. [Exact source/case log](2026-10-05-merge-delivery.md). |
+| U-08-06 | Offline and privacy states | Offline cached data, loading/error/missing covers, locked/switched/revoked profile; no stale private author/book information, UI API calls or unauthorized artwork access. | Selected cached offline routes PASS on APK2191/2195; lock/revocation/profile-switch/privacy and failure matrix pending. [Exact source/case log](2026-10-05-merge-delivery.md). |
+| U-08-07 | Adaptive/rendered accessibility | 320/375/414/768 dp; font 1.0/1.3/2.0; English/Norwegian; portrait/landscape; light/dark/AMOLED/dynamic/artwork; active mini-player; reduced motion; 48 dp targets and actual TalkBack ordering/completion speech. | Owner normal/200% completed and mixed-layout visual checks PASS on APK2191; remaining configurations/player/speech matrix pending. [Exact source/case log](2026-10-05-merge-delivery.md). |
 
-Garmin #119 is low priority / parked under PD-007. No Garmin test campaign, research child issue or
-implementation acceptance is scheduled until the owner returns with evaluation findings and resumes that
-lane. Its eventual device/transfer/progress matrix must be agreed then; there is no Garmin PASS claim here.
+Garmin #119 now links the separate Companion lane. Garmin PR #1 build/export/test-compilation gates
+pass; simulator test execution and physical acceptance remain NOT RUN under [Garmin #2](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/2).
+Android bridge `6239a148` is an unmerged candidate; cross-repository transport cases G-02-01–10 are
+[planned in Garmin](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/blob/main/docs/testing/phase-2-transport.md) under
+[Garmin #3](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/3). No transport/watch acceptance PASS is claimed.
+No phone/watch campaign runs during this documentation reconciliation.
 
 Run the current scenarios above against the new APK. Historical evidence in `device-test-0.9.14.md`
 remains dated evidence, not an instruction to reproduce its obsolete hierarchy or uninstall/signing workarounds.

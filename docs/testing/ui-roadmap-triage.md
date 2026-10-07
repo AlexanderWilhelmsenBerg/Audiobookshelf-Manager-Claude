@@ -2,15 +2,15 @@
 
 **Classification:** Source reconciliation and future acceptance plan, not rendered acceptance.
 **Source snapshot:** GitHub main `81a06e1`; this table is dated source evidence.
-**Reconciled:** 2026-10-05 through main `cd432f42` (runtime PRs #230/#231/#232/#234/#235/#236 merged). [The roadmap](../roadmap.md) owns sequencing.
+**Reconciled:** 2026-10-07 through main `36c25043` (#238 merged; prior six runtime slices retained). [The roadmap](../roadmap.md) owns sequencing.
 PRs #220/#222 have delivered the shared series/card slice; [2179 phone evidence](2026-10-04-phone-2179.md)
 accepts selected compact/glow/large-text subcases. It does not close the broader #194/#195 audits or
 #187's all-card-family scope. Inspect current callers before implementing a remaining proposal.
 **Owner:** UI & Experience, with Test & Acceptance review.
 
 Critical playback/progress/privacy defects take precedence. The browse/count and Author slices are merged with
-remaining acceptance carried forward. The current software slice is #195 non-color connection status and
-no-results recovery; hardware acceptance stays pending alongside independent software work. Preserve Material 3, repository-backed state,
+remaining acceptance carried forward. PR #238 merges #195 non-color connection status and
+no-results recovery. The next Android software slice is #194 profile/player clearance and theme-preview parity; hardware acceptance stays pending alongside independent software work. Preserve Material 3, repository-backed state,
 remembered-book ownership, author-before-title shelf ordering and existing destinations.
 The proposals in #194 do not authorize an authentication/navigation rebuild or changes to other Settings tabs.
 
@@ -37,9 +37,9 @@ inward green cue without checkmarks and provide readable/spoken completion infor
 | #195 accent contrast | `Theme.kt` still selects its foreground using a luminance midpoint. This identifies a helper weakness; it does not prove which shipped palettes fail. | Compare actual foreground/background contrast, cover primary/container roles and text-contrast settings, then render effective glass/artwork backgrounds. Keep palette semantics intact. |
 | #195 compact player and motion | PR #200 already changed mini/full player presentation and motion (#182/#183 and parts of #177/#178). | Reproduce remaining clipping/clearance at the widths and font scales below before another layout change. Validate reduced motion and complete title access. |
 | #195 download recovery | The state-owned actions and execution observer already landed through #108/#109/#120 and PRs #207/#209. PR #215 adds the missing Book observer/Pause wiring tests. | Finish R-119's physical Pause/restart/sharing/TalkBack checks; do not create another execution-state owner. |
-| #195 connection status | `codex/home-status-recovery-195` replaces the dot with four symbols and selects ink against the active app surface/ground. Native shape and nominal contrast guards exist. | Follow U-09-01/02 effective-background/device checks in the [Home recovery log](2026-10-05-home-status-recovery.md); server-status derivation is unchanged. |
+| #195 connection status | Merged PR #238 replaces the dot with four symbols and selects ink against the active app surface/ground. Native shape and nominal contrast guards exist. | Follow U-09-01/02 effective-background/device checks in the [Home recovery log](2026-10-05-home-status-recovery.md); server-status derivation is unchanged. |
 | #195 whole-book seek meaning | `FullPlayer.kt` now supplies `player_book_progress` with elapsed/remaining values to the whole-book `ThinSlider`; chapter semantics are also present. | Retain the implementation and validate actual TalkBack speech, focus and seek behavior. No duplicate label implementation is needed. |
-| #195 no-results recovery | The same slice adds Clear search/Reset filters/Clear selection using existing scoped actions. | Native recovery dispatch/offline/large-text tests exist; log U-09-03–05 width/player/state and heard-continuity checks. |
+| #195 no-results recovery | Merged PR #238 adds Clear search/Reset filters/Clear selection using existing scoped actions. | Native recovery dispatch/offline/large-text tests exist; log U-09-03–05 width/player/state and heard-continuity checks. |
 | #176 pushed Sign in | Merged PR #235 supplies explicit NavHost Back capability; root has no arrow, pushed screen has a 48 dp Back action. The toolbar grows for wrapped large text. Wizard Back remains separate. | [Sign-in verification and phone checklist](2026-10-04-sign-in-back.md): real NavHost/screen guards exist, selected physical checks pass; remaining U-03 configurations/authentication stages remain pending (see the current merge record). |
 
 These are child-sized delivery slices under their existing issues, not duplicate audit issues. An existing
