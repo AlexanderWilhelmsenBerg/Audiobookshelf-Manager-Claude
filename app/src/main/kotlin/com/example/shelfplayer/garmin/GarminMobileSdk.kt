@@ -72,6 +72,8 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(
         try {
             val sdk = ConnectIQ.getInstance(context, ConnectIQ.IQConnectType.WIRELESS)
             connectIq = sdk
+            // A process-scoped integration object has no Activity that should own Garmin error UI.
+            // false keeps missing/outdated Garmin Connect Mobile as explicit bridge state.
             sdk.initialize(context, false, listener)
         } catch (error: RuntimeException) {
             _state.value = GarminSdkState.Unavailable(error.javaClass.simpleName)
@@ -91,6 +93,7 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(
             true
         } catch (_: InvalidStateException) {
             _lastSendStatus.value = "INVALID_STATE"
+            _state.value = GarminSdkState.AppUnavailable(device.toRef(), "INVALID_STATE")
             false
         } catch (_: ServiceUnavailableException) {
             _lastSendStatus.value = "SERVICE_UNAVAILABLE"
@@ -129,8 +132,8 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(
         }
 
         if (devices.isEmpty()) {
+            clearApplicationListener(sdk)
             selectedDevice = null
-            selectedApp = null
             _state.value = GarminSdkState.NoDevice
             return
         }
@@ -144,22 +147,35 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(
             }
         }
 
-        val connected = devices
-            .sortedBy { it.deviceIdentifier }
-            .firstOrNull { device ->
-                runCatching { sdk.getDeviceStatus(device) }.getOrNull() == IQDevice.IQDeviceStatus.CONNECTED
+        var connected: IQDevice? = null
+        for (device in devices.sortedBy { it.deviceIdentifier }) {
+            val status = try {
+                sdk.getDeviceStatus(device)
+            } catch (_: InvalidStateException) {
+                _state.value = GarminSdkState.Unavailable("INVALID_STATE")
+                return
+            } catch (_: ServiceUnavailableException) {
+                _state.value = GarminSdkState.Unavailable("SERVICE_UNAVAILABLE")
+                return
             }
+            if (status == IQDevice.IQDeviceStatus.CONNECTED) {
+                connected = device
+                break
+            }
+        }
 
         if (connected == null) {
+            clearApplicationListener(sdk)
             val first = devices.minByOrNull { it.deviceIdentifier } ?: return
             selectedDevice = first
-            selectedApp = null
             _state.value = GarminSdkState.DeviceDisconnected(first.toRef())
             return
         }
 
+        if (selectedDevice?.deviceIdentifier != connected.deviceIdentifier) {
+            clearApplicationListener(sdk)
+        }
         selectedDevice = connected
-        selectedApp = null
         _state.value = GarminSdkState.DeviceConnected(connected.toRef())
         resolveCompanion(sdk, connected)
     }
@@ -175,20 +191,25 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(
                 object : ConnectIQ.IQApplicationInfoListener {
                     override fun onApplicationInfoReceived(app: IQApp) {
                         if (selectedDevice?.deviceIdentifier != device.deviceIdentifier) return
+                        clearApplicationListener(sdk)
                         selectedApp = app
-                        registerForAppEvents(sdk, device, app)
-                        _state.value = GarminSdkState.AppAvailable(device.toRef())
+                        val registrationError = registerForAppEvents(sdk, device, app)
+                        _state.value = if (registrationError == null) {
+                            GarminSdkState.AppAvailable(device.toRef())
+                        } else {
+                            GarminSdkState.AppUnavailable(device.toRef(), registrationError)
+                        }
                     }
 
                     override fun onApplicationNotInstalled(applicationId: String) {
                         if (selectedDevice?.deviceIdentifier != device.deviceIdentifier) return
-                        selectedApp = null
+                        clearApplicationListener(sdk)
                         _state.value = GarminSdkState.AppNotInstalled(device.toRef())
                     }
                 },
             )
         } catch (_: InvalidStateException) {
-            _state.value = GarminSdkState.Unavailable("INVALID_STATE")
+            _state.value = GarminSdkState.AppUnavailable(device.toRef(), "INVALID_STATE")
         } catch (_: ServiceUnavailableException) {
             _state.value = GarminSdkState.Unavailable("SERVICE_UNAVAILABLE")
         }
@@ -198,18 +219,31 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(
         sdk: ConnectIQ,
         device: IQDevice,
         app: IQApp,
-    ) {
-        try {
-            sdk.unregisterForApplicationEvents(device, app)
-            sdk.registerForAppEvents(device, app) { _, _, messages, _ ->
-                messages.forEach { message ->
-                    if (message != null) {
-                        _incomingMessages.tryEmit(message)
-                    }
+    ): String? = try {
+        sdk.registerForAppEvents(device, app) { _, _, messages, _ ->
+            messages.forEach { message ->
+                if (message != null) {
+                    _incomingMessages.tryEmit(message)
                 }
             }
+        }
+        null
+    } catch (_: InvalidStateException) {
+        "INVALID_STATE"
+    } catch (_: ServiceUnavailableException) {
+        "SERVICE_UNAVAILABLE"
+    }
+
+    private fun clearApplicationListener(sdk: ConnectIQ) {
+        val device = selectedDevice
+        val app = selectedApp
+        selectedApp = null
+        if (device == null || app == null) return
+
+        try {
+            sdk.unregisterForApplicationEvents(device, app)
         } catch (_: InvalidStateException) {
-            _state.value = GarminSdkState.Unavailable("INVALID_STATE")
+            // The listener is already unusable if the SDK is no longer valid.
         }
     }
 
