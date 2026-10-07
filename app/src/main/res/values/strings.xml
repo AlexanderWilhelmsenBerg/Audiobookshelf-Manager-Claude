@@ -1206,4 +1206,43 @@
     <string name="home_clear_search">Clear search</string>
     <string name="home_reset_filters">Reset filters</string>
     <string name="home_clear_selection">Clear selection</string>
+    <string name="garmin_connected">Connected now</string>
+    <string name="garmin_last_connected">Last connected: %1$s</string>
+    <string name="garmin_last_synced">Last synced: %1$s</string>
+    <string name="garmin_setup_hint">Install BookWave Audio and sign in to your Sidecar on the watch. Pair before downloading any books.</string>
+    <string name="garmin_pair_code">Pairing code: %1$s</string>
+    <string name="garmin_pair">Pair watch</string>
+    <string name="garmin_force_sync">Force sync</string>
+    <string name="garmin_downloads">Downloads</string>
+    <string name="garmin_new_download">New download</string>
+    <string name="garmin_sessions">Watch listening history</string>
+    <plurals name="garmin_pending">
+        <item quantity="one">%1$d request pending</item>
+        <item quantity="other">%1$d requests pending</item>
+    </plurals>
+    <string name="garmin_history_gap">Some watch history could not be saved. Local resume progress is retained.</string>
+    <string name="garmin_queued">Queued. Open BookWave Audio on the watch to receive the request.</string>
+    <string name="garmin_confirm_watch">Confirm the matching code and account on the watch.</string>
+    <string name="garmin_request_failed">Could not complete the request. Check the watch connection, Sidecar setup and account, then try again.</string>
+    <string name="garmin_dismiss">Dismiss</string>
+    <string name="garmin_inventory_observed">Watch report: %1$s</string>
+    <string name="garmin_download_hint">Choose a fully downloaded phone book. Sidecar downloads its server audio to the watch; the phone files are not transferred.</string>
+    <string name="garmin_no_eligible_books">No completed downloads available for this account.</string>
+    <string name="garmin_unknown_book">Book</string>
+    <string name="garmin_listen_progress">%1$d / %2$d s</string>
+    <string name="garmin_part_boundary">Audio part boundary</string>
+    <string name="garmin_no_events">No watch listening events received yet.</string>
+    <string name="garmin_download_complete">Downloaded</string>
+    <string name="garmin_download_failed">Failed — retry the download</string>
+    <string name="garmin_download_partial">Partially downloaded</string>
+    <string name="garmin_download_queued">Queued on watch</string>
+    <plurals name="garmin_parts">
+        <item quantity="one">%1$d / %2$d audio part</item>
+        <item quantity="other">%1$d / %2$d audio parts</item>
+    </plurals>
+    <string name="garmin_inventory_unknown">No watch inventory received yet.</string>
+    <string name="garmin_watch_empty">The watch reported no downloads.</string>
+    <string name="garmin_close">Close</string>
+    <string name="garmin_never">Not yet</string>
+    <string name="garmin_available_from">Available from saved position: %1$d s</string>
 </resources>

@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.database.ShelfPlayerDatabase
 import com.example.shelfplayer.core.database.dao.BookPlaybackSettingsDao
 import com.example.shelfplayer.core.database.dao.BookmarkDao
 import com.example.shelfplayer.core.database.dao.DownloadDao
+import com.example.shelfplayer.core.database.dao.GarminDao
 import com.example.shelfplayer.core.database.dao.LibraryDao
 import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.MetadataDraftDao
@@ -65,6 +66,9 @@ object DaoModule {
 
     @Provides
     fun providesDownloadDao(database: ShelfPlayerDatabase): DownloadDao = database.downloadDao()
+
+    @Provides
+    fun providesGarminDao(database: ShelfPlayerDatabase): GarminDao = database.garminDao()
 
     @Provides
     fun providesSyncStateDao(database: ShelfPlayerDatabase): SyncStateDao = database.syncStateDao()

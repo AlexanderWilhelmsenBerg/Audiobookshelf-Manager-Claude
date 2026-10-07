@@ -25,6 +25,10 @@ internal interface GarminMobileSdk {
     val incomingMessages: SharedFlow<Any>
     val lastSendStatus: StateFlow<String?>
 
+    val providerState: StateFlow<GarminSdkState> get() = UnavailableProvider.state
+    val providerMessages: SharedFlow<Any> get() = UnavailableProvider.messages
+    fun sendProvider(payload: Map<String, Any>): Boolean = false
+
     fun start()
     fun send(payload: Map<String, Any>): Boolean
     fun shutdown()
@@ -42,6 +46,12 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(@param:ApplicationCo
     private val _lastSendStatus = MutableStateFlow<String?>(null)
     override val lastSendStatus: StateFlow<String?> = _lastSendStatus.asStateFlow()
 
+    private val providerMutableState = MutableStateFlow<GarminSdkState>(GarminSdkState.Starting)
+    override val providerState = providerMutableState.asStateFlow()
+    private val providerMutableMessages = MutableSharedFlow<Any>(extraBufferCapacity = 32)
+    override val providerMessages = providerMutableMessages.asSharedFlow()
+    private var providerApp: IQApp? = null
+
     private var connectIq: ConnectIQ? = null
     private var selectedDevice: IQDevice? = null
     private var selectedApp: IQApp? = null
@@ -51,7 +61,10 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(@param:ApplicationCo
 
     private fun listener(token: Long) = object : ConnectIQ.ConnectIQListener {
         override fun onInitializeError(errStatus: ConnectIQ.IQSdkErrorStatus) {
-            if (started && lifecycle == token) _state.value = GarminSdkState.Unavailable(errStatus.name)
+            if (started && lifecycle == token) {
+                _state.value = GarminSdkState.Unavailable(errStatus.name)
+                providerMutableState.value = _state.value
+            }
         }
 
         override fun onSdkReady() {
@@ -63,7 +76,9 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(@param:ApplicationCo
             resolution++
             selectedDevice = null
             selectedApp = null
+            providerApp = null
             _state.value = GarminSdkState.Unavailable("SDK_SHUT_DOWN")
+            providerMutableState.value = _state.value
         }
     }
 
@@ -72,6 +87,7 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(@param:ApplicationCo
         started = true
         lifecycle++
         _state.value = GarminSdkState.Starting
+        providerMutableState.value = _state.value
 
         try {
             val sdk = ConnectIQ.getInstance(context, ConnectIQ.IQConnectType.WIRELESS)
@@ -81,14 +97,20 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(@param:ApplicationCo
             sdk.initialize(context, false, listener(lifecycle))
         } catch (_: RuntimeException) {
             _state.value = GarminSdkState.Unavailable("SDK_INITIALIZE_FAILED")
+            providerMutableState.value = _state.value
         }
     }
 
-    override fun send(payload: Map<String, Any>): Boolean {
+    override fun send(payload: Map<String, Any>): Boolean = sendTo(payload, false)
+
+    override fun sendProvider(payload: Map<String, Any>): Boolean = sendTo(payload, true)
+
+    private fun sendTo(payload: Map<String, Any>, provider: Boolean): Boolean {
         val sdk = connectIq ?: return false
         val device = selectedDevice
-        val app = selectedApp
-        if (device == null || app == null || _state.value !is GarminSdkState.AppAvailable) return false
+        val app = if (provider) providerApp else selectedApp
+        val targetState = if (provider) providerMutableState else _state
+        if (device == null || app == null || targetState.value !is GarminSdkState.AppAvailable) return false
 
         return try {
             val token = lifecycle
@@ -103,14 +125,14 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(@param:ApplicationCo
             true
         } catch (_: InvalidStateException) {
             _lastSendStatus.value = "INVALID_STATE"
-            _state.value = GarminSdkState.AppUnavailable(device.toRef(), "INVALID_STATE")
+            targetState.value = GarminSdkState.AppUnavailable(device.toRef(), "INVALID_STATE")
             false
         } catch (_: RuntimeException) {
             _lastSendStatus.value = "SEND_FAILED"
             false
         } catch (_: ServiceUnavailableException) {
             _lastSendStatus.value = "SERVICE_UNAVAILABLE"
-            _state.value = GarminSdkState.Unavailable("SERVICE_UNAVAILABLE")
+            targetState.value = GarminSdkState.Unavailable("SERVICE_UNAVAILABLE")
             false
         }
     }
@@ -123,6 +145,7 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(@param:ApplicationCo
         connectIq = null
         selectedDevice = null
         selectedApp = null
+        providerApp = null
         started = false
         if (sdk != null) {
             try {
@@ -133,6 +156,7 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(@param:ApplicationCo
             }
         }
         _state.value = GarminSdkState.Unavailable("SDK_STOPPED")
+        providerMutableState.value = _state.value
     }
 
     private fun refreshDevices() {
@@ -145,8 +169,10 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(@param:ApplicationCo
             selectDevice(sdk, devices)
         } catch (_: InvalidStateException) {
             _state.value = GarminSdkState.Unavailable("INVALID_STATE")
+            providerMutableState.value = _state.value
         } catch (_: ServiceUnavailableException) {
             _state.value = GarminSdkState.Unavailable("SERVICE_UNAVAILABLE")
+            providerMutableState.value = _state.value
         }
     }
 
@@ -165,6 +191,7 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(@param:ApplicationCo
             clearApplicationListener(sdk)
             selectedDevice = null
             _state.value = GarminSdkState.NoDevice
+            providerMutableState.value = _state.value
             return
         }
         val ordered = devices.sortedBy { it.deviceIdentifier }
@@ -173,21 +200,25 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(@param:ApplicationCo
             clearApplicationListener(sdk)
             selectedDevice = ordered.first()
             _state.value = GarminSdkState.DeviceDisconnected(ordered.first().toRef())
+            providerMutableState.value = _state.value
             return
         }
         if (selectedDevice?.deviceIdentifier != connected.deviceIdentifier) clearApplicationListener(sdk)
         selectedDevice = connected
         _state.value = GarminSdkState.DeviceConnected(connected.toRef())
-        resolveCompanion(sdk, connected)
+        providerMutableState.value = GarminSdkState.DeviceConnected(connected.toRef())
+        resolveCompanion(sdk, connected, false)
+        resolveCompanion(sdk, connected, true)
     }
 
     private fun isCurrent(sdk: ConnectIQ, token: Long): Boolean = started && connectIq === sdk && resolution == token
 
-    private fun resolveCompanion(sdk: ConnectIQ, device: IQDevice) {
+    private fun resolveCompanion(sdk: ConnectIQ, device: IQDevice, provider: Boolean) {
+        val targetState = if (provider) providerMutableState else _state
         val token = resolution
         try {
             sdk.getApplicationInfo(
-                GarminBridgeConfig.COMPANION_APPLICATION_ID,
+                if (provider) AUDIO_PROVIDER_APPLICATION_ID else GarminBridgeConfig.COMPANION_APPLICATION_ID,
                 device,
                 object : ConnectIQ.IQApplicationInfoListener {
                     override fun onApplicationInfoReceived(app: IQApp) {
@@ -196,10 +227,10 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(@param:ApplicationCo
                         ) {
                             return
                         }
-                        clearApplicationListener(sdk)
-                        selectedApp = app
-                        val registrationError = registerForAppEvents(sdk, device, app)
-                        _state.value = if (registrationError == null) {
+                        clearOneApplication(sdk, provider)
+                        if (provider) providerApp = app else selectedApp = app
+                        val registrationError = registerForAppEvents(sdk, device, app, provider)
+                        targetState.value = if (registrationError == null) {
                             GarminSdkState.AppAvailable(device.toRef())
                         } else {
                             GarminSdkState.AppUnavailable(device.toRef(), registrationError)
@@ -212,30 +243,31 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(@param:ApplicationCo
                         ) {
                             return
                         }
-                        clearApplicationListener(sdk)
-                        _state.value = GarminSdkState.AppNotInstalled(device.toRef())
+                        clearOneApplication(sdk, provider)
+                        targetState.value = GarminSdkState.AppNotInstalled(device.toRef())
                     }
                 },
             )
         } catch (_: InvalidStateException) {
-            _state.value = GarminSdkState.AppUnavailable(device.toRef(), "INVALID_STATE")
+            targetState.value = GarminSdkState.AppUnavailable(device.toRef(), "INVALID_STATE")
         } catch (_: ServiceUnavailableException) {
-            _state.value = GarminSdkState.Unavailable("SERVICE_UNAVAILABLE")
+            targetState.value = GarminSdkState.Unavailable("SERVICE_UNAVAILABLE")
         }
     }
 
-    private fun registerForAppEvents(sdk: ConnectIQ, device: IQDevice, app: IQApp): String? = try {
+    private fun registerForAppEvents(sdk: ConnectIQ, device: IQDevice, app: IQApp, provider: Boolean): String? = try {
         val token = resolution
-        sdk.registerForAppEvents(device, app) { incomingDevice, _, messages, status ->
+        sdk.registerForAppEvents(device, app) { incomingDevice, incomingApp, messages, status ->
             if (!isCurrent(sdk, token) ||
                 selectedDevice?.deviceIdentifier != incomingDevice.deviceIdentifier ||
                 status != ConnectIQ.IQMessageStatus.SUCCESS
             ) {
                 return@registerForAppEvents
             }
+            if (!incomingApp.applicationId.equals(app.applicationId, ignoreCase = true)) return@registerForAppEvents
             messages.forEach { message ->
                 if (message != null) {
-                    _incomingMessages.tryEmit(message)
+                    if (provider) providerMutableMessages.tryEmit(message) else _incomingMessages.tryEmit(message)
                 }
             }
         }
@@ -247,9 +279,14 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(@param:ApplicationCo
     }
 
     private fun clearApplicationListener(sdk: ConnectIQ) {
+        clearOneApplication(sdk, false)
+        clearOneApplication(sdk, true)
+    }
+
+    private fun clearOneApplication(sdk: ConnectIQ, provider: Boolean) {
         val device = selectedDevice
-        val app = selectedApp
-        selectedApp = null
+        val app = if (provider) providerApp else selectedApp
+        if (provider) providerApp = null else selectedApp = null
         if (device == null || app == null) return
 
         try {
@@ -271,4 +308,11 @@ internal interface GarminMobileSdkModule {
     @Binds
     @Singleton
     fun bindGarminMobileSdk(implementation: ConnectIqGarminMobileSdk): GarminMobileSdk
+}
+
+internal const val AUDIO_PROVIDER_APPLICATION_ID = "0a5435b5995c4c10826cc11606e31350"
+
+private object UnavailableProvider {
+    val state = MutableStateFlow<GarminSdkState>(GarminSdkState.Unavailable("NOT_SUPPORTED"))
+    val messages = MutableSharedFlow<Any>()
 }

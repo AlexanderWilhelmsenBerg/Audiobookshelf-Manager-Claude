@@ -1,0 +1,297 @@
+package com.example.shelfplayer.garmin
+
+import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.Profile
+import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.ProfileRole
+import com.example.shelfplayer.core.model.Server
+import com.example.shelfplayer.core.model.ServerId
+import com.example.shelfplayer.core.model.lock.ProfileLockState
+import com.example.shelfplayer.domain.repository.AuthRepository
+import com.example.shelfplayer.domain.repository.BookmarkRepository
+import com.example.shelfplayer.domain.repository.DownloadRepository
+import com.example.shelfplayer.domain.repository.LibraryRepository
+import com.example.shelfplayer.domain.repository.ProfileLockRepository
+import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.lang.reflect.Proxy
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34], manifest = Config.NONE, application = android.app.Application::class)
+@OptIn(ExperimentalCoroutinesApi::class)
+class GarminDeviceRepositoryTest {
+    @Test fun disconnectedRequestsAreDurableAndDuplicateTapsShareOneRequest() = runTest {
+        val f = Fixture()
+        f.sdk.providerState.value = GarminSdkState.DeviceDisconnected(GarminDeviceRef(1, "Watch"))
+        val repository = f.repository(backgroundScope, StandardTestDispatcher(testScheduler))
+        assertTrue(repository.forceSync() is AppResult.Success)
+        assertTrue(repository.forceSync() is AppResult.Success)
+        runCurrent()
+        assertEquals(1, f.records.rows.value.count { it.kind == "command" })
+        assertEquals("pending", GarminDeviceDocuments.read(f.records.rows.value.single().payload).optString("state"))
+        assertTrue(f.sdk.sent.isEmpty())
+    }
+
+    @Test fun importsOriginalEventTimeBeforeAcknowledgingAndDuplicateImportIsIdempotent() = runTest {
+        val f = Fixture()
+        val repository = f.repository(backgroundScope, StandardTestDispatcher(testScheduler))
+        f.answer(backgroundScope)
+        f.sdk.respond = f.sdk.respond!!.let { answer ->
+            { command ->
+                if (command["t"] == "ack_events") assertEquals(1, f.records.rows.value.count { it.kind == "event" })
+                answer(command)
+            }
+        }
+        repository.start()
+        runCurrent()
+        advanceTimeBy(30_001)
+        runCurrent()
+        assertEquals(1_800_000_000_000L, f.records.rows.value.single { it.kind == "event" }.recordedAt)
+        assertTrue(f.sdk.sent.any { it["t"] == "ack_events" })
+        assertTrue(repository.refresh() is AppResult.Success)
+        assertEquals(1, f.records.rows.value.count { it.kind == "event" })
+    }
+
+    @Test fun failedDurableEventImportNeverAcknowledgesTheWatch() = runTest {
+        val f = Fixture()
+        f.records.failEvents = true
+        f.answer(backgroundScope)
+        val repository = f.repository(backgroundScope, StandardTestDispatcher(testScheduler))
+        repository.start()
+        runCurrent()
+        advanceTimeBy(30_001)
+        runCurrent()
+        assertTrue(f.sdk.sent.any { it["t"] == "events" })
+        assertTrue(f.sdk.sent.none { it["t"] == "ack_events" })
+        assertTrue(f.records.rows.value.none { it.kind == "event" })
+    }
+
+    @Test fun aClosedProviderIsNotRepeatedlyPolledAndRevokedTitlesAreNotDisplayed() = runTest {
+        val f = Fixture()
+        val repository = f.repository(backgroundScope, StandardTestDispatcher(testScheduler))
+        repository.start()
+        runCurrent()
+        advanceTimeBy(30_001)
+        runCurrent()
+        advanceTimeBy(20_001)
+        runCurrent()
+        val count = f.sdk.sent.size
+        advanceTimeBy(120_000)
+        runCurrent()
+        assertEquals(count, f.sdk.sent.size)
+        f.records.put(
+            listOf(
+                com.example.shelfplayer.core.model.garmin.GarminRecord(
+                    "profile",
+                    "1",
+                    "inventory",
+                    "book",
+                    """{"b":"book","title":"Revoked private title","state":"downloaded","done":1,"total":1}""",
+                    1,
+                ),
+            ),
+        )
+        assertNull(repository.observe().first().downloads.single().title)
+        f.locked = true
+        assertTrue(repository.observe().first().downloads.isEmpty())
+    }
+
+    @Test fun sharedGoldenProviderMessagesAndRowsAreAccepted() {
+        val stream = checkNotNull(javaClass.getResourceAsStream("/garmin/provider-v1.json"))
+        val fixtures = org.json.JSONArray(stream.bufferedReader().use { it.readText() })
+        repeat(fixtures.length()) { index ->
+            val fixture = fixtures.getJSONObject(index)
+            val value = fixture.getJSONObject("value")
+            when (fixture.getString("name")) {
+                "hello", "inventory", "events" -> assertNotNull(
+                    GarminProviderCodec.decode(raw(value)!!, "profile", "nonce", "request"),
+                )
+            }
+            if (value.has("rows")) {
+                val rows = value.getJSONArray("rows")
+                repeat(rows.length()) { row ->
+                    val parsed = raw(rows.get(row))
+                    if (fixture.getString("name") == "events") {
+                        assertNotNull(GarminProviderCodec.event(parsed))
+                    } else {
+                        assertNotNull(GarminProviderCodec.inventory(parsed))
+                    }
+                }
+            }
+        }
+    }
+
+    private fun raw(value: Any?): Any? = when (value) {
+        is org.json.JSONObject -> value.keys().asSequence().associateWith { raw(value.get(it)) }
+        is org.json.JSONArray -> (0 until value.length()).map { raw(value.get(it)) }
+        org.json.JSONObject.NULL -> null
+        else -> value
+    }
+
+    private class MemoryRecords : com.example.shelfplayer.domain.repository.GarminRecordRepository {
+        val rows = MutableStateFlow(emptyList<com.example.shelfplayer.core.model.garmin.GarminRecord>())
+        var failEvents = false
+        override fun observe(profileId: String) = rows.map { values ->
+            values.filter { it.profileId == profileId }.sortedByDescending { it.recordedAt }
+        }
+        override suspend fun records(profileId: String, deviceId: String, kind: String) =
+            rows.value.filter { it.profileId == profileId && it.deviceId == deviceId && it.kind == kind }
+        override suspend fun put(rows: List<com.example.shelfplayer.core.model.garmin.GarminRecord>) {
+            check(!failEvents || rows.none { it.kind == "event" })
+            val keys = rows.map { listOf(it.profileId, it.deviceId, it.kind, it.recordId) }.toSet()
+            this.rows.value =
+                this.rows.value.filter { listOf(it.profileId, it.deviceId, it.kind, it.recordId) !in keys } + rows
+        }
+        override suspend fun replace(
+            profileId: String,
+            deviceId: String,
+            kind: String,
+            rows: List<com.example.shelfplayer.core.model.garmin.GarminRecord>,
+        ) {
+            this.rows.value =
+                this.rows.value.filter { it.profileId != profileId || it.deviceId != deviceId || it.kind != kind } +
+                rows
+        }
+    }
+    private class Fixture {
+        val profile =
+            Profile(
+                ProfileId(
+                    "profile",
+                ),
+                ServerId("server"), "fixture", "Fixture", ProfileRole.Listener, false, null, false, canDownload = true,
+            )
+        var generation = 1L
+        var locked = false
+        private val profiles = object : ProfileRepository {
+            override fun observeProfiles(): Flow<List<Profile>> = MutableStateFlow(listOf(profile))
+            override fun observeServers(): Flow<List<Server>> = MutableStateFlow(emptyList())
+            override fun observeActiveProfile(): Flow<Profile?> = MutableStateFlow(profile)
+            override suspend fun activeProfileId(): ProfileId = profile.id
+            override fun activeProfileGeneration(): Long = generation
+            override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = error("Read only")
+        }
+        private val locks = proxy<ProfileLockRepository> { method ->
+            when {
+                method.startsWith("isLocked") -> locked
+                method.startsWith("observeLockState") -> MutableStateFlow<ProfileLockState>(ProfileLockState.Unlocked)
+                else -> error("Unexpected lock call")
+            }
+        }
+        private val library =
+            proxy<LibraryRepository> { MutableStateFlow(emptyList<com.example.shelfplayer.core.model.library.Book>()) }
+        private val downloads =
+            proxy<DownloadRepository> {
+                MutableStateFlow(setOf(com.example.shelfplayer.core.model.LibraryItemId("book")))
+            }
+        val access =
+            GarminDeviceAccess(
+                profiles,
+                locks,
+                library,
+                downloads,
+                SyncAccountUseCase(
+                    profiles,
+                    proxy<AuthRepository> {
+                        AppResult.Failure(com.example.shelfplayer.core.model.AppError.Network("Offline"))
+                    },
+                    library,
+                    proxy<BookmarkRepository> { error("No bookmark writes") },
+                ),
+            )
+        val sdk = FakeSdk()
+        val port = GarminProviderPort(sdk, access)
+        val records = MemoryRecords()
+        fun repository(scope: kotlinx.coroutines.CoroutineScope, dispatcher: kotlinx.coroutines.CoroutineDispatcher) =
+            GarminDeviceRepository(
+                sdk,
+                access,
+                port,
+                records,
+                com.example.shelfplayer.core.testing.TestAppClock(),
+                scope,
+                dispatcher,
+            )
+        fun answer(scope: kotlinx.coroutines.CoroutineScope, event: Boolean = true) {
+            sdk.respond = { command ->
+                val type = command["t"] as String
+                val body: Map<String, Any> = when (type) {
+                    "hello" -> mapOf("configured" to true, "paired" to true)
+
+                    "inventory" -> mapOf(
+                        "rows" to emptyList<Any>(),
+                        "more" to false,
+                        "offset" to 0,
+                        "at" to 1_800_000_001L,
+                    )
+
+                    "events" -> mapOf(
+                        "rows" to if (event) {
+                            listOf(
+                                mapOf(
+                                    "id" to "1",
+                                    "p" to "profile",
+                                    "b" to "book",
+                                    "pos" to 12,
+                                    "dur" to 120,
+                                    "at" to 1_800_000_000L,
+                                    "k" to "pause",
+                                    "finished" to false,
+                                ),
+                            )
+                        } else {
+                            emptyList<Any>()
+                        },
+                        "more" to false,
+                        "gap" to false,
+                    )
+
+                    else -> mapOf("ok" to true)
+                }
+                scope.launch { sdk.providerMessages.emit(command + body + ("n" to "watch-nonce")) }
+            }
+        }
+        fun reply(): Map<String, Any> = sdk.sent.last().toMutableMap().apply { put("n", "watch-nonce") }
+        private inline fun <reified T> proxy(crossinline call: (String) -> Any?): T =
+            Proxy.newProxyInstance(T::class.java.classLoader, arrayOf(T::class.java)) { _, method, _ ->
+                call(method.name)
+            } as T
+    }
+    private class FakeSdk : GarminMobileSdk {
+        override val state = MutableStateFlow<GarminSdkState>(GarminSdkState.NoDevice)
+        override val providerState =
+            MutableStateFlow<GarminSdkState>(GarminSdkState.AppAvailable(GarminDeviceRef(1, "Watch")))
+        override val incomingMessages = MutableSharedFlow<Any>()
+        override val providerMessages = MutableSharedFlow<Any>()
+        override val lastSendStatus = MutableStateFlow<String?>(null)
+        val sent = mutableListOf<Map<String, Any>>()
+        var respond: ((Map<String, Any>) -> Unit)? = null
+        override fun start() = Unit
+        override fun shutdown() = Unit
+        override fun send(payload: Map<String, Any>): Boolean = error("Companion channel must remain separate")
+        override fun sendProvider(payload: Map<String, Any>): Boolean {
+            sent += payload
+            respond?.invoke(payload)
+            return true
+        }
+    }
+}

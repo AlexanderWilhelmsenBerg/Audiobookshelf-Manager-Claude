@@ -1,7 +1,7 @@
 # BookWave state for a future watch face
 
-**Classification:** Accepted owner requirement and architecture; publisher/consumer runtime not implemented.
-**Updated:** 2026-10-07. Delivery tracker: [Garmin #8](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/8); Android
+**Classification:** Accepted owner requirement and architecture; publisher implemented; consumer/watch face deferred; physical acceptance pending.
+**Updated:** 2026-10-08. Delivery tracker: [Garmin #8](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/8); Android
 [umbrella #119](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/119).
 
 ## Selected path and ownership
@@ -18,9 +18,7 @@ publishes real GARMIN playback state. Each has its own application ID and compli
 A consumer cannot read another app's private Application.Storage. The apps share versioned projection
 code and fixtures, rather than a pretend common storage namespace. Companion is not an audio engine.
 
-This is a logical feed plan, not a released wire/resource contract. Numeric complication IDs, resource
-definitions, permissions, text bounds and publication-generation handling must be confirmed against
-the SDK, documented and fixture-tested before implementation ships. Phase 2 envelopes remain unchanged.
+The implemented resource/wire projection is documented in [the feed contract](garmin-feed-contract.md). Each app uses protected complication id0 and one atomic string value. A later consumer must share the retained developer signing key. Phase 2 envelopes remain unchanged.
 
 ## Minimum projection
 
@@ -47,12 +45,11 @@ authority is ambiguous, retain explicit source/unknown state rather than resolvi
 Publish after successful validation and persistence through actual transport/provider lifecycle callers.
 No success publication follows a failed store operation. Update on meaningful play/pause/seek/book/
 chapter/privacy changes and a bounded checkpoint cadence. No per-second BLE or watch-face networking.
-The planned provider journal preserves captured events through phone absence, restart and delayed sync.
+The provider journal preserves captured events through phone absence, restart and delayed sync.
 
 Garmin retains fields omitted from updateComplication. Empty/locked/redacted state therefore explicitly
 overwrites **every** private label/value, including previously published text; a partial clear can leak
-old titles. If multiple complications form one projection, use a documented publication generation and
-consumer consistency check rather than assuming all updates are atomic.
+old titles. The implementation uses one atomic string-valued complication, with no numeric ranges; no mixed-generation multi-field read is needed.
 
 Cached data can remain after a publisher closes. The consumer distinguishes stored/stale from playing
 now or connected now, and handles absent/uninstalled publishers. An offline watch cannot receive a phone

@@ -1,0 +1,93 @@
+[
+  {
+    "name": "inventory",
+    "value": {
+      "v": 1,
+      "t": "inventory",
+      "r": "request",
+      "p": "profile",
+      "n": "nonce",
+      "offset": 0,
+      "rows": [
+        {
+          "b": "book",
+          "title": "Fixture",
+          "state": "queued",
+          "done": 0,
+          "total": 20,
+          "from": 0
+        }
+      ],
+      "more": false,
+      "at": 1800000000,
+      "synced": null,
+      "syncRequest": null,
+      "failedSync": null
+    }
+  },
+  {
+    "name": "events",
+    "value": {
+      "v": 1,
+      "t": "events",
+      "r": "request",
+      "p": "profile",
+      "n": "nonce",
+      "rows": [
+        {
+          "id": "1",
+          "b": "book",
+          "pos": 12,
+          "dur": 3600,
+          "at": 1800000000,
+          "k": "pause",
+          "finished": false,
+          "p": "profile"
+        }
+      ],
+      "more": false,
+      "gap": false,
+      "at": 1800000001
+    }
+  },
+  {
+    "name": "hello",
+    "value": {
+      "v": 1,
+      "t": "hello",
+      "r": "request",
+      "p": "profile",
+      "n": "nonce",
+      "configured": true,
+      "paired": true,
+      "caps": [
+        "pair",
+        "authorize",
+        "download",
+        "inventory",
+        "events",
+        "ack_events",
+        "sync",
+        "redact"
+      ]
+    }
+  },
+  {
+    "name": "ready",
+    "value": {
+      "v": 1,
+      "t": "ready",
+      "p": "profile",
+      "n": "nonce"
+    }
+  },
+  {
+    "name": "sleeping",
+    "value": {
+      "v": 1,
+      "t": "sleeping",
+      "p": "profile",
+      "n": "nonce"
+    }
+  }
+]

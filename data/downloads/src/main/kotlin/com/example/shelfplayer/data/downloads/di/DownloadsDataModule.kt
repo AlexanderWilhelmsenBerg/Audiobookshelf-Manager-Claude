@@ -5,12 +5,14 @@ import com.example.shelfplayer.data.downloads.BookDownloader
 import com.example.shelfplayer.data.downloads.DefaultDownloadRepository
 import com.example.shelfplayer.data.downloads.DownloadRoots
 import com.example.shelfplayer.data.downloads.DownloadVerifier
+import com.example.shelfplayer.data.downloads.GarminDeviceStore
 import com.example.shelfplayer.data.downloads.MediaContainerVerifier
 import com.example.shelfplayer.data.downloads.StorageVolumes
 import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.download.OfflineVerification
 import com.example.shelfplayer.domain.repository.DownloadRepository
+import com.example.shelfplayer.domain.repository.GarminRecordRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -21,6 +23,10 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 interface DownloadsDataModule {
+    @Binds
+    @Singleton
+    fun bindsGarminRecords(impl: GarminDeviceStore): GarminRecordRepository
+
     @Binds
     @Singleton
     fun bindsDownloadRepository(impl: DefaultDownloadRepository): DownloadRepository

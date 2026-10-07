@@ -1,7 +1,7 @@
 # Garmin device management
 
-**Classification:** Accepted owner scope and selected Audio Provider architecture; runtime not implemented.
-**Date:** 2026-10-07. Requirements SET-002, DL-001/003, AUTH-002/003/005, PLAY-007,
+**Classification:** Accepted owner scope and selected Audio Provider architecture; runtime implemented; physical acceptance pending.
+**Updated:** 2026-10-08. Requirements SET-002, DL-001/003, AUTH-002/003/005, PLAY-007,
 SYNC-001/002; PRODUCT_SPEC17/19/21. Android #119 remains the cross-repository umbrella.
 
 ## Requested settings flow
@@ -35,15 +35,14 @@ Its cached media/book/progress state belongs to its Audio Content Provider.
 
 Garmin's [Media module](https://developer.garmin.com/connect-iq/api-docs/Toybox/Media.html) is for
 Audio Content Provider contexts. The current BookWave Companion manifest is a `watch-app` with
-Communications permission only; it cannot become an audio download engine just by calling Sidecar.
+Communications and ComplicationPublisher permissions; it cannot become an audio download engine just by calling Sidecar.
 There is no current supported interface to manage an unmodified WatchShelf installation from BookWave.
 
 The owner accepted the recommendation: a **separate BookWave Audio Provider using existing WatchShelf
 Sidecar**, tracked by [Garmin #7](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/7). Keep the Companion as a separate Device App. This
 supersedes the optional-provider/evaluation-only deferral for these requested controls; it does not
-authorize removing Sidecar or claim the provider exists. Unmodified WatchShelf may continue during
-transition; its storage is not the BookWave provider's inventory. No WatchShelf code has been copied.
-Any later reuse must retain its MIT copyright/license and review upstream notices.
+authorize removing Sidecar. The separate provider is now implemented. Unmodified WatchShelf may continue during
+transition; its storage is not the BookWave provider's inventory. Reviewed WatchShelf engine reuse retains MIT copyright/license and exact upstream/file provenance in the Garmin provider's `third-party/` directory.
 
 Selecting a phone-downloaded book selects an authorized server item. Current Sidecar fetches its audio
 from Audiobookshelf and transcodes watch-sized chunks; this is not a transfer of the phone's local files.
@@ -65,7 +64,7 @@ Settings Force sync is account/device synchronization, not merely re-sending a P
 
 ## Future watch face data
 
-Companion PHONE state and provider GARMIN state will be exposed through BookWave-published Garmin
+Companion PHONE state and provider GARMIN state are exposed through BookWave-published Garmin
 Complications. The [accepted feed plan](garmin-watchface-state-plan.md) and [Garmin #8](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/8)
 record source/freshness/privacy rules and GF-01–07 tests. The future face consumes on-watch state;
 it does not authenticate to Audiobookshelf or become a progress/sync owner. Publishing data is a
@@ -112,5 +111,10 @@ prerequisite; watch face and Data Field implementations remain later work.
 | GD-10 | Actual provider storage/restart/upgrade retention, sustained transfer/listening battery and Garmin Connect lifecycle; record model, firmware, Sidecar/source versions and both hashes. |
 
 These extend G-01/G-02 and Q-01/A-08; they do not replace them or turn prior compile-only evidence
-into device acceptance. The architecture is selected; provider/control/feed implementation and hardware
-acceptance remain outstanding. Android reliability retains priority.
+into device acceptance. The architecture is selected; provider/control/feed implementation is present and hardware
+acceptance remains outstanding. Android reliability retains priority.
+
+## Current implementation and evidence
+
+The provider, durable Android device controls/event import and both protected publishers are implemented.
+See [2026-10-08-garmin-provider.md](testing/2026-10-08-garmin-provider.md) for exact build/test delivery. Runtime policy is recorded in the provider/feed contracts; the tests above remain physical acceptance obligations.

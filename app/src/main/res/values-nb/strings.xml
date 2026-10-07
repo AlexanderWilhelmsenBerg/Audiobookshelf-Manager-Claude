@@ -953,4 +953,43 @@
     <string name="home_clear_search">Tøm søk</string>
     <string name="home_reset_filters">Tilbakestill filtre</string>
     <string name="home_clear_selection">Fjern utvalg</string>
+    <string name="garmin_connected">Tilkoblet nå</string>
+    <string name="garmin_last_connected">Sist tilkoblet: %1$s</string>
+    <string name="garmin_last_synced">Sist synkronisert: %1$s</string>
+    <string name="garmin_setup_hint">Installer BookWave Audio og logg på Sidecar på klokken. Koble til før du laster ned bøker.</string>
+    <string name="garmin_pair_code">Tilkoblingskode: %1$s</string>
+    <string name="garmin_pair">Koble til klokke</string>
+    <string name="garmin_force_sync">Synkroniser nå</string>
+    <string name="garmin_downloads">Nedlastinger</string>
+    <string name="garmin_new_download">Ny nedlasting</string>
+    <string name="garmin_sessions">Lyttehistorikk på klokken</string>
+    <plurals name="garmin_pending">
+        <item quantity="one">%1$d forespørsel venter</item>
+        <item quantity="other">%1$d forespørsler venter</item>
+    </plurals>
+    <string name="garmin_history_gap">Noe av klokkehistorikken kunne ikke lagres. Lokal lytteposisjon er beholdt.</string>
+    <string name="garmin_queued">Lagt i kø. Åpne BookWave Audio på klokken for å motta forespørselen.</string>
+    <string name="garmin_confirm_watch">Bekreft samme kode og konto på klokken.</string>
+    <string name="garmin_request_failed">Kunne ikke fullføre forespørselen. Kontroller tilkoblingen, Sidecar-oppsettet og kontoen på klokken, og prøv igjen.</string>
+    <string name="garmin_dismiss">Lukk</string>
+    <string name="garmin_inventory_observed">Klokkerapport: %1$s</string>
+    <string name="garmin_download_hint">Velg en ferdig nedlastet bok på telefonen. Sidecar henter lyden fra serveren til klokken; telefonfilene overføres ikke.</string>
+    <string name="garmin_no_eligible_books">Ingen ferdige nedlastinger er tilgjengelige for denne kontoen.</string>
+    <string name="garmin_unknown_book">Bok</string>
+    <string name="garmin_listen_progress">%1$d / %2$d s</string>
+    <string name="garmin_part_boundary">Grense mellom lyddeler</string>
+    <string name="garmin_no_events">Ingen lyttehendelser er mottatt fra klokken ennå.</string>
+    <string name="garmin_download_complete">Nedlastet</string>
+    <string name="garmin_download_failed">Mislykket — prøv nedlastingen igjen</string>
+    <string name="garmin_download_partial">Delvis nedlastet</string>
+    <string name="garmin_download_queued">I kø på klokken</string>
+    <plurals name="garmin_parts">
+        <item quantity="one">%1$d / %2$d lyddel</item>
+        <item quantity="other">%1$d / %2$d lyddeler</item>
+    </plurals>
+    <string name="garmin_inventory_unknown">Ingen oversikt over klokkeinnhold er mottatt ennå.</string>
+    <string name="garmin_watch_empty">Klokken rapporterte ingen nedlastinger.</string>
+    <string name="garmin_close">Lukk</string>
+    <string name="garmin_never">Ikke ennå</string>
+    <string name="garmin_available_from">Tilgjengelig fra lagret posisjon: %1$d s</string>
 </resources>

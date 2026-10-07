@@ -1,11 +1,11 @@
 # BookWave Android roadmap
 
 **Classification:** Active plan — canonical sequencing authority.
-**Updated:** 2026-10-07 after merged Android PR #240 and Garmin PRs #5/#6. The original candidate `6239a148` is incorporated; Garmin PR #5 provides its counterpart. [Cross-repository audit](reviews/2026-10-07-cross-repo-reconciliation.md).
+**Updated:** 2026-10-08 for the selected provider/device controls and publishers. Android PR #240 and Garmin PRs #5/#6 remain the merged transport baseline. The original candidate `6239a148` is incorporated; Garmin PR #5 provides its counterpart. [Cross-repository audit](reviews/2026-10-07-cross-repo-reconciliation.md).
 
 This is the only document ordering the next work. [PRODUCT_SPEC](../PRODUCT_SPEC.md) supplies requirements;
 [product decisions](product-decisions.md) and accepted [ADRs](adr/) own settled behavior. GitHub is the
-delivery authority. Android remains the primary delivery scope; iOS/Silo are excluded. Garmin now has a separate Companion-first implementation lane; the owner has selected a separate BookWave Audio Provider using existing WatchShelf Sidecar for the requested device controls. Provider/control/feed runtime remains planned; the watch face remains later.
+delivery authority. Android remains the primary delivery scope; iOS/Silo are excluded. Garmin now has a separate Companion-first implementation lane; the owner has selected a separate BookWave Audio Provider using existing WatchShelf Sidecar for the requested device controls. Provider/control/feed runtime is implemented, with physical acceptance pending; the watch face remains later.
 
 The Android tracker has **46 open issues: 42 Android, three excluded iOS and cross-repository Garmin #119**; 23 closed tickets (22 substantive closures). Garmin has four open issues: existing acceptance/integration [#2](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/2) and [#3](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/3), selected provider/device controls [#7](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/7) and future watch face state [#8](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/8). This reconciliation closes no issues. Merged Android PR #240 and Garmin PR #5 deliver the transport implementation; Garmin PR #6 retains test binaries; physical watch acceptance remains pending. Garmin PR #1 provides the underlying stored model. [All issue dispositions](reviews/2026-10-07-cross-repo-reconciliation.md).
 
@@ -227,21 +227,20 @@ truthful received/stored UI. Both repos carry [the wire contract](garmin-transpo
 
 Android regression/source-reversion evidence and final gates are recorded in the
 [bridge delivery log](testing/2026-10-07-garmin-bridge.md). Garmin target builds, test-enabled compilation
-and export pass; [PR #6](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/pull/6) publishes source-labelled test artifacts. Run No Evil execution and physical G-01/G-02 tests remain NOT RUN under
+and export pass; [PR #6](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/pull/6) publishes source-labelled test artifacts. Current Run No Evil execution is recorded in [the provider delivery log](testing/2026-10-08-garmin-provider.md); physical G-01/G-02 tests remain NOT RUN under
 [Garmin #2](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/2) and
 [#3](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/3); no phone/watch acceptance is inferred.
 
 Next Garmin obligation is pairing/interop, persisted-state restore, privacy while connected/offline,
 ack loss, reconnect/lifecycle and BLE/battery acceptance. Receiver operation is foreground only;
 disconnected watches cannot receive a privacy clear until reconnect. #119 stays open as the umbrella.
-After transport acceptance: allowlisted commands through #114; legitimate-event reconciliation and
-Android Settings Force sync without automatic Play; complications; watch face; Running Data Field.
-WatchShelf remains usable during transition. The owner-selected BookWave Audio Provider will use
+After transport acceptance: allowlisted commands through #114; watch face and Running Data Field. Provider events, Android Settings Force sync and complications are implemented without automatic Play.
+WatchShelf remains usable during transition. The owner-selected BookWave Audio Provider uses
 existing WatchShelf Sidecar; removing/replacing Sidecar is not selected.
 No Garmin priority over Android reliability is inferred. The next independent Android slice remains
 #194 profile/player clearance and effective-theme preview parity.
 
-### Owner-requested Garmin device management — next integration slice
+### Garmin device management — implemented, physical acceptance pending
 
 The owner requested Playback → Devices with an inline watch menu, connected dot/last connected,
 last successful sync, Force sync, a watch-download dialog and a New download picker of completed
@@ -253,7 +252,7 @@ The approved sequence is provider/account/wire fixtures → Android/provider dow
 slice → real listening events/Force sync → validated complication publishing. [Garmin #8](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/8)
 and the [feed plan](garmin-watchface-state-plan.md) expose PHONE/GARMIN data for a future watch face
 through BookWave's on-watch Complications, with source/freshness/privacy, rather than direct ABS polling.
-Watch face and Data Field implementation remain later; the selected scope is planned, not delivered.
+Watch face and Data Field implementation remain later. The provider, device controls and publisher are implemented; [delivery/tests](testing/2026-10-08-garmin-provider.md) and [installation guide](garmin-install-for-testing.md) record the exact delivery and unperformed hardware cases.
 
 ## Loopbound APK packaging recovery — 2026-10-07
 
@@ -300,3 +299,9 @@ detail/Back and cached offline checks. Owner finding: “Looks good; bottom line
 large-text geometry guards pass; physical 2195 200%/focused/Author and other timing/configuration cases
 remain NOT RUN. Broader #192/#194 compact-list/sort work remains open.
 [Exact row evidence](testing/2026-10-05-book-row-metadata.md).
+
+## Verified implementation delivery — 2026-10-08
+
+Garmin provider/publishers are merged in [PR10](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/pull/10), commit `19cc9a67db505fb9389a8861373d97b3c037072b`. All nine PR CI checks pass at `e6829ade`; main CI37699273330 also passes. Matching Android device controls pass full strict `verifyDebug -Pshelfplayer.warningsAsErrors=true` locally: 1024 tasks, BUILD SUCCESSFUL in2m50s. All37 Garmin tests and38 Room migration tests pass, with actual-source A-B-A reversion proof. The bridge uses Room22 and adds no external dependency/classpath change. Its implementation branch is `codex/garmin-provider-controls`; GitHub PR delivery remains authoritative.
+
+[Garmin testing artifacts](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/actions/runs/37699273330) contain both supported target PRGs and packages. The [installation guide](garmin-install-for-testing.md) and GD/GF register cover testing; all physical cases remain NOT RUN. Final simulator reruns stalled, so the earlier49 native passes do not establish final-source/native or hardware acceptance.
