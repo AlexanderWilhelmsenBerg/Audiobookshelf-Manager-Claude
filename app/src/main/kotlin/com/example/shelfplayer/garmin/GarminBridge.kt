@@ -31,6 +31,7 @@ class GarminBridge @Inject internal constructor(
     private val codec: GarminMessageCodec,
     private val projector: GarminSnapshotProjector,
     private val sendPolicy: GarminSnapshotSendPolicy,
+    private val privacyPolicy: GarminPrivacyPolicy,
     private val playback: PlaybackController,
     private val profiles: ProfileRepository,
     private val locks: ProfileLockRepository,
@@ -45,7 +46,7 @@ class GarminBridge @Inject internal constructor(
     private var started = false
     private var sdkState: GarminSdkState = GarminSdkState.Starting
     private var jobs = mutableListOf<Job>()
-    private var negotiated = false
+    private var protocolCompatible: Boolean? = null
     private var latestSnapshot: GarminPlaybackSnapshot? = null
     private var privacyBlocked = true
     private var privacyClearSent = false
@@ -88,7 +89,7 @@ class GarminBridge @Inject internal constructor(
         jobs.clear()
         sdk.shutdown()
         started = false
-        negotiated = false
+        protocolCompatible = null
         _state.value = GarminBridgeState.SdkUnavailable("SDK_STOPPED")
     }
 
@@ -96,25 +97,21 @@ class GarminBridge @Inject internal constructor(
         val wasAvailable = sdkState is GarminSdkState.AppAvailable
         sdkState = next
         when (next) {
-            GarminSdkState.Starting -> _state.value = GarminBridgeState.SdkUnavailable("INITIALIZING")
-            is GarminSdkState.Unavailable -> _state.value = GarminBridgeState.SdkUnavailable(next.reason)
-            GarminSdkState.NoDevice -> _state.value = GarminBridgeState.NoDevice
-            is GarminSdkState.DeviceDisconnected -> {
-                negotiated = false
-                _state.value = GarminBridgeState.DeviceDisconnected(next.device.name)
-            }
-            is GarminSdkState.DeviceConnected -> {
-                negotiated = false
-                _state.value = GarminBridgeState.DeviceConnected(next.device.name)
-            }
-            is GarminSdkState.AppNotInstalled -> {
-                negotiated = false
-                _state.value = GarminBridgeState.AppNotInstalled(next.device.name)
+            GarminSdkState.Starting,
+            is GarminSdkState.Unavailable,
+            GarminSdkState.NoDevice,
+            is GarminSdkState.DeviceDisconnected,
+            is GarminSdkState.DeviceConnected,
+            is GarminSdkState.AppNotInstalled,
+            is GarminSdkState.AppUnavailable,
+            -> {
+                protocolCompatible = null
+                _state.value = next.toBridgeState()
             }
             is GarminSdkState.AppAvailable -> {
                 if (!wasAvailable) {
-                    negotiated = false
-                    _state.value = GarminBridgeState.AppAvailable(next.device.name)
+                    protocolCompatible = null
+                    _state.value = next.toBridgeState()
                     // A reconnect must refresh the watch even if its UI is closed. The watch still
                     // validates protocol-major and snapshot content before persistence.
                     if (privacyBlocked) {
@@ -139,11 +136,7 @@ class GarminBridge @Inject internal constructor(
         lastProfileGeneration = generation
 
         val profile = input.profile
-        val blocked = profile == null ||
-            profile.requiresReauthentication ||
-            input.lockState !is ProfileLockState.Unlocked
-
-        if (blocked) {
+        if (!privacyPolicy.mayExpose(profile, input.lockState)) {
             latestSnapshot = null
             sendPolicy.reset()
             if (!privacyBlocked || !privacyClearSent) {
@@ -202,12 +195,12 @@ class GarminBridge @Inject internal constructor(
         sdk.send(codec.helloAck(envelope.id, compatible))
         val device = currentDeviceName()
         if (!compatible) {
-            negotiated = false
+            protocolCompatible = false
             if (device != null) _state.value = GarminBridgeState.ProtocolIncompatible(device)
             return
         }
 
-        negotiated = true
+        protocolCompatible = true
         if (device != null) _state.value = GarminBridgeState.Ready(device)
         if (privacyBlocked) sendClear() else sendCurrent(force = true)
     }
@@ -237,7 +230,7 @@ class GarminBridge @Inject internal constructor(
     private fun handleError(envelope: GarminEnvelope) {
         val reason = envelope.payload["reason"] as? String ?: return
         if (reason == "unsupported_protocol_major" || reason == "protocol_incompatible") {
-            negotiated = false
+            protocolCompatible = false
             currentDeviceName()?.let { _state.value = GarminBridgeState.ProtocolIncompatible(it) }
         }
     }
@@ -278,6 +271,7 @@ class GarminBridge @Inject internal constructor(
 
     private fun currentDeviceName(): String? = when (val current = sdkState) {
         is GarminSdkState.AppAvailable -> current.device.name
+        is GarminSdkState.AppUnavailable -> current.device.name
         is GarminSdkState.AppNotInstalled -> current.device.name
         is GarminSdkState.DeviceConnected -> current.device.name
         is GarminSdkState.DeviceDisconnected -> current.device.name
