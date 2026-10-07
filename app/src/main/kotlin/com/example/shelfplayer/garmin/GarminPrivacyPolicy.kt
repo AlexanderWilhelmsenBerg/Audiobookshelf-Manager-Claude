@@ -6,9 +6,7 @@ import javax.inject.Inject
 
 internal class GarminPrivacyPolicy @Inject constructor() {
     fun mayExpose(
-        profile: Profile?,
+        profile: Profile,
         lockState: ProfileLockState,
-    ): Boolean = profile != null &&
-        !profile.requiresReauthentication &&
-        lockState is ProfileLockState.Unlocked
+    ): Boolean = !profile.requiresReauthentication && lockState is ProfileLockState.Unlocked
 }
