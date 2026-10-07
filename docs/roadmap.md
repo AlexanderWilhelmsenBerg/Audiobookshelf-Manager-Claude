@@ -5,9 +5,9 @@
 
 This is the only document ordering the next work. [PRODUCT_SPEC](../PRODUCT_SPEC.md) supplies requirements;
 [product decisions](product-decisions.md) and accepted [ADRs](adr/) own settled behavior. GitHub is the
-delivery authority. Android remains the primary delivery scope; iOS/Silo are excluded. Garmin now has a separate Companion-first implementation lane; optional offline Audio Provider replacement remains deferred.
+delivery authority. Android remains the primary delivery scope; iOS/Silo are excluded. Garmin now has a separate Companion-first implementation lane; the owner has selected a separate BookWave Audio Provider using existing WatchShelf Sidecar for the requested device controls. Provider/control/feed runtime remains planned; the watch face remains later.
 
-The Android tracker has **46 open issues: 42 Android, three excluded iOS and cross-repository Garmin #119**; 23 closed tickets (22 substantive closures). Garmin has two open acceptance/integration issues, [#2](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/2) and [#3](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/3). This reconciliation closes no issues. Merged Android PR #240 and Garmin PR #5 deliver the transport implementation; Garmin PR #6 retains test binaries; physical watch acceptance remains pending. Garmin PR #1 provides the underlying stored model. [All issue dispositions](reviews/2026-10-07-cross-repo-reconciliation.md).
+The Android tracker has **46 open issues: 42 Android, three excluded iOS and cross-repository Garmin #119**; 23 closed tickets (22 substantive closures). Garmin has four open issues: existing acceptance/integration [#2](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/2) and [#3](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/3), selected provider/device controls [#7](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/7) and future watch face state [#8](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/8). This reconciliation closes no issues. Merged Android PR #240 and Garmin PR #5 deliver the transport implementation; Garmin PR #6 retains test binaries; physical watch acceptance remains pending. Garmin PR #1 provides the underlying stored model. [All issue dispositions](reviews/2026-10-07-cross-repo-reconciliation.md).
 
 ## Delivered and remaining acceptance
 
@@ -236,7 +236,8 @@ ack loss, reconnect/lifecycle and BLE/battery acceptance. Receiver operation is 
 disconnected watches cannot receive a privacy clear until reconnect. #119 stays open as the umbrella.
 After transport acceptance: allowlisted commands through #114; legitimate-event reconciliation and
 Android Settings Force sync without automatic Play; complications; watch face; Running Data Field.
-WatchShelf + Sidecar remain the initial offline audio path; provider/helper replacement is deferred.
+WatchShelf remains usable during transition. The owner-selected BookWave Audio Provider will use
+existing WatchShelf Sidecar; removing/replacing Sidecar is not selected.
 No Garmin priority over Android reliability is inferred. The next independent Android slice remains
 #194 profile/player clearance and effective-theme preview parity.
 
@@ -246,8 +247,13 @@ The owner requested Playback → Devices with an inline watch menu, connected do
 last successful sync, Force sync, a watch-download dialog and a New download picker of completed
 Android books. Watch sessions must represent actual watch listening. The current snapshot bridge
 does not provide these features. [Requirements, external API boundary and GD-01–10 test inventory](garmin-device-management.md).
-The watch engine choice is pending; unmodified WatchShelf has no remote download/inventory interface.
-This request authorizes that integration scope, while watch face/Data Field remain later phases.
+The owner selected a separate BookWave Audio Provider using existing WatchShelf Sidecar, tracked by
+[Garmin #7](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/7). Unmodified WatchShelf has no remote download/inventory interface.
+The approved sequence is provider/account/wire fixtures → Android/provider download/inventory vertical
+slice → real listening events/Force sync → validated complication publishing. [Garmin #8](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/8)
+and the [feed plan](garmin-watchface-state-plan.md) expose PHONE/GARMIN data for a future watch face
+through BookWave's on-watch Complications, with source/freshness/privacy, rather than direct ABS polling.
+Watch face and Data Field implementation remain later; the selected scope is planned, not delivered.
 
 ## Loopbound APK packaging recovery — 2026-10-07
 

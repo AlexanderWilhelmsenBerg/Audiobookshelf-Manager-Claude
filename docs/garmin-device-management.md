@@ -1,6 +1,6 @@
 # Garmin device management
 
-**Classification:** Owner-requested product behavior; implementation contract pending watch-engine selection.
+**Classification:** Accepted owner scope and selected Audio Provider architecture; runtime not implemented.
 **Date:** 2026-10-07. Requirements SET-002, DL-001/003, AUTH-002/003/005, PLAY-007,
 SYNC-001/002; PRODUCT_SPEC17/19/21. Android #119 remains the cross-repository umbrella.
 
@@ -38,9 +38,12 @@ Audio Content Provider contexts. The current BookWave Companion manifest is a `w
 Communications permission only; it cannot become an audio download engine just by calling Sidecar.
 There is no current supported interface to manage an unmodified WatchShelf installation from BookWave.
 
-The owner is selecting between a separate BookWave Audio Provider using the existing Sidecar and a
-maintained WatchShelf integration fork. Do not claim either has been implemented. No WatchShelf code
-has been copied. Any later reuse must retain its MIT copyright/license and review upstream notices.
+The owner accepted the recommendation: a **separate BookWave Audio Provider using existing WatchShelf
+Sidecar**, tracked by [Garmin #7](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/7). Keep the Companion as a separate Device App. This
+supersedes the optional-provider/evaluation-only deferral for these requested controls; it does not
+authorize removing Sidecar or claim the provider exists. Unmodified WatchShelf may continue during
+transition; its storage is not the BookWave provider's inventory. No WatchShelf code has been copied.
+Any later reuse must retain its MIT copyright/license and review upstream notices.
 
 Selecting a phone-downloaded book selects an authorized server item. Current Sidecar fetches its audio
 from Audiobookshelf and transcodes watch-sized chunks; this is not a transfer of the phone's local files.
@@ -56,9 +59,29 @@ invoke repository/use-case actions and never call Sidecar or Audiobookshelf dire
 The bridge retains bounded correlated delivery, session/generation checks and redaction before metadata.
 Each device/provider reports capabilities; unsupported actions cannot look successful.
 
-The selected watch engine owns media storage, queueing, native Wi-Fi sync, progress events and inventory.
+The selected BookWave Audio Provider owns media storage, queueing, native Wi-Fi sync, progress events and inventory.
 Sidecar retains chunk preparation. The foreground Companion remains a separate live phone display.
 Settings Force sync is account/device synchronization, not merely re-sending a PHONE snapshot.
+
+## Future watch face data
+
+Companion PHONE state and provider GARMIN state will be exposed through BookWave-published Garmin
+Complications. The [accepted feed plan](garmin-watchface-state-plan.md) and [Garmin #8](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/8)
+record source/freshness/privacy rules and GF-01–07 tests. The future face consumes on-watch state;
+it does not authenticate to Audiobookshelf or become a progress/sync owner. Publishing data is a
+prerequisite; watch face and Data Field implementations remain later work.
+
+## Delivery sequence
+
+1. Establish provider-scoped Sidecar authentication, explicit account pairing and bounded command/report
+   fixtures; preserve the existing Companion contract and SDK lifecycle owner.
+2. Implement one vertical slice across the separate provider and Android: durable request, native watch
+   download, inventory response and Room-backed Playback Devices menu with authorized phone picker.
+3. Add actual provider event journaling/import and idempotent Force sync using existing progress owners;
+   preserve legitimate rewind, never autoplay and distinguish cached inventory from no inventory.
+4. Publish validated PHONE/GARMIN state with complete privacy clearing and logged GF acceptance.
+5. Implement the watch face only after its existing physical Companion/control/reconciliation gates;
+   Running Data Field remains later. Missing hardware evidence is logged, not silently marked passed.
 
 ## Automated verification required before delivery
 
@@ -89,4 +112,5 @@ Settings Force sync is account/device synchronization, not merely re-sending a P
 | GD-10 | Actual provider storage/restart/upgrade retention, sustained transfer/listening battery and Garmin Connect lifecycle; record model, firmware, Sidecar/source versions and both hashes. |
 
 These extend G-01/G-02 and Q-01/A-08; they do not replace them or turn prior compile-only evidence
-into device acceptance. The architecture choice gates the watch-download implementation.
+into device acceptance. The architecture is selected; provider/control/feed implementation and hardware
+acceptance remain outstanding. Android reliability retains priority.

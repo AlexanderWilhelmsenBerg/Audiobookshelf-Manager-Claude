@@ -363,6 +363,10 @@ under #114's action contract; that dependency does not define watch-local audiob
 
 ### PD-007 status reconciliation — 2026-10-07
 
+**Historical transition:** The following candidate/provider-deferral snapshot is superseded by the
+implementation supplement below and PD-008's later accepted provider/feed selection. Android PR #240
+is merged; the selected provider uses existing Sidecar. Android priority remains unchanged.
+
 The owner requested reconciliation of the new Garmin repository and confirmed the Android transport
 branch is the work in scope. Garmin PR #1 is merged; the Android Phase 2 bridge is an unmerged candidate.
 The blanket "no Garmin development" instruction above describes the October 4 decision and must not be
@@ -388,7 +392,7 @@ See [the delivery log](testing/2026-10-07-garmin-bridge.md).
 
 ## PD-008 — Garmin devices expand inside Playback settings
 
-**Status:** Accepted product/UX requirements; watch download engine selection pending.
+**Status:** Accepted product/UX requirements and separate Audio Provider/Sidecar architecture.
 **Date:** 2026-10-07.
 **Scope:** Settings → Playback → Devices; Android #119 and Bookwave-garmin.
 **Source:** Owner requested an inline device menu with connectivity/sync timestamps, Force sync,
@@ -402,6 +406,16 @@ Watch inventory and sessions come from the owning watch engine; queued requests 
 downloads. Sync preserves legitimate rewinds and never starts playback. Keep phone playback uninterrupted.
 
 This authorizes the device-management/download integration scope, superseding the previous blanket
-deferral for these controls. It does not choose a technical watch engine or claim unmodified WatchShelf
-has a command API. See [the implementation boundary and test inventory](garmin-device-management.md).
-Watch face, Data Field and iOS/Silo remain outside this slice.
+deferral for these controls. The owner accepted a **separate BookWave Audio Provider using existing
+WatchShelf Sidecar**, tracked by [Garmin #7](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/7). Keep Companion and provider separate,
+with distinct application IDs. Sidecar retrieves/transcodes the selected server item; selecting a
+completed phone download does not mean copying its local bytes. Unmodified WatchShelf has no supported
+BookWave command/inventory interface in the inspected version. This choice supersedes PD-007's older
+optional-provider deferral for this scope; it does not remove Sidecar or claim runtime delivery. See
+[the implementation boundary and test inventory](garmin-device-management.md).
+
+The owner also requires data for a future watch face. Use BookWave's Garmin Complications publisher
+for validated PHONE state and actual GARMIN listening, with source, original event time when known,
+freshness and complete privacy clearing. Audiobookshelf integration stays behind existing Android/
+Sidecar owners. [Feed plan](garmin-watchface-state-plan.md); [Garmin #8](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/8). The publisher
+is planned; watch face and Data Field implementation remain later. iOS/Silo remain excluded.
