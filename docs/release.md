@@ -4,7 +4,7 @@
 process, what it already does, and what still blocks a public build.
 
 **Classification:** Release contract/process notes with historical pipeline sections.
-**Current handoff reconciled:** 2026-10-07, main `36c25043`, through PR #238.
+**Current handoff updated:** 2026-10-07; documentation PR #239 and Phase 2 bridge integration. [Current bridge/APK evidence](testing/2026-10-07-garmin-bridge.md).
 [Cross-repository delivery snapshot](reviews/2026-10-07-cross-repo-reconciliation.md).
 
 The active pipeline is `.github/workflows/`, since the 2026-10-01 GitHub cutover. Use
@@ -16,7 +16,7 @@ invocation instructions. Current build source/workflows win over older prose.
 
 Runtime PRs #230/#231/#232/#234/#235/#236/#238 are merged. Latest recorded phone build is signed
 APK2195 (`eedcbd1e`), with scoped owner bottom-line readability and upgrade/offline results; it excludes
-#238. The six-change main APK2196 is downloaded but not installed. Current main `36c25043` passes
+#238. The six-change main APK2196 is downloaded but not installed. At the October 5 delivery snapshot, main `36c25043` passes
 Standard37330126779, release/security37330126716 and checked APK37330127469, publishing APK2198.
 Its artifact digest is `2902e9292f115825b9c9249853ec1f352e4269f2275958e7ae92cc5878d33717`;
 this is the Actions archive digest, not a newly verified APK-file checksum/signer. No physical acceptance
@@ -348,7 +348,17 @@ verification is `strict` over 890 pinned components.
 classpath changed, which once let two stale test doubles pass locally and fail in CI. See `docs/risks.md`
 R-31.
 
-## Getting an APK
+## Current GitHub APK producer
+
+Run GitHub Actions → Build APK (`apk.yml`) against the selected exact source, with run_checks=true and
+include_loopbound=true for the normal delivery. Loopbound is now read from the private GitHub repo
+AlexanderWilhelmsenBerg/Loopbound at the pinned source. LOOPBOUND_READ_TOKEN must be a GitHub token
+with that repository's Contents:Read permission. A Forgejo credential cannot authenticate this checkout.
+The owner replaced the failing secret on 2026-10-07; retry37623427096 attempt2 passed and produced
+APK2199 with Loopbound. Keep signer, APK checksum, source and bundle identity together in the current
+delivery log. Earlier Forgejo invocation instructions below are historical only.
+
+## Getting an APK — historical Forgejo workflow
 
 For a verified PR debug artifact, manually dispatch **CI · PR verification** with Standard or Intensive
 and enable **Build APK after checks pass**. That convenience APK is produced only after the quality gate and

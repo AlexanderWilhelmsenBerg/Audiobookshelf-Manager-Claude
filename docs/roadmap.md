@@ -1,13 +1,13 @@
 # BookWave Android roadmap
 
 **Classification:** Active plan — canonical sequencing authority.
-**Reconciled:** 2026-10-07 against Android main `36c25043` (through #238), Garmin main `d8de6fb8` (PR #1), and Android bridge candidate `6239a148`. [Cross-repository audit](reviews/2026-10-07-cross-repo-reconciliation.md).
+**Updated:** 2026-10-07 after documentation PR #239 and the Phase 2 bridge integration. The original candidate `6239a148` is incorporated; Garmin PR #5 provides its counterpart. [Cross-repository audit](reviews/2026-10-07-cross-repo-reconciliation.md).
 
 This is the only document ordering the next work. [PRODUCT_SPEC](../PRODUCT_SPEC.md) supplies requirements;
 [product decisions](product-decisions.md) and accepted [ADRs](adr/) own settled behavior. GitHub is the
 delivery authority. Android remains the primary delivery scope; iOS/Silo are excluded. Garmin now has a separate Companion-first implementation lane; optional offline Audio Provider replacement remains deferred.
 
-The Android tracker has **46 open issues: 42 Android, three excluded iOS and cross-repository Garmin #119**; 23 closed tickets (22 substantive closures). Garmin has two open acceptance/integration issues, [#2](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/2) and [#3](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/3). This reconciliation closes no issues. Android has no open PR at this snapshot; the owner-confirmed bridge branch is an unmerged candidate, not an accepted integration. Garmin PR #1 is merged. [All issue dispositions](reviews/2026-10-07-cross-repo-reconciliation.md).
+The Android tracker has **46 open issues: 42 Android, three excluded iOS and cross-repository Garmin #119**; 23 closed tickets (22 substantive closures). Garmin has two open acceptance/integration issues, [#2](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/2) and [#3](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/3). This reconciliation closes no issues. The Phase 2 Android bridge and Garmin PR #5 deliver the transport implementation; physical watch acceptance remains pending. Garmin PR #1 provides the underlying stored model. [All issue dispositions](reviews/2026-10-07-cross-repo-reconciliation.md).
 
 ## Delivered and remaining acceptance
 
@@ -50,7 +50,7 @@ completed per owner confirmation; no further manual TalkBack session is requeste
 speech cases are not converted to passes. Physical 2195 200% text remains NOT RUN, with native large-text
 geometry guards passing. [Row evidence](testing/2026-10-05-book-row-metadata.md).
 
-The six-change main gate and APK2196 remain historical evidence. Current source `36c25043` includes
+The six-change main gate and APK2196 remain historical evidence. The recorded October 5 source `36c25043` includes
 #238 and passes main Standard CI37330126779, release/security37330126716 and checked APK37330127469.
 That run publishes **APK2198**; its Actions artifact digest is recorded in the
 [reconciliation report](reviews/2026-10-07-cross-repo-reconciliation.md). It has not been installed or
@@ -216,36 +216,39 @@ release decisions and source-file-deletion boundary; do not reopen completed fea
 **Exit:** applicable acceptance is evidenced, release artifacts/signing/identity/security are verified,
 and unresolved risks are explicitly dispositioned before publication.
 
-## Garmin Companion lane — reconcile both repositories
+## Garmin Companion lane — Phase 2 implemented, hardware acceptance pending
 
-Garmin [PR #1](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/pull/1) is merged on `d8de6fb8`: Companion Device App,
-validated/persisted last-known snapshot and disconnected-state display. Both fēnix AMOLED target builds,
-test-enabled compilation and package export pass. **Run No Evil execution, simulator and physical watch
-acceptance remain NOT RUN**, tracked by [Garmin #2](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/2).
+The owner authorized finishing the Android bridge and matching receiver. The original nine-commit
+candidate is incorporated with captured playback ownership, synchronous privacy/generation guards,
+reconnect clearing, strict field validation, correlated persistence acks and bounded paused-state retries.
+Garmin [PR #5](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/pull/5) implements foreground
+Communications transport, nonce/sequence rejection, durable clear tombstones, snapshot persistence and
+truthful received/stored UI. Both repos carry [the wire contract](garmin-transport-contract.md).
 
-The owner-confirmed Android branch `mcp/garmin-phase-2-mobile-bridge` at `6239a148` contains a Mobile SDK
-adapter, lifecycle wiring, versioned envelope, snapshot projection/privacy/send policy and eight test
-methods. It is absent from Android main; no open PR or Actions result was returned for that head. Tests
-present in source are not an execution result. Garmin main has no receiver/transport permissions or ack
-counterpart. End-to-end handshake is therefore not delivered.
+Android regression/source-reversion evidence and final gates are recorded in the
+[bridge delivery log](testing/2026-10-07-garmin-bridge.md). Garmin target builds, test-enabled compilation
+and export pass. Run No Evil execution and physical G-01/G-02 tests remain NOT RUN under
+[Garmin #2](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/2) and
+[#3](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/3); no phone/watch acceptance is inferred.
 
-Next Garmin integration slice: jointly review/finalize the wire contract, review the Android candidate
-with a forced full gate after its classpath change, then add the Garmin receiver/handshake/redaction/ack
-counterpart with shared fixtures. Follow [Garmin #3](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/3) and the
-[Android integration plan](garmin-integration.md); log the physical pairing/reconnect/privacy/battery matrix.
-This documentation reconciliation starts no transport implementation or device campaign.
-
+Next Garmin obligation is pairing/interop, persisted-state restore, privacy while connected/offline,
+ack loss, reconnect/lifecycle and BLE/battery acceptance. Receiver operation is foreground only;
+disconnected watches cannot receive a privacy clear until reconnect. #119 stays open as the umbrella.
 After transport acceptance: allowlisted commands through #114; legitimate-event reconciliation and
-Android Settings Force sync without automatic Play; complication publishing; watch face; Running Data
-Field. The Garmin repository's `plan.md` owns that internal sequence; Android's roadmap owns Android priority.
-No new Garmin priority over Android reliability has been inferred.
+Android Settings Force sync without automatic Play; complications; watch face; Running Data Field.
+WatchShelf + Sidecar remain the initial offline audio path; provider/helper replacement is deferred.
+No Garmin priority over Android reliability is inferred. The next independent Android slice remains
+#194 profile/player clearance and effective-theme preview parity.
 
-Initial offline audiobook playback stays with WatchShelf + Sidecar under Garmin's current repository
-agreement. Replacing the provider/helper is optional future work after physical coexistence evaluation,
-not something Phase 1 or the Android bridge delivers. Phone-free downloaded playback is a future target;
-independent watch downloads/direct ABS authentication are not delivered. #119 is the cross-repository
-umbrella; PD-007 retains its historical deferral with a dated status reconciliation, not a blanket claim
-that no Garmin work exists. Garmin does not block an Android release.
+## Loopbound APK packaging recovery — 2026-10-07
+
+Checked APK run [37623427096](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37623427096)
+failed private GitHub checkout with the old stored credential. The repository URL and pinned source
+`7e24529b2a9e419218d2a1423d832b1bf587c8ef` were valid. The owner replaced LOOPBOUND_READ_TOKEN with
+a repo-scoped GitHub fine-grained Contents:Read token. Attempt2 passes Loopbound checkout/tests/build,
+strict debug verification and signed packaging, producing APK2199 with Loopbound. This is authentication
+recovery, not evidence of a missing source pin or an Android compilation failure. Final bridge APK/source
+verification is recorded in the bridge log; no phone installation is requested.
 
 ## Dependency and CI maintenance alongside the delivery lanes
 

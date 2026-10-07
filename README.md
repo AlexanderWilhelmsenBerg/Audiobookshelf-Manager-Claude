@@ -28,8 +28,8 @@ platform-integration and UI work. Merged work, draft candidates and remaining ac
 for their engineering evidence, but they are not current work lists.
 
 The separate [BookWave Garmin repository](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin) owns the Companion and future watch surfaces.
-[Cross-repository status and responsibilities](docs/garmin-integration.md) distinguish merged Garmin
-snapshot storage from the unmerged Android transport candidate; end-to-end transport is not delivered.
+[Cross-repository status and responsibilities](docs/garmin-integration.md) record the Phase 2 Android bridge and foreground Garmin
+transport implementation, with simulator/phone/watch acceptance tracked separately.
 
 ## Requirements
 

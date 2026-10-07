@@ -1,7 +1,7 @@
 # Audiobookshelf API compatibility
 
 **Classification:** Current captured-contract matrix with explicitly source-scoped evidence.
-**Reconciled:** 2026-10-07; server verification dates below are unchanged. PR #238 is merged. The Android Garmin bridge remains outside main.
+**Reconciled:** 2026-10-07; server verification dates below are unchanged. PR #238 is merged. Phase 2 Garmin delivery uses the existing Media3/profile/lock owners and adds no ABS endpoint, response field, Room schema or tested server version.
 
 `PRODUCT_SPEC 19` requires this file to record the server versions tested, the capabilities detected,
 known endpoint differences, the fixtures used, and the date last verified.

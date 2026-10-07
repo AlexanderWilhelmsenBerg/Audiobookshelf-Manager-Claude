@@ -1,6 +1,7 @@
 package com.example.shelfplayer.playback
 
 import android.content.Context
+import android.os.Bundle
 import android.os.Looper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -12,6 +13,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Test
@@ -45,6 +47,29 @@ class ExistingSessionAttachmentTest {
         override fun log(event: LogEvent) = Unit
     }
     private val listener = object : MediaController.Listener {}
+
+    @Test
+    fun `external display owner comes from the loaded Media3 queue`() {
+        val player = ExoPlayer.Builder(context).build()
+        try {
+            val owned = book().buildUpon().setMediaMetadata(
+                book().mediaMetadata.buildUpon().setExtras(
+                    Bundle().apply {
+                        putString(MediaItems.KEY_OWNER_PROFILE_ID, "owner-a")
+                    },
+                ).build(),
+            ).build()
+            player.setMediaItem(owned)
+            assertEquals(ProfileId("owner-a"), player.playbackUiState().ownerProfileId)
+            player.setMediaItem(book())
+            assertNull(player.playbackUiState().ownerProfileId)
+            player.clearMediaItems()
+            assertNull(player.playbackUiState().ownerProfileId)
+            assertFalse(player.playWhenReady)
+        } finally {
+            player.release()
+        }
+    }
 
     @Test
     fun `fresh controller recovers the loaded book without issuing Play`() {
