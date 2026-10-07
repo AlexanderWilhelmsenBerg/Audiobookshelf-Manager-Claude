@@ -1,12 +1,8 @@
 package com.example.shelfplayer.garmin
 
-import java.util.UUID
-
 internal object GarminBridgeConfig {
     const val PROTOCOL_MAJOR = 1
     const val COMPANION_APPLICATION_ID = "6f5b4fa4a2db4d42a9d41ee67df34d11"
-    val companionApplicationUuid: UUID =
-        UUID.fromString("6f5b4fa4-a2db-4d42-a9d4-1ee67df34d11")
 }
 
 internal enum class GarminMessageType(val wireValue: String) {
@@ -30,7 +26,6 @@ internal object GarminCapabilities {
     const val SnapshotAck = "snapshot_ack"
     const val StateRequest = "state_request"
     const val ClearState = "clear_state"
-    const val BackgroundReceive = "background_rx"
 
     val android = listOf(Snapshot, SnapshotAck, StateRequest, ClearState)
 }
