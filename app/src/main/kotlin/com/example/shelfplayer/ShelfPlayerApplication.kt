@@ -16,6 +16,7 @@ import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.usecase.ApplyStartupModeUseCase
 import com.example.shelfplayer.domain.usecase.CleanUpDownloadsUseCase
 import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
+import com.example.shelfplayer.garmin.GarminBridge
 import com.example.shelfplayer.download.DownloadNotificationCoordinator
 import com.example.shelfplayer.lock.ProcessLockWatcher
 import com.example.shelfplayer.playback.AutoLibrary
@@ -133,6 +134,13 @@ class ShelfPlayerApplication :
     @Inject
     lateinit var realtimeSyncWatcher: ProcessRealtimeSyncWatcher
 
+    /**
+     * Phase 2 Garmin transport is process-scoped infrastructure. It observes the existing playback/profile
+     * owners and never becomes another owner of either state.
+     */
+    @Inject
+    lateinit var garminBridge: GarminBridge
+
     /** PRODUCT_SPEC 14.4 — persists one sanitized fatal-process envelope before Android terminates us. */
     @Inject
     lateinit var crashReporter: CrashReporter
@@ -146,6 +154,7 @@ class ShelfPlayerApplication :
         logger.info(LogCategory.App, "Application started")
         lockWatcher.attach(this)
         realtimeSyncWatcher.attach(this)
+        garminBridge.start()
         downloadNotifications.start(applicationScope)
         // ApplicationExitInfo is a system-service read, so it does not belong on Application.onCreate's
         // main thread. The uncaught-exception handler above is already active while this runs.

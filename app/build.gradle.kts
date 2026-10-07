@@ -70,6 +70,9 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.haze)
     implementation(libs.kotlinx.coroutines.android)
+    // Garmin Connect IQ Mobile SDK; exact version pinned in the catalog. Garmin Connect Mobile is
+    // still the wireless transport service at runtime and its absence is exposed by GarminBridge.
+    implementation(libs.garmin.connectiq)
 
     testImplementation(projects.core.datastore)
     testImplementation(projects.core.testing)
