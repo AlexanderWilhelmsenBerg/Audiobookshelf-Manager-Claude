@@ -1,5 +1,8 @@
 # Card blur sampling candidate — 2026-10-04
 
+> **Historical source-scoped evidence.** Reconciled 2026-10-07: the relevant runtime PR is now merged. Original failures, draft build identities and NOT RUN statements below describe their recorded sources/dates. Later scoped results and current obligations are in the [verification register](roadmap-verification-register.md), [merge record](2026-10-05-merge-delivery.md) and [cross-repository audit](../reviews/2026-10-07-cross-repo-reconciliation.md).
+
+
 **Classification:** Dated draft-candidate evidence; results apply only to the recorded source/APK.
 Imported during the 2026-10-04 reconciliation. The associated runtime PR remains unmerged;
 [the roadmap](../roadmap.md) owns current delivery status.

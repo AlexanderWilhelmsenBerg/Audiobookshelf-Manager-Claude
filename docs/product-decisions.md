@@ -337,7 +337,7 @@ PRODUCT_SPEC LIB-002 records these criteria; this decision is not evidence they 
 
 ## PD-007 — Small browse bugs next; Garmin waits for owner evaluation
 
-**Status:** Accepted priority/deferral decision; Garmin feasibility is unproven.
+**Status:** Historical priority/deferral decision, qualified by the 2026-10-07 repository-state reconciliation below. Offline provider replacement remains unproven.
 **Date:** 2026-10-04.
 **Scope:** Delivery ordering and parked [Garmin #119](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/119).
 **Source:** Owner selected small bugs next, then explicitly parked Garmin while evaluating the existing watch app/sidecar.
@@ -359,3 +359,19 @@ under #114's action contract; that dependency does not define watch-local audiob
 
 **Supersedes:** #119's remote-only product scope, its ban on watch downloads/progress and its earlier
 "run Control Phone tests early" execution order. The old proposal is retained as explicitly superseded issue history.
+
+
+### PD-007 status reconciliation — 2026-10-07
+
+The owner requested reconciliation of the new Garmin repository and confirmed the Android transport
+branch is the work in scope. Garmin PR #1 is merged; the Android Phase 2 bridge is an unmerged candidate.
+The blanket "no Garmin development" instruction above describes the October 4 decision and must not be
+used as a claim about current implementation. This reconciliation does not authorize new feature work
+or make Garmin higher priority than Android reliability.
+
+The current Garmin repository agreement is Companion-first and initially coexists with WatchShelf +
+Sidecar. Transport, commands, reconciliation/Android Force sync, complication, watch face and Data Field
+are separate phases. Optional offline Audio Provider/helper replacement remains subject to evaluation.
+See [cross-repository boundaries](garmin-integration.md) and [Garmin plan](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/blob/main/plan.md).
+No normal Audiobookshelf credentials go to the watch; no reconciliation may start playback or choose
+the maximum position as authority. Later protocol/reconciliation design must preserve legitimate rewinds.

@@ -1,7 +1,7 @@
 # Risk register
 
 **Classification:** Live risk register with dated entries and preserved closure history.
-**Planning reconciliation:** 2026-10-04 against main `8de931f0` (PR #226); later entry dates override the original
+**Planning reconciliation:** 2026-10-07 against main `36c25043` (through #238); later entry dates override the original
 2026-08-21 inventory. [The roadmap](roadmap.md) owns sequencing and the
 [verification register](testing/roadmap-verification-register.md) owns build-specific acceptance.
 
@@ -334,3 +334,19 @@ It does not list requirements this build never claimed — those are in `docs/ga
 hypotheticals nobody has evidence for. And it does not list the things that look like risks and are not:
 the empty capability set on a fresh server, the fake gateway's deliberate sign-in refusal, and the download
 volume setting that moves no files are all in `gaps.md`'s final section with the reasoning.
+
+
+## R-126 — Cross-repository Garmin transport is not yet interoperable
+
+**Open, candidate integration risk — 2026-10-07.** Garmin main `d8de6fb8` persists validated snapshots
+but has no transport receiver. Android bridge `6239a148` is unmerged; its envelope/lifecycle/privacy code
+and eight test methods do not establish a passing execution or watch handshake. A matching protocol
+major/application ID cannot prove correlation, persistence, redaction or reconnect ordering. In particular,
+Android projection wall-time `updatedAt` is not yet durable legitimate-event evidence for later conflict
+resolution. This is not a diagnosed failure in Android main, which has no Garmin transport.
+
+Retire with joint protocol fixtures, forced Android verification after the classpath change, executed
+Garmin simulator tests and source-matched physical G-01/G-02 privacy/reconnect/playback/battery cases.
+Never select maximum position as authority or start playback during reconciliation. Scope/dependencies:
+[integration plan](garmin-integration.md), Garmin [#2](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/2)
+and [#3](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/3), Android #119.

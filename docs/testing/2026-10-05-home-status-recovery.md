@@ -1,5 +1,8 @@
 # Home connection status and no-results recovery — 2026-10-05
 
+> **Historical source-scoped evidence.** Reconciled 2026-10-07: the relevant runtime PR is now merged. Original failures, draft build identities and NOT RUN statements below describe their recorded sources/dates. Later scoped results and current obligations are in the [verification register](roadmap-verification-register.md), [merge record](2026-10-05-merge-delivery.md) and [cross-repository audit](../reviews/2026-10-07-cross-repo-reconciliation.md).
+
+
 **Classification:** Source-scoped delivery evidence and remaining physical-test log.
 **Issue:** Partial #195. **Requirements:** LIB-001/002, SET-002, spec 2.10/14.4/17.2/21.
 **Branch:** `codex/home-status-recovery-195`; base merged main `df2c80a8`.

@@ -1,5 +1,8 @@
 # Author query observation and stable keys — 2026-10-05
 
+> **Historical source-scoped evidence.** Reconciled 2026-10-07: the relevant runtime PR is now merged. Original failures, draft build identities and NOT RUN statements below describe their recorded sources/dates. Later scoped results and current obligations are in the [verification register](roadmap-verification-register.md), [merge record](2026-10-05-merge-delivery.md) and [cross-repository audit](../reviews/2026-10-07-cross-repo-reconciliation.md).
+
+
 **Classification:** Draft correction on author PR #234; physical U-08 acceptance remains pending.
 Requirements: LIB-002/004, AUTH-002, PRODUCT_SPEC 5.2/17.2/21; PD-006.
 Implementation source `617eaf47`, continuing [the original author slice](2026-10-04-author-details.md).
