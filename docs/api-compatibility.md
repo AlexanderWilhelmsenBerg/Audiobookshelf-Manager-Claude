@@ -1731,4 +1731,8 @@ Complications for a future watch face. This documentation change adds no server 
 SDK permission, Room schema or runtime wire field. Sidecar device/inventory/listening APIs are not
 invented; their provider/Android contract and every used Sidecar route require fixtures before delivery.
 The face consumes published on-watch state without ABS authentication. [Device plan](garmin-device-management.md);
-[feed plan](garmin-watchface-state-plan.md). Neither provider/device controls nor publishing is implemented yet.
+[feed plan](garmin-watchface-state-plan.md). The provider/device controls and publishers are implemented; physical compatibility remains unaccepted. See the current provider delivery record.
+
+## Garmin provider/Sidecar compatibility — 2026-10-08
+
+Current implementation, strict checks, protocol/Sidecar fixtures, migration and all unperformed physical cases are recorded in [the provider delivery log](testing/2026-10-08-garmin-provider.md). The provider adds Room22 scoped records and Garmin permissions, not new ABS endpoints. [Install for testing](garmin-install-for-testing.md).

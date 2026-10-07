@@ -661,6 +661,24 @@ object Migrations {
         )
     }
 
+    private val MIGRATION_21_22 = object : Migration(21, 22) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `garmin_records` (
+                    `profileId` TEXT NOT NULL, `deviceId` TEXT NOT NULL,
+                    `kind` TEXT NOT NULL, `recordId` TEXT NOT NULL,
+                    `payload` TEXT NOT NULL, `recordedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`profileId`, `deviceId`, `kind`, `recordId`),
+                    FOREIGN KEY(`profileId`) REFERENCES `profiles`(`profileId`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_garmin_records_profileId` ON `garmin_records` (`profileId`)")
+        }
+    }
+
     val ALL: List<Migration> = listOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -682,5 +700,6 @@ object Migrations {
         MIGRATION_18_19,
         MIGRATION_19_20,
         MIGRATION_20_21,
+        MIGRATION_21_22,
     )
 }

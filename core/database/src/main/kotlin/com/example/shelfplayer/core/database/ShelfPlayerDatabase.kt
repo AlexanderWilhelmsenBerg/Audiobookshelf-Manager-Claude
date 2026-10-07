@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.database.converter.StringListConverters
 import com.example.shelfplayer.core.database.dao.BookPlaybackSettingsDao
 import com.example.shelfplayer.core.database.dao.BookmarkDao
 import com.example.shelfplayer.core.database.dao.DownloadDao
+import com.example.shelfplayer.core.database.dao.GarminDao
 import com.example.shelfplayer.core.database.dao.LibraryDao
 import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.MetadataDraftDao
@@ -27,6 +28,7 @@ import com.example.shelfplayer.core.database.entity.ChapterEntity
 import com.example.shelfplayer.core.database.entity.DownloadRequestEntity
 import com.example.shelfplayer.core.database.entity.DownloadedBookEntity
 import com.example.shelfplayer.core.database.entity.DownloadedFileEntity
+import com.example.shelfplayer.core.database.entity.GarminRecordEntity
 import com.example.shelfplayer.core.database.entity.LibraryEntity
 import com.example.shelfplayer.core.database.entity.MediaProgressEntity
 import com.example.shelfplayer.core.database.entity.MetadataDraftEntity
@@ -88,6 +90,7 @@ import com.example.shelfplayer.core.database.entity.SyncStateEntity
         DownloadedFileEntity::class,
         DownloadRequestEntity::class,
         MetadataDraftEntity::class,
+        GarminRecordEntity::class,
     ],
     version = DATABASE_VERSION,
     exportSchema = true,
@@ -116,6 +119,8 @@ abstract class ShelfPlayerDatabase : RoomDatabase() {
 
     abstract fun downloadDao(): DownloadDao
 
+    abstract fun garminDao(): GarminDao
+
     abstract fun syncStateDao(): SyncStateDao
 
     companion object {
@@ -123,4 +128,4 @@ abstract class ShelfPlayerDatabase : RoomDatabase() {
     }
 }
 
-internal const val DATABASE_VERSION = 21
+internal const val DATABASE_VERSION = 22

@@ -418,4 +418,10 @@ The owner also requires data for a future watch face. Use BookWave's Garmin Comp
 for validated PHONE state and actual GARMIN listening, with source, original event time when known,
 freshness and complete privacy clearing. Audiobookshelf integration stays behind existing Android/
 Sidecar owners. [Feed plan](garmin-watchface-state-plan.md); [Garmin #8](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/8). The publisher
-is planned; watch face and Data Field implementation remain later. iOS/Silo remain excluded.
+is implemented with physical acceptance pending; watch face and Data Field implementation remain later. iOS/Silo remain excluded.
+
+### Implementation record — 2026-10-08
+
+PD008 provider/device controls and protected Complications publishers now have runtime source. Physical
+acceptance remains pending. Protected id0 requires future consumers to share the retained developer
+key; CI temporary keys are not stable upgrades. [Delivery, limits and test inventory](testing/2026-10-08-garmin-provider.md).

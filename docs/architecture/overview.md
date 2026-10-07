@@ -1,7 +1,7 @@
 # Architecture overview
 
 **Classification:** Current contract.  
-**Current as reviewed:** 2026-10-07 for the Phase 2 Garmin integration; the read-only Mobile SDK adapter resides in :app.
+**Current as reviewed:** 2026-10-08 for the provider/device integration; one Mobile SDK owner in :app multiplexes Companion and provider channels.
 
 This is the current architectural map of BookWave. Historical phase documents remain useful evidence, but
 this file no longer describes only the original Phase 0 vertical slice.
@@ -182,3 +182,11 @@ playback, profile authorization, Audiobookshelf access and reconciliation author
 SDK bridge belongs at the :app adapter boundary and reads the existing Media3 queue owner. It must not create
 a second player/progress owner. Watch faces/Data Fields remain presentation surfaces. See the
 [integration plan](../garmin-integration.md) for implemented protocol and remaining acceptance dependencies.
+
+## Garmin durable device state
+
+Room22 adds profile/device-scoped garmin_records for commands, inventory, original events and timestamps.
+:domain exposes GarminRecordRepository; :data:downloads implements it through :core:database. :app
+validates transport and account scope before writes; Compose reads the repository projection. Existing
+account/progress owners refresh ABS after native Sidecar sync, with durable retry markers. No second
+player or network access from Compose/ViewModels is introduced. See [delivery and pending tests](../testing/2026-10-08-garmin-provider.md).

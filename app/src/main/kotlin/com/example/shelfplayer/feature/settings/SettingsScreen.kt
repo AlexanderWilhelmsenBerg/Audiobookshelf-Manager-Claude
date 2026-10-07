@@ -107,6 +107,9 @@ fun SettingsRoute(
     // whether to draw the app at all, so this screen is its writer rather than its owner.
     lockViewModel: ProfileLockViewModel = hiltViewModel(),
 ) {
+    val garminViewModel: GarminDeviceViewModel = hiltViewModel()
+    val watch by garminViewModel.state.collectAsStateWithLifecycle()
+    val watchMessage by garminViewModel.message.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val launcherIcon by viewModel.launcherIcon.collectAsStateWithLifecycle()
     val account by viewModel.account.collectAsStateWithLifecycle()
@@ -123,6 +126,15 @@ fun SettingsRoute(
         onLauncherIconChanged = viewModel::onLauncherIconChanged,
         metrics = metrics,
         devices = DeviceSettingsActions(
+            watch = GarminDeviceActions(
+                watch,
+                watchMessage,
+                garminViewModel::pair,
+                garminViewModel::forceSync,
+                garminViewModel::refresh,
+                garminViewModel::download,
+                garminViewModel::dismissMessage,
+            ),
             known = knownDevices,
             onPolicyChanged = viewModel::onDevicePolicyChanged,
             onForget = viewModel::onDeviceForgotten,
@@ -732,6 +744,7 @@ private fun LibraryRow(
 private fun LazyListScope.devicesSection(devices: DeviceSettingsActions) {
     item { SectionHeader(text = stringResource(R.string.settings_section_devices)) }
     item { Hint(text = stringResource(R.string.settings_devices_hint)) }
+    item { GarminDeviceCard(devices.watch) }
     if (devices.known.isEmpty()) {
         item { Hint(text = stringResource(R.string.settings_devices_empty)) }
         return
@@ -756,6 +769,7 @@ private fun LazyListScope.devicesSection(devices: DeviceSettingsActions) {
  * together — a list with no way to change it would be a diagnostic, not a setting.
  */
 data class DeviceSettingsActions(
+    val watch: GarminDeviceActions = GarminDeviceActions(),
     val known: List<KnownDevice> = emptyList(),
     val onPolicyChanged: (String, DevicePolicy) -> Unit = { _, _ -> },
     val onForget: (String) -> Unit = {},

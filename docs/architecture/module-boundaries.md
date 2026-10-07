@@ -1,7 +1,7 @@
 # Module boundaries
 
 **Classification:** Current contract.  
-**Current as reviewed:** 2026-10-07 for the Phase 2 Garmin integration; the read-only Mobile SDK adapter resides in :app.
+**Current as reviewed:** 2026-10-08 for the provider/device integration; one Mobile SDK owner in :app multiplexes Companion and provider channels.
 
 `PRODUCT_SPEC 9.3` defines the dependency direction. This document records how the current repository
 implements it. Older phase documents may describe modules as prospective that are now real; `main` is the
@@ -156,3 +156,11 @@ boundary.
 The repository continues to prefer meaningful role names (`*Screen`, `*Route`, `*ViewModel`, `*Repository`,
 `Default*Repository`, `*Entity`, `*Dao`, `*UseCase` for real use-case policy) over generic `Manager`, `Helper`
 or `Utils` buckets.
+
+## Garmin durable device state
+
+Room22 adds profile/device-scoped garmin_records for commands, inventory, original events and timestamps.
+:domain exposes GarminRecordRepository; :data:downloads implements it through :core:database. :app
+validates transport and account scope before writes; Compose reads the repository projection. Existing
+account/progress owners refresh ABS after native Sidecar sync, with durable retry markers. No second
+player or network access from Compose/ViewModels is introduced. See [delivery and pending tests](../testing/2026-10-08-garmin-provider.md).

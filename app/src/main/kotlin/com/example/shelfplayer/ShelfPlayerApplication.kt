@@ -141,6 +141,9 @@ class ShelfPlayerApplication :
     @Inject
     lateinit var garminBridge: GarminBridge
 
+    @Inject
+    internal lateinit var garminDevices: com.example.shelfplayer.garmin.GarminDeviceRepository
+
     /** PRODUCT_SPEC 14.4 — persists one sanitized fatal-process envelope before Android terminates us. */
     @Inject
     lateinit var crashReporter: CrashReporter
@@ -155,6 +158,7 @@ class ShelfPlayerApplication :
         lockWatcher.attach(this)
         realtimeSyncWatcher.attach(this)
         garminBridge.start()
+        garminDevices.start()
         downloadNotifications.start(applicationScope)
         // ApplicationExitInfo is a system-service read, so it does not belong on Application.onCreate's
         // main thread. The uncaught-exception handler above is already active while this runs.

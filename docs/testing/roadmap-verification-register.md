@@ -300,3 +300,7 @@ Keep release section 25 pending until its applicable functional, security and qu
 2026-10-05 U-08-05: signed combined APK2189 failed author-scroll restoration after the Book/Author/Series
 Back chain. The [correction log](2026-10-05-author-observation.md) records the actual-screen red/fixed/reverted
 guard and strict gate. Physical repeat on a corrected combined APK remains pending.
+
+## Garmin provider controls and feed — 2026-10-08
+
+[Implementation/evidence and additional physical cases](2026-10-08-garmin-provider.md); [installation guide](../garmin-install-for-testing.md). GD01–10/GF01–07 and prior G01/G02/Q01/A08 remain NOT RUN. No physical acceptance is inferred from software checks.

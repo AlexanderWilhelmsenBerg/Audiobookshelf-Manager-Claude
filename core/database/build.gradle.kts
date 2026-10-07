@@ -44,7 +44,7 @@ dependencies {
 val databaseClassName = "com.example.shelfplayer.core.database.ShelfPlayerDatabase"
 
 // Must match ShelfPlayerDatabase's @Database(version = ...).
-val databaseVersion = 21
+val databaseVersion = 22
 
 val verifyRoomSchemas by tasks.registering {
     group = "verification"

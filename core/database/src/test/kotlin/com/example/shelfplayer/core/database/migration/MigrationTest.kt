@@ -1054,6 +1054,31 @@ class MigrationTest {
         assertEquals(PROFILE_ID, stored.requests.single().profileId)
     }
 
+    @Test
+    fun `version 22 preserves download manifest and makes watch outbox durable and profile isolated`() = runTest {
+        createVersion(21)
+        val migrated = openWithMigrations()
+        assertNotNull(migrated.downloadDao().find("$SERVER_ID\u001flegacy-download"))
+        val dao = migrated.garminDao()
+        val row = com.example.shelfplayer.core.database.entity.GarminRecordEntity(
+            PROFILE_ID,
+            "watch",
+            "command",
+            "request",
+            "pending",
+            100,
+        )
+        dao.put(listOf(row))
+        dao.put(listOf(row.copy(payload = "accepted")))
+        assertEquals("accepted", dao.records(PROFILE_ID, "watch", "command").single().payload)
+        assertTrue(dao.records("other-profile", "watch", "command").isEmpty())
+        migrated.close()
+        val reopened = openWithMigrations()
+        assertEquals("accepted", reopened.garminDao().records(PROFILE_ID, "watch", "command").single().payload)
+        reopened.openHelper.writableDatabase.execSQL("DELETE FROM profiles WHERE profileId = ?", arrayOf(PROFILE_ID))
+        assertTrue(reopened.garminDao().records(PROFILE_ID, "watch", "command").isEmpty())
+    }
+
     private fun openWithMigrations(): ShelfPlayerDatabase =
         Room.databaseBuilder(context, ShelfPlayerDatabase::class.java, databaseFile.path)
             .addMigrations(*Migrations.ALL.toTypedArray())
@@ -1127,6 +1152,7 @@ class MigrationTest {
         VERSION_9 -> seedVersion9(db)
         VERSION_14 -> seedVersion14(db)
         VERSION_20 -> seedVersion20(db)
+        21 -> seedVersion20(db)
         else -> error("no seed data defined for schema version $version")
     }
 
