@@ -288,7 +288,7 @@ TalkBack or rendering evidence. All new work preserves Room/profile/playback own
 
 Garmin #119 now links the separate Companion lane. Garmin PR #1 build/export/test-compilation gates
 pass; simulator test execution and physical acceptance remain NOT RUN under [Garmin #2](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/2).
-Android bridge `6239a148` is an unmerged candidate; cross-repository transport cases G-02-01–10 are
+The integrated Phase 2 bridge and Garmin PR #5 have automated/build evidence in [the bridge log](2026-10-07-garmin-bridge.md); cross-repository physical cases G-02-01–10 remain
 [planned in Garmin](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/blob/main/docs/testing/phase-2-transport.md) under
 [Garmin #3](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/3). No transport/watch acceptance PASS is claimed.
 No phone/watch campaign runs during this documentation reconciliation.

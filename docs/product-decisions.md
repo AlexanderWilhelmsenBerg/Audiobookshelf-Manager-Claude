@@ -375,3 +375,12 @@ are separate phases. Optional offline Audio Provider/helper replacement remains 
 See [cross-repository boundaries](garmin-integration.md) and [Garmin plan](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/blob/main/plan.md).
 No normal Audiobookshelf credentials go to the watch; no reconciliation may start playback or choose
 the maximum position as authority. Later protocol/reconciliation design must preserve legitimate rewinds.
+
+### 2026-10-07 implementation authorization supplement
+
+The owner subsequently requested completion of the Garmin bridge and Loopbound APK recovery.
+Phase 2 Android/foreground Companion transport is implemented with the shared contract and privacy/
+ack/lifecycle corrections. Physical acceptance remains pending; commands/reconciliation/other watch
+surfaces remain later phases. This supersedes the old no-development/candidate-only delivery status,
+without reprioritizing Garmin over Android reliability or starting the optional audio provider.
+See [the delivery log](testing/2026-10-07-garmin-bridge.md).

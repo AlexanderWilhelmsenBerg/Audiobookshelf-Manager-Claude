@@ -21,8 +21,8 @@ application identity, licence, distribution and minimum server version. PD-002/0
 sleep, History/series and browse behavior. This document states requirements, not delivery acceptance;
 the [roadmap](docs/roadmap.md) and [verification register](docs/testing/roadmap-verification-register.md)
 record merged/draft/accepted status. Android is the primary scope; portability/cache experiments are excluded.
-The separate [Garmin integration plan](docs/garmin-integration.md) records Companion work and the unmerged
-Android bridge without expanding version-1 release requirements or claiming watch transport acceptance.
+The separate [Garmin integration plan](docs/garmin-integration.md) records Companion work and the Phase 2
+Android bridge implementation without expanding version-1 release requirements or claiming watch transport acceptance.
 
 # 1. Executive summary
 

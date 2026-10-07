@@ -1,0 +1,161 @@
+[
+  {
+    "name": "hello-long-epoch",
+    "raw": {
+      "v": 1,
+      "t": "hello",
+      "id": "watch-golden",
+      "ts": 1700000000000,
+      "p": {
+        "majors": [
+          1
+        ],
+        "caps": [
+          "ordered_state"
+        ]
+      }
+    },
+    "accepted": true
+  },
+  {
+    "name": "fractional-major",
+    "raw": {
+      "v": 1.5,
+      "t": "hello",
+      "id": "watch-golden",
+      "ts": 1700000000000,
+      "p": {
+        "majors": [
+          1
+        ],
+        "caps": [
+          "ordered_state"
+        ]
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "negative-epoch",
+    "raw": {
+      "v": 1,
+      "t": "hello",
+      "id": "watch-golden",
+      "ts": -1,
+      "p": {
+        "majors": [
+          1
+        ],
+        "caps": [
+          "ordered_state"
+        ]
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "wrong-correlation",
+    "raw": {
+      "v": 1,
+      "t": "hello",
+      "id": "watch-golden",
+      "ts": 1700000000000,
+      "p": {
+        "majors": [
+          1
+        ],
+        "caps": [
+          "ordered_state"
+        ]
+      },
+      "r": 42
+    },
+    "accepted": false
+  },
+  {
+    "name": "payload-array",
+    "raw": {
+      "v": 1,
+      "t": "hello",
+      "id": "watch-golden",
+      "ts": 1700000000000,
+      "p": []
+    },
+    "accepted": false
+  },
+  {
+    "name": "negative-sequence",
+    "raw": {
+      "v": 1,
+      "t": "hello",
+      "id": "watch-golden",
+      "ts": 1700000000000,
+      "p": {
+        "majors": [
+          1
+        ],
+        "caps": [
+          "ordered_state"
+        ]
+      },
+      "n": -1
+    },
+    "accepted": false
+  },
+  {
+    "name": "string-sequence",
+    "raw": {
+      "v": 1,
+      "t": "hello",
+      "id": "watch-golden",
+      "ts": 1700000000000,
+      "p": {
+        "majors": [
+          1
+        ],
+        "caps": [
+          "ordered_state"
+        ]
+      },
+      "n": "2"
+    },
+    "accepted": false
+  },
+  {
+    "name": "unknown-type",
+    "raw": {
+      "v": 1,
+      "t": "future-command",
+      "id": "watch-golden",
+      "ts": 1700000000000,
+      "p": {
+        "majors": [
+          1
+        ],
+        "caps": [
+          "ordered_state"
+        ]
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "unknown-compatible-field",
+    "raw": {
+      "v": 1,
+      "t": "hello",
+      "id": "watch-golden",
+      "ts": 1700000000000,
+      "p": {
+        "majors": [
+          1
+        ],
+        "caps": [
+          "ordered_state"
+        ]
+      },
+      "future": "ignored"
+    },
+    "accepted": true
+  }
+]

@@ -336,17 +336,17 @@ the empty capability set on a fresh server, the fake gateway's deliberate sign-i
 volume setting that moves no files are all in `gaps.md`'s final section with the reasoning.
 
 
-## R-126 — Cross-repository Garmin transport is not yet interoperable
+## R-126 — Garmin transport still needs source-matched hardware acceptance
 
-**Open, candidate integration risk — 2026-10-07.** Garmin main `d8de6fb8` persists validated snapshots
-but has no transport receiver. Android bridge `6239a148` is unmerged; its envelope/lifecycle/privacy code
-and eight test methods do not establish a passing execution or watch handshake. A matching protocol
-major/application ID cannot prove correlation, persistence, redaction or reconnect ordering. In particular,
-Android projection wall-time `updatedAt` is not yet durable legitimate-event evidence for later conflict
-resolution. This is not a diagnosed failure in Android main, which has no Garmin transport.
+**Open acceptance risk — updated 2026-10-07.** Phase 2 Android/Companion transport is implemented
+with common protocol documentation, strict integer checks, captured queue ownership, clear-before-
+metadata, nonce/sequence ordering and bounded durable ack recovery. Android regressions and Garmin
+target/test-compilation/export evidence are recorded in the [delivery log](testing/2026-10-07-garmin-bridge.md).
+These do not prove real Garmin Connect/firmware behavior, storage faults, heard continuity or battery cost.
+The receiver is foreground only. A disconnected watch retains stored state until reconnect and cannot
+receive remote privacy deletion. Test that limitation explicitly; do not claim immediate offline clearing.
 
-Retire with joint protocol fixtures, forced Android verification after the classpath change, executed
-Garmin simulator tests and source-matched physical G-01/G-02 privacy/reconnect/playback/battery cases.
-Never select maximum position as authority or start playback during reconciliation. Scope/dependencies:
-[integration plan](garmin-integration.md), Garmin [#2](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/2)
-and [#3](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/3), Android #119.
+Retire with executed Garmin simulator methods and source-matched G-01/G-02 privacy/reconnect/playback/
+battery cases. Projection wall-time updatedAt is not a legitimate-event timestamp for later conflict
+resolution. Never select maximum position or start playback during reconciliation. Android #119 and
+Garmin #2/#3 retain the acceptance and later-phase obligations.

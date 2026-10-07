@@ -44,6 +44,7 @@ javaxInject = "1"
 # Networking / serialization
 kotlinxCoroutines = "1.11.0"
 kotlinxSerialization = "1.9.0"
+garminConnectIq = "2.4.0"
 okhttp = "5.4.0"
 protobuf = "4.36.1"
 retrofit = "3.0.0"
@@ -115,6 +116,9 @@ kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+
+# --- Garmin / phone-watch transport --------------------------------------------------------------
+garmin-connectiq = { group = "com.garmin.connectiq", name = "ciq-companion-app-sdk", version.ref = "garminConnectIq" }
 
 # --- Networking ----------------------------------------------------------------------------------
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }

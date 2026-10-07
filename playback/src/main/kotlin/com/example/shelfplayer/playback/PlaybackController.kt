@@ -688,6 +688,7 @@ internal fun Player.playbackUiState(chapters: List<Chapter> = emptyList()): Play
         // times first (`PlaybackRecovery`); by the time this is non-null it has given up, and the only
         // thing left is to tell the listener and offer the button.
         hasFailed = playerError != null,
+        ownerProfileId = item?.let(MediaItems::ownerOf),
     )
 }
 
@@ -720,6 +721,8 @@ data class PlaybackUiState(
      * event log.
      */
     val hasFailed: Boolean = false,
+    /** Captured by Media3 when the queue opened; external displays must never infer it from selection. */
+    val ownerProfileId: ProfileId? = null,
 ) {
     /** Fraction in `0.0..1.0`; `0` when the duration is not known yet rather than a division by zero. */
     val fractionComplete: Float
