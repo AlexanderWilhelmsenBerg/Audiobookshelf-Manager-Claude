@@ -49,3 +49,5 @@ older completion cannot remove a newer request. GD04/06/10 must also cover expli
 provider reinstall and native sync cancellation/process loss. Physical results remain NOT RUN.
 
 Recovery validation: the new real-repository regression fails without the fix and passes with it. Separate ktlintFormat and full strict verifyDebug pass (1024 tasks, 3m31s); all 38 Garmin tests pass. Native recovery tests compile, but final simulator execution and physical checks remain pending.
+
+Release test recovery: main run37701847858 exposed the rendered Garmin card test's missing ScreenTest suffix, causing two launcher errors in testReleaseUnitTest. Rename follows the existing debug-only rendered UI tier contract in app/build.gradle.kts; no production dependency, exclusion policy or assertions change. All302 app release tests pass after the rename. A combined debug/release invocation hit a local lint/Hilt generated-file race, so the fresh strict debug gate runs in a separate invocation before delivery.
