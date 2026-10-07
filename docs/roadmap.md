@@ -240,6 +240,15 @@ WatchShelf + Sidecar remain the initial offline audio path; provider/helper repl
 No Garmin priority over Android reliability is inferred. The next independent Android slice remains
 #194 profile/player clearance and effective-theme preview parity.
 
+### Owner-requested Garmin device management — next integration slice
+
+The owner requested Playback → Devices with an inline watch menu, connected dot/last connected,
+last successful sync, Force sync, a watch-download dialog and a New download picker of completed
+Android books. Watch sessions must represent actual watch listening. The current snapshot bridge
+does not provide these features. [Requirements, external API boundary and GD-01–10 test inventory](garmin-device-management.md).
+The watch engine choice is pending; unmodified WatchShelf has no remote download/inventory interface.
+This request authorizes that integration scope, while watch face/Data Field remain later phases.
+
 ## Loopbound APK packaging recovery — 2026-10-07
 
 Checked APK run [37623427096](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/actions/runs/37623427096)

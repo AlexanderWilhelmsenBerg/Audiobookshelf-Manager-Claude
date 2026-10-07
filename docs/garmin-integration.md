@@ -46,3 +46,14 @@ Commands through #114, legitimate-event reconciliation/Settings Force sync, comp
 and Running Data Field remain later phases. Projection updatedAt is wall time, not a durable listening
 event timestamp. Future reconciliation must preserve deliberate rewind, never max(position), and never
 start playback. Garmin does not block an Android release or outrank Android reliability.
+
+
+## Owner-requested device management — 2026-10-07
+
+The owner requested Playback → Devices with an inline watch menu, truthful connection/last-sync state,
+Force sync, a watch-download dialog and a picker of fully downloaded Android books. They also require
+watch session visibility. These features are not in the merged Phase 2 display bridge.
+[PD-008 scope, upstream boundary and full test inventory](garmin-device-management.md) record the next
+integration. The watch engine selection is pending: unmodified WatchShelf has no phone receiver or
+remote inventory/session API; Sidecar serves audio/progress, not a watch's stored inventory.
+The current app is a watch-app; native audio downloads require an Audio Content Provider.

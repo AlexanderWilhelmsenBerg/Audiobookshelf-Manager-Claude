@@ -384,3 +384,24 @@ ack/lifecycle corrections. Physical acceptance remains pending; commands/reconci
 surfaces remain later phases. This supersedes the old no-development/candidate-only delivery status,
 without reprioritizing Garmin over Android reliability or starting the optional audio provider.
 See [the delivery log](testing/2026-10-07-garmin-bridge.md).
+
+
+## PD-008 — Garmin devices expand inside Playback settings
+
+**Status:** Accepted product/UX requirements; watch download engine selection pending.
+**Date:** 2026-10-07.
+**Scope:** Settings → Playback → Devices; Android #119 and Bookwave-garmin.
+**Source:** Owner requested an inline device menu with connectivity/sync timestamps, Force sync,
+watch-download inventory and choosing a completed phone download to queue on the watch.
+
+Use a compact expandable watch row. Connected state uses a small green dot with accessible text;
+otherwise show last connected. Show last successful sync, Force sync, Downloads and New download.
+Downloads and New download open small scrollable dialogs rather than separate navigation destinations.
+The eligible source list contains only completely downloaded, current-profile-authorized Android books.
+Watch inventory and sessions come from the owning watch engine; queued requests never mean completed
+downloads. Sync preserves legitimate rewinds and never starts playback. Keep phone playback uninterrupted.
+
+This authorizes the device-management/download integration scope, superseding the previous blanket
+deferral for these controls. It does not choose a technical watch engine or claim unmodified WatchShelf
+has a command API. See [the implementation boundary and test inventory](garmin-device-management.md).
+Watch face, Data Field and iOS/Silo remain outside this slice.
