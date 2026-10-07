@@ -48,3 +48,8 @@ phone locks cannot remotely erase watch media; delivered clears remove the publi
 Sidecar endpoint fixtures are pinned to MIT WatchShelf93ac7507; no watch inventory/session server routes
 are invented. Metadata titles in Android require a current authorized catalogue row. Existing WatchShelf
 and BookWave provider storage are separate. Hardware/native permissions and chunk integrity remain GD tests.
+
+Claimed native sync IDs remain durable through stop/process loss until their own completed/failed
+outcome, and do not consume a newer queued ID. Duplicating a download already covered by matching
+normal-speed cached audio returns stored; mismatched duration or partial coverage cannot claim success.
+Android retries after a fresh full inventory proves an accepted download absent.

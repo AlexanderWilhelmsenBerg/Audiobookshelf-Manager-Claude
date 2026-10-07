@@ -39,3 +39,13 @@ gestures, selections, privacy and durable state should be automated where hardwa
 Garmin provider/publishers are merged in [PR10](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/pull/10), commit `19cc9a67db505fb9389a8861373d97b3c037072b`. All nine PR CI checks pass at `e6829ade`; main CI37699273330 also passes. Matching Android device controls pass full strict `verifyDebug -Pshelfplayer.warningsAsErrors=true` locally: 1024 tasks, BUILD SUCCESSFUL in2m50s. All37 Garmin tests and38 Room migration tests pass, with actual-source A-B-A reversion proof. The bridge uses Room22 and adds no external dependency/classpath change. Its implementation branch is `codex/garmin-provider-controls`; GitHub PR delivery remains authoritative.
 
 [Garmin testing artifacts](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/actions/runs/37699273330) contain both supported target PRGs and packages. The [installation guide](../garmin-install-for-testing.md) and GD/GF register cover testing; all physical cases remain NOT RUN. Final simulator reruns stalled, so the earlier49 native passes do not establish final-source/native or hardware acceptance.
+
+## Request recovery follow-up
+
+A fresh complete watch inventory that lacks an accepted download now fails that request, allowing a new
+user retry after queue/cache removal. The actual repository test fails before the guard. Native claimed
+sync IDs now persist until an actual completed/failed outcome; interruption remains retryable and an
+older completion cannot remove a newer request. GD04/06/10 must also cover explicit watch deletion,
+provider reinstall and native sync cancellation/process loss. Physical results remain NOT RUN.
+
+Recovery validation: the new real-repository regression fails without the fix and passes with it. Separate ktlintFormat and full strict verifyDebug pass (1024 tasks, 3m31s); all 38 Garmin tests pass. Native recovery tests compile, but final simulator execution and physical checks remain pending.
