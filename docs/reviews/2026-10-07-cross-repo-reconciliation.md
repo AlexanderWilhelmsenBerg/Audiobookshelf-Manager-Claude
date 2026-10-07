@@ -3,6 +3,8 @@
 **Classification:** Dated source/tracker/document audit, not physical acceptance or runtime implementation.
 **Date:** 2026-10-07. Requirements: PRODUCT_SPEC17/18/19/21/25; AUTH-002/003, PLAY-001/004/005, LIB-002/003, DL-001–006 for retained acceptance boundaries.
 
+> This audit preserves the pre-implementation snapshot. Android PR #240 and Garmin PRs #5/#6 later merged on October 7; current delivery, gates and remaining acceptance are in the [bridge delivery log](../testing/2026-10-07-garmin-bridge.md) and [roadmap](../roadmap.md). Candidate-only and failed-checkout statements below are historical.
+
 ## Exact source and delivery snapshot
 
 | Area | Observed state |
