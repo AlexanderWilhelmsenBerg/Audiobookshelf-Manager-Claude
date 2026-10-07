@@ -32,6 +32,7 @@ class GarminBridge @Inject internal constructor(
     private val projector: GarminSnapshotProjector,
     private val sendPolicy: GarminSnapshotSendPolicy,
     private val privacyPolicy: GarminPrivacyPolicy,
+    private val ackTracker: GarminAckTracker,
     private val playback: PlaybackController,
     private val profiles: ProfileRepository,
     private val locks: ProfileLockRepository,
@@ -50,8 +51,6 @@ class GarminBridge @Inject internal constructor(
     private var privacyBlocked = true
     private var privacyClearSent = false
     private var lastProfileGeneration: Long? = null
-    private val pending = linkedMapOf<String, GarminMessageType>()
-    private val processedAcks = LinkedHashSet<String>()
 
     fun start() {
         if (started) return
@@ -201,8 +200,8 @@ class GarminBridge @Inject internal constructor(
 
     private fun handleSnapshotAck(envelope: GarminEnvelope) {
         val correlation = envelope.replyTo ?: return
-        if (!rememberAck(correlation)) return
-        pending.remove(correlation)
+        val ack = ackTracker.acknowledge(correlation)
+        if (ack !is GarminAckResult.Accepted || ack.type != GarminMessageType.Snapshot) return
 
         val accepted = envelope.payload["accepted"] as? Boolean ?: return
         if (!accepted) {
@@ -217,8 +216,8 @@ class GarminBridge @Inject internal constructor(
 
     private fun handleClearAck(envelope: GarminEnvelope) {
         val correlation = envelope.replyTo ?: return
-        if (!rememberAck(correlation)) return
-        pending.remove(correlation)
+        val ack = ackTracker.acknowledge(correlation)
+        if (ack !is GarminAckResult.Accepted || ack.type != GarminMessageType.ClearState) return
     }
 
     private fun handleError(envelope: GarminEnvelope) {
@@ -233,8 +232,7 @@ class GarminBridge @Inject internal constructor(
         if (!sendPolicy.shouldSend(snapshot, elapsed)) return
         val outgoing = codec.snapshot(snapshot)
         if (sdk.send(outgoing.payload)) {
-            pending[outgoing.id] = GarminMessageType.Snapshot
-            trimPending()
+            ackTracker.record(outgoing.id, GarminMessageType.Snapshot)
             sendPolicy.markSent(snapshot, elapsed)
         }
     }
@@ -245,8 +243,7 @@ class GarminBridge @Inject internal constructor(
         if (!sendPolicy.shouldSend(snapshot, elapsed, force)) return
         val outgoing = codec.snapshot(snapshot)
         if (sdk.send(outgoing.payload)) {
-            pending[outgoing.id] = GarminMessageType.Snapshot
-            trimPending()
+            ackTracker.record(outgoing.id, GarminMessageType.Snapshot)
             sendPolicy.markSent(snapshot, elapsed)
         }
     }
@@ -255,8 +252,7 @@ class GarminBridge @Inject internal constructor(
         if (sdkState !is GarminSdkState.AppAvailable) return
         val outgoing = codec.clearState()
         if (sdk.send(outgoing.payload)) {
-            pending[outgoing.id] = GarminMessageType.ClearState
-            trimPending()
+            ackTracker.record(outgoing.id, GarminMessageType.ClearState)
             privacyClearSent = true
             logger.info(LogCategory.App, "Garmin privacy clear sent")
         }
@@ -271,29 +267,10 @@ class GarminBridge @Inject internal constructor(
         else -> null
     }
 
-    private fun rememberAck(id: String): Boolean {
-        if (!processedAcks.add(id)) return false
-        while (processedAcks.size > MAX_ACK_HISTORY) {
-            val first = processedAcks.firstOrNull() ?: break
-            processedAcks.remove(first)
-        }
-        return true
-    }
-
-    private fun trimPending() {
-        while (pending.size > MAX_PENDING_MESSAGES) {
-            pending.remove(pending.keys.first())
-        }
-    }
-
     private data class ProjectionInput(
         val playback: PlaybackUiState,
         val profile: Profile?,
         val lockState: ProfileLockState,
     )
 
-    private companion object {
-        const val MAX_ACK_HISTORY = 64
-        const val MAX_PENDING_MESSAGES = 32
-    }
 }
