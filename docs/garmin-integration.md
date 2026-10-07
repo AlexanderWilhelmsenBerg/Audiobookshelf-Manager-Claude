@@ -14,7 +14,7 @@ both repositories carry [the same transport contract](garmin-transport-contract.
 | Android | Application startup, Mobile SDK2.4.0 adapter, existing Media3 snapshot projection, profile/privacy guard, ordered delivery and bounded ack retry. | Strict forced gate/PR CI and source-matched phone/watch acceptance are recorded in the [delivery log](testing/2026-10-07-garmin-bridge.md). |
 | Garmin Companion | Foreground Communications receiver, nonce negotiation, ordered snapshot/clear handling, valid-state persistence, durable acks and stored/waiting UI. | PR5/PR6 merged; target builds/test compilation/export and retained artifact checks pass; Run No Evil execution and G-01/G-02 hardware remain NOT RUN. |
 | Playback and accounts | Existing Android Media3, captured queue owner, profile/lock repositories and ABS/session owners remain authoritative. | Garmin failure must not disturb heard audio or progress; no credentials/hosts travel to the watch. |
-| Offline watch audio | WatchShelf + Sidecar remain the initial coexistence policy. | Provider/helper replacement and direct watch ABS authentication are deferred. |
+| Offline watch audio | Current Companion remains a display; WatchShelf may coexist during transition. | Owner selected a separate BookWave Audio Provider using existing Sidecar. Queue/inventory/events/settings controls are planned, not delivered. |
 
 ## Privacy and delivery
 
@@ -46,3 +46,21 @@ Commands through #114, legitimate-event reconciliation/Settings Force sync, comp
 and Running Data Field remain later phases. Projection updatedAt is wall time, not a durable listening
 event timestamp. Future reconciliation must preserve deliberate rewind, never max(position), and never
 start playback. Garmin does not block an Android release or outrank Android reliability.
+
+
+## Owner-requested device management — 2026-10-07
+
+The owner requested Playback → Devices with an inline watch menu, truthful connection/last-sync state,
+Force sync, a watch-download dialog and a picker of fully downloaded Android books. They also require
+watch session visibility. These features are not in the merged Phase 2 display bridge.
+[PD-008 scope, upstream boundary and full test inventory](garmin-device-management.md) record the next
+integration. The owner accepted a separate BookWave Audio Provider using existing WatchShelf Sidecar
+([Garmin #7](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/7)). Unmodified WatchShelf has no phone receiver or remote inventory/session
+API; Sidecar serves audio/progress, not a watch's stored inventory. The current Companion is a watch-app;
+native audio downloads require the separate Audio Content Provider. Provider/control implementation
+remains outstanding. Selecting a phone-downloaded book selects its server item, not local byte transfer.
+
+The future watch face will read BookWave-published Garmin Complications from Companion PHONE and
+provider GARMIN state, with original event time where known, source/freshness/privacy. See the
+[feed plan](garmin-watchface-state-plan.md) and [Garmin #8](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/issues/8). Direct watch-face ABS login/
+polling is not selected. The feed is planned; no watch face or Data Field is started.

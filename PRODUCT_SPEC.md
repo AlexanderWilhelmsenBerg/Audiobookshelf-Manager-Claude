@@ -952,7 +952,20 @@ Settings precedence:
 - car audio;
 - hearing aids;
 - wired headset;
-- device permission status.
+- device permission status;
+- Garmin device management inside Playback settings: expand the watch inline; show connected status
+  or last connection time, last successful sync, Force sync, watch download inventory and a New download
+  picker of fully downloaded, current-profile-authorized phone books (PD-008).
+
+Garmin device management is a separately tracked integration requirement, not a claim about the
+delivered Phase 2 snapshot Companion. Successful sync and download status require watch acknowledgements;
+watch sessions require actual listening events. Unmodified WatchShelf exposes no remote inventory/queue
+interface in the inspected version. PD-008 selects a separate BookWave Audio Provider using existing
+WatchShelf Sidecar. Companion and provider must expose validated playback data to a future watch face
+through BookWave-published Garmin Complications, including source/freshness/privacy and actual listening
+time when known. The watch face remains later work and does not poll/authenticate to Audiobookshelf.
+See [the device integration contract](docs/garmin-device-management.md) and
+[the future face feed plan](docs/garmin-watchface-state-plan.md).
 
 **Profiles**
 - active profile;

@@ -1722,3 +1722,13 @@ tested watch protocol. Garmin Phase 1's persisted representation is documented s
 no envelope receiver. [Integration boundaries/gaps](garmin-integration.md) require common fixtures and
 physical evidence before compatibility is claimed. No new server endpoint, captured server version,
 schema or released wire contract is added by this documentation reconciliation.
+
+
+## Owner-selected Garmin provider and watch face feed — 2026-10-07
+
+PD-008 selects a separate BookWave Audio Provider using existing WatchShelf Sidecar, and BookWave
+Complications for a future watch face. This documentation change adds no server endpoint/response,
+SDK permission, Room schema or runtime wire field. Sidecar device/inventory/listening APIs are not
+invented; their provider/Android contract and every used Sidecar route require fixtures before delivery.
+The face consumes published on-watch state without ABS authentication. [Device plan](garmin-device-management.md);
+[feed plan](garmin-watchface-state-plan.md). Neither provider/device controls nor publishing is implemented yet.
