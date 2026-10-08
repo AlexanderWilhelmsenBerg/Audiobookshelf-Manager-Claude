@@ -1,5 +1,12 @@
 # Android ↔ Garmin integration status
 
+**2026-10-08 watch feedback:** Phone setup and immediate Download admission still failed on hardware;
+on-watch login/catalogue worked. The former -1002 was also synthesized for schema rejection, so it
+did not establish a content-type cause. Setup now has typed failure guidance and a foreground watch
+status view; watch errors wrap/page and Companion has explicit help. Actual download success remains
+unverified. [Current findings and WD01–08 retests](testing/2026-10-08-garmin-watch-diagnostics.md).
+
+
 **Classification:** Current cross-repository implementation and acceptance plan.
 **Updated:** 2026-10-08. Requirements: AUTH-002/003, PLAY-001/004/005/007, LIB-003;
 PRODUCT_SPEC17/19/21. Companion transport adds no version-1 release requirement.
@@ -13,7 +20,7 @@ both repositories carry [the same transport contract](garmin-transport-contract.
 | --- | --- | --- |
 | Android | Application startup, Mobile SDK2.4.0 adapter, existing Media3 snapshot projection, profile/privacy guard, ordered delivery and bounded ack retry. | Strict forced gate/PR CI and source-matched phone/watch acceptance are recorded in the [delivery log](testing/2026-10-07-garmin-bridge.md). |
 | Garmin Companion | Foreground Communications receiver, nonce negotiation, ordered snapshot/clear handling, valid-state persistence, durable acks and stored/waiting UI. | PR5/PR6 merged; target builds/test compilation/export and retained artifact checks pass; Current Run No Evil execution is recorded in the provider delivery log; G-01/G-02 hardware remains NOT RUN. |
-| Playback and accounts | Existing Android Media3, captured queue owner, profile/lock repositories and ABS/session owners remain authoritative. | Garmin failure must not disturb heard audio or progress; no credentials/hosts travel to the watch. |
+| Playback and accounts | Existing Android Media3, captured queue owner, profile/lock repositories and ABS/session owners remain authoritative. | Garmin failure must not disturb heard audio or progress; Companion transport carries no credentials/hosts; the separate provider accepts owner-submitted one-time Sidecar setup under its guarded contract. |
 | Offline watch audio | Current Companion remains a display; WatchShelf may coexist during transition. | Owner selected a separate BookWave Audio Provider using existing Sidecar. Queue/inventory/events/settings controls are implemented with physical acceptance pending. |
 
 ## Privacy and delivery

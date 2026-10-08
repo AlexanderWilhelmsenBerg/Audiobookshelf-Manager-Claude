@@ -1,5 +1,12 @@
 # BookWave Android roadmap
 
+**2026-10-08 watch feedback:** Phone setup and immediate Download admission still failed on hardware;
+on-watch login/catalogue worked. The former -1002 was also synthesized for schema rejection, so it
+did not establish a content-type cause. Setup now has typed failure guidance and a foreground watch
+status view; watch errors wrap/page and Companion has explicit help. Actual download success remains
+unverified. [Current findings and WD01–08 retests](testing/2026-10-08-garmin-watch-diagnostics.md).
+
+
 **2026-10-08 setup recovery:** Owner-reported pairing/URL failures now have a focused fix: explicit watch Accept/Cancel, code resend/cancel/expiry and phone-driven Sidecar setup. Garmin controls/dialogs and Android sleep schedule reuse glass; sleep enable directly expands time controls. [Regression and physical acceptance register](testing/2026-10-08-garmin-setup-recovery.md). Hardware retest pending; the reported freeze remains unattributed.
 
 **Classification:** Active plan — canonical sequencing authority.

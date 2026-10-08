@@ -1256,4 +1256,10 @@
     <string name="garmin_setup_complete">Sidecar configured on the watch.</string>
     <string name="garmin_login_rejected">Sidecar rejected the login. Enter the password again and retry.</string>
     <string name="garmin_content_type">Unexpected response type. Check the Sidecar URL and reverse proxy; use the Sidecar base URL, not the Audiobookshelf URL.</string>
+    <string name="garmin_setup_unavailable">Setup did not finish. Keep BookWave Audio → Use BookWave phone app open on the watch, keep Garmin Connect running, check Sidecar access, then send setup again.</string>
+    <string name="garmin_setup_invalid">Enter a valid public HTTPS Sidecar base URL, username and password.</string>
+    <string name="garmin_setup_incompatible">Sidecar returned incompatible health or login data. Check its base URL and update WatchShelf Sidecar.</string>
+    <string name="garmin_setup_account">The watch has a different saved Sidecar URL or username. Use the same account. Sync pending watch progress before any deliberate app reset.</string>
+    <string name="garmin_setup_pair_first">Pair BookWave Audio with this phone first, then send setup again.</string>
+    <string name="garmin_setup_upgrade">Update BookWave Audio on the watch; this version does not support phone setup.</string>
 </resources>

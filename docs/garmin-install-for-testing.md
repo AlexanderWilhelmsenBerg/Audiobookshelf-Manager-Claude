@@ -5,6 +5,13 @@ BookWave has two separate apps: **BookWave Audio** is a music provider that down
 These are development builds, not Connect IQ Store releases. Physical acceptance is still pending.
 Upgrade the phone to the matching BookWave Android APK with device controls before pairing; keep app data.
 
+**USB upgrades:** copy the matching PRG into GARMIN/APPS using the same filename and application ID.
+This replaces that installed application's code; Companion and Audio have different IDs and do not
+replace one another. Use the retained-key testing ZIP for repeat upgrades; CI keys are temporary.
+Do not uninstall/reset to fix a connection error: that can remove cached audio and pending progress.
+Storage retention still needs WD01 verification on the actual firmware. Installation consumes/moves
+the PRG on some firmware, so not seeing the copied file afterward does not prove installation failed.
+
 1. Download the artifacts from the successful [Garmin Verification run](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/actions/workflows/garmin-verification.yml)
    for the source revision recorded in the test report. Choose `audio-provider` and optionally `companion`. Keep the included MIT license/provenance with the downloaded package.
    Match `fenix843mm` to fēnix 8 AMOLED 43 mm or `fenix847mm` to AMOLED 47/51 mm. Do not use either binary on
@@ -16,10 +23,14 @@ Upgrade the phone to the matching BookWave Android APK with device controls befo
    regular apps. Garmin menus vary with firmware. Keep Garmin Connect Mobile installed and the watch
    paired with the Android phone; it carries the BookWave bridge messages.
 4. On the watch, open **BookWave Audio → Browse library / Add music**. Leave the setup menu open
-   and choose **Use BookWave phone app**. Keep Garmin Connect running and the watch connected.
+   and choose **Use BookWave phone app**. Leave the guidance/status view open during Send setup.
+   Check build label **TEST 2026-10-08b**. Keep Garmin Connect running and the watch connected.
    Existing on-watch entry remains available through **Enter on watch**.
 5. In Android BookWave open **Settings → Playback → Devices → Garmin → Pair watch**. Compare the
-   six-digit code, then select **Accept pairing** on the watch. **Cancel** or watch Back rejects it.
+   six-digit code, then select **Accept <code>** on the watch. **Cancel** or watch Back rejects it.
+   A Garmin platform “Pair with…” permission prompt is not the provider's six-digit comparison menu.
+   The reported prompt's origin/installed version remains unverified; use the labelled build and
+   confirm the code before accepting the provider binding.
    If interrupted, choose **Send new pairing code**; the request expires after two minutes.
    **Cancel pairing** clears the phone request without unbinding an already accepted account.
    Pair an empty provider before downloading; retained unbound media/events cannot be relabelled.
@@ -27,9 +38,12 @@ Upgrade the phone to the matching BookWave Android APK with device controls befo
    base URL (including any subpath), verify the prefilled current username, and enter your password
    once. **Send setup** sends these to the provider for health/login; passwords are never saved.
    BookWave has discarded the earlier login password, so it cannot fill that password automatically.
-   Use Sidecar's URL, not the Audiobookshelf URL. -1002 means an unexpected response content type;
+   Use Sidecar's URL, not the Audiobookshelf URL. In this build -1002 means an unexpected response content type;
    check the URL and proxy redirects/error pages. A retained watch account refuses a different
    server/username: sync old progress before any deliberate provider reset.
+   An immediate Download failure is labelled Book details. -20001 means BookWave rejected the JSON
+   schema; report the fixed Field label as well as the code. UP/DOWN pages long messages; BACK returns.
+   Earlier builds incorrectly reused -1002 for this case, so old codes alone cannot establish cause.
 6. Finish one authorized download on the phone. In the expanded watch row choose **New download**,
    then the book. This queues its server item for Sidecar to fetch to the watch; phone audio files are
    not copied. Follow the watch's native Wi-Fi/charging/download prompts. **Queued** is not **Downloaded**.
@@ -49,5 +63,10 @@ battery behavior remain physical tests. See [device tests](garmin-device-managem
 Garmin's official [sideloading guide](https://developer.garmin.com/connect-iq/connect-iq-basics/your-first-app/)
 explains the PRG/USB installation workflow. The [SDK](https://developer.garmin.com/connect-iq/sdk/) is needed
 only for local builds/simulator tests, not copying an already compiled PRG.
+
+Companion shows **BOOKWAVE PHONE** and displays phone snapshots. **START/Menu** opens help and
+**BACK** returns/exits. Its library instructions point to **BookWave Audio** in music providers;
+Companion has no local audio library. Open BookWave on the phone and Force sync to test PHONE state.
+See [current owner findings and WD01–08](testing/2026-10-08-garmin-watch-diagnostics.md).
 
 Garmin's [device reference](https://developer.garmin.com/connect-iq/device-reference/fenix847mm/) and the pinned SDK device profile group AMOLED 47/51 mm under fenix847mm; size alone does not identify Solar/Pro variants.

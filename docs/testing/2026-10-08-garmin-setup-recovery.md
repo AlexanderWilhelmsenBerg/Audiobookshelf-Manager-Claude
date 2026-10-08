@@ -1,5 +1,8 @@
 # Pairing, phone-driven Sidecar setup and glass settings — 2026-10-08
 
+**Latest physical feedback:** setup/download/error readability failed; on-watch catalogue worked.
+[Current diagnosis and WD retests](2026-10-08-garmin-watch-diagnostics.md) supersede NOT RUN for those exercised paths.
+
 SET-002, AUTH-001/002/003/005, DL-001/003, BW-SLEEP-01. Architecture & Integration owns
 the seam; UI uses existing SettingsCard/GlassCard, theme tokens and native accessible controls.
 

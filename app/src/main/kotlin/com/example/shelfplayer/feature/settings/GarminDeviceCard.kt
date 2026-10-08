@@ -154,14 +154,7 @@ private fun GarminActionMessage(actions: GarminDeviceActions) {
         it == GarminDeviceMessage.ConfirmWatch &&
             (state.paired || state.pairingCode == null)
     }?.let { message ->
-        val resource = when (message) {
-            GarminDeviceMessage.Queued -> R.string.garmin_queued
-            GarminDeviceMessage.ConfirmWatch -> R.string.garmin_confirm_watch
-            GarminDeviceMessage.Failed -> R.string.garmin_request_failed
-            GarminDeviceMessage.Configured -> R.string.garmin_setup_complete
-            GarminDeviceMessage.LoginRejected -> R.string.garmin_login_rejected
-            GarminDeviceMessage.ContentType -> R.string.garmin_content_type
-        }
+        val resource = garminMessageResource(message)
         Text(stringResource(resource), style = MaterialTheme.typography.bodySmall)
         TextButton(onClick = actions.onDismissMessage) { Text(stringResource(R.string.garmin_dismiss)) }
     }
@@ -328,4 +321,19 @@ private fun LazyListScope.watchDownloads(state: GarminDeviceUi) {
             )
         }
     }
+}
+
+private fun garminMessageResource(message: GarminDeviceMessage): Int = when (message) {
+    GarminDeviceMessage.Queued -> R.string.garmin_queued
+    GarminDeviceMessage.ConfirmWatch -> R.string.garmin_confirm_watch
+    GarminDeviceMessage.Failed -> R.string.garmin_request_failed
+    GarminDeviceMessage.Configured -> R.string.garmin_setup_complete
+    GarminDeviceMessage.LoginRejected -> R.string.garmin_login_rejected
+    GarminDeviceMessage.ContentType -> R.string.garmin_content_type
+    GarminDeviceMessage.SetupUnavailable -> R.string.garmin_setup_unavailable
+    GarminDeviceMessage.InvalidSetup -> R.string.garmin_setup_invalid
+    GarminDeviceMessage.IncompatibleSidecar -> R.string.garmin_setup_incompatible
+    GarminDeviceMessage.AccountMismatch -> R.string.garmin_setup_account
+    GarminDeviceMessage.PairWatch -> R.string.garmin_setup_pair_first
+    GarminDeviceMessage.UpgradeWatch -> R.string.garmin_setup_upgrade
 }

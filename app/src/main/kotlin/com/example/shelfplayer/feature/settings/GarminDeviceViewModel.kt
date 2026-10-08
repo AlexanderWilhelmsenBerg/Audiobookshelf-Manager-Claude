@@ -36,38 +36,24 @@ class GarminDeviceViewModel @Inject internal constructor(private val repository:
             }
         }
     }
-    fun cancelPairing() = act(null, repository::cancelPairing)
+    fun cancelPairing() = act(null, action = repository::cancelPairing)
     fun configure(profile: String?, device: String?, url: String, user: String, password: String) =
-        act(GarminDeviceMessage.Configured) { repository.configure(profile, device, url, user, password) }
-    fun pair() = act(GarminDeviceMessage.ConfirmWatch, repository::pair)
-    fun forceSync() = act(GarminDeviceMessage.Queued, repository::forceSync)
+        act(GarminDeviceMessage.Configured, setup = true) { repository.configure(profile, device, url, user, password) }
+    fun pair() = act(GarminDeviceMessage.ConfirmWatch, action = repository::pair)
+    fun forceSync() = act(GarminDeviceMessage.Queued, action = repository::forceSync)
     fun download(id: String) = act(GarminDeviceMessage.Queued) { repository.queueDownload(id) }
-    fun refresh() = act(null, repository::refresh)
+    fun refresh() = act(null, action = repository::refresh)
     fun dismissMessage() {
         mutableMessage.value = null
     }
-    private fun act(success: GarminDeviceMessage?, action: suspend () -> AppResult<Unit>) {
+    private fun act(success: GarminDeviceMessage?, setup: Boolean = false, action: suspend () -> AppResult<Unit>) {
         if (mutableBusy.value) return
         mutableBusy.value = true
         viewModelScope.launch {
             try {
                 mutableMessage.value = when (val result = action()) {
                     is AppResult.Success -> success
-
-                    is AppResult.Failure -> when (val error = result.error) {
-                        is AppError.Authentication -> GarminDeviceMessage.LoginRejected
-
-                        is AppError.ApiCompatibility -> if (error.summary.contains(
-                                "content type",
-                            )
-                        ) {
-                            GarminDeviceMessage.ContentType
-                        } else {
-                            GarminDeviceMessage.Failed
-                        }
-
-                        else -> GarminDeviceMessage.Failed
-                    }
+                    is AppResult.Failure -> garminFailureMessage(result.error, setup)
                 }
             } finally {
                 mutableBusy.value = false
@@ -79,4 +65,50 @@ class GarminDeviceViewModel @Inject internal constructor(private val repository:
     }
 }
 
-enum class GarminDeviceMessage { Queued, ConfirmWatch, Failed, Configured, LoginRejected, ContentType }
+enum class GarminDeviceMessage {
+    Queued,
+    ConfirmWatch,
+    Failed,
+    Configured,
+    LoginRejected,
+    ContentType,
+    SetupUnavailable,
+    InvalidSetup,
+    IncompatibleSidecar,
+    AccountMismatch,
+    PairWatch,
+    UpgradeWatch,
+}
+
+internal fun garminFailureMessage(error: AppError, setup: Boolean): GarminDeviceMessage = when (error) {
+    is AppError.Authentication -> GarminDeviceMessage.LoginRejected
+
+    is AppError.ApiCompatibility -> setupCompatibilityMessage(error.missingCapability)
+
+    is AppError.Authorization -> setupAuthorizationMessage(error.missingPermission)
+
+    is AppError.Network, is AppError.Timeout -> if (setup) {
+        GarminDeviceMessage.SetupUnavailable
+    } else {
+        GarminDeviceMessage.Failed
+    }
+
+    is AppError.Validation -> if (setup) GarminDeviceMessage.InvalidSetup else GarminDeviceMessage.Failed
+
+    is AppError.Server, is AppError.Storage, is AppError.Download, is AppError.Playback,
+    is AppError.Security, is AppError.Conflict, is AppError.Canceled, is AppError.Unknown,
+    -> GarminDeviceMessage.Failed
+}
+
+private fun setupCompatibilityMessage(reason: String?): GarminDeviceMessage = when (reason) {
+    "sidecar_content_type" -> GarminDeviceMessage.ContentType
+    "sidecar_schema" -> GarminDeviceMessage.IncompatibleSidecar
+    "provider_setup" -> GarminDeviceMessage.UpgradeWatch
+    else -> GarminDeviceMessage.Failed
+}
+
+private fun setupAuthorizationMessage(reason: String?): GarminDeviceMessage = when (reason) {
+    "sidecar_account" -> GarminDeviceMessage.AccountMismatch
+    "provider_pairing" -> GarminDeviceMessage.PairWatch
+    else -> GarminDeviceMessage.Failed
+}

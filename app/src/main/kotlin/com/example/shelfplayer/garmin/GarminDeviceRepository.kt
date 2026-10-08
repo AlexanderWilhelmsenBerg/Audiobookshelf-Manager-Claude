@@ -207,7 +207,22 @@ internal class GarminDeviceRepository @Inject constructor(
                 return@withLock denied()
             }
             val hello = port.exchange(profile, "hello") ?: return@withLock unavailable()
-            if (!supportsSetup(hello)) return@withLock rejected()
+            if (hello["paired"] != true) {
+                return@withLock AppResult.Failure(
+                    AppError.Authorization(
+                        "Pair the provider with this phone first.",
+                        missingPermission = "provider_pairing",
+                    ),
+                )
+            }
+            if (!hasCapability(hello, "setup")) {
+                return@withLock AppResult.Failure(
+                    AppError.ApiCompatibility(
+                        "Update the watch provider to support phone setup.",
+                        missingCapability = "provider_setup",
+                    ),
+                )
+            }
             if (port.exchange(profile, "authorize")?.get("ok") != true) return@withLock denied()
             if (!setupAllowed(profile, generation, device)) return@withLock denied()
             val reply =
@@ -237,14 +252,18 @@ internal class GarminDeviceRepository @Inject constructor(
     private suspend fun setupAllowed(profile: Profile, generation: Long, device: GarminDeviceRef): Boolean =
         access.allowed(profile, generation) && available()?.identifier == device.identifier
 
-    private fun supportsSetup(hello: Map<*, *>): Boolean = hello["paired"] == true && hasCapability(hello, "setup")
-
     private fun hasCapability(hello: Map<*, *>, capability: String) =
         (hello["caps"] as? List<*>)?.contains(capability) == true
     private fun setupError(error: Any?): AppResult<Unit> = AppResult.Failure(
         when (error) {
             "CONTENT_TYPE" -> AppError.ApiCompatibility(
                 "Sidecar returned an unexpected content type. Check its URL and reverse proxy.",
+                missingCapability = "sidecar_content_type",
+            )
+
+            "INCOMPATIBLE_SIDECAR" -> AppError.ApiCompatibility(
+                "Sidecar returned incompatible health or login data.",
+                missingCapability = "sidecar_schema",
             )
 
             "LOGIN_REJECTED" -> AppError.Authentication(
@@ -254,6 +273,7 @@ internal class GarminDeviceRepository @Inject constructor(
 
             "ACCOUNT_MISMATCH" -> AppError.Authorization(
                 "Retained watch books belong to another Sidecar account. Sync them before resetting the watch app.",
+                missingPermission = "sidecar_account",
             )
 
             else -> AppError.Network("Could not configure Sidecar. Check the connection and try again.")

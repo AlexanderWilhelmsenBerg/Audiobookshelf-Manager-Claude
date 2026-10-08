@@ -104,5 +104,17 @@
       "ok": false,
       "error": "CONTENT_TYPE"
     }
+  },
+  {
+    "name": "setup-rejected-schema",
+    "value": {
+      "v": 1,
+      "t": "result",
+      "r": "request",
+      "p": "profile",
+      "n": "nonce",
+      "ok": false,
+      "error": "INCOMPATIBLE_SIDECAR"
+    }
   }
 ]
