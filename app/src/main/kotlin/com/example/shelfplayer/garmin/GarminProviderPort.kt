@@ -34,6 +34,7 @@ internal class GarminProviderPort @Inject constructor(
         type: String,
         fields: Map<String, Any> = emptyMap(),
         id: String = UUID.randomUUID().toString(),
+        timeoutMs: Long = REPLY_TIMEOUT_MS,
     ): Map<*, *>? = mutex.withLock {
         val generation = access.profiles.activeProfileGeneration()
         val device = (sdk.providerState.value as? GarminSdkState.AppAvailable)?.device ?: return@withLock null
@@ -45,7 +46,7 @@ internal class GarminProviderPort @Inject constructor(
         message.putAll(fields)
         try {
             if (!sdk.sendProvider(message)) return@withLock null
-            val reply = withTimeoutOrNull(REPLY_TIMEOUT_MS) { request.reply.await() }
+            val reply = withTimeoutOrNull(timeoutMs) { request.reply.await() }
             if (!access.allowed(profile, generation) ||
                 (sdk.providerState.value as? GarminSdkState.AppAvailable)?.device?.identifier != device.identifier
             ) {

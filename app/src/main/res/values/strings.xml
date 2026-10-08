@@ -1209,7 +1209,7 @@
     <string name="garmin_connected">Connected now</string>
     <string name="garmin_last_connected">Last connected: %1$s</string>
     <string name="garmin_last_synced">Last synced: %1$s</string>
-    <string name="garmin_setup_hint">Install BookWave Audio and sign in to your Sidecar on the watch. Pair before downloading any books.</string>
+    <string name="garmin_setup_hint">Open BookWave Audio on the watch, pair it here, then configure Sidecar from this phone before downloading books.</string>
     <string name="garmin_pair_code">Pairing code: %1$s</string>
     <string name="garmin_pair">Pair watch</string>
     <string name="garmin_force_sync">Force sync</string>
@@ -1245,4 +1245,15 @@
     <string name="garmin_close">Close</string>
     <string name="garmin_never">Not yet</string>
     <string name="garmin_available_from">Available from saved position: %1$d s</string>
+    <string name="garmin_pair_retry">Send new pairing code</string>
+    <string name="garmin_pair_cancel">Cancel pairing</string>
+    <string name="garmin_sidecar_setup">WatchShelf Sidecar setup</string>
+    <string name="garmin_sidecar_url">HTTPS Sidecar URL</string>
+    <string name="garmin_username">Username</string>
+    <string name="garmin_password">Password (one-time use)</string>
+    <string name="garmin_password_hint">Your current username is filled in. BookWave does not retain your login password; enter it once to send it to the paired watch for Sidecar login. Only the Sidecar session is stored on the watch.</string>
+    <string name="garmin_setup_send">Send setup</string>
+    <string name="garmin_setup_complete">Sidecar configured on the watch.</string>
+    <string name="garmin_login_rejected">Sidecar rejected the login. Enter the password again and retry.</string>
+    <string name="garmin_content_type">Unexpected response type. Check the Sidecar URL and reverse proxy; use the Sidecar base URL, not the Audiobookshelf URL.</string>
 </resources>

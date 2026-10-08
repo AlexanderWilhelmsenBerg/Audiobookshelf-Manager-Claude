@@ -1,5 +1,7 @@
 # BookWave Android roadmap
 
+**2026-10-08 setup recovery:** Owner-reported pairing/URL failures now have a focused fix: explicit watch Accept/Cancel, code resend/cancel/expiry and phone-driven Sidecar setup. Garmin controls/dialogs and Android sleep schedule reuse glass; sleep enable directly expands time controls. [Regression and physical acceptance register](testing/2026-10-08-garmin-setup-recovery.md). Hardware retest pending; the reported freeze remains unattributed.
+
 **Classification:** Active plan — canonical sequencing authority.
 **Updated:** 2026-10-08 for the selected provider/device controls and publishers. Android PR #240 and Garmin PRs #5/#6 remain the merged transport baseline. The original candidate `6239a148` is incorporated; Garmin PR #5 provides its counterpart. [Cross-repository audit](reviews/2026-10-07-cross-repo-reconciliation.md).
 

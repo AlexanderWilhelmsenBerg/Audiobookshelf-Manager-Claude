@@ -15,15 +15,21 @@ Upgrade the phone to the matching BookWave Android APK with device controls befo
 3. On the watch, select **BookWave Audio** from the music providers. Companion appears separately among
    regular apps. Garmin menus vary with firmware. Keep Garmin Connect Mobile installed and the watch
    paired with the Android phone; it carries the BookWave bridge messages.
-4. In BookWave Audio setup, enter the **full HTTPS WatchShelf Sidecar URL** and sign in with the same
-   Audiobookshelf account used by the active BookWave phone profile. Login uses Sidecar's opaque session;
-   do not paste a normal Audiobookshelf token. Existing WatchShelf Sidecar supplies/transcodes the audio.
-5. **Pair before downloading books on the new provider.** In Android BookWave, open
-   **Settings → Playback → Devices → Garmin → Pair watch**. Keep the provider open on the watch.
-   Compare the code and confirm that Sidecar uses the same server/account on the watch. This is an
-   explicit account check: the current Sidecar cannot prove account identity through the Bluetooth bridge.
-   A provider that already contains unbound books/jobs/events refuses to relabel them; use a fresh
-   BookWave provider installation for first pairing. Existing WatchShelf storage remains separate.
+4. On the watch, open **BookWave Audio → Browse library / Add music**. Leave the setup menu open
+   and choose **Use BookWave phone app**. Keep Garmin Connect running and the watch connected.
+   Existing on-watch entry remains available through **Enter on watch**.
+5. In Android BookWave open **Settings → Playback → Devices → Garmin → Pair watch**. Compare the
+   six-digit code, then select **Accept pairing** on the watch. **Cancel** or watch Back rejects it.
+   If interrupted, choose **Send new pairing code**; the request expires after two minutes.
+   **Cancel pairing** clears the phone request without unbinding an already accepted account.
+   Pair an empty provider before downloading; retained unbound media/events cannot be relabelled.
+   Once paired, open **WatchShelf Sidecar setup** on the phone. Enter the full public HTTPS Sidecar
+   base URL (including any subpath), verify the prefilled current username, and enter your password
+   once. **Send setup** sends these to the provider for health/login; passwords are never saved.
+   BookWave has discarded the earlier login password, so it cannot fill that password automatically.
+   Use Sidecar's URL, not the Audiobookshelf URL. -1002 means an unexpected response content type;
+   check the URL and proxy redirects/error pages. A retained watch account refuses a different
+   server/username: sync old progress before any deliberate provider reset.
 6. Finish one authorized download on the phone. In the expanded watch row choose **New download**,
    then the book. This queues its server item for Sidecar to fetch to the watch; phone audio files are
    not copied. Follow the watch's native Wi-Fi/charging/download prompts. **Queued** is not **Downloaded**.

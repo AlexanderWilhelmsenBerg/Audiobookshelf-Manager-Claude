@@ -127,7 +127,7 @@ internal class GarminDeviceRepository @Inject constructor(
                         },
                         completed,
                         profile.canDownload,
-                    )
+                    ).copy(username = profile.username, profileId = profile.id.value)
                 }
             }
         }
@@ -139,9 +139,7 @@ internal class GarminDeviceRepository @Inject constructor(
             val profile = access.current() ?: return@withLock denied()
             val device = available() ?: return@withLock unavailable()
             val hello = port.exchange(profile, "hello") ?: return@withLock unavailable()
-            if (hello["configured"] !=
-                true
-            ) {
+            if (hello["configured"] != true && !hasCapability(hello, "setup")) {
                 return@withLock AppResult.Failure(
                     AppError.ApiCompatibility("Configure Sidecar on the watch first."),
                 )
@@ -149,11 +147,118 @@ internal class GarminDeviceRepository @Inject constructor(
             val code = UUID.randomUUID().toString().filter(
                 Char::isDigit,
             ).take(PAIR_CODE_LENGTH).padEnd(PAIR_CODE_LENGTH, '0')
-            metadata(profile, device) { put("pairingCode", code) }
-            val result = port.exchange(profile, "pair", mapOf("code" to code)) ?: return@withLock unavailable()
-            if (result["ok"] == true || result["error"] == "CONFIRM_ON_WATCH") AppResult.Success(Unit) else rejected()
+            metadata(profile, device) {
+                put("pairingCode", code)
+                put("pairingAt", clock.now().toEpochMilli())
+            }
+            val result = port.exchange(profile, "pair", mapOf("code" to code))
+            when {
+                result?.get("ok") == true -> {
+                    metadata(profile, device) {
+                        remove("pairingCode")
+                        put("paired", true)
+                    }
+                    AppResult.Success(Unit)
+                }
+
+                result?.get("error") == "CONFIRM_ON_WATCH" -> AppResult.Success(Unit)
+
+                else -> {
+                    metadata(profile, device) { remove("pairingCode") }
+                    if (result == null) unavailable() else rejected()
+                }
+            }
         }
     }
+
+    suspend fun cancelPairing(): AppResult<Unit> = guarded {
+        operations.withLock {
+            val profile = access.current() ?: return@withLock denied()
+            val device = selected() ?: return@withLock unavailable()
+            metadata(profile, device) {
+                remove("pairingCode")
+                remove("pairingAt")
+            }
+            if (available() != null) {
+                val hello = port.exchange(profile, "hello")
+                if (hello != null && hasCapability(hello, "cancel_pair")) port.exchange(profile, "cancel_pair")
+            }
+            AppResult.Success(Unit)
+        }
+    }
+
+    /** One-time credentials never enter the durable command queue or Room metadata. */
+    suspend fun configure(
+        owner: String?,
+        target: String?,
+        url: String,
+        user: String,
+        password: String,
+    ): AppResult<Unit> = guarded {
+        val destination =
+            GarminSetupPolicy.url(url)
+                ?: return@guarded AppResult.Failure(AppError.Validation("Enter the HTTPS Sidecar base URL."))
+        if (!GarminSetupPolicy.credentials(user, password)) return@guarded rejected()
+        operations.withLock {
+            val generation = access.profiles.activeProfileGeneration()
+            val profile = access.current() ?: return@withLock denied()
+            val device = available() ?: return@withLock unavailable()
+            if (!setupDestinationAllowed(owner, target, profile, generation, device)) {
+                return@withLock denied()
+            }
+            val hello = port.exchange(profile, "hello") ?: return@withLock unavailable()
+            if (!supportsSetup(hello)) return@withLock rejected()
+            if (port.exchange(profile, "authorize")?.get("ok") != true) return@withLock denied()
+            if (!setupAllowed(profile, generation, device)) return@withLock denied()
+            val reply =
+                port.exchange(
+                    profile,
+                    "setup",
+                    mapOf("url" to destination, "user" to user, "password" to password),
+                    timeoutMs = SETUP_TIMEOUT_MS,
+                )
+                    ?: return@withLock unavailable()
+            if (reply["ok"] != true) return@withLock setupError(reply["error"])
+            if (!setupAllowed(profile, generation, device)) return@withLock denied()
+            metadata(profile, device) { put("configured", true) }
+            AppResult.Success(Unit)
+        }
+    }
+
+    private suspend fun setupDestinationAllowed(
+        owner: String?,
+        target: String?,
+        profile: Profile,
+        generation: Long,
+        device: GarminDeviceRef,
+    ): Boolean = profile.id.value == owner && device.identifier.toString() == target &&
+        setupAllowed(profile, generation, device)
+
+    private suspend fun setupAllowed(profile: Profile, generation: Long, device: GarminDeviceRef): Boolean =
+        access.allowed(profile, generation) && available()?.identifier == device.identifier
+
+    private fun supportsSetup(hello: Map<*, *>): Boolean = hello["paired"] == true && hasCapability(hello, "setup")
+
+    private fun hasCapability(hello: Map<*, *>, capability: String) =
+        (hello["caps"] as? List<*>)?.contains(capability) == true
+    private fun setupError(error: Any?): AppResult<Unit> = AppResult.Failure(
+        when (error) {
+            "CONTENT_TYPE" -> AppError.ApiCompatibility(
+                "Sidecar returned an unexpected content type. Check its URL and reverse proxy.",
+            )
+
+            "LOGIN_REJECTED" -> AppError.Authentication(
+                "Sidecar rejected the username or password.",
+                requiresReauthentication = false,
+            )
+
+            "ACCOUNT_MISMATCH" -> AppError.Authorization(
+                "Retained watch books belong to another Sidecar account. Sync them before resetting the watch app.",
+            )
+
+            else -> AppError.Network("Could not configure Sidecar. Check the connection and try again.")
+        },
+    )
 
     suspend fun queueDownload(book: String): AppResult<Unit> = enqueue("download", book)
     suspend fun forceSync(): AppResult<Unit> = enqueue("sync", null)
@@ -252,12 +357,17 @@ internal class GarminDeviceRepository @Inject constructor(
             watchAwake = false
             return@withLock unavailable()
         }
-        val paired = hello["paired"] == true && hello["configured"] == true
+        val paired = hello["paired"] == true
         metadata(profile, device) {
             put("paired", paired)
-            if (paired) remove("pairingCode")
+            put("configured", hello["configured"] == true)
+            if (paired || hello["pairing"] == false ||
+                clock.now().toEpochMilli() - optLong("pairingAt") >= PAIR_TIMEOUT_MS
+            ) {
+                remove("pairingCode")
+            }
         }
-        if (!paired) return@withLock rejected()
+        if (!paired || hello["configured"] != true) return@withLock rejected()
         if (port.exchange(profile, "authorize")?.get("ok") != true) return@withLock rejected()
         store.records(profile.id.value, device.identifier.toString(), COMMAND).forEach { command ->
             sendCommand(profile, command)
@@ -444,6 +554,8 @@ internal class GarminDeviceRepository @Inject constructor(
         AppError.ApiCompatibility("The watch could not accept this request. Check its setup and account."),
     )
     private companion object {
+        const val PAIR_TIMEOUT_MS = 120_000L
+        const val SETUP_TIMEOUT_MS = 60_000L
         const val PAIR_CODE_LENGTH = 6
         const val DEVICE = "device"
         const val COMMAND = "command"

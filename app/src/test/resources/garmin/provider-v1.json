@@ -61,6 +61,8 @@
       "configured": true,
       "paired": true,
       "caps": [
+        "setup",
+        "cancel_pair",
         "pair",
         "authorize",
         "download",
@@ -69,7 +71,8 @@
         "ack_events",
         "sync",
         "redact"
-      ]
+      ],
+      "pairing": false
     }
   },
   {
@@ -88,6 +91,18 @@
       "t": "sleeping",
       "p": "profile",
       "n": "nonce"
+    }
+  },
+  {
+    "name": "setup-rejected-content-type",
+    "value": {
+      "v": 1,
+      "t": "result",
+      "r": "request",
+      "p": "profile",
+      "n": "nonce",
+      "ok": false,
+      "error": "CONTENT_TYPE"
     }
   }
 ]

@@ -13,8 +13,10 @@ profile and profile-generation changes fail closed. Incompatible majors are not 
 
 | Request | Result and semantics |
 | --- | --- |
-| hello | configured/paired booleans and advertised allowlisted capabilities; no media metadata |
-| pair + six-character code | explicit on-watch confirmation before first binding; CONFIRM_ON_WATCH is not completed pairing |
+| hello | configured/paired/pairing booleans and advertised allowlisted capabilities; no media metadata |
+| pair + six-character code | explicit Accept pairing / Cancel Menu2 before first binding; fresh empty providers may pair before Sidecar login; same-profile retry replaces the pending code; expires after 120 seconds; CONFIRM_ON_WATCH is not completed pairing |
+| cancel_pair | cancels only a pending request for the captured profile; does not unbind accepted pairing |
+| setup + url/user/password | advertised capability; bound, unlocked/authorized profile+launch nonce only; transient HTTPS Sidecar health/login; final result reports success only after opaque session storage |
 | authorize / redact | matching bound profile only; redact clears every private feed value and blocks inventory/events/download/sync until authorized |
 | download + b | server book ID, 128 chars; actual Sidecar files validation/native queue acceptance required; duplicate existing jobs are idempotent |
 | inventory + offset | one row per bounded sequential page; offset, rows, more, source observation at, successful native synced timestamp and completed/failed sync request IDs |
@@ -34,14 +36,20 @@ Paged local events survive restart; ACK advances the cursor, duplicate import is
 failure retains a gap warning rather than silently dropping unacknowledged history.
 
 Android Room22 adds only garmin_records, keyed by profile/device/kind/record ID with cascading profile
-ownership. Requests persist before BLE. Inventory replaces only after every page validates. History uses
+ownership. Download/sync requests persist before BLE. Pairing and one-time setup credentials are never durable commands. Inventory replaces only after every page validates. History uses
 original event time, never phone receipt time. Last synced is actual completed native work; permission/
 progress refresh uses the existing account use case and persists retries after network failure. No action
 starts either player. Sidecar owns GARMIN → ABS progress uploads and preserves legitimate rewinds.
 
 Provider setup requires HTTPS Sidecar health/login and its opaque UUID session, never a normal ABS
 token/JWT fallback. Sidecar does not expose principal identity to this bridge: the user explicitly checks
-matching server/account while pairing. Retained profile/account anchors reject rebinding old cache or
+matching server/account while pairing and entering setup. Android prefills the current account username;
+it cannot recover a discarded login password. The user explicitly enters it once, submits over the
+separate provider channel, and both sides discard transient password state. Neither Room, saved UI
+state, normal DataStore, logs nor watch Storage retain it. The watch checks HTTPS /health exactly 200
+text/plain ok before JSON POST /login; only its UUID Sidecar session is saved. Foreign account anchors
+reject setup before health/login; stop/privacy changes invalidate asynchronous callbacks. Legacy
+providers without setup capability retain watch-entry fallback; phone setup fails visibly. Retained profile/account anchors reject rebinding old cache or
 journal to another user/server. Sync old events before uninstalling to switch accounts. Disconnected
 phone locks cannot remotely erase watch media; delivered clears remove the published projection.
 
@@ -53,3 +61,19 @@ Claimed native sync IDs remain durable through stop/process loss until their own
 outcome, and do not consume a newer queued ID. Duplicating a download already covered by matching
 normal-speed cached audio returns stored; mismatched duration or partial coverage cannot claim success.
 Android retries after a fresh full inventory proves an accepted download absent.
+
+## Setup and pairing recovery — 2026-10-08
+
+The Menu2 has explicit Accept and Cancel options, with Back cancelling too. Hello reports whether a
+pair request for this profile is still pending. Android clears stale codes on cancellation, acceptance,
+failed delivery, explicit watch cancellation and timeout. Retry always sends a new code; it does not
+require reinstalling. Closing the provider invalidates pending codes and setup callbacks. No retained
+cache/account anchor is cleared to solve pairing.
+
+Setup URL maximum 512 characters, username 128, password 256; HTTPS base URL only, preserving subpaths
+and rejecting userinfo/query/fragment/whitespace/dot traversal. Android strips surrounding whitespace
+and trailing slashes. Credentials are not retried automatically; re-enter the password after a failure.
+WatchShelf login/health reuse the captured MIT upstream contract 93ac7507; no ABS endpoint is invented.
+Garmin -1002 is UNSUPPORTED_CONTENT_TYPE_IN_RESPONSE, not proof of a bad URL. A wrong destination or
+proxy HTML response is a possible cause. Show actionable URL/proxy guidance and keep normal TLS checks.
+See [Garmin Communications](https://developer.garmin.com/connect-iq/api-docs/Toybox/Communications.html).

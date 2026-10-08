@@ -110,6 +110,7 @@ fun SettingsRoute(
     val garminViewModel: GarminDeviceViewModel = hiltViewModel()
     val watch by garminViewModel.state.collectAsStateWithLifecycle()
     val watchMessage by garminViewModel.message.collectAsStateWithLifecycle()
+    val watchBusy by garminViewModel.busy.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val launcherIcon by viewModel.launcherIcon.collectAsStateWithLifecycle()
     val account by viewModel.account.collectAsStateWithLifecycle()
@@ -134,6 +135,11 @@ fun SettingsRoute(
                 garminViewModel::refresh,
                 garminViewModel::download,
                 garminViewModel::dismissMessage,
+                onCancelPairing = garminViewModel::cancelPairing,
+                onConfigure = { url, user, password ->
+                    garminViewModel.configure(watch.profileId, watch.deviceId, url, user, password)
+                },
+                busy = watchBusy,
             ),
             known = knownDevices,
             onPolicyChanged = viewModel::onDevicePolicyChanged,
@@ -890,66 +896,5 @@ private fun androidx.compose.foundation.lazy.LazyListScope.sleepScheduleSection(
     settings: com.example.shelfplayer.core.model.playback.SleepTimerScheduleSettings,
     actions: SleepScheduleSettingsActions,
 ) {
-    item(key = "sleep-schedule-toggle") {
-        androidx.compose.material3.ListItem(
-            headlineContent = { androidx.compose.material3.Text(stringResource(R.string.sleep_schedule_title)) },
-            supportingContent = {
-                androidx.compose.material3.Text(stringResource(R.string.sleep_schedule_summary))
-            },
-            trailingContent = {
-                androidx.compose.material3.Switch(
-                    checked = settings.enabled,
-                    onCheckedChange = actions.onEnabledChanged,
-                )
-            },
-        )
-    }
-    item(key = "sleep-schedule-start") {
-        SleepScheduleTimeRow(
-            title = stringResource(R.string.sleep_schedule_start),
-            time = settings.start,
-            onChanged = actions.onStartChanged,
-        )
-    }
-    item(key = "sleep-schedule-end") {
-        SleepScheduleTimeRow(
-            title = stringResource(R.string.sleep_schedule_end),
-            time = settings.end,
-            onChanged = actions.onEndChanged,
-        )
-    }
-    if (settings.start == settings.end) {
-        item(key = "sleep-schedule-empty") {
-            androidx.compose.material3.ListItem(
-                headlineContent = {
-                    androidx.compose.material3.Text(stringResource(R.string.sleep_schedule_empty_window))
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun SleepScheduleTimeRow(title: String, time: java.time.LocalTime, onChanged: (java.time.LocalTime) -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    androidx.compose.material3.ListItem(
-        headlineContent = { androidx.compose.material3.Text(title) },
-        trailingContent = {
-            androidx.compose.material3.TextButton(
-                onClick = {
-                    android.app.TimePickerDialog(
-                        context,
-                        { _, hour, minute -> onChanged(java.time.LocalTime.of(hour, minute)) },
-                        time.hour,
-                        time.minute,
-                        android.text.format.DateFormat.is24HourFormat(context),
-                    ).show()
-                },
-            ) {
-                androidx.compose.material3.Text(
-                    text = "%02d:%02d".format(java.util.Locale.ROOT, time.hour, time.minute),
-                )
-            }
-        },
-    )
+    item(key = "sleep-schedule") { SleepScheduleCard(settings, actions) }
 }
