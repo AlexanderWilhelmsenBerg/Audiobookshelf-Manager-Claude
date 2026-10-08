@@ -1,5 +1,6 @@
 package com.example.shelfplayer.feature.settings
 
+import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.inspector.WindowInspector
@@ -27,6 +28,7 @@ import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "en-w400dp-h1000dp", application = android.app.Application::class)
+@SuppressLint("UseSdkSuppress") // Robolectric @Config owns SDK selection; the runner filter is absent from JVM tests.
 @RequiresApi(34)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class GarminDeviceCardScreenTest {
