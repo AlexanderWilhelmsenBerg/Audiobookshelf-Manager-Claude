@@ -146,7 +146,7 @@ class GarminDeviceRepositoryTest {
             val fixture = fixtures.getJSONObject(index)
             val value = fixture.getJSONObject("value")
             when (fixture.getString("name")) {
-                "hello", "inventory", "events" -> assertNotNull(
+                "hello", "inventory", "events", "setup-rejected-content-type", "setup-rejected-schema" -> assertNotNull(
                     GarminProviderCodec.decode(raw(value)!!, "profile", "nonce", "request"),
                 )
             }
@@ -269,6 +269,62 @@ class GarminDeviceRepositoryTest {
             repository.configure("profile", "2", "https://example.invalid", "fixture", "secret") is AppResult.Failure,
         )
         assertTrue(f.sdk.sent.isEmpty())
+    }
+
+    @Test fun phoneSetupPreservesSpecificProviderFailureReasons() = runTest {
+        val f = Fixture()
+        f.answer(backgroundScope, event = false)
+        val original = f.sdk.respond!!
+        var failure = "CONTENT_TYPE"
+        f.sdk.respond = { command ->
+            when (command["t"]) {
+                "hello" -> backgroundScope.launch {
+                    f.sdk.providerMessages.emit(
+                        command +
+                            mapOf(
+                                "n" to "watch-nonce",
+                                "paired" to true,
+                                "configured" to false,
+                                "caps" to listOf("setup"),
+                            ),
+                    )
+                }
+
+                "setup" -> backgroundScope.launch {
+                    f.sdk.providerMessages.emit(
+                        command + mapOf("n" to "watch-nonce", "ok" to false, "error" to failure),
+                    )
+                }
+
+                else -> original(command)
+            }
+        }
+        val repository = f.repository(backgroundScope, StandardTestDispatcher(testScheduler))
+        repository.start()
+        runCurrent()
+        for ((reason, expected) in listOf(
+            "CONTENT_TYPE" to "sidecar_content_type",
+            "INCOMPATIBLE_SIDECAR" to "sidecar_schema",
+            "ACCOUNT_MISMATCH" to "sidecar_account",
+        )) {
+            failure = reason
+            val result = repository.configure("profile", "1", "https://example.invalid", "fixture", "secret")
+            assertTrue(result is AppResult.Failure)
+            when (val error = result.error) {
+                is com.example.shelfplayer.core.model.AppError.ApiCompatibility -> assertEquals(
+                    expected,
+                    error.missingCapability,
+                )
+
+                is com.example.shelfplayer.core.model.AppError.Authorization -> assertEquals(
+                    expected,
+                    error.missingPermission,
+                )
+
+                else -> error("Provider failure reason was lost")
+            }
+        }
+        assertTrue(f.records.rows.value.none { it.payload.contains("secret") })
     }
 
     private fun raw(value: Any?): Any? = when (value) {

@@ -1744,3 +1744,13 @@ and POST /login {username,password} → {user:{token:opaque UUID}}; existing Sid
 Phone setup is gated on the advertised setup capability and accepted profile binding. Companion
 messages remain credential-free. URL and normal TLS validation are mandatory; -1002 means content
 type mismatch, so a URL/proxy failure never becomes a successful login. Credentials are transient.
+
+## Garmin provider setup diagnostics — 2026-10-08
+
+Provider major-v1 result reasons add INCOMPATIBLE_SIDECAR for rejected health/login data. Android
+uses stable ApiCompatibility.missingCapability and Authorization.missingPermission values for UI;
+it does not infer the failure type by matching English summary text. Old phones may show a generic
+failure for the new reason. Old providers retain supported content-type/login/account reasons.
+Garmin -1002 is preserved; the watch-only app schema code is -20001 and exposes fixed field names,
+never response values. Existing pinned Sidecar endpoint shapes and TLS requirements are unchanged.
+See [physical findings and checks](testing/2026-10-08-garmin-watch-diagnostics.md).
