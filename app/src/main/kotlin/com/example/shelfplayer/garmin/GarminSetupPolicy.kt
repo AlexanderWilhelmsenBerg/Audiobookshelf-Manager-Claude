@@ -5,7 +5,14 @@ import java.net.URI
 /** AUTH-001/003: a bounded HTTPS Sidecar destination, without credentials/query/fragment. */
 internal object GarminSetupPolicy {
     fun url(raw: String): String? {
-        val value = raw.trim().trimEnd('/')
+        val trimmed = raw.trim()
+        val value = if (trimmed.isBlank() || trimmed.startsWith("//") ||
+            trimmed.contains("://")
+        ) {
+            trimmed.trimEnd('/')
+        } else {
+            "https://${trimmed.trimEnd('/')}"
+        }
         if (unsafe(value)) {
             return null
         }
@@ -25,9 +32,5 @@ internal object GarminSetupPolicy {
         val malformedPath = value.contains("/../") || value.contains("/./")
         return value.length > MAX_URL || malformedPath || value.any { it.isWhitespace() || it == '\\' }
     }
-    fun credentials(user: String, password: String): Boolean =
-        user.isNotBlank() && user.length <= MAX_USER && password.isNotEmpty() && password.length <= MAX_PASSWORD
     private const val MAX_URL = 512
-    private const val MAX_USER = 128
-    private const val MAX_PASSWORD = 256
 }

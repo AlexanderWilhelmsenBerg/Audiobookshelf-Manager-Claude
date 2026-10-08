@@ -1,5 +1,9 @@
 # Watch setup, book-details errors and button guidance — 2026-10-08
 
+**Superseded current findings:** New owner report narrows admission to `files.duration` (-20001),
+and confirms Companion clipping. [Follow-up and WL01–08 tests](2026-10-08-garmin-watch-layout.md). Prior WD observations
+remain historical evidence; use the newer labelled build for current retests.
+
 ## Owner findings
 
 Reported installed build identity/firmware/Sidecar version is unverified. The owner saw “Pair with

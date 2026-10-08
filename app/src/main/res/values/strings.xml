@@ -1249,12 +1249,9 @@
     <string name="garmin_pair_cancel">Cancel pairing</string>
     <string name="garmin_sidecar_setup">WatchShelf Sidecar setup</string>
     <string name="garmin_sidecar_url">HTTPS Sidecar URL</string>
-    <string name="garmin_username">Username</string>
-    <string name="garmin_password">Password (one-time use)</string>
-    <string name="garmin_password_hint">Your current username is filled in. BookWave does not retain your login password; enter it once to send it to the paired watch for Sidecar login. Only the Sidecar session is stored on the watch.</string>
     <string name="garmin_setup_send">Send setup</string>
     <string name="garmin_setup_complete">Sidecar configured on the watch.</string>
-    <string name="garmin_login_rejected">Sidecar rejected the login. Enter the password again and retry.</string>
+    <string name="garmin_login_rejected">The watch Sidecar session was rejected. Sign in on the watch and retry.</string>
     <string name="garmin_content_type">Unexpected response type. Check the Sidecar URL and reverse proxy; use the Sidecar base URL, not the Audiobookshelf URL.</string>
     <string name="garmin_setup_unavailable">Setup did not finish. Keep BookWave Audio → Use BookWave phone app open on the watch, keep Garmin Connect running, check Sidecar access, then send setup again.</string>
     <string name="garmin_setup_invalid">Enter a valid public HTTPS Sidecar base URL, username and password.</string>
@@ -1262,4 +1259,6 @@
     <string name="garmin_setup_account">The watch has a different saved Sidecar URL or username. Use the same account. Sync pending watch progress before any deliberate app reset.</string>
     <string name="garmin_setup_pair_first">Pair BookWave Audio with this phone first, then send setup again.</string>
     <string name="garmin_setup_upgrade">Update BookWave Audio on the watch; this version does not support phone setup.</string>
+    <string name="garmin_reuse_login_hint">Uses this BookWave account and the watch’s existing Sidecar sign-in. HTTPS is added automatically. The address is remembered after successful setup.</string>
+    <string name="garmin_watch_login_required">Sign in to BookWave Audio on the watch first, then retry.</string>
 </resources>

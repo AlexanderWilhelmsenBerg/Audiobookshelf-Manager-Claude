@@ -1737,11 +1737,11 @@ The face consumes published on-watch state without ABS authentication. [Device p
 
 Current implementation, strict checks, protocol/Sidecar fixtures, migration and all unperformed physical cases are recorded in [the provider delivery log](testing/2026-10-08-garmin-provider.md). The provider adds Room22 scoped records and Garmin permissions, not new ABS endpoints. [Install for testing](garmin-install-for-testing.md).
 
-## Garmin provider one-time setup (2026-10-08)
+## Historical provider setup contract (superseded by retained login reuse below)
 
 No new Audiobookshelf endpoint. Provider reuses WatchShelf93ac7507 GET /health (200 text/plain ok)
 and POST /login {username,password} → {user:{token:opaque UUID}}; existing Sidecar fixtures apply.
-Phone setup is gated on the advertised setup capability and accepted profile binding. Companion
+The prior phone setup was gated on the advertised setup capability and accepted profile binding. Companion
 messages remain credential-free. URL and normal TLS validation are mandatory; -1002 means content
 type mismatch, so a URL/proxy failure never becomes a successful login. Credentials are transient.
 
@@ -1754,3 +1754,30 @@ failure for the new reason. Old providers retain supported content-type/login/ac
 Garmin -1002 is preserved; the watch-only app schema code is -20001 and exposes fixed field names,
 never response values. Existing pinned Sidecar endpoint shapes and TLS requirements are unchanged.
 See [physical findings and checks](testing/2026-10-08-garmin-watch-diagnostics.md).
+
+## Sidecar address/duration follow-up — 2026-10-08
+
+Android URL normalization supplies HTTPS for bare host/subpath, preserves explicit TLS enforcement,
+and stores only the successful profile/device-owned destination in existing Room records. No ABS
+endpoint, database schema or dependency change. Garmin now accepts valid Number/Long/Float/Double
+duration seconds; missing/wrong/nonpositive/out-of-range values retain fixed schema diagnostics.
+The optional BookWave Sidecar session extension has tested source; Android access-token exchange
+and deployment remain pending explicit destination/credential-egress approval. Current Android
+uses URL-only retained-watch-session reuse; on-watch entry remains the fresh-watch fallback. [Current evidence and tests](testing/2026-10-08-garmin-watch-layout.md).
+
+## Retained watch login reuse — 2026-10-08
+
+**Current setup — 2026-10-08:** Android setup now needs only the Sidecar address. It derives the
+username from the active BookWave profile and asks the watch to reuse its existing opaque Sidecar
+session (`reuse_login`). The watch requires a retained exact server/username account anchor, checks
+health and authenticated libraries, and refuses a different account or destination. No Android
+access token, refresh token or password is sent. Bare addresses get HTTPS; successful canonical
+addresses are remembered per profile/device and hidden when locked. A fresh watch must sign in
+through BookWave Audio first. First-time setup using the phone's ABS access token remains pending
+explicit destination/token-sharing approval and optional Sidecar integration. Hardware acceptance
+remains open. Watch build label: **TEST 2026-10-08d**.
+
+The additive `reuse_login` payload contains only `url` and the captured profile `user`.
+The existing profile/nonce/foreground guards apply. Missing anchor/session returns
+`WATCH_LOGIN_REQUIRED`; another server/user returns `ACCOUNT_MISMATCH`.
+Legacy watch-entry login remains available, but Android no longer offers password entry.

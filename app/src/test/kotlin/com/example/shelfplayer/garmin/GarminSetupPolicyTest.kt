@@ -6,6 +6,12 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class GarminSetupPolicyTest {
+    @Test fun suppliesHttpsForBareHostsWithoutAllowingExplicitHttp() {
+        assertEquals("https://example.invalid/sidecar", GarminSetupPolicy.url(" example.invalid/sidecar/ "))
+        assertNull(GarminSetupPolicy.url("ftp://example.invalid"))
+        assertNull(GarminSetupPolicy.url("//example.invalid"))
+    }
+
     // Deliberately fake .invalid credentials exercise rejection; test-only, never packaged.
     @SuppressLint("AuthLeak")
     @Test

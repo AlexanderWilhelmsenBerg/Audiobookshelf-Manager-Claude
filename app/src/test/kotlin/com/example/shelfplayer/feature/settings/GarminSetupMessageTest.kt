@@ -36,6 +36,10 @@ class GarminSetupMessageTest {
             garminFailureMessage(AppError.Authorization("safe", missingPermission = "sidecar_account"), true),
         )
         assertEquals(
+            GarminDeviceMessage.WatchLoginRequired,
+            garminFailureMessage(AppError.Authorization("safe", missingPermission = "provider_login"), true),
+        )
+        assertEquals(
             GarminDeviceMessage.PairWatch,
             garminFailureMessage(AppError.Authorization("safe", missingPermission = "provider_pairing"), true),
         )

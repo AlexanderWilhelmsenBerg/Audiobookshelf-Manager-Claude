@@ -22,7 +22,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,7 +35,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
 import com.example.shelfplayer.garmin.GarminDeviceUi
@@ -183,49 +181,33 @@ private fun GarminDeviceDialog(kind: String, actions: GarminDeviceActions, close
 /** AUTH-003: transient password state is cleared on submit/dismiss/profile change. */
 @Composable
 private fun GarminSetupDialog(actions: GarminDeviceActions, close: () -> Unit) {
-    var url by remember { mutableStateOf("") }
-    var user by remember(actions.state.profileId) { mutableStateOf(actions.state.username) }
-    var password by remember { mutableStateOf("") }
-    DisposableEffect(actions.state.profileId) { onDispose { password = "" } }
+    var url by remember(actions.state.profileId, actions.state.deviceId, actions.state.sidecarUrl) {
+        mutableStateOf(actions.state.sidecarUrl.removePrefix("https://"))
+    }
     SettingsGlassDialog(
         stringResource(R.string.garmin_sidecar_setup),
-        {
-            password = ""
-            close()
-        },
+        close,
         stringResource(android.R.string.cancel),
         stringResource(R.string.garmin_setup_send),
-        confirmEnabled = !actions.busy && url.isNotBlank() && user.isNotBlank() && password.isNotEmpty(),
+        confirmEnabled = !actions.busy && url.isNotBlank(),
         confirm = {
-            val secret = password
-            password = ""
-            actions.onConfigure(url, user, secret)
+            actions.onConfigure(url)
             close()
         },
     ) {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.garmin_password_hint), style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(url, {
-                url = it
-            }, label = {
-                Text(stringResource(R.string.garmin_sidecar_url))
-            }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(user, {
-                user = it
-            }, label = {
-                Text(stringResource(R.string.garmin_username))
-            }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Text(stringResource(R.string.garmin_reuse_login_hint), style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(
-                password,
-                {
-                    password = it
-                },
+                url,
+                { url = it },
                 label = {
-                    Text(stringResource(R.string.garmin_password))
+                    Text(stringResource(R.string.garmin_sidecar_url))
                 },
+                prefix = {
+                    if (!url.contains("://")) Text("https://")
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
                 singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -249,7 +231,7 @@ data class GarminDeviceActions(
     val onDownload: (String) -> Unit = {},
     val onDismissMessage: () -> Unit = {},
     val onCancelPairing: () -> Unit = {},
-    val onConfigure: (String, String, String) -> Unit = { _, _, _ -> },
+    val onConfigure: (String) -> Unit = {},
     val busy: Boolean = false,
 )
 
@@ -328,6 +310,7 @@ private fun garminMessageResource(message: GarminDeviceMessage): Int = when (mes
     GarminDeviceMessage.ConfirmWatch -> R.string.garmin_confirm_watch
     GarminDeviceMessage.Failed -> R.string.garmin_request_failed
     GarminDeviceMessage.Configured -> R.string.garmin_setup_complete
+    GarminDeviceMessage.WatchLoginRequired -> R.string.garmin_watch_login_required
     GarminDeviceMessage.LoginRejected -> R.string.garmin_login_rejected
     GarminDeviceMessage.ContentType -> R.string.garmin_content_type
     GarminDeviceMessage.SetupUnavailable -> R.string.garmin_setup_unavailable

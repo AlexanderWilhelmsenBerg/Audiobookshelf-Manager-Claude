@@ -101,7 +101,29 @@ class GarminDeviceCardScreenTest {
         assertEquals(1, cancelled)
     }
 
-    @Test fun phoneSetupPrefillsCurrentUsernameAndClearsPasswordOnDismissAndSubmit() = setupAndCapture(
+    @Test fun setupReopensWithTheSavedAddressWithoutRequiringSchemeEntry() {
+        compose.setContent {
+            MaterialTheme {
+                GarminDeviceCard(
+                    GarminDeviceActions(
+                        state = GarminDeviceUi(
+                            name = "Fixture watch",
+                            paired = true,
+                            ready = true,
+                            profileId = "profile",
+                            sidecarUrl = "https://example.invalid/sidecar",
+                        ),
+                    ),
+                )
+            }
+        }
+        compose.onNodeWithText("Fixture watch").performClick()
+        compose.onNodeWithText("WatchShelf Sidecar setup").performClick()
+        compose.onNodeWithText("example.invalid/sidecar").assertExists()
+        compose.onNodeWithText("https://").assertExists()
+    }
+
+    @Test fun phoneSetupNeedsOnlyAnAddressAndNeverShowsCredentialFields() = setupAndCapture(
         "garmin-setup-400",
     )
 
@@ -110,7 +132,7 @@ class GarminDeviceCardScreenTest {
     fun phoneSetupAtNarrowLargeTextKeepsFieldsAndActionsReachable() = setupAndCapture("garmin-setup-320-font2")
 
     private fun setupAndCapture(name: String) {
-        var sent: List<String>? = null
+        var sent: String? = null
         compose.setContent {
             MaterialTheme {
                 GarminDeviceCard(
@@ -122,14 +144,15 @@ class GarminDeviceCardScreenTest {
                             username = "fixture",
                             profileId = "profile",
                         ),
-                        onConfigure = { url, user, password -> sent = listOf(url, user, password) },
+                        onConfigure = { url -> sent = url },
                     ),
                 )
             }
         }
         compose.onNodeWithText("Fixture watch").performClick()
         compose.onNodeWithText("WatchShelf Sidecar setup").performClick()
-        compose.onNodeWithText("fixture").assertExists()
+        compose.onNodeWithText("Username").assertDoesNotExist()
+        compose.onNodeWithText("Password (one-time use)").assertDoesNotExist()
         compose.onNodeWithTag("settings-glass-dialog").assertExists()
         lateinit var image: Bitmap
         compose.runOnIdle {
@@ -141,13 +164,11 @@ class GarminDeviceCardScreenTest {
         File(output, "$name.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
         compose.onNodeWithText(
             "HTTPS Sidecar URL",
-        ).performScrollTo().performTextInput("https://example.invalid/sidecar")
-        compose.onNodeWithText("Password (one-time use)").performScrollTo().performTextInput("fixture-secret")
+        ).performScrollTo().performTextInput("example.invalid/sidecar")
         compose.onNodeWithText("Send setup").performClick()
-        assertEquals(listOf("https://example.invalid/sidecar", "fixture", "fixture-secret"), sent)
+        assertEquals("example.invalid/sidecar", sent)
         compose.onNodeWithText("WatchShelf Sidecar setup").performClick()
         compose.onNodeWithText("Send setup").assertIsNotEnabled()
-        compose.onNodeWithText("Password (one-time use)").performScrollTo().performTextInput("discard-me")
         compose.onNodeWithText("Cancel").performClick()
         compose.onNodeWithText("WatchShelf Sidecar setup").performClick()
         compose.onNodeWithText("Send setup").assertIsNotEnabled()

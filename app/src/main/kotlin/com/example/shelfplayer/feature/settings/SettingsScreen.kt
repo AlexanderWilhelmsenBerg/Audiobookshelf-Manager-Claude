@@ -136,8 +136,8 @@ fun SettingsRoute(
                 garminViewModel::download,
                 garminViewModel::dismissMessage,
                 onCancelPairing = garminViewModel::cancelPairing,
-                onConfigure = { url, user, password ->
-                    garminViewModel.configure(watch.profileId, watch.deviceId, url, user, password)
+                onConfigure = { url ->
+                    garminViewModel.configure(watch.profileId, watch.deviceId, url)
                 },
                 busy = watchBusy,
             ),
