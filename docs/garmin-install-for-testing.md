@@ -6,9 +6,9 @@ These are development builds, not Connect IQ Store releases. Physical acceptance
 Upgrade the phone to the matching BookWave Android APK with device controls before pairing; keep app data.
 
 1. Download the artifacts from the successful [Garmin Verification run](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/actions/workflows/garmin-verification.yml)
-   for the source revision recorded in the test report. Choose `audio-provider` and optionally `companion`.
-   Match `fenix843mm` to the 43 mm fēnix 8 or `fenix847mm` to the 47 mm model. Do not use either binary on
-   a different model. The `.iq` package is for store submission; sideload the target-specific `.prg`.
+   for the source revision recorded in the test report. Choose `audio-provider` and optionally `companion`. Keep the included MIT license/provenance with the downloaded package.
+   Match `fenix843mm` to fēnix 8 AMOLED 43 mm or `fenix847mm` to AMOLED 47/51 mm. Do not use either binary on
+   Solar, Pro or a different model. The `.iq` package is for store submission; sideload the target-specific `.prg`.
 2. Connect the watch by USB and choose its file-transfer/MTP mode if prompted. Open the watch in Explorer.
    Copy `BookWave-audio-provider-<target>.prg` (and optionally the matching Companion `.prg`) into
    **Internal Storage → GARMIN → APPS**. Safely disconnect it. Let installation finish/restart if prompted.
@@ -43,3 +43,5 @@ battery behavior remain physical tests. See [device tests](garmin-device-managem
 Garmin's official [sideloading guide](https://developer.garmin.com/connect-iq/connect-iq-basics/your-first-app/)
 explains the PRG/USB installation workflow. The [SDK](https://developer.garmin.com/connect-iq/sdk/) is needed
 only for local builds/simulator tests, not copying an already compiled PRG.
+
+Garmin's [device reference](https://developer.garmin.com/connect-iq/device-reference/fenix847mm/) and the pinned SDK device profile group AMOLED 47/51 mm under fenix847mm; size alone does not identify Solar/Pro variants.
