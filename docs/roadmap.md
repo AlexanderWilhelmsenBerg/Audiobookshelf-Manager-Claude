@@ -1,5 +1,23 @@
 # BookWave Android roadmap
 
+**Current setup — 2026-10-08:** Android setup now needs only the Sidecar address. It derives the
+username from the active BookWave profile and asks the watch to reuse its existing opaque Sidecar
+session (`reuse_login`). The watch requires a retained exact server/username account anchor, checks
+health and authenticated libraries, and refuses a different account or destination. No Android
+access token, refresh token or password is sent. Bare addresses get HTTPS; successful canonical
+addresses are remembered per profile/device and hidden when locked. A fresh watch must sign in
+through BookWave Audio first. First-time setup using the phone's ABS access token remains pending
+explicit destination/token-sharing approval and optional Sidecar integration. Hardware acceptance
+remains open. Watch build label: **TEST 2026-10-08d**.
+
+**2026-10-08 duration/layout follow-up:** The owner now reports immediate `-20001`,
+`files.duration`, and clipped Companion text. Garmin numeric admission and full measured pagination,
+BookWave theme/button cues, Android HTTPS defaults and remembered successful Sidecar addresses are
+implemented. Actual watch download/visual acceptance remains open. First-time phone bootstrap is
+pending exact destination/credential-egress approval and Sidecar integration; no running Sidecar has
+changed. [Current implementation and tests](testing/2026-10-08-garmin-watch-layout.md).
+
+
 **2026-10-08 watch feedback:** Phone setup and immediate Download admission still failed on hardware;
 on-watch login/catalogue worked. The former -1002 was also synthesized for schema rejection, so it
 did not establish a content-type cause. Setup now has typed failure guidance and a foreground watch
@@ -318,3 +336,9 @@ Garmin provider/publishers are merged in [PR10](https://github.com/AlexanderWilh
 Android device controls are merged in [PR243](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/243), `fe16456b`, after CI37699681083 passed. The request-recovery follow-up prevents an accepted request from blocking a user retry when fresh watch inventory reports no matching cache/job. Native claimed sync IDs survive interruption until actual completion/failure. GD04/06/10 remain physical acceptance obligations.
 
 The recovery and rendered-test classification fixes are merged in [PR244](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/244) after CI37704059996 passed. Final strict local verification passes (1024 tasks); all38 Garmin debug and302 app release tests pass. Garmin recovery PR12 and its main CI also pass. Device/feed acceptance remains pending; the installation guide covers the existing AMOLED43 and47/51 mm target groups.
+
+Garmin follow-up software: [native PR19](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/pull/19)
+and [PR20](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/pull/20) are merged after passing CI.
+The current Android slice removes credential fields, supplies HTTPS and remembers a validated URL.
+Retained-watch-login reuse requires no Sidecar extension. WL01–09 track acceptance and blocked
+fresh-watch phone bootstrap separately; Garmin #7/Android #119 remain open for acceptance.

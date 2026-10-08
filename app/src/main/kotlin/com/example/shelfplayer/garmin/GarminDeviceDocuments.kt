@@ -46,6 +46,7 @@ internal object GarminDeviceDocuments {
                 "ready",
             ),
             configured = metadata.optBoolean("configured"),
+            sidecarUrl = metadata.optString("sidecarUrl"),
             pairingCode = metadata.optString("pairingCode").takeIf(String::isNotBlank),
             downloads = downloads(current, books),
             listens = listens(current, books),
@@ -139,6 +140,7 @@ data class GarminDeviceUi(
     val ready: Boolean = false,
     val pairingCode: String? = null,
     val configured: Boolean = false,
+    val sidecarUrl: String = "",
     val username: String = "",
     val profileId: String? = null,
 )

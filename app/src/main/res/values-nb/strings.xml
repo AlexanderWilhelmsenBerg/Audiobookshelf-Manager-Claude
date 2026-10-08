@@ -996,12 +996,9 @@
     <string name="garmin_pair_cancel">Avbryt tilkobling</string>
     <string name="garmin_sidecar_setup">Konfigurer WatchShelf Sidecar</string>
     <string name="garmin_sidecar_url">HTTPS-adresse til Sidecar</string>
-    <string name="garmin_username">Brukernavn</string>
-    <string name="garmin_password">Passord (engangsbruk)</string>
-    <string name="garmin_password_hint">Ditt aktive brukernavn er fylt inn. BookWave lagrer ikke innloggingspassordet; skriv det én gang for å sende det til den tilkoblede klokken for Sidecar-innlogging. Bare Sidecar-økten lagres på klokken.</string>
     <string name="garmin_setup_send">Send oppsett</string>
     <string name="garmin_setup_complete">Sidecar er konfigurert på klokken.</string>
-    <string name="garmin_login_rejected">Sidecar avviste innloggingen. Skriv passordet på nytt og prøv igjen.</string>
+    <string name="garmin_login_rejected">Klokkens Sidecar-økt ble avvist. Logg inn på klokken og prøv igjen.</string>
     <string name="garmin_content_type">Uventet svartype. Sjekk Sidecar-adressen og omvendt proxy; bruk Sidecar-adressen, ikke Audiobookshelf-adressen.</string>
     <string name="garmin_setup_unavailable">Oppsettet ble ikke fullført. Hold BookWave Audio → Use BookWave phone app åpent på klokken, hold Garmin Connect i gang, kontroller tilgangen til Sidecar og send oppsettet på nytt.</string>
     <string name="garmin_setup_invalid">Skriv inn en gyldig offentlig HTTPS-baseadresse til Sidecar, brukernavn og passord.</string>
@@ -1009,4 +1006,6 @@
     <string name="garmin_setup_account">Klokken har en annen lagret Sidecar-adresse eller et annet brukernavn. Bruk samme konto. Synkroniser ventende fremdrift på klokken før en eventuell tilbakestilling av appen.</string>
     <string name="garmin_setup_pair_first">Koble BookWave Audio til denne telefonen først, og send oppsettet på nytt.</string>
     <string name="garmin_setup_upgrade">Oppdater BookWave Audio på klokken. Denne versjonen støtter ikke oppsett fra telefonen.</string>
+    <string name="garmin_reuse_login_hint">Bruker denne BookWave-kontoen og klokkens eksisterende Sidecar-innlogging. HTTPS legges til automatisk. Adressen huskes etter vellykket oppsett.</string>
+    <string name="garmin_watch_login_required">Logg inn i BookWave Audio på klokken først, og prøv igjen.</string>
 </resources>

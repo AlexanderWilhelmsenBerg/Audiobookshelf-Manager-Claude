@@ -164,7 +164,7 @@ class GarminDeviceRepositoryTest {
         }
     }
 
-    @Test fun phoneSetupDoesNotPersistCredentialsAndRequiresAnExplicitCapability() = runTest {
+    @Test fun phoneSetupReusesTheCurrentAccountWithoutCredentialEntry() = runTest {
         val f = Fixture()
         f.answer(backgroundScope, event = false)
         val original = f.sdk.respond!!
@@ -176,8 +176,8 @@ class GarminDeviceRepositoryTest {
                             mapOf(
                                 "n" to "watch-nonce",
                                 "paired" to true,
-                                "configured" to false,
-                                "caps" to listOf("setup"),
+                                "configured" to true,
+                                "caps" to listOf("reuse_login"),
                             ),
                     )
                 }
@@ -192,25 +192,27 @@ class GarminDeviceRepositoryTest {
             repository.configure(
                 "profile",
                 "1",
-                "https://example.invalid/sidecar/",
-                "fixture",
-                "one-time-secret",
+                "example.invalid/sidecar/",
             ) is AppResult.Success,
         )
-        val setup = f.sdk.sent.single { it["t"] == "setup" }
+        val setup = f.sdk.sent.single { it["t"] == "reuse_login" }
         assertEquals("https://example.invalid/sidecar", setup["url"])
-        assertEquals("one-time-secret", setup["password"])
+        assertEquals("fixture", setup["user"])
+        assertTrue("password" !in setup && "session" !in setup && "token" !in setup)
         assertTrue(
             f.records.rows.value.none {
-                it.payload.contains("one-time-secret") ||
-                    it.payload.contains("example.invalid")
+                it.payload.contains("one-time-secret")
             },
         )
+        assertEquals("https://example.invalid/sidecar", repository.observe().first().sidecarUrl)
+        f.locked = true
+        assertEquals("", repository.observe().first().sidecarUrl)
+        f.locked = false
         f.sdk.respond = original
         assertTrue(
-            repository.configure("profile", "1", "https://example.invalid", "fixture", "secret") is AppResult.Failure,
+            repository.configure("profile", "1", "https://example.invalid") is AppResult.Failure,
         )
-        assertEquals(1, f.sdk.sent.count { it["t"] == "setup" })
+        assertEquals(1, f.sdk.sent.count { it["t"] == "reuse_login" })
     }
 
     @Test fun reissuingAndCancellingPairingClearStalePhoneCodes() = runTest {
@@ -253,7 +255,7 @@ class GarminDeviceRepositoryTest {
         assertTrue(f.sdk.sent.any { it["t"] == "cancel_pair" })
     }
 
-    @Test fun setupCannotRedirectCredentialsFromAStaleRenderedAccountOrWatch() = runTest {
+    @Test fun setupCannotRedirectFromAStaleRenderedAccountOrWatch() = runTest {
         val f = Fixture()
         val repository = f.repository(backgroundScope, StandardTestDispatcher(testScheduler))
         assertTrue(
@@ -261,12 +263,10 @@ class GarminDeviceRepositoryTest {
                 "other-profile",
                 "1",
                 "https://example.invalid",
-                "fixture",
-                "secret",
             ) is AppResult.Failure,
         )
         assertTrue(
-            repository.configure("profile", "2", "https://example.invalid", "fixture", "secret") is AppResult.Failure,
+            repository.configure("profile", "2", "https://example.invalid") is AppResult.Failure,
         )
         assertTrue(f.sdk.sent.isEmpty())
     }
@@ -284,13 +284,13 @@ class GarminDeviceRepositoryTest {
                             mapOf(
                                 "n" to "watch-nonce",
                                 "paired" to true,
-                                "configured" to false,
-                                "caps" to listOf("setup"),
+                                "configured" to true,
+                                "caps" to listOf("reuse_login"),
                             ),
                     )
                 }
 
-                "setup" -> backgroundScope.launch {
+                "reuse_login" -> backgroundScope.launch {
                     f.sdk.providerMessages.emit(
                         command + mapOf("n" to "watch-nonce", "ok" to false, "error" to failure),
                     )
@@ -308,7 +308,7 @@ class GarminDeviceRepositoryTest {
             "ACCOUNT_MISMATCH" to "sidecar_account",
         )) {
             failure = reason
-            val result = repository.configure("profile", "1", "https://example.invalid", "fixture", "secret")
+            val result = repository.configure("profile", "1", "https://example.invalid")
             assertTrue(result is AppResult.Failure)
             when (val error = result.error) {
                 is com.example.shelfplayer.core.model.AppError.ApiCompatibility -> assertEquals(
@@ -325,6 +325,40 @@ class GarminDeviceRepositoryTest {
             }
         }
         assertTrue(f.records.rows.value.none { it.payload.contains("secret") })
+    }
+
+    @Test fun freshWatchRequiresItsOwnLoginBeforeReuse() = runTest {
+        val f = Fixture()
+        f.answer(backgroundScope, event = false)
+        val original = f.sdk.respond!!
+        f.sdk.respond = { command ->
+            if (command["t"] == "hello") {
+                backgroundScope.launch {
+                    f.sdk.providerMessages.emit(
+                        command + mapOf(
+                            "n" to "watch-nonce",
+                            "paired" to true,
+                            "configured" to false,
+                            "caps" to listOf("reuse_login"),
+                        ),
+                    )
+                }
+            } else {
+                original(command)
+            }
+        }
+        val repository = f.repository(backgroundScope, StandardTestDispatcher(testScheduler))
+        repository.start()
+        runCurrent()
+        val result = repository.configure("profile", "1", "example.invalid")
+        assertTrue(result is AppResult.Failure)
+        assertEquals(
+            "provider_login",
+            (result as AppResult.Failure).error.let {
+                (it as com.example.shelfplayer.core.model.AppError.Authorization).missingPermission
+            },
+        )
+        assertTrue(f.sdk.sent.none { it["t"] == "reuse_login" })
     }
 
     private fun raw(value: Any?): Any? = when (value) {

@@ -1,5 +1,23 @@
 # Garmin device management
 
+**Current setup — 2026-10-08:** Android setup now needs only the Sidecar address. It derives the
+username from the active BookWave profile and asks the watch to reuse its existing opaque Sidecar
+session (`reuse_login`). The watch requires a retained exact server/username account anchor, checks
+health and authenticated libraries, and refuses a different account or destination. No Android
+access token, refresh token or password is sent. Bare addresses get HTTPS; successful canonical
+addresses are remembered per profile/device and hidden when locked. A fresh watch must sign in
+through BookWave Audio first. First-time setup using the phone's ABS access token remains pending
+explicit destination/token-sharing approval and optional Sidecar integration. Hardware acceptance
+remains open. Watch build label: **TEST 2026-10-08d**.
+
+**2026-10-08 duration/layout follow-up:** The owner now reports immediate `-20001`,
+`files.duration`, and clipped Companion text. Garmin numeric admission and full measured pagination,
+BookWave theme/button cues, Android HTTPS defaults and remembered successful Sidecar addresses are
+implemented. Actual watch download/visual acceptance remains open. First-time phone bootstrap is
+pending exact destination/credential-egress approval and Sidecar integration; no running Sidecar has
+changed. [Current implementation and tests](testing/2026-10-08-garmin-watch-layout.md).
+
+
 **2026-10-08 watch feedback:** Phone setup and immediate Download admission still failed on hardware;
 on-watch login/catalogue worked. The former -1002 was also synthesized for schema rejection, so it
 did not establish a content-type cause. Setup now has typed failure guidance and a foreground watch

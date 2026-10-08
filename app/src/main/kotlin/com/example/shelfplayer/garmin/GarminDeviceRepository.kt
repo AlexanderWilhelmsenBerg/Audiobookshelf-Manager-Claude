@@ -188,17 +188,10 @@ internal class GarminDeviceRepository @Inject constructor(
     }
 
     /** One-time credentials never enter the durable command queue or Room metadata. */
-    suspend fun configure(
-        owner: String?,
-        target: String?,
-        url: String,
-        user: String,
-        password: String,
-    ): AppResult<Unit> = guarded {
+    suspend fun configure(owner: String?, target: String?, url: String): AppResult<Unit> = guarded {
         val destination =
             GarminSetupPolicy.url(url)
                 ?: return@guarded AppResult.Failure(AppError.Validation("Enter the HTTPS Sidecar base URL."))
-        if (!GarminSetupPolicy.credentials(user, password)) return@guarded rejected()
         operations.withLock {
             val generation = access.profiles.activeProfileGeneration()
             val profile = access.current() ?: return@withLock denied()
@@ -215,7 +208,7 @@ internal class GarminDeviceRepository @Inject constructor(
                     ),
                 )
             }
-            if (!hasCapability(hello, "setup")) {
+            if (!hasCapability(hello, "reuse_login")) {
                 return@withLock AppResult.Failure(
                     AppError.ApiCompatibility(
                         "Update the watch provider to support phone setup.",
@@ -223,19 +216,23 @@ internal class GarminDeviceRepository @Inject constructor(
                     ),
                 )
             }
+            if (hello["configured"] != true) return@withLock watchLoginRequired()
             if (port.exchange(profile, "authorize")?.get("ok") != true) return@withLock denied()
             if (!setupAllowed(profile, generation, device)) return@withLock denied()
             val reply =
                 port.exchange(
                     profile,
-                    "setup",
-                    mapOf("url" to destination, "user" to user, "password" to password),
+                    "reuse_login",
+                    mapOf("url" to destination, "user" to profile.username),
                     timeoutMs = SETUP_TIMEOUT_MS,
                 )
                     ?: return@withLock unavailable()
             if (reply["ok"] != true) return@withLock setupError(reply["error"])
             if (!setupAllowed(profile, generation, device)) return@withLock denied()
-            metadata(profile, device) { put("configured", true) }
+            metadata(profile, device) {
+                put("configured", true)
+                put("sidecarUrl", destination)
+            }
             AppResult.Success(Unit)
         }
     }
@@ -254,8 +251,17 @@ internal class GarminDeviceRepository @Inject constructor(
 
     private fun hasCapability(hello: Map<*, *>, capability: String) =
         (hello["caps"] as? List<*>)?.contains(capability) == true
+    private fun watchLoginRequired() = AppResult.Failure(
+        AppError.Authorization("Sign in to BookWave Audio on the watch first.", missingPermission = "provider_login"),
+    )
+
     private fun setupError(error: Any?): AppResult<Unit> = AppResult.Failure(
         when (error) {
+            "WATCH_LOGIN_REQUIRED" -> AppError.Authorization(
+                "Sign in to BookWave Audio on the watch first.",
+                missingPermission = "provider_login",
+            )
+
             "CONTENT_TYPE" -> AppError.ApiCompatibility(
                 "Sidecar returned an unexpected content type. Check its URL and reverse proxy.",
                 missingCapability = "sidecar_content_type",
@@ -267,7 +273,7 @@ internal class GarminDeviceRepository @Inject constructor(
             )
 
             "LOGIN_REJECTED" -> AppError.Authentication(
-                "Sidecar rejected the username or password.",
+                "The watch Sidecar session was rejected. Sign in on the watch and retry.",
                 requiresReauthentication = false,
             )
 

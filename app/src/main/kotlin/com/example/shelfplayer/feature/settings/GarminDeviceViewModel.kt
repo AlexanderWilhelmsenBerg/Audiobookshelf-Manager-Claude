@@ -37,8 +37,8 @@ class GarminDeviceViewModel @Inject internal constructor(private val repository:
         }
     }
     fun cancelPairing() = act(null, action = repository::cancelPairing)
-    fun configure(profile: String?, device: String?, url: String, user: String, password: String) =
-        act(GarminDeviceMessage.Configured, setup = true) { repository.configure(profile, device, url, user, password) }
+    fun configure(profile: String?, device: String?, url: String) =
+        act(GarminDeviceMessage.Configured, setup = true) { repository.configure(profile, device, url) }
     fun pair() = act(GarminDeviceMessage.ConfirmWatch, action = repository::pair)
     fun forceSync() = act(GarminDeviceMessage.Queued, action = repository::forceSync)
     fun download(id: String) = act(GarminDeviceMessage.Queued) { repository.queueDownload(id) }
@@ -71,6 +71,7 @@ enum class GarminDeviceMessage {
     Failed,
     Configured,
     LoginRejected,
+    WatchLoginRequired,
     ContentType,
     SetupUnavailable,
     InvalidSetup,
@@ -109,6 +110,7 @@ private fun setupCompatibilityMessage(reason: String?): GarminDeviceMessage = wh
 
 private fun setupAuthorizationMessage(reason: String?): GarminDeviceMessage = when (reason) {
     "sidecar_account" -> GarminDeviceMessage.AccountMismatch
+    "provider_login" -> GarminDeviceMessage.WatchLoginRequired
     "provider_pairing" -> GarminDeviceMessage.PairWatch
     else -> GarminDeviceMessage.Failed
 }

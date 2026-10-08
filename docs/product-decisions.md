@@ -425,3 +425,13 @@ is implemented with physical acceptance pending; watch face and Data Field imple
 PD008 provider/device controls and protected Complications publishers now have runtime source. Physical
 acceptance remains pending. Protected id0 requires future consumers to share the retained developer
 key; CI temporary keys are not stable upgrades. [Delivery, limits and test inventory](testing/2026-10-08-garmin-provider.md).
+
+### Owner setup/presentation refinement — 2026-10-08
+
+Use the signed-in BookWave account without requesting username/password. Add HTTPS automatically and
+remember Sidecar's successful address. This supersedes one-time password entry as the intended phone
+UX. Current Android removes credential entry and reuses the anchored watch session; fresh-watch
+phone bootstrap still needs credential-egress authorization and
+Sidecar exchange support. No stored/recovered password or Android rotating-refresh-token
+sharing is authorized by this decision. Garmin text must remain fully readable through measured pages,
+with visible physical-key cues and BookWave theming. [Implementation/acceptance state](testing/2026-10-08-garmin-watch-layout.md).
