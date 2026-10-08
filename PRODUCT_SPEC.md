@@ -957,6 +957,13 @@ Settings precedence:
   or last connection time, last successful sync, Force sync, watch download inventory and a New download
   picker of fully downloaded, current-profile-authorized phone books (PD-008).
 
+The Garmin device menu and its dialogs reuse the glass settings interface. Phone-driven provider setup
+accepts the public HTTPS WatchShelf Sidecar base URL, prefills the current username and accepts an
+explicit one-time password. BookWave cannot recover the discarded sign-in password. No password
+enters Room, saved UI state, DataStore, watch Storage or ordinary logs. Pairing exposes resend/cancel,
+expires pending codes, and uses an explicit watch Accept/Cancel menu. The sleep schedule enable
+switch expands its time controls inline only while enabled, preserving stored times while off.
+
 Garmin device management is a separately tracked integration requirement, not a claim about the
 delivered Phase 2 snapshot Companion. Successful sync and download status require watch acknowledgements;
 watch sessions require actual listening events. Unmodified WatchShelf exposes no remote inventory/queue

@@ -956,7 +956,7 @@
     <string name="garmin_connected">Tilkoblet nå</string>
     <string name="garmin_last_connected">Sist tilkoblet: %1$s</string>
     <string name="garmin_last_synced">Sist synkronisert: %1$s</string>
-    <string name="garmin_setup_hint">Installer BookWave Audio og logg på Sidecar på klokken. Koble til før du laster ned bøker.</string>
+    <string name="garmin_setup_hint">Åpne BookWave Audio på klokken, koble den til her og konfigurer Sidecar fra telefonen før du laster ned bøker.</string>
     <string name="garmin_pair_code">Tilkoblingskode: %1$s</string>
     <string name="garmin_pair">Koble til klokke</string>
     <string name="garmin_force_sync">Synkroniser nå</string>
@@ -992,4 +992,15 @@
     <string name="garmin_close">Lukk</string>
     <string name="garmin_never">Ikke ennå</string>
     <string name="garmin_available_from">Tilgjengelig fra lagret posisjon: %1$d s</string>
+    <string name="garmin_pair_retry">Send ny tilkoblingskode</string>
+    <string name="garmin_pair_cancel">Avbryt tilkobling</string>
+    <string name="garmin_sidecar_setup">Konfigurer WatchShelf Sidecar</string>
+    <string name="garmin_sidecar_url">HTTPS-adresse til Sidecar</string>
+    <string name="garmin_username">Brukernavn</string>
+    <string name="garmin_password">Passord (engangsbruk)</string>
+    <string name="garmin_password_hint">Ditt aktive brukernavn er fylt inn. BookWave lagrer ikke innloggingspassordet; skriv det én gang for å sende det til den tilkoblede klokken for Sidecar-innlogging. Bare Sidecar-økten lagres på klokken.</string>
+    <string name="garmin_setup_send">Send oppsett</string>
+    <string name="garmin_setup_complete">Sidecar er konfigurert på klokken.</string>
+    <string name="garmin_login_rejected">Sidecar avviste innloggingen. Skriv passordet på nytt og prøv igjen.</string>
+    <string name="garmin_content_type">Uventet svartype. Sjekk Sidecar-adressen og omvendt proxy; bruk Sidecar-adressen, ikke Audiobookshelf-adressen.</string>
 </resources>

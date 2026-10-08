@@ -1736,3 +1736,11 @@ The face consumes published on-watch state without ABS authentication. [Device p
 ## Garmin provider/Sidecar compatibility — 2026-10-08
 
 Current implementation, strict checks, protocol/Sidecar fixtures, migration and all unperformed physical cases are recorded in [the provider delivery log](testing/2026-10-08-garmin-provider.md). The provider adds Room22 scoped records and Garmin permissions, not new ABS endpoints. [Install for testing](garmin-install-for-testing.md).
+
+## Garmin provider one-time setup (2026-10-08)
+
+No new Audiobookshelf endpoint. Provider reuses WatchShelf93ac7507 GET /health (200 text/plain ok)
+and POST /login {username,password} → {user:{token:opaque UUID}}; existing Sidecar fixtures apply.
+Phone setup is gated on the advertised setup capability and accepted profile binding. Companion
+messages remain credential-free. URL and normal TLS validation are mandatory; -1002 means content
+type mismatch, so a URL/proxy failure never becomes a successful login. Credentials are transient.

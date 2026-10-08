@@ -1,10 +1,20 @@
 package com.example.shelfplayer.feature.settings
 
+import android.annotation.SuppressLint
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.view.inspector.WindowInspector
+import androidx.annotation.RequiresApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
+import androidx.core.graphics.createBitmap
 import com.example.shelfplayer.garmin.GarminBookChoice
 import com.example.shelfplayer.garmin.GarminDeviceUi
 import org.junit.Assert.assertEquals
@@ -13,9 +23,14 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "en-w400dp-h1000dp", application = android.app.Application::class)
+@SuppressLint("UseSdkSuppress") // Robolectric @Config owns SDK selection; the runner filter is absent from JVM tests.
+@RequiresApi(34)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class GarminDeviceCardScreenTest {
     @get:Rule val compose = createComposeRule()
 
@@ -29,6 +44,7 @@ class GarminDeviceCardScreenTest {
                         state = GarminDeviceUi(
                             name = "Fixture watch",
                             paired = true,
+                            configured = true,
                             choices = listOf(GarminBookChoice("book", "Fixture book")),
                         ),
                         onSync = { syncs++ },
@@ -50,7 +66,11 @@ class GarminDeviceCardScreenTest {
     @Test fun unknownWatchInventoryIsNotClaimedAsAnEmptyDownloadedLibrary() {
         compose.setContent {
             MaterialTheme {
-                GarminDeviceCard(GarminDeviceActions(state = GarminDeviceUi(name = "Fixture watch", paired = true)))
+                GarminDeviceCard(
+                    GarminDeviceActions(
+                        state = GarminDeviceUi(name = "Fixture watch", paired = true, configured = true),
+                    ),
+                )
             }
         }
         compose.onNodeWithText("Fixture watch").performClick()
@@ -58,5 +78,79 @@ class GarminDeviceCardScreenTest {
         compose.onNodeWithText("No watch inventory received yet.").assertIsDisplayed()
         compose.onNodeWithText("Close").performClick()
         compose.onNodeWithText("No watch inventory received yet.").assertDoesNotExist()
+    }
+
+    @Test fun pendingCodeOffersRetryAndCancelInsteadOfLeavingThePhoneStuck() {
+        var retries = 0
+        var cancelled = 0
+        compose.setContent {
+            MaterialTheme {
+                GarminDeviceCard(
+                    GarminDeviceActions(
+                        state = GarminDeviceUi(name = "Fixture watch", ready = true, pairingCode = "123456"),
+                        onPair = { retries++ },
+                        onCancelPairing = { cancelled++ },
+                    ),
+                )
+            }
+        }
+        compose.onNodeWithText("Fixture watch").performClick()
+        compose.onNodeWithText("Send new pairing code").performClick()
+        compose.onNodeWithText("Cancel pairing").performClick()
+        assertEquals(1, retries)
+        assertEquals(1, cancelled)
+    }
+
+    @Test fun phoneSetupPrefillsCurrentUsernameAndClearsPasswordOnDismissAndSubmit() = setupAndCapture(
+        "garmin-setup-400",
+    )
+
+    @Test
+    @Config(qualifiers = "en-w320dp-h1000dp", fontScale = 2.0f)
+    fun phoneSetupAtNarrowLargeTextKeepsFieldsAndActionsReachable() = setupAndCapture("garmin-setup-320-font2")
+
+    private fun setupAndCapture(name: String) {
+        var sent: List<String>? = null
+        compose.setContent {
+            MaterialTheme {
+                GarminDeviceCard(
+                    GarminDeviceActions(
+                        state = GarminDeviceUi(
+                            name = "Fixture watch",
+                            paired = true,
+                            ready = true,
+                            username = "fixture",
+                            profileId = "profile",
+                        ),
+                        onConfigure = { url, user, password -> sent = listOf(url, user, password) },
+                    ),
+                )
+            }
+        }
+        compose.onNodeWithText("Fixture watch").performClick()
+        compose.onNodeWithText("WatchShelf Sidecar setup").performClick()
+        compose.onNodeWithText("fixture").assertExists()
+        compose.onNodeWithTag("settings-glass-dialog").assertExists()
+        lateinit var image: Bitmap
+        compose.runOnIdle {
+            val view = WindowInspector.getGlobalWindowViews().last()
+            image = createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(image))
+        }
+        val output = File("build/glass-settings-evidence").apply { mkdirs() }
+        File(output, "$name.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        compose.onNodeWithText(
+            "HTTPS Sidecar URL",
+        ).performScrollTo().performTextInput("https://example.invalid/sidecar")
+        compose.onNodeWithText("Password (one-time use)").performScrollTo().performTextInput("fixture-secret")
+        compose.onNodeWithText("Send setup").performClick()
+        assertEquals(listOf("https://example.invalid/sidecar", "fixture", "fixture-secret"), sent)
+        compose.onNodeWithText("WatchShelf Sidecar setup").performClick()
+        compose.onNodeWithText("Send setup").assertIsNotEnabled()
+        compose.onNodeWithText("Password (one-time use)").performScrollTo().performTextInput("discard-me")
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithText("WatchShelf Sidecar setup").performClick()
+        compose.onNodeWithText("Send setup").assertIsNotEnabled()
+        compose.onNodeWithText("Cancel").performClick()
     }
 }

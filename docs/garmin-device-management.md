@@ -1,5 +1,7 @@
 # Garmin device management
 
+**2026-10-08 setup recovery:** Owner-reported pairing/URL failures now have a focused fix: explicit watch Accept/Cancel, code resend/cancel/expiry and phone-driven Sidecar setup. Garmin controls/dialogs and Android sleep schedule reuse glass; sleep enable directly expands time controls. [Regression and physical acceptance register](testing/2026-10-08-garmin-setup-recovery.md). Hardware retest pending; the reported freeze remains unattributed.
+
 **Classification:** Accepted owner scope and selected Audio Provider architecture; runtime implemented; physical acceptance pending.
 **Updated:** 2026-10-08. Requirements SET-002, DL-001/003, AUTH-002/003/005, PLAY-007,
 SYNC-001/002; PRODUCT_SPEC17/19/21. Android #119 remains the cross-repository umbrella.

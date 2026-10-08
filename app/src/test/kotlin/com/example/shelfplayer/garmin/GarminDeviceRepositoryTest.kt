@@ -164,6 +164,113 @@ class GarminDeviceRepositoryTest {
         }
     }
 
+    @Test fun phoneSetupDoesNotPersistCredentialsAndRequiresAnExplicitCapability() = runTest {
+        val f = Fixture()
+        f.answer(backgroundScope, event = false)
+        val original = f.sdk.respond!!
+        f.sdk.respond = { command ->
+            if (command["t"] == "hello") {
+                backgroundScope.launch {
+                    f.sdk.providerMessages.emit(
+                        command +
+                            mapOf(
+                                "n" to "watch-nonce",
+                                "paired" to true,
+                                "configured" to false,
+                                "caps" to listOf("setup"),
+                            ),
+                    )
+                }
+            } else {
+                original(command)
+            }
+        }
+        val repository = f.repository(backgroundScope, StandardTestDispatcher(testScheduler))
+        repository.start()
+        runCurrent()
+        assertTrue(
+            repository.configure(
+                "profile",
+                "1",
+                "https://example.invalid/sidecar/",
+                "fixture",
+                "one-time-secret",
+            ) is AppResult.Success,
+        )
+        val setup = f.sdk.sent.single { it["t"] == "setup" }
+        assertEquals("https://example.invalid/sidecar", setup["url"])
+        assertEquals("one-time-secret", setup["password"])
+        assertTrue(
+            f.records.rows.value.none {
+                it.payload.contains("one-time-secret") ||
+                    it.payload.contains("example.invalid")
+            },
+        )
+        f.sdk.respond = original
+        assertTrue(
+            repository.configure("profile", "1", "https://example.invalid", "fixture", "secret") is AppResult.Failure,
+        )
+        assertEquals(1, f.sdk.sent.count { it["t"] == "setup" })
+    }
+
+    @Test fun reissuingAndCancellingPairingClearStalePhoneCodes() = runTest {
+        val f = Fixture()
+        f.answer(backgroundScope, event = false)
+        val original = f.sdk.respond!!
+        f.sdk.respond = { command ->
+            when (command["t"]) {
+                "hello" -> backgroundScope.launch {
+                    f.sdk.providerMessages.emit(
+                        command +
+                            mapOf(
+                                "n" to "watch-nonce",
+                                "paired" to false,
+                                "configured" to false,
+                                "pairing" to false,
+                                "caps" to listOf("setup", "cancel_pair"),
+                            ),
+                    )
+                }
+
+                "pair" -> backgroundScope.launch {
+                    f.sdk.providerMessages.emit(
+                        command + mapOf("n" to "watch-nonce", "ok" to false, "error" to "CONFIRM_ON_WATCH"),
+                    )
+                }
+
+                else -> original(command)
+            }
+        }
+        val repository = f.repository(backgroundScope, StandardTestDispatcher(testScheduler))
+        repository.start()
+        runCurrent()
+        assertTrue(repository.pair() is AppResult.Success)
+        assertTrue(repository.pair() is AppResult.Success)
+        assertEquals(2, f.sdk.sent.count { it["t"] == "pair" })
+        assertTrue(f.records.rows.value.any { GarminDeviceDocuments.read(it.payload).has("pairingCode") })
+        assertTrue(repository.cancelPairing() is AppResult.Success)
+        assertTrue(f.records.rows.value.none { GarminDeviceDocuments.read(it.payload).has("pairingCode") })
+        assertTrue(f.sdk.sent.any { it["t"] == "cancel_pair" })
+    }
+
+    @Test fun setupCannotRedirectCredentialsFromAStaleRenderedAccountOrWatch() = runTest {
+        val f = Fixture()
+        val repository = f.repository(backgroundScope, StandardTestDispatcher(testScheduler))
+        assertTrue(
+            repository.configure(
+                "other-profile",
+                "1",
+                "https://example.invalid",
+                "fixture",
+                "secret",
+            ) is AppResult.Failure,
+        )
+        assertTrue(
+            repository.configure("profile", "2", "https://example.invalid", "fixture", "secret") is AppResult.Failure,
+        )
+        assertTrue(f.sdk.sent.isEmpty())
+    }
+
     private fun raw(value: Any?): Any? = when (value) {
         is org.json.JSONObject -> value.keys().asSequence().associateWith { raw(value.get(it)) }
         is org.json.JSONArray -> (0 until value.length()).map { raw(value.get(it)) }

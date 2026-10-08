@@ -33,6 +33,7 @@ internal object GarminDeviceDocuments {
         val device = selected?.deviceId
         val current = rows.filter { it.deviceId == device }
         return GarminDeviceUi(
+            deviceId = device,
             name = metadata.optString("name", "Garmin"), connected = metadata.optBoolean("connected"),
             paired = metadata.optBoolean(
                 "paired",
@@ -44,6 +45,7 @@ internal object GarminDeviceDocuments {
             ready = metadata.optBoolean(
                 "ready",
             ),
+            configured = metadata.optBoolean("configured"),
             pairingCode = metadata.optString("pairingCode").takeIf(String::isNotBlank),
             downloads = downloads(current, books),
             listens = listens(current, books),
@@ -123,6 +125,7 @@ data class GarminListenRow(
 data class GarminBookChoice(val id: String, val title: String)
 data class GarminDeviceUi(
     val name: String = "Garmin",
+    val deviceId: String? = null,
     val connected: Boolean = false,
     val paired: Boolean = false,
     val lastConnected: Long? = null,
@@ -135,4 +138,7 @@ data class GarminDeviceUi(
     val historyGap: Boolean = false,
     val ready: Boolean = false,
     val pairingCode: String? = null,
+    val configured: Boolean = false,
+    val username: String = "",
+    val profileId: String? = null,
 )
