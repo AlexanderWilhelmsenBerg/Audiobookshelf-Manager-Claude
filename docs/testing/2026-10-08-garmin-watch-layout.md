@@ -72,7 +72,14 @@ URL-only retained-watch-login reuse merged in [PR20](https://github.com/Alexande
 after all nine checks passed in run37849502942. Merge4b7ee106 matches sourcee4a210a910 tree.
 All four local production and two test-enabled targets compile with SDK9.2.0/type-check1.
 Seven Sidecar Node tests execute and pass; native simulator test execution remains unverified.
-The retained-key watch ZIP has SHA256 ee1039410863c21254f6a5b31c981a03824a0f9c7c143e9e4f63b3e4906fbfea.
+The final retained-key watch ZIP source is631a0c4d2d130560e2aeaf2207e93a3b4094d73b, including
+[PR21](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/pull/21)
+login-recovery wording for URL-only phone setup. SHA256 is
+9b6bc48fff7cf91fc5c236d773e750eadd11bbbab7b9aad9287e877d5cc801ea.
+All four production and both test-enabled targets compile on this source. CI status is recorded
+with the final delivery. Android strict verifyDebug passes (1024 tasks, 648 app debug tests;
+zero failures/errors/skips) after obsolete credential labels were removed. No native runtime
+execution or hardware acceptance is claimed.
 
 Android focused repository, Compose, setup message and URL policy suites pass. Compose renders
 the URL-only form at 400 dp and 320 dp/200% text; actions and the field remain reachable by scrolling.
