@@ -79,3 +79,13 @@ label TEST 2026-10-09a, and SHA-256
 `0d18b395ab63beb404ca7b1f7335d6d05a72b0f891b8112768f1dcf3052ec393`.
 It contains both apps/targets, source/build identity, hashes, guide and MIT notice/provenance;
 no private key is packaged. Android's matching delivery is recorded with its PR/build.
+
+## Android verification checkpoint
+
+Full `ktlintFormat verifyDebug -Pshelfplayer.warningsAsErrors=true` passes: 1126 tasks,
+BUILD SUCCESSFUL in 2m02s; 653 app debug tests, zero failures/skips, plus the required module,
+lint/static-analysis and coverage gates. The actual-SDK fixture was simplified to satisfy strict
+analysis; final production fix removal again fails all three intended regressions and restores source.
+No classpath/dependency change. Physical WR01–10 remains pending under the owner's merge-after-CI policy.
+Implementation is delivered through [Android PR #249](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/249);
+exact-head CI, merge/build identity and signed APK delivery remain authoritative in that PR/build record.
