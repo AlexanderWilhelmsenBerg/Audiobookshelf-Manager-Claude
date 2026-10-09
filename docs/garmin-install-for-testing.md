@@ -59,8 +59,8 @@ PRG SHA-256, signing-key fingerprint, watch firmware and Android APK before test
 can remove its local watch media; sync pending listening progress before doing so.
 
 The face-state publisher is present, but this change builds no watch face. Its cross-app delivery and
-battery behavior remain physical tests. See [device tests](device-management-plan.md) GD-01–10 and
-[feed tests](watchface-state-plan.md) GF-01–07; Companion transport tests remain separate.
+battery behavior remain physical tests. See [device tests](garmin-device-management.md) GD-01–10 and
+[feed tests](garmin-watchface-state-plan.md) GF-01–07; Companion transport tests remain separate.
 
 Garmin's official [sideloading guide](https://developer.garmin.com/connect-iq/connect-iq-basics/your-first-app/)
 explains the PRG/USB installation workflow. The [SDK](https://developer.garmin.com/connect-iq/sdk/) is needed
@@ -69,7 +69,7 @@ only for local builds/simulator tests, not copying an already compiled PRG.
 Companion shows **BOOKWAVE PHONE** and displays phone snapshots. **START/Menu** opens help and
 **BACK** returns/exits. Its library instructions point to **BookWave Audio** in music providers;
 Companion has no local audio library. Open BookWave on the phone and Force sync to test PHONE state.
-See [current owner findings and WD01–08](testing/watch-setup-diagnostics.md).
+See [current owner findings and WD01–08](testing/2026-10-08-garmin-watch-diagnostics.md).
 
 Garmin's [device reference](https://developer.garmin.com/connect-iq/device-reference/fenix847mm/) and the pinned SDK device profile group AMOLED 47/51 mm under fenix847mm; size alone does not identify Solar/Pro variants.
 
@@ -80,7 +80,7 @@ and a page counter identify UP/DOWN whenever full title/author/chapter/status te
 Companion Help explains phone Force sync and the separate BookWave Audio offline library. Audio
 setup/login/error views use the same BookWave theme and measured wrapping; Books appears only when
 the configured provider can enter its library. Read every error page for code, field and fixed reason.
-[Latest checks and acceptance](testing/watch-layout-and-duration.md).
+[Latest checks and acceptance](testing/2026-10-08-garmin-watch-layout.md).
 
 ## Recover an interrupted download / refresh Companion
 
