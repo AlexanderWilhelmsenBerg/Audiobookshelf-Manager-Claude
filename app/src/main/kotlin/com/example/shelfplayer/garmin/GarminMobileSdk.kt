@@ -291,9 +291,19 @@ internal class ConnectIqGarminMobileSdk @Inject constructor(@param:ApplicationCo
 
         try {
             sdk.unregisterForApplicationEvents(device, app)
+            restoreOtherApplication(sdk, device, provider)
         } catch (_: InvalidStateException) {
             // The listener is already unusable if the SDK is no longer valid.
         }
+    }
+
+    private fun restoreOtherApplication(sdk: ConnectIQ, device: IQDevice, provider: Boolean) {
+        // SDK 2.4.0 per-app unregister clears ALL local listeners for the device.
+        // Restore the survivor using the current lifecycle/resolution guards.
+        val other = (if (provider) selectedApp else providerApp) ?: return
+        val error = registerForAppEvents(sdk, device, other, !provider) ?: return
+        val target = if (provider) _state else providerMutableState
+        target.value = GarminSdkState.AppUnavailable(device.toRef(), error)
     }
 
     private fun IQDevice.toRef() = GarminDeviceRef(

@@ -24,7 +24,7 @@ the PRG on some firmware, so not seeing the copied file afterward does not prove
    paired with the Android phone; it carries the BookWave bridge messages.
 4. On the watch, open **BookWave Audio → Browse library / Add music**. Leave the setup menu open
    and choose **Use BookWave phone app**. Leave the guidance/status view open during Send setup.
-   Check build label **TEST 2026-10-08d**. Keep Garmin Connect running and the watch connected.
+   Check build label **TEST 2026-10-09a**. Keep Garmin Connect running and the watch connected.
    Existing on-watch entry remains available through **Enter on watch**.
 5. In Android BookWave open **Settings → Playback → Devices → Garmin → Pair watch**. Compare the
    six-digit code, then select **Accept <code>** on the watch. **Cancel** or watch Back rejects it.
@@ -59,8 +59,8 @@ PRG SHA-256, signing-key fingerprint, watch firmware and Android APK before test
 can remove its local watch media; sync pending listening progress before doing so.
 
 The face-state publisher is present, but this change builds no watch face. Its cross-app delivery and
-battery behavior remain physical tests. See [device tests](device-management-plan.md) GD-01–10 and
-[feed tests](watchface-state-plan.md) GF-01–07; Companion transport tests remain separate.
+battery behavior remain physical tests. See [device tests](garmin-device-management.md) GD-01–10 and
+[feed tests](garmin-watchface-state-plan.md) GF-01–07; Companion transport tests remain separate.
 
 Garmin's official [sideloading guide](https://developer.garmin.com/connect-iq/connect-iq-basics/your-first-app/)
 explains the PRG/USB installation workflow. The [SDK](https://developer.garmin.com/connect-iq/sdk/) is needed
@@ -69,7 +69,7 @@ only for local builds/simulator tests, not copying an already compiled PRG.
 Companion shows **BOOKWAVE PHONE** and displays phone snapshots. **START/Menu** opens help and
 **BACK** returns/exits. Its library instructions point to **BookWave Audio** in music providers;
 Companion has no local audio library. Open BookWave on the phone and Force sync to test PHONE state.
-See [current owner findings and WD01–08](testing/watch-setup-diagnostics.md).
+See [current owner findings and WD01–08](testing/2026-10-08-garmin-watch-diagnostics.md).
 
 Garmin's [device reference](https://developer.garmin.com/connect-iq/device-reference/fenix847mm/) and the pinned SDK device profile group AMOLED 47/51 mm under fenix847mm; size alone does not identify Solar/Pro variants.
 
@@ -80,4 +80,19 @@ and a page counter identify UP/DOWN whenever full title/author/chapter/status te
 Companion Help explains phone Force sync and the separate BookWave Audio offline library. Audio
 setup/login/error views use the same BookWave theme and measured wrapping; Books appears only when
 the configured provider can enter its library. Read every error page for code, field and fixed reason.
-[Latest checks and acceptance](testing/watch-layout-and-duration.md).
+[Latest checks and acceptance](testing/2026-10-08-garmin-watch-layout.md).
+
+## Recover an interrupted download / refresh Companion
+
+Phone: **Settings > Playback > Devices > watch > Downloads > Resume download**. Open BookWave Audio
+on the watch so the request can be received. The dialog shows the authorized book name and saved-part
+percentage; reopening refreshes inventory. A queued request is not proof of a completed transfer.
+
+Watch: hold DOWN (bottom left) to open Music, choose BookWave Audio, then **Download progress** and
+the named unfinished book. A partially stored book also has **Resume download** in its playback menu,
+distinct from playback **Resume**. Keep Wi-Fi/charging available as requested by firmware.
+
+Companion: **START > Sync phone** retries current phone state; **START > Watch audio** explains the native
+music route. Start or resume a book in Android first. UP/DOWN reads long information; BACK returns.
+Phone Force sync retries Companion and requests provider synchronization. Garmin's native transfer
+heading remains generic; per-book names/progress live in the app-owned views.

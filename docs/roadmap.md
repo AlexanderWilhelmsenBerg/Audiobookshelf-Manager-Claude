@@ -1,5 +1,15 @@
 # BookWave Android roadmap
 
+**Current hardware follow-up — 2026-10-09:** Owner confirms watch download admission/transfer and Android
+inventory/phone initiation now work. A transfer was interrupted at 25%; Companion state and visual
+acceptance failed. Channel-registration recovery, dual Force sync, scoped explicit resume and named
+download progress, and revised Companion geometry are implemented through [Android PR #249](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/249)
+and merged [native PR #22](https://github.com/AlexanderWilhelmsenBerg/Bookwave-garmin/pull/22). Full strict
+local verification passes; CI/delivery and physical acceptance remain separately recorded. [Current evidence and WR01–10 tests](testing/2026-10-09-garmin-download-recovery.md)
+supersede older blanket unknown-download/visual claims below. Build label: **TEST 2026-10-09a**.
+The following dated 2026-10-08 summaries are historical; they do not describe current hardware outcomes.
+
+
 **Current setup — 2026-10-08:** Android setup now needs only the Sidecar address. It derives the
 username from the active BookWave profile and asks the watch to reuse its existing opaque Sidecar
 session (`reuse_login`). The watch requires a retained exact server/username account anchor, checks

@@ -77,6 +77,21 @@ class GarminBridgeLifecycleTest {
         f.bridge.stop()
     }
 
+    @Test
+    fun explicitPhoneSyncRetriesCompanionAndRechecksPrivacyBeforeNewHandshake() = runTest {
+        val f = Fixture(this)
+        f.ready()
+        f.lock.value = ProfileLockState.Locked(f.profile.id)
+        f.bridge.forceSync()
+        runCurrent()
+        assertEquals("hello", f.sdk.sent.last()["t"])
+        f.hello()
+        assertEquals("clear_state", f.sdk.sent.last()["t"])
+        f.ack(f.sdk.sent.last())
+        assertTrue(f.sdk.sent.takeLast(2).none { it["t"] == "snapshot" })
+        f.bridge.stop()
+    }
+
     private class Fixture(private val scope: TestScope) {
         val profile = Profile(
             ProfileId("profile-a"),

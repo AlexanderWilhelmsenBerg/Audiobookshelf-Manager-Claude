@@ -100,6 +100,14 @@ internal class GarminDeliverySession @Inject constructor(
         }
     }
 
+    fun retry(send: (Map<String, Any>) -> Boolean) {
+        if (device == null) return
+        resetDelivery()
+        state = GarminBridgeState.AppAvailable(requireNotNull(device).name)
+        hello = codec.hello()
+        sendHello(send)
+    }
+
     fun stop() {
         device = null
         snapshot = null
@@ -111,7 +119,9 @@ internal class GarminDeliverySession @Inject constructor(
     private fun negotiate(message: GarminEnvelope, send: (Map<String, Any>) -> Boolean) {
         val majors = message.payload["majors"] as? List<*>
         val capabilities = message.payload["caps"] as? List<*>
-        val compatible = majors?.contains(1) == true && capabilities?.contains(GarminCapabilities.ORDERED_STATE) == true
+        val compatible =
+            majors?.any { (it is Int && it == 1) || (it is Long && it == 1L) } == true &&
+                capabilities?.contains(GarminCapabilities.ORDERED_STATE) == true
         // A hello is a new watch nonce. Old queued hello_ack packets cannot rebind a restarted watch.
         if (message.id != stream || incompatible) {
             pending = null

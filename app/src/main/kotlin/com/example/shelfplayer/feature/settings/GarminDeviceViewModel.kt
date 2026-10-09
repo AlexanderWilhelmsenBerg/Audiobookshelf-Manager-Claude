@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.garmin.GarminBridge
 import com.example.shelfplayer.garmin.GarminDeviceRepository
 import com.example.shelfplayer.garmin.GarminDeviceUi
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -15,7 +16,10 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class GarminDeviceViewModel @Inject internal constructor(private val repository: GarminDeviceRepository) : ViewModel() {
+class GarminDeviceViewModel @Inject internal constructor(
+    private val repository: GarminDeviceRepository,
+    private val bridge: GarminBridge,
+) : ViewModel() {
     val state = repository.observe().stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
@@ -40,7 +44,13 @@ class GarminDeviceViewModel @Inject internal constructor(private val repository:
     fun configure(profile: String?, device: String?, url: String) =
         act(GarminDeviceMessage.Configured, setup = true) { repository.configure(profile, device, url) }
     fun pair() = act(GarminDeviceMessage.ConfirmWatch, action = repository::pair)
-    fun forceSync() = act(GarminDeviceMessage.Queued, action = repository::forceSync)
+    fun forceSync() = act(GarminDeviceMessage.Queued) {
+        bridge.forceSync()
+        repository.forceSync()
+    }
+    fun resume(profile: String?, device: String?, id: String) = act(GarminDeviceMessage.Queued) {
+        repository.resumeDownload(profile, device, id)
+    }
     fun download(id: String) = act(GarminDeviceMessage.Queued) { repository.queueDownload(id) }
     fun refresh() = act(null, action = repository::refresh)
     fun dismissMessage() {

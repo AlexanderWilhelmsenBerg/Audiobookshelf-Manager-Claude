@@ -287,6 +287,45 @@ internal class GarminDeviceRepository @Inject constructor(
     )
 
     suspend fun queueDownload(book: String): AppResult<Unit> = enqueue("download", book)
+
+    // Retry is explicit and scoped to the dialog's owner/device. Reuse an accepted request ID,
+    // but make it pending again: ordinary duplicate taps must still deduplicate.
+    suspend fun resumeDownload(owner: String?, watch: String?, book: String): AppResult<Unit> = guarded {
+        operations.withLock {
+            val profile = access.current() ?: return@withLock denied()
+            val generation = access.profiles.activeProfileGeneration()
+            val device = selected() ?: return@withLock unavailable()
+            if (owner != profile.id.value || watch != device.identifier.toString() ||
+                access.eligible(profile).none { it.id.value == book }
+            ) {
+                return@withLock denied()
+            }
+            val inventory = store.records(profile.id.value, device.identifier.toString(), INVENTORY).firstOrNull {
+                it.recordId ==
+                    book
+            }
+                ?.let { GarminDeviceDocuments.read(it.payload) }
+            if (inventory == null || inventory.optString("state") !in setOf("queued", "partial", "failed") ||
+                inventory.optLong("total") <= inventory.optLong("done")
+            ) {
+                return@withLock rejected()
+            }
+            if (!access.allowed(profile, generation)) return@withLock denied()
+            val existing = store.records(profile.id.value, device.identifier.toString(), COMMAND).firstOrNull {
+                val value = GarminDeviceDocuments.read(it.payload)
+                value.optString("type") == "download" && value.optString("b") == book &&
+                    value.optString("state") in setOf("pending", "accepted")
+            }
+            val document = JSONObject().put("type", "download").put("b", book).put("state", "pending")
+            val row = existing?.copy(payload = document.toString())
+                ?: record(profile, device, COMMAND, UUID.randomUUID().toString(), document.toString())
+            store.put(listOf(row))
+            watchAwake = true
+            scope.launch(dispatcher) { guarded { poll() } }
+            AppResult.Success(Unit)
+        }
+    }
+
     suspend fun forceSync(): AppResult<Unit> = enqueue("sync", null)
     suspend fun refresh(): AppResult<Unit> = guarded {
         watchAwake = true

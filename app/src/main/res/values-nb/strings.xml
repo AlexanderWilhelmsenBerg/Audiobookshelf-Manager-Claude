@@ -1008,4 +1008,6 @@
     <string name="garmin_setup_upgrade">Oppdater BookWave Audio på klokken. Denne versjonen støtter ikke oppsett fra telefonen.</string>
     <string name="garmin_reuse_login_hint">Bruker denne BookWave-kontoen og klokkens eksisterende Sidecar-innlogging. HTTPS legges til automatisk. Adressen huskes etter vellykket oppsett.</string>
     <string name="garmin_watch_login_required">Logg inn i BookWave Audio på klokken først, og prøv igjen.</string>
+    <string name="garmin_resume_download">Fortsett nedlasting</string>
+    <string name="garmin_download_percent">%1$d%% lastet ned</string>
 </resources>

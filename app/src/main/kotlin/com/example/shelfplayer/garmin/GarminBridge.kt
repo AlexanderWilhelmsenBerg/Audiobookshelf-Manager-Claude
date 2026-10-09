@@ -80,6 +80,15 @@ class GarminBridge @Inject internal constructor(
         sdk.start()
     }
 
+    fun forceSync() {
+        if (jobs.isEmpty()) return
+        applicationScope.launch(dispatcher) {
+            refreshProjection()
+            delivery.retry(sdk::send)
+            publish()
+        }
+    }
+
     fun stop() {
         jobs.forEach(Job::cancel)
         jobs = emptyList()
