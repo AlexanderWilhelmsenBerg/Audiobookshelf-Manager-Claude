@@ -1781,3 +1781,5 @@ The additive `reuse_login` payload contains only `url` and the captured profile 
 The existing profile/nonce/foreground guards apply. Missing anchor/session returns
 `WATCH_LOGIN_REQUIRED`; another server/user returns `ACCOUNT_MISMATCH`.
 Legacy watch-entry login remains available, but Android no longer offers password entry.
+
+2026-10-09: Garmin SDK 2.4.0 per-app unregister clears the device listener table; survivor re-registration is required. Native sync progress exposes percentage only; Companion cannot exitTo an Audio Provider. [Evidence and acceptance](testing/2026-10-09-garmin-download-recovery.md).

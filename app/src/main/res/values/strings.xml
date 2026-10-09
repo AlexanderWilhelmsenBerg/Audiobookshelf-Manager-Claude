@@ -1261,4 +1261,6 @@
     <string name="garmin_setup_upgrade">Update BookWave Audio on the watch; this version does not support phone setup.</string>
     <string name="garmin_reuse_login_hint">Uses this BookWave account and the watch’s existing Sidecar sign-in. HTTPS is added automatically. The address is remembered after successful setup.</string>
     <string name="garmin_watch_login_required">Sign in to BookWave Audio on the watch first, then retry.</string>
+    <string name="garmin_resume_download">Resume download</string>
+    <string name="garmin_download_percent">%1$d%% downloaded</string>
 </resources>

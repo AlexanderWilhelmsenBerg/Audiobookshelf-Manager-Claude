@@ -131,6 +131,36 @@ class GarminDeliverySessionTest {
         assertEquals(count, f.sent.size)
     }
 
+    @Test
+    fun watchLongMajorNegotiatesAndExplicitRetryRestartsAnExhaustedHandshake() {
+        val f = Fixture()
+        f.session.select(f.snapshot, 1, f.send)
+        f.connect()
+        repeat(4) {
+            f.clock.elapsed += 10.seconds
+            f.session.tick(f.send)
+        }
+        assertEquals(3, f.sent.count { it["t"] == "hello" })
+        f.session.retry(f.send)
+        assertEquals(4, f.sent.count { it["t"] == "hello" })
+        f.session.receive(
+            f.envelope(
+                "hello",
+                "watch-long",
+                mapOf(
+                    "majors" to listOf(1L),
+                    "caps" to listOf("ordered_state"),
+                ),
+            ),
+            f.send,
+        )
+        assertEquals("clear_state", f.last()["t"])
+        f.ack()
+        assertEquals("snapshot", f.last()["t"])
+        f.ack()
+        assertIs<GarminBridgeState.Ready>(f.session.state)
+    }
+
     private class Fixture {
         val clock = Clock()
         val session = GarminDeliverySession(GarminMessageCodec(clock), GarminSnapshotSendPolicy(), clock)

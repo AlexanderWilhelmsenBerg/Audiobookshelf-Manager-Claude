@@ -48,7 +48,7 @@ internal object GarminDeviceDocuments {
             configured = metadata.optBoolean("configured"),
             sidecarUrl = metadata.optString("sidecarUrl"),
             pairingCode = metadata.optString("pairingCode").takeIf(String::isNotBlank),
-            downloads = downloads(current, books),
+            downloads = downloads(current, books, if (canDownload) completed else emptySet()),
             listens = listens(current, books),
             choices = if (canDownload) {
                 books.filter {
@@ -69,6 +69,7 @@ internal object GarminDeviceDocuments {
     private fun downloads(
         rows: List<com.example.shelfplayer.core.model.garmin.GarminRecord>,
         books: List<com.example.shelfplayer.core.model.library.Book>,
+        completed: Set<com.example.shelfplayer.core.model.LibraryItemId>,
     ) = rows.filter {
         it.kind ==
             "inventory"
@@ -82,6 +83,10 @@ internal object GarminDeviceDocuments {
             item.optLong("done"),
             item.optLong("total"),
             item.optLong("from"),
+            bookId = item.optString("b"),
+            canResume = books.any { it.id.value == item.optString("b") && it.id in completed } &&
+                item.optString("state") in setOf("queued", "partial", "failed") &&
+                item.optLong("total") > item.optLong("done"),
         )
     }
     private fun listens(
@@ -114,6 +119,8 @@ data class GarminDownloadRow(
     val partsDone: Long,
     val partsTotal: Long,
     val fromSeconds: Long = 0,
+    val bookId: String = "",
+    val canResume: Boolean = false,
 )
 data class GarminListenRow(
     val bookId: String,

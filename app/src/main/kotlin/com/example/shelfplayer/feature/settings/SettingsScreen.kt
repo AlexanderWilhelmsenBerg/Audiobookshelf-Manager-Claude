@@ -139,6 +139,7 @@ fun SettingsRoute(
                 onConfigure = { url ->
                     garminViewModel.configure(watch.profileId, watch.deviceId, url)
                 },
+                onResume = { id -> garminViewModel.resume(watch.profileId, watch.deviceId, id) },
                 busy = watchBusy,
             ),
             known = knownDevices,

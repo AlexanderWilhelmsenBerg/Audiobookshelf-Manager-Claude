@@ -361,6 +361,49 @@ class GarminDeviceRepositoryTest {
         assertTrue(f.sdk.sent.none { it["t"] == "reuse_login" })
     }
 
+    @Test fun explicitResumeRequeuesAnAcceptedRequestAndRefusesStaleOrCompletedRows() = runTest {
+        val f = Fixture()
+        f.books.value = listOf(resumeBook())
+        val command = com.example.shelfplayer.core.model.garmin.GarminRecord(
+            "profile",
+            "1",
+            "command",
+            "accepted",
+            """{"type":"download","b":"book","state":"accepted"}""",
+            1,
+        )
+        val inventory = command.copy(
+            kind = "inventory",
+            recordId = "book",
+            payload = """{"b":"book","state":"queued","done":1,"total":4}""",
+        )
+        f.records.put(listOf(command, inventory))
+        val repository = f.repository(backgroundScope, StandardTestDispatcher(testScheduler))
+        assertTrue(repository.resumeDownload("other", "1", "book") is AppResult.Failure)
+        assertTrue(repository.resumeDownload("profile", "2", "book") is AppResult.Failure)
+        assertEquals("accepted", GarminDeviceDocuments.read(f.records.rows.value.first().payload).optString("state"))
+        assertTrue(repository.resumeDownload("profile", "1", "book") is AppResult.Success)
+        assertTrue(repository.resumeDownload("profile", "1", "book") is AppResult.Success)
+        val pending = f.records.rows.value.single { it.kind == "command" }
+        assertEquals("accepted", pending.recordId)
+        assertEquals("pending", GarminDeviceDocuments.read(pending.payload).optString("state"))
+        f.records.put(listOf(inventory.copy(payload = """{"b":"book","state":"downloaded","done":4,"total":4}""")))
+        assertTrue(repository.resumeDownload("profile", "1", "book") is AppResult.Failure)
+        f.locked = true
+        assertTrue(repository.resumeDownload("profile", "1", "book") is AppResult.Failure)
+    }
+
+    private fun resumeBook() = com.example.shelfplayer.core.model.library.Book(
+        serverId = ServerId("server"), id = com.example.shelfplayer.core.model.LibraryItemId("book"),
+        libraryId = com.example.shelfplayer.core.model.LibraryId("library"), title = "Fixture",
+        subtitle = null, authors = emptyList(), narrators = emptyList(), seriesMemberships = emptyList(),
+        duration = kotlin.time.Duration.ZERO, description = null, genres = emptyList(), tags = emptyList(),
+        publishedYear = null, publisher = null, language = null, isbn = null, asin = null, isExplicit = false,
+        isAbridged = false, coverPath = null, trackCount = 1, sizeBytes = 1, remoteUpdatedAt = null,
+        addedAt = null, lastFetchedAt = java.time.Instant.EPOCH, progress = null,
+        localAvailability = com.example.shelfplayer.core.model.library.LocalAvailability.Complete,
+    )
+
     private fun raw(value: Any?): Any? = when (value) {
         is org.json.JSONObject -> value.keys().asSequence().associateWith { raw(value.get(it)) }
         is org.json.JSONArray -> (0 until value.length()).map { raw(value.get(it)) }
@@ -418,8 +461,8 @@ class GarminDeviceRepositoryTest {
                 else -> error("Unexpected lock call")
             }
         }
-        private val library =
-            proxy<LibraryRepository> { MutableStateFlow(emptyList<com.example.shelfplayer.core.model.library.Book>()) }
+        val books = MutableStateFlow(emptyList<com.example.shelfplayer.core.model.library.Book>())
+        private val library = proxy<LibraryRepository> { books }
         private val downloads =
             proxy<DownloadRepository> {
                 MutableStateFlow(setOf(com.example.shelfplayer.core.model.LibraryItemId("book")))

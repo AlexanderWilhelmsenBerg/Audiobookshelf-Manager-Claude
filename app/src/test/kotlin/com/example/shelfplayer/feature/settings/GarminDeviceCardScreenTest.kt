@@ -63,6 +63,40 @@ class GarminDeviceCardScreenTest {
         compose.onNodeWithText("Fixture book").assertDoesNotExist()
     }
 
+    @Test fun partialDownloadDisplaysBookPercentAndDispatchesExplicitResume() {
+        var resumed: String? = null
+        compose.setContent {
+            MaterialTheme {
+                GarminDeviceCard(
+                    GarminDeviceActions(
+                        state = GarminDeviceUi(
+                            name = "Fixture watch",
+                            paired = true,
+                            configured = true,
+                            downloads = listOf(
+                                com.example.shelfplayer.garmin.GarminDownloadRow(
+                                    "Interrupted fixture",
+                                    "queued",
+                                    1,
+                                    4,
+                                    bookId = "book",
+                                    canResume = true,
+                                ),
+                            ),
+                        ),
+                        onResume = { resumed = it },
+                    ),
+                )
+            }
+        }
+        compose.onNodeWithText("Fixture watch").performClick()
+        compose.onNodeWithText("Downloads").performClick()
+        compose.onNodeWithText("Interrupted fixture").assertIsDisplayed()
+        compose.onNodeWithText("25% downloaded").assertIsDisplayed()
+        compose.onNodeWithText("Resume download").performClick()
+        assertEquals("book", resumed)
+    }
+
     @Test fun unknownWatchInventoryIsNotClaimedAsAnEmptyDownloadedLibrary() {
         compose.setContent {
             MaterialTheme {

@@ -172,7 +172,7 @@ private fun GarminDeviceDialog(kind: String, actions: GarminDeviceActions, close
             when (kind) {
                 "new" -> watchChoices(actions, close)
                 "sessions" -> watchSessions(state)
-                else -> watchDownloads(state)
+                else -> watchDownloads(actions)
             }
         }
     }
@@ -232,6 +232,7 @@ data class GarminDeviceActions(
     val onDismissMessage: () -> Unit = {},
     val onCancelPairing: () -> Unit = {},
     val onConfigure: (String) -> Unit = {},
+    val onResume: (String) -> Unit = {},
     val busy: Boolean = false,
 )
 
@@ -273,7 +274,8 @@ private fun LazyListScope.watchSessions(state: GarminDeviceUi) {
     if (state.listens.isEmpty()) item { Text(stringResource(R.string.garmin_no_events)) }
 }
 
-private fun LazyListScope.watchDownloads(state: GarminDeviceUi) {
+private fun LazyListScope.watchDownloads(actions: GarminDeviceActions) {
+    val state = actions.state
     items(state.downloads) { book ->
         Column {
             Text(book.title ?: stringResource(R.string.garmin_unknown_book))
@@ -285,7 +287,19 @@ private fun LazyListScope.watchDownloads(state: GarminDeviceUi) {
             }
             Text(stringResource(status), style = MaterialTheme.typography.bodySmall)
             Text(pluralStringResource(R.plurals.garmin_parts, book.partsTotal.toInt(), book.partsDone, book.partsTotal))
+            if (book.partsTotal > 0) {
+                val percent = (book.partsDone * MAX_DOWNLOAD_PERCENT / book.partsTotal).coerceIn(
+                    0,
+                    MAX_DOWNLOAD_PERCENT.toLong(),
+                ).toInt()
+                Text(stringResource(R.string.garmin_download_percent, percent))
+            }
             if (book.fromSeconds > 0) Text(stringResource(R.string.garmin_available_from, book.fromSeconds))
+            if (book.canResume) {
+                TextButton(onClick = { actions.onResume(book.bookId) }, enabled = !actions.busy) {
+                    Text(stringResource(R.string.garmin_resume_download))
+                }
+            }
         }
     }
     if (state.downloads.isEmpty()) {
@@ -320,3 +334,5 @@ private fun garminMessageResource(message: GarminDeviceMessage): Int = when (mes
     GarminDeviceMessage.PairWatch -> R.string.garmin_setup_pair_first
     GarminDeviceMessage.UpgradeWatch -> R.string.garmin_setup_upgrade
 }
+
+private const val MAX_DOWNLOAD_PERCENT = 100
