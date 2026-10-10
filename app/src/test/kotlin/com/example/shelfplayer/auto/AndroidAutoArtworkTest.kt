@@ -46,6 +46,34 @@ class AndroidAutoArtworkTest {
     }
 
     @Test
+    fun `artwork event outcomes use only fixed redacted codes`() {
+        assertEquals(
+            listOf(
+                "invalid-mode",
+                "invalid-capability",
+                "expired-capability",
+                "profile-mismatch",
+                "cache-unavailable",
+                "read-failed",
+                "served-cached",
+                "served-materialized",
+            ),
+            AutoArtworkReadOutcome.entries.map { outcome -> outcome.code },
+        )
+    }
+
+    @Test
+    fun `provider emits requests and classified outcomes without URI or cache paths`() {
+        val providerSource =
+            java.io.File("src/main/kotlin/com/example/shelfplayer/auto/AutoArtworkContentProvider.kt").readText()
+        assertTrue("Android Auto artwork requested" in providerSource)
+        assertTrue("Android Auto artwork served" in providerSource)
+        assertTrue("Android Auto artwork failed" in providerSource)
+        assertTrue("Android Auto artwork refused" in providerSource)
+        assertTrue("LogField.Public(\"outcome\", outcome.code)" in providerSource)
+    }
+
+    @Test
     fun `missing artwork produces no URI so the host owns the placeholder`() {
         val context = RuntimeEnvironment.getApplication()
 
