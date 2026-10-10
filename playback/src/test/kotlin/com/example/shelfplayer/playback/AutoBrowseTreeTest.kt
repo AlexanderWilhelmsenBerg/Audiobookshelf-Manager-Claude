@@ -309,9 +309,9 @@ class AutoBrowseTreeTest {
     fun `short standalone title has no invented series and keeps author as artist`() = runTest {
         books.value = listOf(book("book-1", "Short"))
         val row = auto().children("author/author-1", null).single()
-        assertEquals("Short", row.mediaMetadata.title.toString())
+        assertEquals("Short", row.mediaMetadata.title?.toString())
         assertEquals(null, row.mediaMetadata.subtitle)
-        assertEquals("Marisol Holt", row.mediaMetadata.artist.toString())
+        assertEquals("Marisol Holt", row.mediaMetadata.artist?.toString())
     }
 
     @Test
@@ -329,9 +329,9 @@ class AutoBrowseTreeTest {
         val browse = auto.children("series/series-1", null).single()
         val resume = auto.resumeItem()
         for (row in listOfNotNull(browse, resume)) {
-            assertEquals(title, row.mediaMetadata.title.toString())
-            assertEquals("Tidewatch #12.5", row.mediaMetadata.subtitle.toString())
-            assertEquals("Marisol Holt", row.mediaMetadata.artist.toString())
+            assertEquals(title, row.mediaMetadata.title?.toString())
+            assertEquals("Tidewatch #12.5", row.mediaMetadata.subtitle?.toString())
+            assertEquals("Marisol Holt", row.mediaMetadata.artist?.toString())
         }
     }
 
@@ -339,7 +339,7 @@ class AutoBrowseTreeTest {
     fun `missing series and missing author have no fake secondary metadata`() = runTest {
         books.value = listOf(book("book-1", "Standalone", authors = emptyList()))
         val row = auto().search("Standalone").single()
-        assertEquals("Standalone", row.mediaMetadata.title.toString())
+        assertEquals("Standalone", row.mediaMetadata.title?.toString())
         assertEquals(null, row.mediaMetadata.subtitle)
         assertEquals(null, row.mediaMetadata.artist)
     }

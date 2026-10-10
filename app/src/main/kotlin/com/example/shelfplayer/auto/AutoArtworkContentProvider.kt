@@ -86,7 +86,14 @@ class AutoArtworkContentProvider : ContentProvider() {
                 LogField.Public("outcome", AutoArtworkReadOutcome.CacheUnavailable.code),
             )
             throw failure
-        } catch (failure: Exception) {
+        } catch (failure: java.io.IOException) {
+            logger.warn(
+                LogCategory.Playback,
+                "Android Auto artwork failed",
+                LogField.Public("outcome", AutoArtworkReadOutcome.ReadFailed.code),
+            )
+            throw failure
+        } catch (failure: IllegalStateException) {
             logger.warn(
                 LogCategory.Playback,
                 "Android Auto artwork failed",
