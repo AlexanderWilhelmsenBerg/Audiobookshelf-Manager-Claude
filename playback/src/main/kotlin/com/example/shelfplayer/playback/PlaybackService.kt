@@ -2665,6 +2665,17 @@ class PlaybackService : MediaLibraryService() {
                 val from = (page * pageSize).coerceAtMost(all.size)
                 val to = (from + pageSize).coerceAtMost(all.size)
                 val returned = all.subList(from, to)
+                logger.info(
+                    LogCategory.Playback,
+                    "Android Auto browse artwork offered",
+                    LogField.Public("parentKind", AutoLibrary.kindOf(parentId)),
+                    LogField.Count("returned", returned.size),
+                    LogField.Count("withArtworkUri", returned.count { item -> item.mediaMetadata.artworkUri != null }),
+                    LogField.Count(
+                        "withContentArtworkUri",
+                        returned.count { item -> item.mediaMetadata.artworkUri?.scheme == "content" },
+                    ),
+                )
                 traceChildrenResult(
                     trace = trace,
                     context = ChildrenTraceContext(

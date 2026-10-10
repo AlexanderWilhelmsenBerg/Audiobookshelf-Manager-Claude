@@ -198,7 +198,7 @@ class AutoBrowseTreeTest {
     }
 
     @Test
-    fun `the resumable item keeps the stored position and richer author-series subtitle`() = runTest {
+    fun `the resumable item keeps the stored position and distinct author and series fields`() = runTest {
         books.value = listOf(
             book(
                 "book-1",
@@ -211,7 +211,8 @@ class AutoBrowseTreeTest {
         val item = auto().resumeItem()
 
         assertEquals("at/book-1/${40.minutes.inWholeMilliseconds}", item?.mediaId)
-        assertEquals("Marisol Holt · Tidewatch #2", item?.mediaMetadata?.subtitle?.toString())
+        assertEquals("Tidewatch #2", item?.mediaMetadata?.subtitle?.toString())
+        assertEquals("Marisol Holt", item?.mediaMetadata?.artist?.toString())
     }
 
     @Test
@@ -301,7 +302,46 @@ class AutoBrowseTreeTest {
             .let { auto().children("author/author-1", null) }
             .first().mediaMetadata.subtitle?.toString()
 
-        assertEquals("Marisol Holt · Tidewatch", subtitle)
+        assertEquals("Tidewatch", subtitle)
+    }
+
+    @Test
+    fun `short standalone title has no invented series and keeps author as artist`() = runTest {
+        books.value = listOf(book("book-1", "Short"))
+        val row = auto().children("author/author-1", null).single()
+        assertEquals("Short", row.mediaMetadata.title?.toString())
+        assertEquals(null, row.mediaMetadata.subtitle)
+        assertEquals("Marisol Holt", row.mediaMetadata.artist?.toString())
+    }
+
+    @Test
+    fun `full long title and series sequence are distinct from the author in browse and resume`() = runTest {
+        val title = "The Wonderful and Astonishingly Long Adventures of the Final Tidewatcher"
+        books.value = listOf(
+            book(
+                "book-1",
+                title,
+                progress = progress(40.minutes, false),
+                series = membership("series-1", "Tidewatch", "12.5"),
+            ),
+        )
+        val auto = auto()
+        val browse = auto.children("series/series-1", null).single()
+        val resume = auto.resumeItem()
+        for (row in listOfNotNull(browse, resume)) {
+            assertEquals(title, row.mediaMetadata.title?.toString())
+            assertEquals("Tidewatch #12.5", row.mediaMetadata.subtitle?.toString())
+            assertEquals("Marisol Holt", row.mediaMetadata.artist?.toString())
+        }
+    }
+
+    @Test
+    fun `missing series and missing author have no fake secondary metadata`() = runTest {
+        books.value = listOf(book("book-1", "Standalone", authors = emptyList()))
+        val row = auto().search("Standalone").single()
+        assertEquals("Standalone", row.mediaMetadata.title?.toString())
+        assertEquals(null, row.mediaMetadata.subtitle)
+        assertEquals(null, row.mediaMetadata.artist)
     }
 
     private fun androidx.media3.common.MediaItem.style(key: String): Int? = mediaMetadata.extras?.getInt(key)
@@ -349,13 +389,14 @@ class AutoBrowseTreeTest {
         progress: MediaProgress? = null,
         series: SeriesMembership? = null,
         local: LocalAvailability = LocalAvailability.NotDownloaded,
+        authors: List<Author> = listOf(Author(SERVER, AuthorId("author-1"), "Marisol Holt")),
     ) = Book(
         serverId = SERVER,
         id = LibraryItemId(id),
         libraryId = LibraryId("lib-fiction"),
         title = title,
         subtitle = null,
-        authors = listOf(Author(SERVER, AuthorId("author-1"), "Marisol Holt")),
+        authors = authors,
         narrators = emptyList(),
         seriesMemberships = listOfNotNull(series),
         duration = 11.hours,

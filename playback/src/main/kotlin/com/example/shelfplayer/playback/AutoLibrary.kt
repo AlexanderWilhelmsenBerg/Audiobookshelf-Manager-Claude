@@ -245,7 +245,8 @@ class AutoLibrary @Inject constructor(
             playable(
                 id = resumeId(book.id, progress?.position),
                 title = book.title,
-                subtitle = bookSubtitle(book),
+                subtitle = seriesLabel(book),
+                author = authorLabel(book),
                 artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
                 extras = progress?.let(::completionExtras),
             ),
@@ -351,7 +352,8 @@ class AutoLibrary @Inject constructor(
         val item = playable(
             id = book.id.value,
             title = book.title,
-            subtitle = bookSubtitle(book),
+            subtitle = seriesLabel(book),
+            author = authorLabel(book),
             artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
             extras = extras,
             uri = RESUME_PLACEHOLDER_URI.toUri(),
@@ -403,23 +405,24 @@ class AutoLibrary @Inject constructor(
         return playable(
             id = "$BOOK_PREFIX${book.id.value}",
             title = book.title,
-            subtitle = bookSubtitle(book),
+            subtitle = seriesLabel(book),
+            author = authorLabel(book),
             artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
             extras = completionExtras(fraction),
         )
     }
 
-    /** Author first, then the primary/first series and its server-provided sequence. */
-    private fun bookSubtitle(book: Book): String? = buildList {
-        book.authors.joinToString { author -> author.name }.takeIf(String::isNotBlank)?.let(::add)
-        book.seriesMemberships
-            .firstOrNull(SeriesMembership::isPrimary)
-            .let { membership -> membership ?: book.seriesMemberships.firstOrNull() }
-            ?.let { membership ->
-                val sequence = membership.sequence.raw.takeIf(String::isNotBlank)
-                add(if (sequence == null) membership.series.name else "${membership.series.name} #$sequence")
-            }
-    }.joinToString(PART_SEPARATOR).takeIf(String::isNotBlank)
+    /** Display-only primary/first series label; never changes canonical membership or order. */
+    private fun seriesLabel(book: Book): String? = book.seriesMemberships
+        .firstOrNull(SeriesMembership::isPrimary)
+        .let { membership -> membership ?: book.seriesMemberships.firstOrNull() }
+        ?.let { membership ->
+            val sequence = membership.sequence.raw.takeIf(String::isNotBlank)
+            if (sequence == null) membership.series.name else "${membership.series.name} #$sequence"
+        }
+
+    private fun authorLabel(book: Book): String? =
+        book.authors.joinToString { author -> author.name }.takeIf(String::isNotBlank)
 
     private fun completionExtras(progress: MediaProgress): Bundle =
         completionExtras(if (progress.isFinished) FULLY_PLAYED else progress.fractionComplete.toDouble())
@@ -450,6 +453,7 @@ class AutoLibrary @Inject constructor(
         id: String,
         title: String,
         subtitle: String? = null,
+        author: String? = null,
         artworkUri: Uri? = null,
         extras: Bundle? = null,
         uri: Uri? = null,
@@ -464,7 +468,7 @@ class AutoLibrary @Inject constructor(
             MediaMetadata.Builder()
                 .setTitle(title)
                 .setSubtitle(subtitle)
-                .setArtist(subtitle)
+                .setArtist(author)
                 .setArtworkUri(artworkUri)
                 .setIsBrowsable(false)
                 .setIsPlayable(true)
