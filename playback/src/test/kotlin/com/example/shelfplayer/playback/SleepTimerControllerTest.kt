@@ -218,6 +218,64 @@ class SleepTimerControllerTest {
     }
 
     @Test
+    fun `shake restart and manual extension update timer journal without audiobook history events`() = runTest {
+        val settings = MutableStateFlow(SleepTimerSettings.Default.copy(shakeToRestart = true))
+        val repository = FakeSleepTimerRepository(settings)
+        val shakes = FakeShakeSource()
+        val history = FakePlaybackHistoryRepository()
+        val controller = controller(repository, shakes, TestAppClock(), history)
+        controller.attach(player())
+        runCurrent()
+
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(30.minutes)))
+        runCurrent()
+        assertEquals(listOf(PlaybackEvent.SleepTimerStarted), history.events)
+
+        shakes.fire()
+        runCurrent()
+        controller.extend()
+        runCurrent()
+
+        assertEquals(1, repository.started)
+        assertEquals(2, repository.restarted)
+        assertEquals(listOf(PlaybackEvent.SleepTimerStarted), history.events)
+        assertTrue(controller.state.value.isActive)
+    }
+
+    @Test
+    fun `expired timer grace shake opens a timer session but no extra listening history marker`() = runTest {
+        val settings = MutableStateFlow(
+            SleepTimerSettings.Default.copy(
+                shakeToRestart = true,
+                shakeGracePeriod = 10.seconds,
+                fadeLength = Duration.ZERO,
+            ),
+        )
+        val repository = FakeSleepTimerRepository(settings)
+        val shakes = FakeShakeSource()
+        val history = FakePlaybackHistoryRepository()
+        val clock = TestAppClock()
+        val controller = controller(repository, shakes, clock, history)
+        controller.attach(player(), resumeOwner())
+        runCurrent()
+
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(1.seconds)))
+        clock.advanceBy(1.seconds)
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertTrue(history.events.contains(PlaybackEvent.SleepTimerExpired))
+
+        val eventsAtExpiry = history.events.toList()
+        shakes.fire()
+        runCurrent()
+
+        assertEquals(2, repository.started)
+        assertEquals(listOf(SleepTimerOutcome.Expired), repository.ended)
+        assertEquals(eventsAtExpiry, history.events, "grace shake must not add audiobook History")
+        assertTrue(controller.state.value.isActive)
+    }
+
+    @Test
     fun `shake grace expires and stops sensing without restarting anything`() = runTest {
         val source = MutableStateFlow(
             SleepTimerSettings.Default.copy(
@@ -1355,6 +1413,7 @@ class SleepTimerControllerTest {
         repository: SleepTimerRepository,
         shakes: ShakeSource,
         clock: TestAppClock,
+        history: PlaybackHistoryRepository = FakePlaybackHistoryRepository(),
     ): SleepTimerController {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         val sync = SessionSyncCoordinator(
@@ -1369,7 +1428,7 @@ class SleepTimerControllerTest {
             repository = repository,
             shakes = shakes,
             sessionSync = sync,
-            history = FakePlaybackHistoryRepository(),
+            history = history,
             clock = clock,
             zoneProvider = object : LocalZoneProvider {
                 override fun current() = java.time.ZoneOffset.UTC
@@ -1587,6 +1646,8 @@ class SleepTimerControllerTest {
     }
 
     private class FakePlaybackHistoryRepository : PlaybackHistoryRepository {
+        val events = mutableListOf<PlaybackEvent>()
+
         override fun observe(bookId: LibraryItemId, limit: Int): Flow<List<PlaybackHistoryEntry>> = flowOf(emptyList())
 
         override suspend fun record(
@@ -1597,7 +1658,9 @@ class SleepTimerControllerTest {
             detail: Duration?,
             at: Instant?,
             owner: ProfileId?,
-        ) = Unit
+        ) {
+            events += event
+        }
 
         override suspend fun refreshServerSessions(bookId: LibraryItemId) = Unit
 

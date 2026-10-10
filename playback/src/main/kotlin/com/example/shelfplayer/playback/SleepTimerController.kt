@@ -518,7 +518,7 @@ class SleepTimerController @Inject constructor(
             LogCategory.Playback,
             if (restart) "The sleep timer was restarted" else "The sleep timer was extended",
         )
-        record(PlaybackEvent.SleepTimerExtended, detail = remainingOf(next))
+        // Timer adjustments belong to the timer-session log, not audiobook listening History.
         publish()
     }
 
@@ -617,7 +617,7 @@ class SleepTimerController @Inject constructor(
         phase = TimerPhase.Running(restarted)
         shakeGraceJob?.cancel()
         shakeGraceJob = null
-        record(PlaybackEvent.SleepTimerStarted, detail = remainingOf(restarted))
+        // A grace restart is a new timer session, not a new listening-history action.
         reconcileSensing()
         startTicking()
         publish()
