@@ -2671,9 +2671,10 @@ class PlaybackService : MediaLibraryService() {
                     LogField.Public("parentKind", AutoLibrary.kindOf(parentId)),
                     LogField.Count("returned", returned.size),
                     LogField.Count("withArtworkUri", returned.count { item -> item.mediaMetadata.artworkUri != null }),
-                    LogField.Count("withContentArtworkUri", returned.count { item ->
-                        item.mediaMetadata.artworkUri?.scheme == "content"
-                    }),
+                    LogField.Count(
+                        "withContentArtworkUri",
+                        returned.count { item -> item.mediaMetadata.artworkUri?.scheme == "content" },
+                    ),
                 )
                 traceChildrenResult(
                     trace = trace,

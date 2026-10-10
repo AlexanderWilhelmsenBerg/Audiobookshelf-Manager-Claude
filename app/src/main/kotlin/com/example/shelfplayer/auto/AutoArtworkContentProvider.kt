@@ -70,8 +70,11 @@ class AutoArtworkContentProvider : ContentProvider() {
                 "Android Auto artwork served",
                 LogField.Public(
                     "outcome",
-                    if (alreadyMaterialized) AutoArtworkReadOutcome.ServedCached.code
-                    else AutoArtworkReadOutcome.ServedMaterialized.code,
+                    if (alreadyMaterialized) {
+                        AutoArtworkReadOutcome.ServedCached.code
+                    } else {
+                        AutoArtworkReadOutcome.ServedMaterialized.code
+                    },
                 ),
             )
             return descriptor
