@@ -91,6 +91,7 @@ internal object AutoArtworkRegistry {
     }
 
     const val AUTHORITY_SUFFIX = "autoart"
+
     // Bump only when the host must re-request artwork after a change in delivery semantics.
     // Stable per profile and sources within a revision, including A → B → A.
     private const val CAPABILITY_FORMAT_REVISION = "v2"
