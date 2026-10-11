@@ -1,6 +1,7 @@
 package com.example.shelfplayer.domain.playback
 
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 
 /**
  * PRODUCT_SPEC ROUTE-003 — the two things a startup mode can ask the player to do.
@@ -14,6 +15,15 @@ interface StartupPlayer {
 
     /** Loads the book and leaves it paused. */
     suspend fun arm(bookId: LibraryItemId)
+
+    /**
+     * AUTH-002 — a courtesy restore is scoped to the initiating profile and selection generation.
+     * No-op/legacy test implementations delegate to arm; the production binding overrides this
+     * to check the claim at the final guarded Media3 acceptance boundary.
+     */
+    suspend fun armForProfile(bookId: LibraryItemId, profileId: ProfileId, generation: Long) {
+        arm(bookId)
+    }
 
     /** Loads the book and plays it. */
     suspend fun play(bookId: LibraryItemId)

@@ -162,6 +162,7 @@ class RestoreProfilePlaybackUseCaseTest {
     fun `the library is read for the profile that was switched to`() = runTest {
         val library = FakeLibraryRepository(listOf(playedBook("theirs", at = "2026-08-20T10:00:00Z")))
 
+        profiles.setActiveProfile(OTHER)
         useCase(library, rememberedId = LibraryItemId("theirs"))(OTHER)
 
         assertEquals(listOf(OTHER), library.accessibleBooksRequestedFor)

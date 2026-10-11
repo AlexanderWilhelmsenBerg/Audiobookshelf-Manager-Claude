@@ -8,6 +8,7 @@ import com.example.shelfplayer.domain.library.resumeCandidate
 import com.example.shelfplayer.domain.playback.StartupPlayer
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.RememberedBookRepository
+import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
@@ -42,7 +43,7 @@ class RestoreProfilePlaybackUseCase @Inject constructor(
     private val library: LibraryRepository,
     private val rememberedBooks: RememberedBookRepository,
     private val player: StartupPlayer,
-    private val profileRepository: com.example.shelfplayer.domain.repository.ProfileRepository,
+    private val profileRepository: ProfileRepository,
     private val logger: Logger,
 ) {
 
@@ -60,10 +61,17 @@ class RestoreProfilePlaybackUseCase @Inject constructor(
      * not asking for could not be loaded (product priority 1 — nothing here may interrupt).
      */
     suspend operator fun invoke(profileId: ProfileId) {
+        val generation = profileRepository.activeProfileGeneration()
+        if (!stillCurrent(profileId, generation)) return
         val rememberedId = rememberedBooks.rememberedBook(profileId)
         val books = library.observeAccessibleBooks(profileId).first()
         val book = resumeCandidate(books, rememberedId) ?: return
+        if (!stillCurrent(profileId, generation)) return
         logger.info(LogCategory.Playback, "The account that was switched to had its last book restored, paused")
-        player.arm(book.id)
+        // The real player can suspend in /play. Carry this same claim into its final Media3 commit.
+        player.armForProfile(book.id, profileId, generation)
     }
+
+    private suspend fun stillCurrent(profileId: ProfileId, generation: Long): Boolean =
+        profileRepository.activeProfileId() == profileId && profileRepository.activeProfileGeneration() == generation
 }

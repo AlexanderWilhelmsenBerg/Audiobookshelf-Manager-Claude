@@ -147,6 +147,10 @@ interface AppModule {
                 controller.arm(bookId)
             }
 
+            override suspend fun armForProfile(bookId: LibraryItemId, profileId: ProfileId, generation: Long) {
+                controller.armForProfile(bookId, profileId, generation)
+            }
+
             override suspend fun play(bookId: LibraryItemId) {
                 controller.play(bookId)
             }
