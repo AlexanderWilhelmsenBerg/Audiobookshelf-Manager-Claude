@@ -46,6 +46,20 @@ class AndroidAutoArtworkTest {
     }
 
     @Test
+    fun `switching A to B to A preserves distinct capabilities for each owner`() {
+        val context = RuntimeEnvironment.getApplication()
+        val source = "https://books.example/api/items/book/cover"
+        val aBefore = assertNotNull(AutoArtworkRegistry.register(context, ProfileId("a"), listOf(source)))
+        val b = assertNotNull(AutoArtworkRegistry.register(context, ProfileId("b"), listOf(source)))
+        val aAfter = assertNotNull(AutoArtworkRegistry.register(context, ProfileId("a"), listOf(source)))
+
+        assertEquals(aBefore, aAfter)
+        assertNotEquals(aBefore, b)
+        assertEquals(ProfileId("a"), AutoArtworkRegistry.resolve(assertNotNull(aAfter.lastPathSegment))?.profileId)
+        assertEquals(ProfileId("b"), AutoArtworkRegistry.resolve(assertNotNull(b.lastPathSegment))?.profileId)
+    }
+
+    @Test
     fun `artwork event outcomes use only fixed redacted codes`() {
         assertEquals(
             listOf(

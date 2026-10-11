@@ -61,8 +61,15 @@ class AutoArtworkContentProvider : ContentProvider() {
         val target = File(directory, "$token.png")
         val alreadyMaterialized = target.isFile && target.length() > 0L
         try {
-            if (!alreadyMaterialized) {
+            val fetched = if (!alreadyMaterialized) {
                 materialize(graph.imageLoader(), graph.ioDispatcher(), appContext, entry.sources, target)
+            } else {
+                null
+            }
+            // A profile can switch while Coil is fetching; do not serve the old profile's bytes afterward.
+            val profileAfterLoad = runBlocking(graph.ioDispatcher()) { graph.profiles().activeProfileId() }
+            if (profileAfterLoad != entry.profileId) {
+                refuse(logger, AutoArtworkReadOutcome.ProfileMismatch, "Artwork profile changed while loading")
             }
             val descriptor = ParcelFileDescriptor.open(target, ParcelFileDescriptor.MODE_READ_ONLY)
             logger.info(
@@ -76,6 +83,7 @@ class AutoArtworkContentProvider : ContentProvider() {
                         AutoArtworkReadOutcome.ServedMaterialized.code
                     },
                 ),
+                LogField.Public("fetchMode", fetched?.code ?: "existing-file"),
             )
             return descriptor
         } catch (failure: FileNotFoundException) {
@@ -118,15 +126,17 @@ class AutoArtworkContentProvider : ContentProvider() {
         context: android.content.Context,
         sources: List<String>,
         target: File,
-    ) {
-        val success = runBlocking(ioDispatcher) {
-            sources.firstNotNullOfOrNull { source ->
+    ): AutoArtworkFetchMode {
+        // The same authenticated Coil loader/cache used by the phone supplies car artwork.
+        // Cache misses fetch on demand, but only a bounded number may fetch simultaneously.
+        val loaded = runBlocking(ioDispatcher) {
+            fetchPolicy.load(sources) { source, networkPolicy ->
                 val result = imageLoader.execute(
                     ImageRequest.Builder(context)
                         .data(source)
                         .size(MAX_ARTWORK_PIXELS)
                         .allowHardware(false)
-                        .networkCachePolicy(CachePolicy.DISABLED)
+                        .networkCachePolicy(networkPolicy)
                         .build(),
                 )
                 (result as? SuccessResult)?.drawable
@@ -134,15 +144,19 @@ class AutoArtworkContentProvider : ContentProvider() {
         } ?: throw FileNotFoundException("Artwork is not cached or reachable")
 
         val temporary = File(target.parentFile, "${target.name}.tmp")
-        FileOutputStream(temporary).use { output ->
-            if (!success.toBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, PNG_QUALITY, output)) {
-                throw FileNotFoundException("Artwork could not be transcoded")
+        try {
+            FileOutputStream(temporary).use { output ->
+                if (!loaded.value.toBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, PNG_QUALITY, output)) {
+                    throw FileNotFoundException("Artwork could not be transcoded")
+                }
             }
-        }
-        if (!temporary.renameTo(target)) {
-            temporary.copyTo(target, overwrite = true)
+            if (!temporary.renameTo(target)) {
+                temporary.copyTo(target, overwrite = true)
+            }
+        } finally {
             temporary.delete()
         }
+        return loaded.mode
     }
 
     override fun getType(uri: Uri): String = IMAGE_PNG
@@ -176,6 +190,7 @@ class AutoArtworkContentProvider : ContentProvider() {
     }
 
     private companion object {
+        val fetchPolicy = AutoArtworkFetchPolicy()
         const val READ_MODE = "r"
         const val CACHE_DIRECTORY = "auto-art"
         const val MAX_ARTWORK_PIXELS = 512
