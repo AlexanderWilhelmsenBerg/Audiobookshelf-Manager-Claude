@@ -7,8 +7,8 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.domain.library.resumeCandidate
 import com.example.shelfplayer.domain.playback.StartupPlayer
 import com.example.shelfplayer.domain.repository.LibraryRepository
-import com.example.shelfplayer.domain.repository.RememberedBookRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.RememberedBookRepository
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
