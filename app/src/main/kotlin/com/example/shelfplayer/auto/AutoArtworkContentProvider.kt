@@ -44,20 +44,23 @@ class AutoArtworkContentProvider : ContentProvider() {
         val appContext = context?.applicationContext ?: throw FileNotFoundException("No application context")
         val graph = EntryPointAccessors.fromApplication(appContext, AutoArtworkEntryPoint::class.java)
         val logger = graph.logger()
-        logger.info(LogCategory.Playback, "Android Auto artwork requested")
+        val artworkRef = LogField.Identifier("artworkRef", uri.lastPathSegment.orEmpty())
+        logger.info(LogCategory.Playback, "Android Auto artwork requested", artworkRef)
 
-        if (mode != READ_MODE) refuse(logger, AutoArtworkReadOutcome.InvalidMode, "Android Auto artwork is read-only")
+        if (mode != READ_MODE) {
+            refuse(logger, AutoArtworkReadOutcome.InvalidMode, "Android Auto artwork is read-only", artworkRef)
+        }
         val token = uri.lastPathSegment?.takeIf(AutoArtworkRegistry::isToken)
-            ?: refuse(logger, AutoArtworkReadOutcome.InvalidCapability, "Invalid artwork capability")
+            ?: refuse(logger, AutoArtworkReadOutcome.InvalidCapability, "Invalid artwork capability", artworkRef)
         val entry = AutoArtworkRegistry.resolve(token)
-            ?: refuse(logger, AutoArtworkReadOutcome.ExpiredCapability, "Artwork capability is no longer active")
+            ?: refuse(logger, AutoArtworkReadOutcome.ExpiredCapability, "Artwork capability is no longer active", artworkRef)
 
         val active = runBlocking(graph.ioDispatcher()) { graph.profiles().activeProfileId() }
         if (active != entry.profileId) {
-            refuse(logger, AutoArtworkReadOutcome.ProfileMismatch, "Artwork belongs to another profile")
+            refuse(logger, AutoArtworkReadOutcome.ProfileMismatch, "Artwork belongs to another profile", artworkRef)
         }
 
-        return serveArtwork(appContext, graph, logger, token, entry)
+        return serveArtwork(appContext, graph, logger, token, entry, artworkRef)
     }
 
     private fun serveArtwork(
@@ -66,6 +69,7 @@ class AutoArtworkContentProvider : ContentProvider() {
         logger: Logger,
         token: String,
         entry: AutoArtworkRegistry.Entry,
+        artworkRef: LogField.Identifier,
     ): ParcelFileDescriptor {
         val directory = File(appContext.cacheDir, CACHE_DIRECTORY).apply { mkdirs() }
         val target = File(directory, "$token.png")
@@ -73,15 +77,15 @@ class AutoArtworkContentProvider : ContentProvider() {
         val fetched = if (alreadyMaterialized) {
             null
         } else {
-            materializeOrReport(graph, logger, appContext, entry.sources, target)
+            materializeOrReport(graph, logger, appContext, entry.sources, target, artworkRef)
         }
 
         // A profile can switch during Coil's request. Refuse the previous profile's cover after loading.
         val activeNow = runBlocking(graph.ioDispatcher()) { graph.profiles().activeProfileId() }
         if (activeNow != entry.profileId) {
-            refuse(logger, AutoArtworkReadOutcome.ProfileMismatch, "Artwork profile changed while loading")
+            refuse(logger, AutoArtworkReadOutcome.ProfileMismatch, "Artwork profile changed while loading", artworkRef)
         }
-        return openPreparedArtwork(target, logger, alreadyMaterialized, fetched)
+        return openPreparedArtwork(target, logger, alreadyMaterialized, fetched, artworkRef)
     }
 
     private fun materializeOrReport(
@@ -90,6 +94,7 @@ class AutoArtworkContentProvider : ContentProvider() {
         appContext: android.content.Context,
         sources: List<String>,
         target: File,
+        artworkRef: LogField.Identifier,
     ): AutoArtworkFetchMode = try {
         materialize(graph.imageLoader(), graph.ioDispatcher(), appContext, sources, target)
     } catch (failure: FileNotFoundException) {
@@ -97,6 +102,7 @@ class AutoArtworkContentProvider : ContentProvider() {
             LogCategory.Playback,
             "Android Auto artwork failed",
             LogField.Public("outcome", AutoArtworkReadOutcome.CacheUnavailable.code),
+            artworkRef,
         )
         throw failure
     }
@@ -106,6 +112,7 @@ class AutoArtworkContentProvider : ContentProvider() {
         logger: Logger,
         alreadyMaterialized: Boolean,
         fetched: AutoArtworkFetchMode?,
+        artworkRef: LogField.Identifier,
     ): ParcelFileDescriptor {
         try {
             val descriptor = ParcelFileDescriptor.open(target, ParcelFileDescriptor.MODE_READ_ONLY)
@@ -121,6 +128,7 @@ class AutoArtworkContentProvider : ContentProvider() {
                     },
                 ),
                 LogField.Public("fetchMode", fetched?.code ?: "existing-file"),
+                artworkRef,
             )
             return descriptor
         } catch (failure: java.io.IOException) {
@@ -128,6 +136,7 @@ class AutoArtworkContentProvider : ContentProvider() {
                 LogCategory.Playback,
                 "Android Auto artwork failed",
                 LogField.Public("outcome", AutoArtworkReadOutcome.ReadFailed.code),
+                artworkRef,
             )
             throw failure
         } catch (failure: IllegalStateException) {
@@ -135,16 +144,23 @@ class AutoArtworkContentProvider : ContentProvider() {
                 LogCategory.Playback,
                 "Android Auto artwork failed",
                 LogField.Public("outcome", AutoArtworkReadOutcome.ReadFailed.code),
+                artworkRef,
             )
             throw failure
         }
     }
 
-    private fun refuse(logger: Logger, outcome: AutoArtworkReadOutcome, reason: String): Nothing {
+    private fun refuse(
+        logger: Logger,
+        outcome: AutoArtworkReadOutcome,
+        reason: String,
+        artworkRef: LogField.Identifier,
+    ): Nothing {
         logger.warn(
             LogCategory.Playback,
             "Android Auto artwork refused",
             LogField.Public("outcome", outcome.code),
+            artworkRef,
         )
         throw FileNotFoundException(reason)
     }

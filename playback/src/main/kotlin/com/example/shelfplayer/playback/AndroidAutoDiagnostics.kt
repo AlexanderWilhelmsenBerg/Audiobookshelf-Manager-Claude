@@ -52,6 +52,35 @@ internal object AndroidAutoDiagnostics {
         }
     }
 
+    /**
+     * A bounded trace of the first Android Auto artwork cards offered to the car.
+     * The capability is always a redacted [LogField.Identifier], never a published content URI.
+     * The same opaque token is recorded by the content provider using the same logger/redactor.
+     */
+    fun artworkOfferFields(parentId: String, index: Int, item: MediaItem): List<LogField> {
+        val artworkUri = item.mediaMetadata.artworkUri ?: return emptyList()
+        if (artworkUri.scheme != "content") return emptyList()
+        val token = artworkUri.lastPathSegment?.takeIf(String::isNotBlank) ?: return emptyList()
+        return listOf(
+            LogField.Public("surface", artworkSurface(parentId)),
+            LogField.Public("itemKind", itemKind(item)),
+            LogField.Public("index", index),
+            LogField.Identifier("artworkRef", token),
+        )
+    }
+
+    /** Keep browse origin recognizable without leaking dynamic Series/Author IDs or titles. */
+    fun artworkSurface(parentId: String): String = when {
+        parentId == AutoLibrary.TAB_CONTINUE -> "continue"
+        parentId == AutoLibrary.TAB_SERIES -> "series"
+        parentId == AutoLibrary.TAB_AUTHORS -> "authors"
+        parentId.startsWith(AutoLibrary.SERIES_PREFIX) -> "series-books"
+        parentId.startsWith(AutoLibrary.AUTHOR_PREFIX) -> "author-books"
+        else -> "other"
+    }
+
+    const val MAX_ARTWORK_OFFER_EVENTS = 12
+
     fun itemKind(item: MediaItem): String = when {
         MediaItems.isResumePlaceholder(item) -> "holder"
         MediaItems.isReadyToPlay(item) -> "playable-book"

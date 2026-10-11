@@ -85,6 +85,64 @@ class AndroidAutoDiagnosticsTest {
         assertEquals("none", AndroidAutoDiagnostics.uriClass(item))
     }
 
+    @Test
+    fun `series and author cards include a redacted request join key and exact browse surface`() {
+        val token = "a".repeat(64)
+        val item = MediaItem.Builder()
+            .setMediaId("series/series-secret")
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setIsBrowsable(true)
+                    .setIsPlayable(false)
+                    .setArtworkUri("content://com.example.shelfplayer.autoart/$token".toUri())
+                    .build(),
+            )
+            .build()
+
+        val seriesFields = AndroidAutoDiagnostics.artworkOfferFields(AutoLibrary.TAB_SERIES, 0, item)
+        val authorsFields = AndroidAutoDiagnostics.artworkOfferFields(AutoLibrary.TAB_AUTHORS, 3, item)
+        assertEquals("series", seriesFields.public("surface"))
+        assertEquals("authors", authorsFields.public("surface"))
+        assertEquals("series", seriesFields.public("itemKind"))
+        assertEquals("0", seriesFields.public("index"))
+        assertEquals("3", authorsFields.public("index"))
+        val ref = seriesFields.filterIsInstance<LogField.Identifier>().single()
+        assertEquals("artworkRef", ref.key)
+        assertEquals(token, ref.value)
+        assertEquals(ref, authorsFields.filterIsInstance<LogField.Identifier>().single())
+        assertEquals("series-books", AndroidAutoDiagnostics.artworkSurface("series/private-id"))
+        assertEquals("author-books", AndroidAutoDiagnostics.artworkSurface("author/private-id"))
+    }
+
+    @Test
+    fun `missing and nonlocal artwork do not yield a provider correlation id`() {
+        val noArt = MediaItem.Builder().setMediaId("book/hidden").build()
+        val remote = MediaItem.Builder()
+            .setMediaId("book/hidden")
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setArtworkUri("https://private.example/cover?token=secret".toUri())
+                    .build(),
+            )
+            .build()
+        assertTrue(AndroidAutoDiagnostics.artworkOfferFields(AutoLibrary.TAB_CONTINUE, 0, noArt).isEmpty())
+        assertTrue(AndroidAutoDiagnostics.artworkOfferFields(AutoLibrary.TAB_CONTINUE, 0, remote).isEmpty())
+        assertEquals(12, AndroidAutoDiagnostics.MAX_ARTWORK_OFFER_EVENTS)
+    }
+
+    @Test
+    fun `artwork identifier is redacted consistently with the existing event logger`() {
+        val token = "a".repeat(64)
+        val field = LogField.Identifier("artworkRef", token)
+        val redactor = com.example.shelfplayer.core.common.log.DefaultRedactor(
+            com.example.shelfplayer.core.common.log.RedactionPolicy.Default,
+        )
+        val rendered = redactor.render(field)
+        assertTrue(rendered.startsWith("#"))
+        assertFalse(rendered.contains(token))
+        assertEquals(rendered, redactor.render(LogField.Identifier("artworkRef", token)))
+    }
+
     private fun List<LogField>.public(key: String): String =
         filterIsInstance<LogField.Public>().single { field -> field.key == key }.value
 }
