@@ -110,6 +110,24 @@ class CarProfileSelectionWiringTest {
         assertTrue(guard < start.indexOf("media.setMediaItem("), "the guard precedes the player write")
     }
 
+    /** AUTH-002 — the switch's restore must keep its generation into the guarded Media3 commit. */
+    @Test
+    fun `scoped courtesy restore uses guarded session acceptance rather than eager BookChanges`() {
+        val controller = controllerSource()
+        val arm = controller.substringAfter("suspend fun armForProfile(").substringBefore("private suspend fun start(")
+        val scoped = controller.substringAfter("private suspend fun startScopedArm(")
+            .substringBefore("private suspend fun start(")
+        val binding = File("../app/src/main/kotlin/com/example/shelfplayer/di/AppModule.kt").readText()
+
+        assertTrue("claim = RestoreClaim(profileId, generation)" in arm)
+        assertTrue("bookChanges.acceptBook(" in scoped)
+        assertTrue("stillAuthorized = {" in scoped)
+        assertTrue("stillCurrent(claim)" in scoped)
+        assertTrue("media.setMediaItem(" in scoped.substringAfter("install = {"))
+        assertFalse("media.play()" in scoped, "a profile switch must never start audio")
+        assertTrue("controller.armForProfile(bookId, profileId, generation)" in binding)
+    }
+
     private fun serviceSource(): String =
         File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt").readText()
 
