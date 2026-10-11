@@ -60,6 +60,22 @@ class AndroidAutoArtworkTest {
     }
 
     @Test
+    fun `revised artwork capability refreshes legacy URI but stays stable within the revision`() {
+        val context = RuntimeEnvironment.getApplication()
+        val profile = ProfileId("profile-stable")
+        val source = "https://books.example/api/items/stable-book/cover"
+
+        val first = assertNotNull(AutoArtworkRegistry.register(context, profile, listOf(source)))
+        val repeated = assertNotNull(AutoArtworkRegistry.register(context, profile, listOf("", source, source)))
+        val token = assertNotNull(first.lastPathSegment)
+
+        assertEquals(first, repeated)
+        assertEquals(artworkDigest("v2", profile.value, source), token)
+        assertNotEquals(artworkDigest(profile.value, source), token)
+        assertEquals(listOf(source), AutoArtworkRegistry.resolve(token)?.sources)
+    }
+
+    @Test
     fun `artwork event outcomes use only fixed redacted codes`() {
         assertEquals(
             listOf(
@@ -105,5 +121,15 @@ class AndroidAutoArtworkTest {
 
         assertNull(AutoArtworkRegistry.register(context, ProfileId("a"), emptyList()))
         assertNull(AutoArtworkRegistry.register(context, ProfileId("a"), listOf("")))
+    }
+
+    private fun artworkDigest(first: String, vararg others: String): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        digest.update(first.toByteArray(Charsets.UTF_8))
+        others.forEach { part ->
+            digest.update(0.toByte())
+            digest.update(part.toByteArray(Charsets.UTF_8))
+        }
+        return digest.digest().joinToString(separator = "") { byte -> "%02x".format(byte) }
     }
 }

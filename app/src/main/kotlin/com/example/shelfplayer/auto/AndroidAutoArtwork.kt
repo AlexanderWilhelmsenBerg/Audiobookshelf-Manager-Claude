@@ -78,6 +78,10 @@ internal object AutoArtworkRegistry {
 
     private fun digest(profileId: ProfileId, sources: List<String>): String {
         val digest = MessageDigest.getInstance("SHA-256")
+        // Version the URI *identity*, not the image cache. Hosts may retain prior failed loads
+        // even after a provider fix; the explicit format revision gives them a different URI.
+        digest.update(CAPABILITY_FORMAT_REVISION.toByteArray(Charsets.UTF_8))
+        digest.update(0.toByte())
         digest.update(profileId.value.toByteArray(Charsets.UTF_8))
         sources.forEach { source ->
             digest.update(0.toByte())
@@ -87,5 +91,9 @@ internal object AutoArtworkRegistry {
     }
 
     const val AUTHORITY_SUFFIX = "autoart"
+
+    // Bump only when the host must re-request artwork after a change in delivery semantics.
+    // Stable per profile and sources within a revision, including A → B → A.
+    private const val CAPABILITY_FORMAT_REVISION = "v2"
     private const val SHA256_HEX_LENGTH = 64
 }
