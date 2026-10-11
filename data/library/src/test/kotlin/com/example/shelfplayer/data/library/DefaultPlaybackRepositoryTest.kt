@@ -294,19 +294,19 @@ class DefaultPlaybackRepositoryTest {
     }
 
     private fun openedAtStart(owner: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession> = AppResult.Success(
-            PlaybackSession(
-                id = "race-reproduction-session",
-                profileId = owner,
-                bookId = bookId,
-                title = "Test audiobook",
-                author = null,
-                coverUrl = null,
-                startAt = Duration.ZERO,
-                duration = 2.hours,
-                tracks = emptyList(),
-                chapters = emptyList(),
-            ),
-        )
+        PlaybackSession(
+            id = "race-reproduction-session",
+            profileId = owner,
+            bookId = bookId,
+            title = "Test audiobook",
+            author = null,
+            coverUrl = null,
+            startAt = Duration.ZERO,
+            duration = 2.hours,
+            tracks = emptyList(),
+            chapters = emptyList(),
+        ),
+    )
 
     /**
      * A duration the player does not know yet must not erase the one the library stored.
