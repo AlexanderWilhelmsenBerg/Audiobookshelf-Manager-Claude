@@ -10,6 +10,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /** #250: a car must be able to load profile-B artwork even when only profile-A covers were cached. */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AutoArtworkFetchPolicyTest {
 
     @Test
