@@ -203,7 +203,9 @@ class RestoreProfilePlaybackUseCaseTest {
         assertTrue(player.played.isEmpty())
     }
 
-    private fun gatedRememberedBook(id: LibraryItemId): Triple<CompletableDeferred<Unit>, CompletableDeferred<Unit>, RememberedBookRepository> {
+    private fun gatedRememberedBook(
+        id: LibraryItemId,
+    ): Triple<CompletableDeferred<Unit>, CompletableDeferred<Unit>, RememberedBookRepository> {
         val reached = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val remembered = object : RememberedBookRepository by FakeRememberedBooks(id) {
