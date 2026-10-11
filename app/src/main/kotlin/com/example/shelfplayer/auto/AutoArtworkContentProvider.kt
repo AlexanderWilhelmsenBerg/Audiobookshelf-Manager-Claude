@@ -158,7 +158,12 @@ class AutoArtworkContentProvider : ContentProvider() {
         val temporary = File.createTempFile("auto-art-", ".tmp", target.parentFile)
         try {
             FileOutputStream(temporary).use { output ->
-                if (!loaded.value.toBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, PNG_QUALITY, output)) {
+                if (!loaded.value.toBitmap().compress(
+                        android.graphics.Bitmap.CompressFormat.PNG,
+                        PNG_QUALITY,
+                        output,
+                    )
+                ) {
                     throw FileNotFoundException("Artwork could not be transcoded")
                 }
             }

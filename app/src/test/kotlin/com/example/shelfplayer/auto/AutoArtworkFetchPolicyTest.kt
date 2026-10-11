@@ -72,7 +72,9 @@ class AutoArtworkFetchPolicyTest {
         var peak = 0
         val first = async {
             policy.load(listOf("a")) { _, mode ->
-                if (mode == CachePolicy.DISABLED) null else {
+                if (mode == CachePolicy.DISABLED) {
+                    null
+                } else {
                     active++
                     peak = maxOf(peak, active)
                     gate.await()
@@ -83,7 +85,9 @@ class AutoArtworkFetchPolicyTest {
         }
         val second = async {
             policy.load(listOf("b")) { _, mode ->
-                if (mode == CachePolicy.DISABLED) null else {
+                if (mode == CachePolicy.DISABLED) {
+                    null
+                } else {
                     active++
                     peak = maxOf(peak, active)
                     "b"
@@ -104,14 +108,23 @@ class AutoArtworkFetchPolicyTest {
     fun `network timeout frees the slot and falls back to host placeholder`() = runTest {
         val policy = AutoArtworkFetchPolicy(maxConcurrentFetches = 1, fetchMillis = 50)
         val loaded = policy.load(listOf("slow")) { _, mode ->
-            if (mode == CachePolicy.DISABLED) null else {
+            if (mode == CachePolicy.DISABLED) {
+                null
+            } else {
                 kotlinx.coroutines.delay(1_000)
                 "late"
             }
         }
         assertNull(loaded)
-        assertEquals("ok", policy.load(listOf("cached")) { _, mode ->
-            if (mode == CachePolicy.DISABLED) "ok" else null
-        }?.value)
+        assertEquals(
+            "ok",
+            policy.load(listOf("cached")) { _, mode ->
+                if (mode == CachePolicy.DISABLED) {
+                    "ok"
+                } else {
+                    null
+                }
+            }?.value,
+        )
     }
 }
