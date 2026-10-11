@@ -97,7 +97,7 @@ class DefaultPlaybackRepository @Inject constructor(
 
         val opened = gateway.playback.openSession(profileId, bookId)
         if (opened is AppResult.Success) {
-            clearFinishedIfRestarting(bookId, opened.value.startAt)
+            clearFinishedIfRestarting(profileId, bookId, opened.value.startAt)
             return AppResult.Success(downloads.sessions.localise(opened.value, manifest))
         }
 
@@ -144,14 +144,15 @@ class DefaultPlaybackRepository @Inject constructor(
      * not happen is a book refusing to start because a flag could not be cleared (product priority 1). The
      * user can still un-finish it explicitly, which is the path that reports its errors.
      */
-    private suspend fun clearFinishedIfRestarting(bookId: LibraryItemId, startAt: Duration) {
-        if (startAt > RESTART_WITHIN) return
-        val profileId = profileRepository.activeProfileId() ?: return
+    private suspend fun clearFinishedIfRestarting(profileId: ProfileId, bookId: LibraryItemId, startAt: Duration) {
+        if (startAt > RESTART_WITHIN || !isStillActive(profileId)) return
         val profile = profileDao.findProfile(profileId.value) ?: return
         val stored = progressDao.findProgress(profileId.value, EntityKey.of(profile.serverId, bookId.value))
         if (stored?.isFinished != true) return
         logger.info(LogCategory.Playback, "A finished book was restarted, so it is unfinished again")
-        setFinished(bookId, isFinished = false, position = startAt)
+        // The session started under profileId. Never re-resolve "active" after a suspended /play:
+        // that could apply A's restart to B if the user switched accounts during the request.
+        setFinishedFor(profileId, bookId, isFinished = false, position = startAt)
     }
 
     /**
@@ -297,36 +298,46 @@ class DefaultPlaybackRepository @Inject constructor(
         withContext(ioDispatcher) {
             val profileId = profileRepository.activeProfileId()
                 ?: return@withContext AppResult.Failure(AppError.Authentication())
-            val profile = profileDao.findProfile(profileId.value)
-                ?: return@withContext AppResult.Failure(AppError.Authentication())
-            val bookKey = EntityKey.of(profile.serverId, bookId.value)
-            val stored = progressDao.findProgress(profileId.value, bookKey)
-            val duration = stored?.durationMillis?.milliseconds ?: Duration.ZERO
-            // Finished means the end of the book, when the book's length is known. A book whose duration the
-            // app has never seen keeps the position it had rather than being sent to zero.
-            val at = if (isFinished && duration > Duration.ZERO) duration else position.coerceAtLeast(Duration.ZERO)
-            progressDao.upsertProgress(
-                listOf(
-                    MediaProgressEntity(
-                        progressKey = EntityKey.scoped(profileId.value, bookKey),
-                        profileId = profileId.value,
-                        bookKey = bookKey,
-                        serverId = profile.serverId,
-                        positionMillis = at.inWholeMilliseconds,
-                        durationMillis = duration.inWholeMilliseconds,
-                        isFinished = isFinished,
-                        updatedAt = clock.now().toEpochMilli(),
-                        hasUnsyncedChanges = true,
-                    ),
-                ),
-            )
-            logger.info(
-                LogCategory.Playback,
-                "A book's finished flag was set by the user",
-                LogField.Public("isFinished", isFinished),
-            )
-            gateway.playback.setFinished(profileId, bookId, isFinished, at)
+            setFinishedFor(profileId, bookId, isFinished, position)
         }
+
+    /** Writes the flag using the session's captured owner, not a possibly newer active-profile selection. */
+    private suspend fun setFinishedFor(
+        profileId: ProfileId,
+        bookId: LibraryItemId,
+        isFinished: Boolean,
+        position: Duration,
+    ): AppResult<Unit> = withContext(ioDispatcher) {
+        val profile = profileDao.findProfile(profileId.value)
+            ?: return@withContext AppResult.Failure(AppError.Authentication())
+        val bookKey = EntityKey.of(profile.serverId, bookId.value)
+        val stored = progressDao.findProgress(profileId.value, bookKey)
+        val duration = stored?.durationMillis?.milliseconds ?: Duration.ZERO
+        // Finished means the end of the book, when the book's length is known. A book whose duration the
+        // app has never seen keeps the position it had rather than being sent to zero.
+        val at = if (isFinished && duration > Duration.ZERO) duration else position.coerceAtLeast(Duration.ZERO)
+        progressDao.upsertProgress(
+            listOf(
+                MediaProgressEntity(
+                    progressKey = EntityKey.scoped(profileId.value, bookKey),
+                    profileId = profileId.value,
+                    bookKey = bookKey,
+                    serverId = profile.serverId,
+                    positionMillis = at.inWholeMilliseconds,
+                    durationMillis = duration.inWholeMilliseconds,
+                    isFinished = isFinished,
+                    updatedAt = clock.now().toEpochMilli(),
+                    hasUnsyncedChanges = true,
+                ),
+            ),
+        )
+        logger.info(
+            LogCategory.Playback,
+            "A book's finished flag was set by the user",
+            LogField.Public("isFinished", isFinished),
+        )
+        gateway.playback.setFinished(profileId, bookId, isFinished, at)
+    }
 
     /**
      * PRODUCT_SPEC SYNC-002 — whether another device has moved this book since we last agreed with the
