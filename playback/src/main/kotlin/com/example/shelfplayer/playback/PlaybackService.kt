@@ -2682,7 +2682,11 @@ class PlaybackService : MediaLibraryService() {
                     returned.take(AndroidAutoDiagnostics.MAX_ARTWORK_OFFER_EVENTS).forEachIndexed { index, item ->
                         val fields = AndroidAutoDiagnostics.artworkOfferFields(parentId, from + index, item)
                         if (fields.isNotEmpty()) {
-                            logger.info(LogCategory.Playback, "Android Auto artwork card offered", *fields.toTypedArray())
+                            logger.info(
+                                LogCategory.Playback,
+                                "Android Auto artwork card offered",
+                                *fields.toTypedArray(),
+                            )
                         }
                     }
                 }

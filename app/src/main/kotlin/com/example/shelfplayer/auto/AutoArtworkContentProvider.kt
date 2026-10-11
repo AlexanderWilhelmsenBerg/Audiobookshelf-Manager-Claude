@@ -53,7 +53,12 @@ class AutoArtworkContentProvider : ContentProvider() {
         val token = uri.lastPathSegment?.takeIf(AutoArtworkRegistry::isToken)
             ?: refuse(logger, AutoArtworkReadOutcome.InvalidCapability, "Invalid artwork capability", artworkRef)
         val entry = AutoArtworkRegistry.resolve(token)
-            ?: refuse(logger, AutoArtworkReadOutcome.ExpiredCapability, "Artwork capability is no longer active", artworkRef)
+            ?: refuse(
+                logger,
+                AutoArtworkReadOutcome.ExpiredCapability,
+                "Artwork capability is no longer active",
+                artworkRef,
+            )
 
         val active = runBlocking(graph.ioDispatcher()) { graph.profiles().activeProfileId() }
         if (active != entry.profileId) {
