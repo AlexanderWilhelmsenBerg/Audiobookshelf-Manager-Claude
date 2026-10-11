@@ -222,14 +222,13 @@ class RestoreProfilePlaybackUseCaseTest {
         library: FakeLibraryRepository,
         rememberedId: LibraryItemId? = null,
         rememberedBooks: RememberedBookRepository = FakeRememberedBooks(rememberedId),
-    ) =
-        RestoreProfilePlaybackUseCase(
-            library = library,
-            rememberedBooks = rememberedBooks,
-            profileRepository = profiles,
-            player = player,
-            logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
-        )
+    ) = RestoreProfilePlaybackUseCase(
+        library = library,
+        rememberedBooks = rememberedBooks,
+        profileRepository = profiles,
+        player = player,
+        logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
+    )
 
     private fun playedBook(id: String, at: String, finished: Boolean = false): Book {
         val base = book(id)
