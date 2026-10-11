@@ -293,8 +293,7 @@ class DefaultPlaybackRepositoryTest {
         assertFalse(storedProgress().isFinished, "restart from 0:00 must clear the owner's finished flag")
     }
 
-    private fun openedAtStart(owner: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession> =
-        AppResult.Success(
+    private fun openedAtStart(owner: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession> = AppResult.Success(
             PlaybackSession(
                 id = "race-reproduction-session",
                 profileId = owner,
@@ -830,10 +829,7 @@ class DefaultPlaybackRepositoryTest {
 
         override val playback: PlaybackApi get() = this
 
-        override suspend fun openSession(
-            profileId: ProfileId,
-            bookId: LibraryItemId,
-        ): AppResult<PlaybackSession> =
+        override suspend fun openSession(profileId: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession> =
             openSessionOverride?.invoke(profileId, bookId) ?: delegate.playback.openSession(profileId, bookId)
 
         override suspend fun serverProgress(profileId: ProfileId, bookId: LibraryItemId): AppResult<ServerProgress> {
