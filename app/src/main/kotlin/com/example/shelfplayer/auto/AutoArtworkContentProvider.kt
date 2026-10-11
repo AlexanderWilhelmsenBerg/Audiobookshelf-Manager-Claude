@@ -123,13 +123,6 @@ class AutoArtworkContentProvider : ContentProvider() {
                 LogField.Public("fetchMode", fetched?.code ?: "existing-file"),
             )
             return descriptor
-        } catch (failure: FileNotFoundException) {
-            logger.warn(
-                LogCategory.Playback,
-                "Android Auto artwork failed",
-                LogField.Public("outcome", AutoArtworkReadOutcome.ReadFailed.code),
-            )
-            throw failure
         } catch (failure: java.io.IOException) {
             logger.warn(
                 LogCategory.Playback,
