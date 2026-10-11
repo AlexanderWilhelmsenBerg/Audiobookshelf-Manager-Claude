@@ -16,9 +16,9 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
-import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.auth.AccountProgress
+import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.AcknowledgedPause
 import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
@@ -242,7 +242,6 @@ class DefaultPlaybackRepositoryTest {
         assertTrue(stored.isFinished, "still finished")
         assertEquals(1.hours.inWholeMilliseconds, stored.positionMillis, "and the position still moved")
     }
-
 
     /**
      * #257 Phase 2 characterization: a successful /play response belongs to the account that initiated it.
