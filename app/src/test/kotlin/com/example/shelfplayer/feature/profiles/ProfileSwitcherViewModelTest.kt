@@ -104,6 +104,7 @@ class ProfileSwitcherViewModelTest {
             library = libraries,
             rememberedBooks = rememberedBooks,
             player = startupPlayer,
+            profileRepository = profiles,
             logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
         ),
         auth,

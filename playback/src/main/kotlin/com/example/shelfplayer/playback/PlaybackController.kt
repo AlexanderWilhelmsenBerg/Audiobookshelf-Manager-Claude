@@ -25,6 +25,7 @@ import com.example.shelfplayer.domain.playback.GlobalTimeline
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
+import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.OpenPlaybackSessionUseCase
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -67,6 +68,7 @@ class PlaybackController @Inject constructor(
     private val liveSession: LivePlaybackSession,
     private val playbackRepository: PlaybackRepository,
     private val openPlaybackSession: OpenPlaybackSessionUseCase,
+    private val profileRepository: ProfileRepository,
     private val bookChanges: BookChanges,
     private val playbackSettings: PlaybackSettingsRepository,
     private val history: PlaybackHistoryRepository,
@@ -159,7 +161,22 @@ class PlaybackController @Inject constructor(
      */
     suspend fun arm(bookId: LibraryItemId): AppResult<Unit> = open(bookId, startPlaying = false)
 
-    private suspend fun open(bookId: LibraryItemId, startPlaying: Boolean): AppResult<Unit> {
+    /** AUTH-002 — the profile switch's courtesy arm; the claim survives the async /play request. */
+    suspend fun armForProfile(bookId: LibraryItemId, profileId: ProfileId, generation: Long): AppResult<Unit> =
+        open(bookId, startPlaying = false, claim = RestoreClaim(profileId, generation))
+
+    private data class RestoreClaim(val profileId: ProfileId, val generation: Long)
+
+    private suspend fun stillCurrent(claim: RestoreClaim): Boolean =
+        profileRepository.activeProfileId() == claim.profileId &&
+            profileRepository.activeProfileGeneration() == claim.generation
+
+    private suspend fun open(
+        bookId: LibraryItemId,
+        startPlaying: Boolean,
+        claim: RestoreClaim? = null,
+    ): AppResult<Unit> {
+        if (claim != null && !stillCurrent(claim)) return AppResult.Success(Unit)
         _state.value = _state.value.copy(isLoading = true)
         return when (val opened = openPlaybackSession(bookId)) {
             is AppResult.Failure -> {
@@ -167,9 +184,47 @@ class PlaybackController @Inject constructor(
                 opened
             }
 
-            is AppResult.Success -> start(opened.value, startPlaying)
+            is AppResult.Success -> {
+                if (claim == null) start(opened.value, startPlaying) else startScopedArm(opened.value, claim)
+            }
         }
     }
+
+    /**
+     * AUTH-002 / R-115 — suspended courtesy work cannot make live claims until the account and
+     * generation are current at the final Main-thread commit. Reuse the existing SessionSync owner.
+     */
+    private suspend fun startScopedArm(session: PlaybackSession, claim: RestoreClaim): AppResult<Unit> =
+        withContext(mainDispatcher) {
+            if (session.profileId != claim.profileId || !stillCurrent(claim)) {
+                _state.value = _state.value.copy(isLoading = false)
+                return@withContext AppResult.Success(Unit)
+            }
+            val media = connect() ?: return@withContext AppResult.Failure(
+                AppError.Playback(summary = "The player could not be started.", isRetryable = true),
+            )
+            if (media.currentMediaItem.isRealBook() || !stillCurrent(claim)) {
+                _state.value = _state.value.copy(isLoading = false)
+                return@withContext AppResult.Success(Unit)
+            }
+            val speed = playbackSettings.speedFor(session.bookId).value
+            val queue = MediaItems.queueFor(session)
+            bookChanges.acceptBook(
+                session = session,
+                stillAuthorized = {
+                    controller === media && !media.currentMediaItem.isRealBook() && stillCurrent(claim)
+                },
+                install = {
+                    chapters = session.chapters
+                    lastChapter = null
+                    media.setMediaItem(queue.item, queue.startPositionMs)
+                    media.setPlaybackSpeed(speed)
+                    media.prepare()
+                },
+            )
+            _state.value = _state.value.copy(isLoading = false)
+            AppResult.Success(Unit)
+        }
 
     /**
      * Opens [session] in the player.
