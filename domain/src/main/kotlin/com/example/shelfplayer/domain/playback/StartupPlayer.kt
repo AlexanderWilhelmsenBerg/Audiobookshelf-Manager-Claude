@@ -21,6 +21,7 @@ interface StartupPlayer {
      * No-op/legacy test implementations delegate to arm; the production binding overrides this
      * to check the claim at the final guarded Media3 acceptance boundary.
      */
+    @Suppress("UNUSED_PARAMETER")
     suspend fun armForProfile(bookId: LibraryItemId, profileId: ProfileId, generation: Long) {
         arm(bookId)
     }

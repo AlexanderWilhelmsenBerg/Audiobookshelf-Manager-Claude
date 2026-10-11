@@ -168,6 +168,18 @@ class RestoreProfilePlaybackUseCaseTest {
         assertEquals(listOf(OTHER), library.accessibleBooksRequestedFor)
     }
 
+    /** A valid restore must pass its captured generation through to the eventual Media3 owner. */
+    @Test
+    fun `valid courtesy arm carries the original selection token`() = runTest {
+        profiles.setActiveProfile(OTHER)
+        profiles.setActiveProfile(TEST_PROFILE)
+        val rememberedId = LibraryItemId("remembered")
+        useCase(FakeLibraryRepository(listOf(book("remembered"))), rememberedId = rememberedId)(TEST_PROFILE)
+
+        assertEquals(listOf(Triple(rememberedId, TEST_PROFILE, 2L)), player.scoped)
+        assertTrue(player.played.isEmpty())
+    }
+
     /**
      * AUTH-002: finishing B's delayed remembered-book read after switching to C must not arm B.
      * Deferred gates make the profile boundary deterministic rather than relying on a delay.
@@ -281,6 +293,12 @@ class RestoreProfilePlaybackUseCaseTest {
     private class RecordingStartupPlayer : StartupPlayer {
         val armed = mutableListOf<LibraryItemId>()
         val played = mutableListOf<LibraryItemId>()
+        val scoped = mutableListOf<Triple<LibraryItemId, ProfileId, Long>>()
+
+        override suspend fun armForProfile(bookId: LibraryItemId, profileId: ProfileId, generation: Long) {
+            scoped += Triple(bookId, profileId, generation)
+            arm(bookId)
+        }
 
         override suspend fun arm(bookId: LibraryItemId) {
             armed += bookId

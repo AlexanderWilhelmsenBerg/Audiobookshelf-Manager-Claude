@@ -123,6 +123,7 @@ class CarProfileSelectionWiringTest {
         assertTrue("bookChanges.acceptBook(" in scoped)
         assertTrue("stillAuthorized = {" in scoped)
         assertTrue("stillCurrent(claim)" in scoped)
+        assertTrue("profileRepository.activeProfileGeneration() == claim.generation" in controller)
         assertTrue("media.setMediaItem(" in scoped.substringAfter("install = {"))
         assertFalse("media.play()" in scoped, "a profile switch must never start audio")
         assertTrue("controller.armForProfile(bookId, profileId, generation)" in binding)
