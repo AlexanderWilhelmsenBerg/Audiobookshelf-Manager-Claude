@@ -77,6 +77,18 @@ class AndroidAutoArtworkTest {
     }
 
     @Test
+    fun `all provider stages carry the same redacted artwork request identifier`() {
+        val source = java.io.File("src/main/kotlin/com/example/shelfplayer/auto/AutoArtworkContentProvider.kt")
+            .readText()
+        assertTrue("LogField.Identifier(\"artworkRef\", uri.lastPathSegment.orEmpty())" in source)
+        assertTrue("Android Auto artwork requested\", artworkRef" in source)
+        assertTrue("Android Auto artwork refused" in source)
+        assertTrue("Android Auto artwork served" in source)
+        assertTrue("Android Auto artwork failed" in source)
+        assertFalse("LogField.Public(\"artworkRef\"" in source)
+    }
+
+    @Test
     fun `provider emits requests and classified outcomes without URI or cache paths`() {
         val providerSource =
             java.io.File("src/main/kotlin/com/example/shelfplayer/auto/AutoArtworkContentProvider.kt").readText()

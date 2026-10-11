@@ -2676,6 +2676,23 @@ class PlaybackService : MediaLibraryService() {
                         returned.count { item -> item.mediaMetadata.artworkUri?.scheme == "content" },
                     ),
                 )
+                // Only sample the first grid cards the car is likely to display, not whole libraries.
+                // A matching artworkRef in the content-provider log proves that the host requested that card.
+                if (trace != null) {
+                    returned.take(AndroidAutoDiagnostics.MAX_ARTWORK_OFFER_EVENTS).forEachIndexed { index, item ->
+                        val fields = AndroidAutoDiagnostics.artworkOfferFields(parentId, from + index, item)
+                        if (fields.isNotEmpty()) {
+                            logger.log(
+                                LogEvent(
+                                    LogLevel.Info,
+                                    LogCategory.Playback,
+                                    "Android Auto artwork card offered",
+                                    fields,
+                                ),
+                            )
+                        }
+                    }
+                }
                 traceChildrenResult(
                     trace = trace,
                     context = ChildrenTraceContext(
