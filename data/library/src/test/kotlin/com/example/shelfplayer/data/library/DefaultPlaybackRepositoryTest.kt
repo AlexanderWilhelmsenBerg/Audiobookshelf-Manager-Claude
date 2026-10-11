@@ -16,6 +16,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.auth.AccountProgress
 import com.example.shelfplayer.core.model.playback.AcknowledgedPause
@@ -30,7 +31,10 @@ import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
 import com.example.shelfplayer.domain.download.SmartDownload
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -238,6 +242,73 @@ class DefaultPlaybackRepositoryTest {
         assertTrue(stored.isFinished, "still finished")
         assertEquals(1.hours.inWholeMilliseconds, stored.positionMillis, "and the position still moved")
     }
+
+
+    /**
+     * #257 Phase 2 characterization: a successful /play response belongs to the account that initiated it.
+     * Holding the network response gives A→B a deterministic ordering without sleeps or thread timing.
+     * BookWave must not un-finish B's copy of this same book because an old A request completed.
+     */
+    @Test
+    fun `a delayed A session never unfinishes B after a profile switch`() = runTest {
+        seedProfile(OTHER_PROFILE)
+        assertIs<AppResult.Success<Unit>>(
+            repository.recordPosition(BOOK, position = 2.hours, duration = 2.hours, owner = OTHER_PROFILE),
+        )
+        val key = EntityKey.of(SERVER, BOOK.value)
+        val before = requireNotNull(database.progressDao().findProgress(OTHER_PROFILE.value, key))
+        assertTrue(before.isFinished, "B must begin with a finished book")
+
+        val reachedGateway = CompletableDeferred<Unit>()
+        val completeGateway = CompletableDeferred<Unit>()
+        serverProgress.openSessionOverride = { requestedProfile, requestedBook ->
+            assertEquals(profileId, requestedProfile, "the network session must have A's credentials")
+            reachedGateway.complete(Unit)
+            completeGateway.await()
+            openedAtStart(requestedProfile, requestedBook)
+        }
+
+        val opening = async(start = CoroutineStart.UNDISPATCHED) { repository.openSession(BOOK) }
+        reachedGateway.await()
+        profiles.setActiveProfile(OTHER_PROFILE)
+        completeGateway.complete(Unit)
+
+        val result = assertIs<AppResult.Success<PlaybackSession>>(opening.await())
+        assertEquals(profileId, result.value.profileId, "the response still belongs to outgoing A")
+        val after = database.progressDao().findProgress(OTHER_PROFILE.value, key)
+        assertEquals(before, after, "a late A session must never modify B's finished flag or position")
+    }
+
+    /** The protection above must not disable intentional same-profile restart/un-finish behavior. */
+    @Test
+    fun `restarting a finished book in its owning profile still unfinishes it`() = runTest {
+        assertIs<AppResult.Success<Unit>>(
+            repository.recordPosition(BOOK, position = 2.hours, duration = 2.hours, owner = profileId),
+        )
+        assertTrue(storedProgress().isFinished)
+        serverProgress.openSessionOverride = { owner, book -> openedAtStart(owner, book) }
+
+        val result = assertIs<AppResult.Success<PlaybackSession>>(repository.openSession(BOOK))
+
+        assertEquals(profileId, result.value.profileId)
+        assertFalse(storedProgress().isFinished, "restart from 0:00 must clear the owner's finished flag")
+    }
+
+    private fun openedAtStart(owner: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession> =
+        AppResult.Success(
+            PlaybackSession(
+                id = "race-reproduction-session",
+                profileId = owner,
+                bookId = bookId,
+                title = "Test audiobook",
+                author = null,
+                coverUrl = null,
+                startAt = Duration.ZERO,
+                duration = 2.hours,
+                tracks = emptyList(),
+                chapters = emptyList(),
+            ),
+        )
 
     /**
      * A duration the player does not know yet must not erase the one the library stored.
@@ -756,8 +827,15 @@ class DefaultPlaybackRepositoryTest {
         var answer: AppResult<ServerProgress> = AppResult.Failure(AppError.Network(summary = "not scripted"))
         var requests: Int = 0
             private set
+        var openSessionOverride: (suspend (ProfileId, LibraryItemId) -> AppResult<PlaybackSession>)? = null
 
         override val playback: PlaybackApi get() = this
+
+        override suspend fun openSession(
+            profileId: ProfileId,
+            bookId: LibraryItemId,
+        ): AppResult<PlaybackSession> =
+            openSessionOverride?.invoke(profileId, bookId) ?: delegate.playback.openSession(profileId, bookId)
 
         override suspend fun serverProgress(profileId: ProfileId, bookId: LibraryItemId): AppResult<ServerProgress> {
             requests += 1
