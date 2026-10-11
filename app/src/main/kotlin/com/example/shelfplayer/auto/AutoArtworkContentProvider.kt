@@ -60,17 +60,29 @@ class AutoArtworkContentProvider : ContentProvider() {
         val directory = File(appContext.cacheDir, CACHE_DIRECTORY).apply { mkdirs() }
         val target = File(directory, "$token.png")
         val alreadyMaterialized = target.isFile && target.length() > 0L
-        try {
-            val fetched = if (!alreadyMaterialized) {
+        val fetched = try {
+            if (!alreadyMaterialized) {
                 materialize(graph.imageLoader(), graph.ioDispatcher(), appContext, entry.sources, target)
             } else {
                 null
             }
-            // A profile can switch while Coil is fetching; do not serve the old profile's bytes afterward.
-            val profileAfterLoad = runBlocking(graph.ioDispatcher()) { graph.profiles().activeProfileId() }
-            if (profileAfterLoad != entry.profileId) {
-                refuse(logger, AutoArtworkReadOutcome.ProfileMismatch, "Artwork profile changed while loading")
-            }
+        } catch (failure: FileNotFoundException) {
+            // A cache or source failure must not expose private paths or URLs in the Event Log.
+            logger.warn(
+                LogCategory.Playback,
+                "Android Auto artwork failed",
+                LogField.Public("outcome", AutoArtworkReadOutcome.CacheUnavailable.code),
+            )
+            throw failure
+        }
+
+        // Refusal must be outside the cache-failure handler: profile changes are authorization events.
+        val profileAfterLoad = runBlocking(graph.ioDispatcher()) { graph.profiles().activeProfileId() }
+        if (profileAfterLoad != entry.profileId) {
+            refuse(logger, AutoArtworkReadOutcome.ProfileMismatch, "Artwork profile changed while loading")
+        }
+
+        try {
             val descriptor = ParcelFileDescriptor.open(target, ParcelFileDescriptor.MODE_READ_ONLY)
             logger.info(
                 LogCategory.Playback,
@@ -87,11 +99,10 @@ class AutoArtworkContentProvider : ContentProvider() {
             )
             return descriptor
         } catch (failure: FileNotFoundException) {
-            // Do not log the exception message: a provider/cache failure may include a private path or URL.
             logger.warn(
                 LogCategory.Playback,
                 "Android Auto artwork failed",
-                LogField.Public("outcome", AutoArtworkReadOutcome.CacheUnavailable.code),
+                LogField.Public("outcome", AutoArtworkReadOutcome.ReadFailed.code),
             )
             throw failure
         } catch (failure: java.io.IOException) {
@@ -143,7 +154,8 @@ class AutoArtworkContentProvider : ContentProvider() {
             }
         } ?: throw FileNotFoundException("Artwork is not cached or reachable")
 
-        val temporary = File(target.parentFile, "${target.name}.tmp")
+        // Distinct temporary files prevent concurrent host thumbnail requests from clobbering each other.
+        val temporary = File.createTempFile("auto-art-", ".tmp", target.parentFile)
         try {
             FileOutputStream(temporary).use { output ->
                 if (!loaded.value.toBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, PNG_QUALITY, output)) {
