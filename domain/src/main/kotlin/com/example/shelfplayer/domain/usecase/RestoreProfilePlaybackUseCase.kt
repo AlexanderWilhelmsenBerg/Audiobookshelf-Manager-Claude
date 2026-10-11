@@ -42,6 +42,7 @@ class RestoreProfilePlaybackUseCase @Inject constructor(
     private val library: LibraryRepository,
     private val rememberedBooks: RememberedBookRepository,
     private val player: StartupPlayer,
+    private val profileRepository: com.example.shelfplayer.domain.repository.ProfileRepository,
     private val logger: Logger,
 ) {
 

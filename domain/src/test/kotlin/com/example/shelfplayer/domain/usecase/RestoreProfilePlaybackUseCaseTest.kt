@@ -10,11 +10,16 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.domain.FakeLibraryRepository
+import com.example.shelfplayer.domain.FakeProfileRepository
 import com.example.shelfplayer.domain.TEST_PROFILE
 import com.example.shelfplayer.domain.TEST_SERVER
 import com.example.shelfplayer.domain.book
 import com.example.shelfplayer.domain.playback.StartupPlayer
+import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.repository.RememberedBookRepository
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -40,6 +45,7 @@ import kotlin.time.Duration.Companion.minutes
 class RestoreProfilePlaybackUseCaseTest {
 
     private val player = RecordingStartupPlayer()
+    private val profiles = GenerationProfiles()
 
     @Test
     fun `remote progress recency does not replace the locally remembered book`() = runTest {
@@ -161,10 +167,64 @@ class RestoreProfilePlaybackUseCaseTest {
         assertEquals(listOf(OTHER), library.accessibleBooksRequestedFor)
     }
 
-    private fun useCase(library: FakeLibraryRepository, rememberedId: LibraryItemId? = null) =
+    /**
+     * AUTH-002: finishing B's delayed remembered-book read after switching to C must not arm B.
+     * Deferred gates make the profile boundary deterministic rather than relying on a delay.
+     */
+    @Test
+    fun `late remembered lookup cannot arm the departed profile`() = runTest {
+        val (reached, release, remembered) = gatedRememberedBook(LibraryItemId("remembered"))
+        val restore = async(start = CoroutineStart.UNDISPATCHED) {
+            useCase(FakeLibraryRepository(listOf(book("remembered"))), rememberedBooks = remembered)(TEST_PROFILE)
+        }
+        reached.await()
+        profiles.setActiveProfile(OTHER)
+        release.complete(Unit)
+        restore.await()
+
+        assertTrue(player.armed.isEmpty(), "an outgoing lookup must never arm C's playback")
+        assertTrue(player.played.isEmpty(), "profile restoration must not play")
+    }
+
+    /** AUTH-002: a conflated A→B→A active-profile identity is not proof the old generation is valid. */
+    @Test
+    fun `switching away and back rejects an older restoration generation`() = runTest {
+        val (reached, release, remembered) = gatedRememberedBook(LibraryItemId("remembered"))
+        val restore = async(start = CoroutineStart.UNDISPATCHED) {
+            useCase(FakeLibraryRepository(listOf(book("remembered"))), rememberedBooks = remembered)(TEST_PROFILE)
+        }
+        reached.await()
+        profiles.setActiveProfile(OTHER)
+        profiles.setActiveProfile(TEST_PROFILE)
+        release.complete(Unit)
+        restore.await()
+
+        assertTrue(player.armed.isEmpty(), "an earlier generation must not publish after A-B-A")
+        assertTrue(player.played.isEmpty())
+    }
+
+    private fun gatedRememberedBook(id: LibraryItemId): Triple<CompletableDeferred<Unit>, CompletableDeferred<Unit>, RememberedBookRepository> {
+        val reached = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val remembered = object : RememberedBookRepository by FakeRememberedBooks(id) {
+            override suspend fun rememberedBook(profileId: ProfileId): LibraryItemId? {
+                reached.complete(Unit)
+                release.await()
+                return id
+            }
+        }
+        return Triple(reached, release, remembered)
+    }
+
+    private fun useCase(
+        library: FakeLibraryRepository,
+        rememberedId: LibraryItemId? = null,
+        rememberedBooks: RememberedBookRepository = FakeRememberedBooks(rememberedId),
+    ) =
         RestoreProfilePlaybackUseCase(
             library = library,
-            rememberedBooks = FakeRememberedBooks(rememberedId),
+            rememberedBooks = rememberedBooks,
+            profileRepository = profiles,
             player = player,
             logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
         )
@@ -194,6 +254,26 @@ class RestoreProfilePlaybackUseCaseTest {
             AppResult.Success(Unit)
 
         override suspend fun forget(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
+    }
+
+    private class GenerationProfiles : ProfileRepository {
+        private val delegate = FakeProfileRepository()
+        private var generation = 0L
+
+        override fun observeProfiles() = delegate.observeProfiles()
+
+        override fun observeServers() = delegate.observeServers()
+
+        override fun observeActiveProfile() = delegate.observeActiveProfile()
+
+        override suspend fun activeProfileId(): ProfileId? = delegate.activeProfileId()
+
+        override fun activeProfileGeneration(): Long = generation
+
+        override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> {
+            val old = delegate.activeProfileId()
+            return delegate.setActiveProfile(profileId).also { if (old != profileId) generation++ }
+        }
     }
 
     private class RecordingStartupPlayer : StartupPlayer {
