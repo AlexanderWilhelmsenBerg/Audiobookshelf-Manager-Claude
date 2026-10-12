@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration
 
 /** One rendered log line, with the moment it was written. */
 data class LoggedEvent(val at: Instant, val level: LogLevel, val tag: String, val line: String) {
@@ -51,7 +52,7 @@ class EventLog @Inject constructor(private val clock: AppClock) : LogSink {
     private val _raceCapture = MutableStateFlow(RaceCaptureState())
     private var captureActive = false
     private var captureSequence = 0L
-    private var captureStartedNanos = 0L
+    private var captureStartedAt = Duration.ZERO
 
     /** Start with a two-minute pre-roll from the same already-redacted event sink. */
     val raceCapture: StateFlow<RaceCaptureState> = _raceCapture.asStateFlow()
@@ -60,7 +61,7 @@ class EventLog @Inject constructor(private val clock: AppClock) : LogSink {
         synchronized(lock) {
             captureLines.clear()
             captureSequence = 0L
-            captureStartedNanos = System.nanoTime()
+            captureStartedAt = clock.elapsed()
             val cutoff = clock.now().minusSeconds(PRE_EVENT_SECONDS)
             ring.filter { !it.at.isBefore(cutoff) }.forEach { entry ->
                 appendCaptureLine("PRE ${entry.at} ${entry.tag} ${entry.line}")
@@ -103,7 +104,7 @@ class EventLog @Inject constructor(private val clock: AppClock) : LogSink {
             if (ring.size >= CAPACITY) ring.removeFirst()
             ring.addLast(event)
             if (captureActive) {
-                val elapsedMs = (System.nanoTime() - captureStartedNanos) / 1_000_000
+                val elapsedMs = (clock.elapsed() - captureStartedAt).inWholeMilliseconds.coerceAtLeast(0L)
                 appendCaptureLine("+${elapsedMs}ms ${event.at} ${event.tag} ${event.line}")
                 // Keep audio-thread logging cheap: only publish a UI snapshot every 32 events.
                 // Stopping the capture always publishes the entire final sequence.

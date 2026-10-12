@@ -380,32 +380,7 @@ class PlaybackService : MediaLibraryService() {
             },
             onPlayWhenReadyRequest = { requestedPlay ->
                 controllerCommandGeneration += 1
-                // Observe the requesting controller while Media3 still owns its request context. ExoPlayer's
-                // later USER_REQUEST reason cannot distinguish Gearhead, headset, phone, or service actions.
-                val requestingController = session?.controllerForCurrentRequest
-                logAuto(
-                    "MediaSession transport request observed",
-                    fields = buildList {
-                        add(LogField.Public("requested", if (requestedPlay) "Play" else "Pause"))
-                        add(
-                            LogField.Public(
-                                "controllerKind",
-                                when {
-                                    requestingController == null -> "unattributed"
-                                    requestingController.packageName in CAR_PACKAGES -> "android-auto"
-                                    requestingController.uid == Process.myUid() -> "same-app"
-                                    else -> "external"
-                                },
-                            ),
-                        )
-                        requestingController?.let {
-                            add(LogField.Identifier("controllerPackage", it.packageName))
-                        }
-                        add(LogField.Public("commandGeneration", controllerCommandGeneration))
-                        addAll(AndroidAutoDiagnostics.playerFields(exoPlayer))
-                        addAll(carSnapshotFields())
-                    },
-                )
+                logControllerTransportRequest(requestedPlay, exoPlayer)
                 // A duplicate Pause still matters, even if the raw player emits no state transition.
                 sleepTimer.onControllerTransportIntent()
                 // A controller's Play/Pause is newer listener intent even when ExoPlayer is already in that
@@ -453,6 +428,37 @@ class PlaybackService : MediaLibraryService() {
         outputDevices.start(scope, DeviceActions())
         observeBrowseTreeInvalidation()
         logger.info(LogCategory.Playback, "Playback service started")
+    }
+
+    /**
+     * The controller identity is available only during Media3's request callback. Observe it here, never
+     * infer its origin from ExoPlayer's later USER_REQUEST reason. This records intent without changing it.
+     */
+    private fun logControllerTransportRequest(requestedPlay: Boolean, mediaPlayer: ExoPlayer) {
+        val requestingController = session?.controllerForCurrentRequest
+        logAuto(
+            "MediaSession transport request observed",
+            fields = buildList {
+                add(LogField.Public("requested", if (requestedPlay) "Play" else "Pause"))
+                add(
+                    LogField.Public(
+                        "controllerKind",
+                        when {
+                            requestingController == null -> "unattributed"
+                            requestingController.packageName in CAR_PACKAGES -> "android-auto"
+                            requestingController.uid == Process.myUid() -> "same-app"
+                            else -> "external"
+                        },
+                    ),
+                )
+                requestingController?.let {
+                    add(LogField.Identifier("controllerPackage", it.packageName))
+                }
+                add(LogField.Public("commandGeneration", controllerCommandGeneration))
+                addAll(AndroidAutoDiagnostics.playerFields(mediaPlayer))
+                addAll(carSnapshotFields())
+            },
+        )
     }
 
     /** PLAY-008 — initialize connection truth before the shared timer observes this service's player. */
