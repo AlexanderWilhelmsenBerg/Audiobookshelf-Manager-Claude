@@ -80,6 +80,20 @@ internal object AndroidAutoDiagnostics {
     }
 
     const val MAX_ARTWORK_OFFER_EVENTS = 12
+    const val MAX_MEDIA_HANDOFF_ITEMS = 20
+
+    /**
+     * Only presence flags: metadata text, stream URIs and publisher descriptions are private.
+     * These fields distinguish a visible, labelled playable book from a display-only placeholder.
+     */
+    fun metadataPresenceFields(item: MediaItem): List<LogField> = listOf(
+        LogField.Public("hasTitle", !item.mediaMetadata.title.isNullOrBlank()),
+        LogField.Public("hasSubtitle", !item.mediaMetadata.subtitle.isNullOrBlank()),
+        LogField.Public("hasArtist", !item.mediaMetadata.artist.isNullOrBlank()),
+        LogField.Public("hasAlbumTitle", !item.mediaMetadata.albumTitle.isNullOrBlank()),
+        LogField.Public("isPlayable", item.mediaMetadata.isPlayable?.toString() ?: "unknown"),
+        LogField.Public("isBrowsable", item.mediaMetadata.isBrowsable?.toString() ?: "unknown"),
+    )
 
     fun itemKind(item: MediaItem): String = when {
         MediaItems.isResumePlaceholder(item) -> "holder"
