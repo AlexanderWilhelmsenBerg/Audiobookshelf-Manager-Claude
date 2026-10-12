@@ -136,31 +136,13 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
             }
         }
 
-        // Only the first physical car-arrival edge may authorize the reverse callback ordering.
-        // A newer output or book, expiry, or a positive observation of a different headset cannot borrow it.
-        firstArrival?.let { boundary ->
-            firstArrival = null
-            val invalid = invalidReason(
-                identity = boundary.identity,
-                currentGeneration = currentGeneration,
-                explicitSelectionSequence = explicitSelectionSequence,
-                interval = at - boundary.at,
-            )
-            if (invalid == null) {
-                val liveIdentity = identityOf(
-                    heardRoute = heardRoute,
-                    headsetId = headsetId,
-                    currentGeneration = currentGeneration,
-                    explicitSelectionSequence = explicitSelectionSequence,
-                )
-                if (liveIdentity == null || liveIdentity.outputId == boundary.identity.outputId) {
-                    focusCandidate = null
-                    val target = boundary.identity.target(Phase.Arrival)
-                    activeRecovery = target
-                    return Decision(Phase.Arrival, Status.Ready, Reason.BoundaryMatchedFocusLoss, target)
-                }
-            }
-        }
+        matchFocusToFirstArrival(
+            at = at,
+            heardRoute = heardRoute,
+            headsetId = headsetId,
+            currentGeneration = currentGeneration,
+            explicitSelectionSequence = explicitSelectionSequence,
+        )?.let { return it }
 
         val phase = if (carConnected) Phase.Departure else Phase.Arrival
         val liveIdentity = identityOf(
@@ -191,24 +173,42 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         )
     }
 
-    /** Pairs only an arrival-phase focus loss with a car-specific arrival boundary. */
+    /** Pairs arrival focus with only the first controller/projection boundary of this car session. */
     fun onCarArrival(arrivedAt: Duration, currentGeneration: Long?, explicitSelectionSequence: Long): Decision {
         projectionDeparture = null
         if (arrivalRecorded) return Decision(Phase.Arrival, Status.Rejected, Reason.NoPendingFocusLoss)
         arrivalRecorded = true
         val candidate = focusCandidate
-        if (candidate == null) {
-            val heard = currentPlayingHeadset(currentGeneration, explicitSelectionSequence)
-                ?: return Decision(Phase.Arrival, Status.Rejected, Reason.NoPendingFocusLoss)
-            firstArrival = ArrivalBoundary(at = arrivedAt, identity = heard)
-            activeRecovery = null
-            return Decision(
-                Phase.Arrival,
-                Status.Armed,
-                Reason.BoundaryWaitingForFocusLoss,
-                heard.target(Phase.Arrival),
-            )
+        return if (candidate == null) {
+            armFirstArrival(arrivedAt, currentGeneration, explicitSelectionSequence)
+        } else {
+            matchArrivalFocus(candidate, arrivedAt, currentGeneration, explicitSelectionSequence)
         }
+    }
+
+    private fun armFirstArrival(
+        arrivedAt: Duration,
+        currentGeneration: Long?,
+        explicitSelectionSequence: Long,
+    ): Decision {
+        val heard = currentPlayingHeadset(currentGeneration, explicitSelectionSequence)
+            ?: return Decision(Phase.Arrival, Status.Rejected, Reason.NoPendingFocusLoss)
+        firstArrival = ArrivalBoundary(at = arrivedAt, identity = heard)
+        activeRecovery = null
+        return Decision(
+            Phase.Arrival,
+            Status.Armed,
+            Reason.BoundaryWaitingForFocusLoss,
+            heard.target(Phase.Arrival),
+        )
+    }
+
+    private fun matchArrivalFocus(
+        candidate: FocusCandidate,
+        arrivedAt: Duration,
+        currentGeneration: Long?,
+        explicitSelectionSequence: Long,
+    ): Decision {
         if (candidate.phase != Phase.Arrival) {
             focusCandidate = null
             activeRecovery = null
@@ -236,6 +236,36 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
             reason = Reason.BoundaryMatchedFocusLoss,
             target = target,
         )
+    }
+
+    /**
+     * Pairs a delayed Media3 focus callback with the first boundary already captured on the callback thread.
+     * A positive observation of another headset cannot use the old route even if the selection sequence matches.
+     */
+    private fun matchFocusToFirstArrival(
+        at: Duration,
+        heardRoute: RouteHeardOwnership.HeardRoute?,
+        headsetId: String?,
+        currentGeneration: Long?,
+        explicitSelectionSequence: Long,
+    ): Decision? {
+        val boundary = firstArrival ?: return null
+        firstArrival = null
+        if (
+            invalidReason(
+                identity = boundary.identity,
+                currentGeneration = currentGeneration,
+                explicitSelectionSequence = explicitSelectionSequence,
+                interval = at - boundary.at,
+            ) != null
+        ) return null
+        val live = identityOf(heardRoute, headsetId, currentGeneration, explicitSelectionSequence)
+        if (live != null && live.outputId != boundary.identity.outputId) return null
+
+        focusCandidate = null
+        val target = boundary.identity.target(Phase.Arrival)
+        activeRecovery = target
+        return Decision(Phase.Arrival, Status.Ready, Reason.BoundaryMatchedFocusLoss, target)
     }
 
     /**
