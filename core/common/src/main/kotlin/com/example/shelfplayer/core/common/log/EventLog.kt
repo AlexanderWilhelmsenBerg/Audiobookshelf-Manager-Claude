@@ -89,7 +89,7 @@ class EventLog @Inject constructor(private val clock: AppClock) : LogSink {
     private fun appendCaptureLine(line: String) {
         if (captureLines.size == CAPTURE_CAPACITY) captureLines.removeFirst()
         captureSequence++
-        captureLines.addLast("${captureSequence} $line")
+        captureLines.addLast("$captureSequence $line")
     }
 
     /** Oldest first, which is the order they happened in and the order a reader follows. */
