@@ -8,14 +8,16 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 /** PRODUCT_SPEC 14.4/14.5: diagnostics expose only redacted, bounded, clearable history. */
 class EventLogTest {
     private val now = Instant.parse("2026-10-04T12:00:00Z")
+    private var elapsedTime = Duration.ZERO
     private val clock = object : AppClock {
         override fun now(): Instant = now
 
-        override fun elapsed(): Duration = Duration.ZERO
+        override fun elapsed(): Duration = elapsedTime
     }
     private val sink = EventLog(clock)
 
@@ -90,6 +92,18 @@ class EventLogTest {
         assertFalse(lines.any { it.contains("after stop") })
         sink.clearRaceCapture()
         assertTrue(sink.raceCapture.value.lines.isEmpty())
+    }
+
+    @Test
+    fun `capture timestamps use injected monotonic clock instead of system time`() {
+        elapsedTime = 100.milliseconds
+        sink.startRaceCapture()
+        elapsedTime = 375.milliseconds
+        sink.write(LogLevel.Info, "AndroidAuto", "first controller request")
+        sink.stopRaceCapture()
+
+        assertEquals(1, sink.raceCapture.value.lines.size)
+        assertTrue(sink.raceCapture.value.lines.single().contains("+275ms"))
     }
 
     @Test
