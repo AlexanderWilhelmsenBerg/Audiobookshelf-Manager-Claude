@@ -64,9 +64,12 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
 
     private data class FocusCandidate(val at: Duration, val phase: Phase, val identity: Identity)
     private data class DepartureBoundary(val at: Duration, val identity: Identity)
+    private data class ArrivalBoundary(val at: Duration, val identity: Identity)
 
     private var focusCandidate: FocusCandidate? = null
     private var projectionDeparture: DepartureBoundary? = null
+    private var firstArrival: ArrivalBoundary? = null
+    private var arrivalRecorded = false
     private var activeRecovery: Target? = null
 
     /**
@@ -100,9 +103,9 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     /**
      * Records the measured Media3 AUDIO_FOCUS_LOSS.
      *
-     * When the car is already connected the event belongs to the departure side. A focus loss first observed
-     * after the final disconnect is intentionally not treated as departure evidence: that callback order has
-     * not been measured physically and could be an unrelated call/navigation/media focus event.
+     * A first-arrival boundary captured synchronously before route settlement may pair a later focus loss.
+     * Outside that one-shot window an established session uses the existing departure semantics. A focus
+     * loss first observed after final disconnect remains ineligible without the physical projection edge.
      */
     fun onAudioFocusLoss(
         at: Duration,
@@ -130,6 +133,32 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
                     reason = Reason.BoundaryMatchedFocusLoss,
                     target = target,
                 )
+            }
+        }
+
+        // Only the first physical car-arrival edge may authorize the reverse callback ordering.
+        // A newer output or book, expiry, or a positive observation of a different headset cannot borrow it.
+        firstArrival?.let { boundary ->
+            firstArrival = null
+            val invalid = invalidReason(
+                identity = boundary.identity,
+                currentGeneration = currentGeneration,
+                explicitSelectionSequence = explicitSelectionSequence,
+                interval = at - boundary.at,
+            )
+            if (invalid == null) {
+                val liveIdentity = identityOf(
+                    heardRoute = heardRoute,
+                    headsetId = headsetId,
+                    currentGeneration = currentGeneration,
+                    explicitSelectionSequence = explicitSelectionSequence,
+                )
+                if (liveIdentity == null || liveIdentity.outputId == boundary.identity.outputId) {
+                    focusCandidate = null
+                    val target = boundary.identity.target(Phase.Arrival)
+                    activeRecovery = target
+                    return Decision(Phase.Arrival, Status.Ready, Reason.BoundaryMatchedFocusLoss, target)
+                }
             }
         }
 
@@ -165,8 +194,16 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     /** Pairs only an arrival-phase focus loss with a car-specific arrival boundary. */
     fun onCarArrival(arrivedAt: Duration, currentGeneration: Long?, explicitSelectionSequence: Long): Decision {
         projectionDeparture = null
+        if (arrivalRecorded) return Decision(Phase.Arrival, Status.Rejected, Reason.NoPendingFocusLoss)
+        arrivalRecorded = true
         val candidate = focusCandidate
-            ?: return Decision(Phase.Arrival, Status.Rejected, Reason.NoPendingFocusLoss)
+        if (candidate == null) {
+            val heard = currentPlayingHeadset(currentGeneration, explicitSelectionSequence)
+                ?: return Decision(Phase.Arrival, Status.Rejected, Reason.NoPendingFocusLoss)
+            firstArrival = ArrivalBoundary(at = arrivedAt, identity = heard)
+            activeRecovery = null
+            return Decision(Phase.Arrival, Status.Armed, Reason.BoundaryWaitingForFocusLoss, heard.target(Phase.Arrival))
+        }
         if (candidate.phase != Phase.Arrival) {
             focusCandidate = null
             activeRecovery = null
@@ -208,6 +245,8 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         currentGeneration: Long?,
         explicitSelectionSequence: Long,
     ): Decision {
+        firstArrival = null
+        arrivalRecorded = false
         val candidate = focusCandidate
         if (candidate != null) {
             return onCarDeparture(departedAt, currentGeneration, explicitSelectionSequence)
@@ -233,6 +272,8 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
      * only [onProjectionDeparture] may retain a boundary before focus loss.
      */
     fun onCarDeparture(departedAt: Duration, currentGeneration: Long?, explicitSelectionSequence: Long): Decision {
+        firstArrival = null
+        arrivalRecorded = false
         val candidate = focusCandidate
             ?: return Decision(Phase.Departure, Status.Rejected, Reason.NoPendingFocusLoss)
         if (candidate.phase != Phase.Departure) {
@@ -293,6 +334,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     /** A newer Play supersedes pending automatic recovery but does not rewrite route-heard ownership. */
     fun cancelPending() {
         focusCandidate = null
+        firstArrival = null
         projectionDeparture = null
         activeRecovery = null
     }

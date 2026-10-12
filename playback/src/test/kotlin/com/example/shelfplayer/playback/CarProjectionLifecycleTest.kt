@@ -141,6 +141,23 @@ class CarProjectionLifecycleTest {
     }
 
     @Test
+    fun `controller bind captures first arrival before async route settlement`() = runTest {
+        fixture(initialState = null, controllerBindings = 0).use { car ->
+            runCurrent()
+            car.seedArrivalHeadset()
+            car.connectController()
+            // Do not run the queued route-settle coroutine: focus can arrive on this same callback turn.
+            assertTrue(car.isEstablished())
+            assertEquals(listOf("Armed"), car.controllerArrivalDecisions().map { it.public("status") })
+            val focus = car.focusAfterControllerBind()
+            assertEquals(CarArrivalResumeGate.Phase.Arrival, focus.phase)
+            assertEquals(CarArrivalResumeGate.Status.Ready, focus.status)
+            assertTrue(car.isCurrentRecovery(requireNotNull(focus.target)))
+            assertFalse(car.events.any { it.message == "Car lifecycle continuity issued Play" })
+        }
+    }
+
+    @Test
     fun `confirmed exit after unknown cannot resume a deliberately cancelled transition`() = runTest {
         fixture().use { car ->
             runCurrent()
@@ -159,10 +176,15 @@ class CarProjectionLifecycleTest {
         }
     }
 
-    private fun TestScope.fixture(initialState: Int? = 2): Fixture =
-        Fixture(backgroundScope, StandardTestDispatcher(testScheduler), initialState)
+    private fun TestScope.fixture(initialState: Int? = 2, controllerBindings: Int = 2): Fixture =
+        Fixture(backgroundScope, StandardTestDispatcher(testScheduler), initialState, controllerBindings)
 
-    private class Fixture(scope: CoroutineScope, dispatcher: CoroutineDispatcher, initialState: Int?) : AutoCloseable {
+    private class Fixture(
+        scope: CoroutineScope,
+        dispatcher: CoroutineDispatcher,
+        initialState: Int?,
+        controllerBindings: Int,
+    ) : AutoCloseable {
         val events = mutableListOf<LogEvent>()
         private val logger = object : Logger {
             override fun log(event: LogEvent) {
@@ -171,10 +193,7 @@ class CarProjectionLifecycleTest {
         }
         private val context = RuntimeEnvironment.getApplication()
         private val clock = TestAppClock()
-        val connections = CarConnections(clock).apply {
-            onConnected()
-            onConnected()
-        }
+        val connections = CarConnections(clock).apply { repeat(controllerBindings) { onConnected() } }
         private val service = PlaybackService()
         private val provider = ProjectionProvider().apply { state = initialState }
         private val monitor = AndroidAutoProjectionMonitor(context, dispatcher, logger, clock)
@@ -252,6 +271,41 @@ class CarProjectionLifecycleTest {
             assertEquals(CarArrivalResumeGate.Status.Armed, decision.status)
             clock.advanceBy(1.seconds)
         }
+
+        fun seedArrivalHeadset() {
+            val owner: RouteHeardOwnership = service.field("routeOwnership")
+            val buds = AudioOutput(
+                id = "bluetooth:fixture",
+                displayName = "Fixture headset",
+                kind = DeviceKind.Bluetooth,
+                role = AudioOutputRole.Headset,
+            )
+            owner.onBookChanged(hasBook = true)
+            owner.onPlaybackObserved(listOf(buds.copy(isActive = true)))
+            continuity.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 0)
+        }
+
+        fun connectController() =
+            service.invoke("onCarControllerConnected", "com.google.android.projection.gearhead")
+
+        fun focusAfterControllerBind(): CarArrivalResumeGate.Decision {
+            val owner: RouteHeardOwnership = service.field("routeOwnership")
+            return continuity.onAudioFocusLoss(
+                at = clock.elapsed(),
+                heardRoute = null,
+                headsetId = null,
+                currentGeneration = owner.currentGeneration,
+                explicitSelectionSequence = 0,
+                carConnected = isEstablished(),
+            )
+        }
+
+        fun isCurrentRecovery(target: CarArrivalResumeGate.Target): Boolean {
+            val owner: RouteHeardOwnership = service.field("routeOwnership")
+            return continuity.isCurrent(target, owner.currentGeneration, 0)
+        }
+
+        fun controllerArrivalDecisions(): List<LogEvent> = decisions("first-car-bind")
 
         fun disconnectController() =
             service.invoke("onCarControllerDisconnected", "com.google.android.projection.gearhead")

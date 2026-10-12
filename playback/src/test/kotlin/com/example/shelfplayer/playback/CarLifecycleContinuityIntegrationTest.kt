@@ -207,6 +207,11 @@ class CarLifecycleContinuityIntegrationTest {
             "a first bind must retain a bounded arrival boundary when there was no earlier focus callback",
         )
 
+        assertEquals(
+            CarArrivalResumeGate.Status.Rejected,
+            gate.onCarArrival(10.seconds + 200.milliseconds, owner.currentGeneration, 0).status,
+            "a second controller or projection signal must not renew the original boundary",
+        )
         val focus = gate.onAudioFocusLoss(
             at = 11.seconds,
             heardRoute = owner.heardRoute,
@@ -252,6 +257,7 @@ class CarLifecycleContinuityIntegrationTest {
             explicitSelectionSequence = 0,
         )
         gate.onCarArrival(10.seconds, owner.currentGeneration, 0)
+        gate.onCarArrival(15.seconds, owner.currentGeneration, 0) // A duplicate must not extend the six-second limit.
 
         val unrelatedFocus = gate.onAudioFocusLoss(
             at = 17.seconds,
