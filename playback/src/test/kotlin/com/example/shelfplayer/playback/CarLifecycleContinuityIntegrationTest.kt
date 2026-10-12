@@ -180,6 +180,138 @@ class CarLifecycleContinuityIntegrationTest {
         assertEquals(CarArrivalResumeGate.Reason.NoPendingFocusLoss, staleDisconnect.reason)
     }
 
+    /**
+     * PLAY-002 / ROUTE-002 / #128: onConnect can be delivered before Media3 reports the focus loss.
+     * Test the service's real ownership -> gate -> route -> final Play-authorization components together.
+     * This is intentionally RED on the old focus-before-bind-only state machine.
+     */
+    @Test
+    fun `first car bind before focus loss can recover the exact previously heard headset once`() = runBlocking {
+        val owner = playingOwner()
+        val gate = CarArrivalResumeGate()
+        gate.observePlayingHeadset(
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+        )
+
+        val firstArrival = gate.onCarArrival(
+            arrivedAt = 10.seconds,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+        )
+        assertEquals(
+            CarArrivalResumeGate.Status.Armed,
+            firstArrival.status,
+            "a first bind must retain a bounded arrival boundary when there was no earlier focus callback",
+        )
+
+        assertEquals(
+            CarArrivalResumeGate.Status.Rejected,
+            gate.onCarArrival(10.seconds + 200.milliseconds, owner.currentGeneration, 0).status,
+            "a second controller or projection signal must not renew the original boundary",
+        )
+        val focus = gate.onAudioFocusLoss(
+            at = 11.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = true,
+        )
+        assertEquals(CarArrivalResumeGate.Phase.Arrival, focus.phase)
+        assertEquals(CarArrivalResumeGate.Status.Ready, focus.status)
+        val target = requireNotNull(focus.target)
+
+        val selected = MutableStateFlow<String?>(null)
+        val reassertions = mutableListOf<String>()
+        val held = CarArrivalRouteRecovery(200.milliseconds).secure(
+            target = target,
+            outputs = MutableStateFlow(listOf(buds)),
+            selectedId = selected,
+            isStillEligible = { gate.isCurrent(target, owner.currentGeneration, 0) },
+        ) { id ->
+            reassertions += id
+            selected.value = id
+            true
+        }
+        assertEquals(listOf(buds.id), reassertions)
+        assertEquals(buds.id, held)
+        assertTrue(gate.consumeRecovery(target, owner.currentGeneration, held, 0).accepted)
+        assertEquals(
+            CarArrivalResumeGate.Status.Rejected,
+            gate.onCarArrival(12.seconds, owner.currentGeneration, 0).status,
+            "a duplicate car boundary must not authorize another Play",
+        )
+    }
+
+    @Test
+    fun `late focus loss during an established car session cannot borrow old arrival authority`() {
+        val owner = playingOwner()
+        val gate = CarArrivalResumeGate()
+        gate.observePlayingHeadset(
+            heardRoute = owner.heardRoute,
+            headsetId = buds.id,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+        )
+        gate.onCarArrival(10.seconds, owner.currentGeneration, 0)
+        gate.onCarArrival(15.seconds, owner.currentGeneration, 0) // A duplicate must not extend the six-second limit.
+
+        val unrelatedFocus = gate.onAudioFocusLoss(
+            at = 17.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = buds.id,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = true,
+        )
+        assertEquals(
+            CarArrivalResumeGate.Phase.Departure,
+            unrelatedFocus.phase,
+            "a focus event after the bounded first-arrival window must never become an arrival resume",
+        )
+        assertEquals(CarArrivalResumeGate.Status.Armed, unrelatedFocus.status)
+    }
+
+    @Test
+    fun `first car boundary cannot revive a deliberately paused or newly selected route`() {
+        val owner = playingOwner()
+        val pausedGate = CarArrivalResumeGate()
+        pausedGate.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 0)
+        pausedGate.onCarArrival(10.seconds, owner.currentGeneration, 0)
+        pausedGate.cancelAll()
+
+        val pausedFocus = pausedGate.onAudioFocusLoss(
+            at = 11.seconds,
+            heardRoute = null,
+            headsetId = null,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = true,
+        )
+        assertEquals(CarArrivalResumeGate.Status.Rejected, pausedFocus.status)
+        assertEquals(CarArrivalResumeGate.Reason.NoQualifyingHeadset, pausedFocus.reason)
+
+        val reselectedGate = CarArrivalResumeGate()
+        reselectedGate.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 0)
+        reselectedGate.onCarArrival(10.seconds, owner.currentGeneration, 0)
+        val newSelectionFocus = reselectedGate.onAudioFocusLoss(
+            at = 11.seconds,
+            heardRoute = null,
+            headsetId = null,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 1,
+            carConnected = true,
+        )
+        assertEquals(
+            CarArrivalResumeGate.Status.Rejected,
+            newSelectionFocus.status,
+            "a newer explicit output selection must defeat an older headset boundary",
+        )
+    }
+
     private fun playingOwner(): RouteHeardOwnership = RouteHeardOwnership().apply {
         onBookChanged(hasBook = true)
         onPlaybackObserved(listOf(buds.copy(isActive = true)))

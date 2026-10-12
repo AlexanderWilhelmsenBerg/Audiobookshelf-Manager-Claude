@@ -1830,17 +1830,20 @@ class PlaybackService : MediaLibraryService() {
         val carWasConnected = carConnections.isConnected()
         val carArrivedAt = if (carWasConnected) null else clock.elapsed()
         carConnections.onConnected()
-        synchronizeSleepTimerCarConnection()
-        // PD-002 (2026-10-03): republish synchronously, before Media3 sends the car its initial state, so the
-        // car never sees the timer button or the countdown title. publishMediaButtons() also restores the book
-        // title, through replaceMediaItem only, so playback is never interrupted.
-        publishMediaButtons()
-        carContinuitySessionEstablished = true
         if (player?.isPlaying == true) {
-            // A car can bind without changing isPlaying or emitting a new device list. Seed departure
-            // continuity immediately from the route evidence that was already positively heard.
+            // Preserve the positively heard headset before the host can change routing or focus.
             observeCarContinuityHeadset(audioOutputs.outputs.value)
         }
+        // The first arrival must be registered synchronously. Routing resettle runs in a later coroutine,
+        // and Media3 focus loss can arrive before that coroutine is scheduled.
+        val arrivalDecision = carArrivedAt?.let { at ->
+            carContinuity.onCarArrival(at, routeOwnership.currentGeneration, currentExplicitSelectionSequence())
+        }
+        arrivalDecision?.let { logCarContinuityDecision("first-car-bind", it) }
+        carContinuitySessionEstablished = true
+        synchronizeSleepTimerCarConnection()
+        // PD-002: publish car-safe media buttons synchronously before Media3 publishes initial state.
+        publishMediaButtons()
         logAuto(
             "A car connected to the media session",
             trace,
@@ -1858,23 +1861,17 @@ class PlaybackService : MediaLibraryService() {
                 listOf(LogField.Public("controller", controllerPackage)) + carSnapshotFields(),
             )
         }
-        scope.launch { handleCarArrival(carArrivedAt, source = "first-car-bind") }
+        scope.launch { handleCarArrival(arrivalDecision) }
     }
 
-    private suspend fun handleCarArrival(carArrivedAt: Duration?, source: String) {
+    private suspend fun handleCarArrival(decision: CarArrivalResumeGate.Decision?) {
         audioOutputs.resettle()
-        if (carArrivedAt == null) {
+        if (decision == null) {
             holdHeadsetAgainstCar()
             republishOutputButtons()
             return
         }
 
-        val decision = carContinuity.onCarArrival(
-            arrivedAt = carArrivedAt,
-            currentGeneration = routeOwnership.currentGeneration,
-            explicitSelectionSequence = currentExplicitSelectionSequence(),
-        )
-        logCarContinuityDecision(source, decision)
         val target = decision.target?.takeIf {
             decision.status == CarArrivalResumeGate.Status.Ready
         }
@@ -1960,8 +1957,13 @@ class PlaybackService : MediaLibraryService() {
                 projectionOwnsCarLifecycle = true
                 // This stronger car-specific edge may follow focus loss before Gearhead binds. If it leads
                 // focus loss instead, the later first controller bind remains the arrival completion boundary.
-                val arrivedAt = clock.elapsed()
-                scope.launch { handleCarArrival(arrivedAt, source = "projection-connect") }
+                val decision = carContinuity.onCarArrival(
+                    arrivedAt = clock.elapsed(),
+                    currentGeneration = routeOwnership.currentGeneration,
+                    explicitSelectionSequence = currentExplicitSelectionSequence(),
+                )
+                logCarContinuityDecision("projection-connect", decision)
+                scope.launch { handleCarArrival(decision) }
             }
 
             wasConnected &&
