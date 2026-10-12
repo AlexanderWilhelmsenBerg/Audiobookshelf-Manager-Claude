@@ -74,6 +74,51 @@ class EventLogTest {
     }
 
     @Test
+    fun `capture includes recent history then records monotonic ordered events`() {
+        sink.write(LogLevel.Info, "Playback", "Paused earlier")
+        sink.startRaceCapture()
+        sink.write(LogLevel.Info, "AndroidAuto", "controller Play")
+        sink.stopRaceCapture()
+        sink.write(LogLevel.Info, "AndroidAuto", "after stop")
+
+        val lines = sink.raceCapture.value.lines
+        assertFalse(sink.raceCapture.value.recording)
+        assertEquals(2, lines.size)
+        assertTrue(lines.first().contains("PRE"))
+        assertTrue(lines.first().contains("Paused earlier"))
+        assertTrue(lines.last().contains("controller Play"))
+        assertFalse(lines.any { it.contains("after stop") })
+        sink.clearRaceCapture()
+        assertTrue(sink.raceCapture.value.lines.isEmpty())
+    }
+
+    @Test
+    fun `capture only contains redacted logger lines`() {
+        val logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default))
+        sink.startRaceCapture()
+        logger.error(
+            LogCategory.Network,
+            "Playback request",
+            LogField.Secret("authorization"),
+            LogField.ServerHost("host", "private.example.invalid"),
+        )
+        sink.stopRaceCapture()
+        val all = sink.raceCapture.value.lines.joinToString("\n")
+        assertTrue(all.contains("Playback request"))
+        assertFalse(all.contains("private.example.invalid"))
+    }
+
+    @Test
+    fun `capture is bounded separately from the five hundred line event view`() {
+        sink.startRaceCapture()
+        repeat(4100) { sink.write(LogLevel.Info, "AndroidAuto", "event-$it") }
+        sink.stopRaceCapture()
+        assertEquals(4000, sink.raceCapture.value.lines.size)
+        assertEquals(500, sink.events.value.size)
+        assertTrue(sink.raceCapture.value.lines.last().contains("event-4099"))
+    }
+
+    @Test
     fun `problem filter includes warnings and errors only`() {
         LogLevel.entries.forEach { sink.write(it, "App", "Severity sample") }
 
