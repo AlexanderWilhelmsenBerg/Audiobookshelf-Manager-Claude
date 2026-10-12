@@ -180,7 +180,6 @@ class CarLifecycleContinuityIntegrationTest {
         assertEquals(CarArrivalResumeGate.Reason.NoPendingFocusLoss, staleDisconnect.reason)
     }
 
-
     /**
      * PLAY-002 / ROUTE-002 / #128: onConnect can be delivered before Media3 reports the focus loss.
      * Test the service's real ownership -> gate -> route -> final Play-authorization components together.
