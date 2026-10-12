@@ -115,6 +115,38 @@ class AndroidAutoDiagnosticsTest {
     }
 
     @Test
+    fun `book handoff distinguishes labelled playable books and unlabelled browse rows without leaking text`() {
+        val titled = MediaItem.Builder()
+            .setMediaId("private-book-id")
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle("Secret Book Title")
+                    .setArtist("Secret Author")
+                    .setIsPlayable(true)
+                    .setIsBrowsable(false)
+                    .build(),
+            ).build()
+        val folder = MediaItem.Builder()
+            .setMediaId("tab/continue")
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setIsPlayable(false)
+                    .setIsBrowsable(true)
+                    .build(),
+            ).build()
+        val playable = AndroidAutoDiagnostics.metadataPresenceFields(titled)
+        val browse = AndroidAutoDiagnostics.metadataPresenceFields(folder)
+
+        assertEquals("true", playable.public("hasTitle"))
+        assertEquals("true", playable.public("hasArtist"))
+        assertEquals("true", playable.public("isPlayable"))
+        assertEquals("false", browse.public("hasTitle"))
+        assertEquals("true", browse.public("isBrowsable"))
+        assertFalse(playable.any { it.toString().contains("Secret") })
+        assertEquals(20, AndroidAutoDiagnostics.MAX_MEDIA_HANDOFF_ITEMS)
+    }
+
+    @Test
     fun `missing and nonlocal artwork do not yield a provider correlation id`() {
         val noArt = MediaItem.Builder().setMediaId("book/hidden").build()
         val remote = MediaItem.Builder()
