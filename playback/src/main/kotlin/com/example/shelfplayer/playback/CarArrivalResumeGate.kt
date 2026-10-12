@@ -251,14 +251,13 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     ): Decision? {
         val boundary = firstArrival ?: return null
         firstArrival = null
-        if (
-            invalidReason(
-                identity = boundary.identity,
-                currentGeneration = currentGeneration,
-                explicitSelectionSequence = explicitSelectionSequence,
-                interval = at - boundary.at,
-            ) != null
-        ) return null
+        val invalid = invalidReason(
+            identity = boundary.identity,
+            currentGeneration = currentGeneration,
+            explicitSelectionSequence = explicitSelectionSequence,
+            interval = at - boundary.at,
+        )
+        if (invalid != null) return null
         val live = identityOf(heardRoute, headsetId, currentGeneration, explicitSelectionSequence)
         if (live != null && live.outputId != boundary.identity.outputId) return null
 
