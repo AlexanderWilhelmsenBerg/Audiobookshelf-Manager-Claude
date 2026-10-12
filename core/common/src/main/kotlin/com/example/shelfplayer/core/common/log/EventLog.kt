@@ -105,7 +105,11 @@ class EventLog @Inject constructor(private val clock: AppClock) : LogSink {
             if (captureActive) {
                 val elapsedMs = (System.nanoTime() - captureStartedNanos) / 1_000_000
                 appendCaptureLine("+${elapsedMs}ms ${event.at} ${event.tag} ${event.line}")
-                _raceCapture.value = RaceCaptureState(recording = true, lines = captureLines.toList())
+                // Keep audio-thread logging cheap: only publish a UI snapshot every 32 events.
+                // Stopping the capture always publishes the entire final sequence.
+                if (captureSequence % CAPTURE_PUBLISH_EVERY == 0L) {
+                    _raceCapture.value = RaceCaptureState(recording = true, lines = captureLines.toList())
+                }
             }
             ring.toList()
         }
@@ -127,5 +131,6 @@ class EventLog @Inject constructor(private val clock: AppClock) : LogSink {
         const val CAPACITY = 500
         const val CAPTURE_CAPACITY = 4000
         const val PRE_EVENT_SECONDS = 120L
+        const val CAPTURE_PUBLISH_EVERY = 32L
     }
 }
