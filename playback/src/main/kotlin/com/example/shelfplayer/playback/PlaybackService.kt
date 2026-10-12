@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
+import android.view.KeyEvent
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -379,8 +380,8 @@ class PlaybackService : MediaLibraryService() {
             },
             onPlayWhenReadyRequest = { requestedPlay ->
                 controllerCommandGeneration += 1
-                // This is also the sleep-grace intent boundary. It runs even for duplicate Pause while raw
-                // ExoPlayer is already paused, and before a Play can suspend in freshness reconciliation.
+                logControllerTransportRequest(requestedPlay, exoPlayer)
+                // A duplicate Pause still matters, even if the raw player emits no state transition.
                 sleepTimer.onControllerTransportIntent()
                 // A controller's Play/Pause is newer listener intent even when ExoPlayer is already in that
                 // state and therefore emits no onPlayWhenReadyChanged callback. Automatic continuity uses the
@@ -427,6 +428,37 @@ class PlaybackService : MediaLibraryService() {
         outputDevices.start(scope, DeviceActions())
         observeBrowseTreeInvalidation()
         logger.info(LogCategory.Playback, "Playback service started")
+    }
+
+    /**
+     * The controller identity is available only during Media3's request callback. Observe it here, never
+     * infer its origin from ExoPlayer's later USER_REQUEST reason. This records intent without changing it.
+     */
+    private fun logControllerTransportRequest(requestedPlay: Boolean, mediaPlayer: ExoPlayer) {
+        val requestingController = session?.controllerForCurrentRequest
+        logAuto(
+            "MediaSession transport request observed",
+            fields = buildList {
+                add(LogField.Public("requested", if (requestedPlay) "Play" else "Pause"))
+                add(
+                    LogField.Public(
+                        "controllerKind",
+                        when {
+                            requestingController == null -> "unattributed"
+                            requestingController.packageName in CAR_PACKAGES -> "android-auto"
+                            requestingController.uid == Process.myUid() -> "same-app"
+                            else -> "external"
+                        },
+                    ),
+                )
+                requestingController?.let {
+                    add(LogField.Identifier("controllerPackage", it.packageName))
+                }
+                add(LogField.Public("commandGeneration", controllerCommandGeneration))
+                addAll(AndroidAutoDiagnostics.playerFields(mediaPlayer))
+                addAll(carSnapshotFields())
+            },
+        )
     }
 
     /** PLAY-008 — initialize connection truth before the shared timer observes this service's player. */
@@ -1063,6 +1095,11 @@ class PlaybackService : MediaLibraryService() {
      */
     private inner class PlayerEvents : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            logAuto(
+                "Media3 audible playback changed",
+                fields = listOf(LogField.Public("isPlaying", isPlaying)) +
+                    AndroidAutoDiagnostics.playerFields(player) + carSnapshotFields(),
+            )
             // The listening-time interval closes before the sync reads it, or a pause would report less
             // listening than happened.
             sessionSync.onPlayingChanged(isPlaying)
@@ -1112,6 +1149,14 @@ class PlaybackService : MediaLibraryService() {
          * is not a pause the listener asked for, and rewinding out of one would replay ten seconds every time
          * a satnav spoke.
          */
+        override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+            logAuto(
+                "Media3 playback suppression changed",
+                fields = listOf(LogField.Public("reasonCode", playbackSuppressionReason)) +
+                    AndroidAutoDiagnostics.playerFields(player) + carSnapshotFields(),
+            )
+        }
+
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
             // PRODUCT_SPEC PLAY-003 — play and pause, in the book's history. The device report asked for
             // them: *"Play start and play pause doesn't show."*
@@ -1787,16 +1832,19 @@ class PlaybackService : MediaLibraryService() {
                 addAll(extraFields)
             },
         )
-        playable.forEachIndexed { index, item ->
+        // Sample both playable rows and browse-only folders/holders. A browse tree can be returned
+        // successfully while the car still has no playable book to show on its startup surface.
+        items.take(AndroidAutoDiagnostics.MAX_MEDIA_HANDOFF_ITEMS).forEachIndexed { index, item ->
             logAuto(
-                "Android Auto playable media item",
+                "Android Auto media row handed off",
                 trace,
                 buildList {
                     add(LogField.Public("callback", callback))
                     add(LogField.Public("direction", direction))
                     add(LogField.Public("index", index))
                     addAll(AndroidAutoDiagnostics.itemFields(item))
-                },
+                    addAll(AndroidAutoDiagnostics.metadataPresenceFields(item))
+                } + extraFields,
             )
         }
     }
@@ -3243,11 +3291,60 @@ class PlaybackService : MediaLibraryService() {
                 }
                 .build()
 
+            if (controller.isCar()) {
+                logAuto(
+                    "Android Auto initial playback surface offered",
+                    fields = listOf(
+                        LogField.Public("playPauseAvailable", playerCommands.contains(Player.COMMAND_PLAY_PAUSE)),
+                    ) + AndroidAutoDiagnostics.playerFields(player) + carSnapshotFields(),
+                )
+            }
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
                 .setAvailableSessionCommands(commands)
                 .setAvailablePlayerCommands(playerCommands)
                 .setMediaButtonPreferences(mediaButtons())
                 .build()
+        }
+
+        /** Passive media-button observation only. Returning super preserves Media3's default handling. */
+        override fun onMediaButtonEvent(
+            session: MediaSession,
+            controllerInfo: MediaSession.ControllerInfo,
+            intent: Intent,
+        ): Boolean {
+            @Suppress("DEPRECATION")
+            val keyEvent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+            } else {
+                intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+            }
+            logAuto(
+                "MediaSession hardware media button observed",
+                fields = listOf(
+                    LogField.Identifier("controllerPackage", controllerInfo.packageName),
+                    LogField.Public("keyCode", keyEvent?.keyCode ?: -1),
+                    LogField.Public("keyAction", keyEvent?.action ?: -1),
+                ) + carSnapshotFields(),
+            )
+            return super.onMediaButtonEvent(session, controllerInfo, intent)
+        }
+
+        /** A controller command batch confirms the requesting package without authorizing playback. */
+        override fun onPlayerInteractionFinished(
+            session: MediaSession,
+            controllerInfo: MediaSession.ControllerInfo,
+            playerCommands: Player.Commands,
+        ) {
+            if (playerCommands.contains(Player.COMMAND_PLAY_PAUSE)) {
+                logAuto(
+                    "MediaSession controller transport batch completed",
+                    fields = listOf(
+                        LogField.Identifier("controllerPackage", controllerInfo.packageName),
+                        LogField.Public("controllerIsCar", controllerInfo.packageName in CAR_PACKAGES),
+                    ) + AndroidAutoDiagnostics.playerFields(player),
+                )
+            }
+            super.onPlayerInteractionFinished(session, controllerInfo, playerCommands)
         }
 
         override fun onDisconnected(session: MediaSession, controller: MediaSession.ControllerInfo) {

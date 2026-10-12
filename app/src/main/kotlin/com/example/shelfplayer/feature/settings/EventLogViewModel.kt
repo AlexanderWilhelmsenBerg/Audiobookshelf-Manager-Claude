@@ -3,6 +3,7 @@ package com.example.shelfplayer.feature.settings
 import androidx.lifecycle.ViewModel
 import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.LoggedEvent
+import com.example.shelfplayer.core.common.log.RaceCaptureState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
@@ -17,6 +18,14 @@ import javax.inject.Inject
 @HiltViewModel
 class EventLogViewModel @Inject constructor(private val log: EventLog) : ViewModel() {
     val events: StateFlow<List<LoggedEvent>> = log.events
+
+    val raceCapture: StateFlow<RaceCaptureState> = log.raceCapture
+
+    fun startRaceCapture() = log.startRaceCapture()
+
+    fun stopRaceCapture() = log.stopRaceCapture()
+
+    fun clearRaceCapture() = log.clearRaceCapture()
 
     fun onClear() = log.clear()
 }

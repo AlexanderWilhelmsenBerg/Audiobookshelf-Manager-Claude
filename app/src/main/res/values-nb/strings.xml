@@ -1010,4 +1010,9 @@
     <string name="garmin_watch_login_required">Logg inn i BookWave Audio på klokken først, og prøv igjen.</string>
     <string name="garmin_resume_download">Fortsett nedlasting</string>
     <string name="garmin_download_percent">%1$d%% lastet ned</string>
+    <string name="debug_race_capture_description">Registrer avspillingshendelser (inkluderer de siste to minuttene). Start før Android Auto kobles til, stopp og kopier etterpå. Sladdet og kun i minnet.</string>
+    <string name="debug_race_capture_start">Start hendelseslogg</string>
+    <string name="debug_race_capture_stop">Stopp hendelseslogg</string>
+    <string name="debug_race_capture_copy">Kopier hendelseslogg</string>
+    <string name="debug_race_capture_clear">Tøm hendelseslogg</string>
 </resources>

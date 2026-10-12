@@ -1263,4 +1263,9 @@
     <string name="garmin_watch_login_required">Sign in to BookWave Audio on the watch first, then retry.</string>
     <string name="garmin_resume_download">Resume download</string>
     <string name="garmin_download_percent">%1$d%% downloaded</string>
+    <string name="debug_race_capture_description">Capture playback race (includes the previous two minutes). Start before Android Auto connects, then stop and copy. Redacted; memory-only.</string>
+    <string name="debug_race_capture_start">Start race trace</string>
+    <string name="debug_race_capture_stop">Stop race trace</string>
+    <string name="debug_race_capture_copy">Copy race trace</string>
+    <string name="debug_race_capture_clear">Clear race trace</string>
 </resources>

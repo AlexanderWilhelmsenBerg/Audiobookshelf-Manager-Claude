@@ -8,14 +8,16 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 /** PRODUCT_SPEC 14.4/14.5: diagnostics expose only redacted, bounded, clearable history. */
 class EventLogTest {
     private val now = Instant.parse("2026-10-04T12:00:00Z")
+    private var elapsedTime = Duration.ZERO
     private val clock = object : AppClock {
         override fun now(): Instant = now
 
-        override fun elapsed(): Duration = Duration.ZERO
+        override fun elapsed(): Duration = elapsedTime
     }
     private val sink = EventLog(clock)
 
@@ -71,6 +73,63 @@ class EventLogTest {
 
         assertEquals("After clear", sink.events.value.single().line)
         assertEquals("First event", previousSnapshot.single().line)
+    }
+
+    @Test
+    fun `capture includes recent history then records monotonic ordered events`() {
+        sink.write(LogLevel.Info, "Playback", "Paused earlier")
+        sink.startRaceCapture()
+        sink.write(LogLevel.Info, "AndroidAuto", "controller Play")
+        sink.stopRaceCapture()
+        sink.write(LogLevel.Info, "AndroidAuto", "after stop")
+
+        val lines = sink.raceCapture.value.lines
+        assertFalse(sink.raceCapture.value.recording)
+        assertEquals(2, lines.size)
+        assertTrue(lines.first().contains("PRE"))
+        assertTrue(lines.first().contains("Paused earlier"))
+        assertTrue(lines.last().contains("controller Play"))
+        assertFalse(lines.any { it.contains("after stop") })
+        sink.clearRaceCapture()
+        assertTrue(sink.raceCapture.value.lines.isEmpty())
+    }
+
+    @Test
+    fun `capture timestamps use injected monotonic clock instead of system time`() {
+        elapsedTime = 100.milliseconds
+        sink.startRaceCapture()
+        elapsedTime = 375.milliseconds
+        sink.write(LogLevel.Info, "AndroidAuto", "first controller request")
+        sink.stopRaceCapture()
+
+        assertEquals(1, sink.raceCapture.value.lines.size)
+        assertTrue(sink.raceCapture.value.lines.single().contains("+275ms"))
+    }
+
+    @Test
+    fun `capture only contains redacted logger lines`() {
+        val logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default))
+        sink.startRaceCapture()
+        logger.error(
+            LogCategory.Network,
+            "Playback request",
+            LogField.Secret("authorization"),
+            LogField.ServerHost("host", "private.example.invalid"),
+        )
+        sink.stopRaceCapture()
+        val all = sink.raceCapture.value.lines.joinToString("\n")
+        assertTrue(all.contains("Playback request"))
+        assertFalse(all.contains("private.example.invalid"))
+    }
+
+    @Test
+    fun `capture is bounded separately from the five hundred line event view`() {
+        sink.startRaceCapture()
+        repeat(4100) { sink.write(LogLevel.Info, "AndroidAuto", "event-$it") }
+        sink.stopRaceCapture()
+        assertEquals(4000, sink.raceCapture.value.lines.size)
+        assertEquals(500, sink.events.value.size)
+        assertTrue(sink.raceCapture.value.lines.last().contains("event-4099"))
     }
 
     @Test
