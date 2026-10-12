@@ -79,6 +79,7 @@ fun DebugConsoleSheet(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val metrics by viewModel.playbackMetrics.collectAsStateWithLifecycle()
     val events by logs.events.collectAsStateWithLifecycle()
+    val raceCapture by logs.raceCapture.collectAsStateWithLifecycle()
     val previousCrash by crashes.report.collectAsStateWithLifecycle()
     val account by viewModel.account.collectAsStateWithLifecycle()
     val clipboard = LocalClipboard.current
@@ -145,6 +146,50 @@ fun DebugConsoleSheet(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            Text(
+                text = stringResource(R.string.debug_race_capture_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = logs::startRaceCapture,
+                    enabled = !raceCapture.recording,
+                ) {
+                    Text(stringResource(R.string.debug_race_capture_start))
+                }
+                TextButton(
+                    onClick = logs::stopRaceCapture,
+                    enabled = raceCapture.recording,
+                ) {
+                    Text(stringResource(R.string.debug_race_capture_stop))
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            clipboard.setClipEntry(
+                                ClipEntry(
+                                    ClipData.newPlainText(
+                                        "BookWave race trace",
+                                        AnnotatedString(raceCapture.lines.joinToString("\n")),
+                                    ),
+                                ),
+                            )
+                        }
+                    },
+                    enabled = raceCapture.lines.isNotEmpty(),
+                ) {
+                    Text(stringResource(R.string.debug_race_capture_copy))
+                }
+                TextButton(
+                    onClick = logs::clearRaceCapture,
+                    enabled = raceCapture.lines.isNotEmpty(),
+                ) {
+                    Text(stringResource(R.string.debug_race_capture_clear))
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(
