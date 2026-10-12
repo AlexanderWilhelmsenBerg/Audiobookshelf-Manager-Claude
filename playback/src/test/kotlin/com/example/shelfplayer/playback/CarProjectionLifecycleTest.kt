@@ -285,8 +285,7 @@ class CarProjectionLifecycleTest {
             continuity.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 0)
         }
 
-        fun connectController() =
-            service.invoke("onCarControllerConnected", "com.google.android.projection.gearhead")
+        fun connectController() = service.invoke("onCarControllerConnected", "com.google.android.projection.gearhead")
 
         fun focusAfterControllerBind(): CarArrivalResumeGate.Decision {
             val owner: RouteHeardOwnership = service.field("routeOwnership")

@@ -202,7 +202,12 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
                 ?: return Decision(Phase.Arrival, Status.Rejected, Reason.NoPendingFocusLoss)
             firstArrival = ArrivalBoundary(at = arrivedAt, identity = heard)
             activeRecovery = null
-            return Decision(Phase.Arrival, Status.Armed, Reason.BoundaryWaitingForFocusLoss, heard.target(Phase.Arrival))
+            return Decision(
+                Phase.Arrival,
+                Status.Armed,
+                Reason.BoundaryWaitingForFocusLoss,
+                heard.target(Phase.Arrival),
+            )
         }
         if (candidate.phase != Phase.Arrival) {
             focusCandidate = null
