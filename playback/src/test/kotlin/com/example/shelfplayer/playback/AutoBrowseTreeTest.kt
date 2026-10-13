@@ -330,7 +330,7 @@ class AutoBrowseTreeTest {
         val resume = auto.resumeItem()
         for (row in listOfNotNull(browse, resume)) {
             assertEquals(title, row.mediaMetadata.title?.toString())
-            assertEquals("Tidewatch #12.5", row.mediaMetadata.subtitle?.toString())
+            assertEquals("#12.5 Tidewatch", row.mediaMetadata.subtitle?.toString())
             assertEquals("Marisol Holt", row.mediaMetadata.artist?.toString())
         }
     }

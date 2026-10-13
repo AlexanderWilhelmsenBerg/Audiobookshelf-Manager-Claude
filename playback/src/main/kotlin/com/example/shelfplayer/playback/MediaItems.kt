@@ -91,7 +91,7 @@ object MediaItems {
         val tracks = session.playableTracks
         val durations = recoveredDurations(session)
         val seriesLabel = session.seriesLabel?.takeIf(String::isNotBlank)
-        val byline = listOfNotNull(session.author?.takeIf(String::isNotBlank), seriesLabel)
+        val byline = listOfNotNull(seriesLabel, session.author?.takeIf(String::isNotBlank))
             .joinToString(" • ")
             .takeIf(String::isNotBlank)
         val extras = Bundle().apply {
@@ -108,8 +108,9 @@ object MediaItems {
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(session.title)
-                    // A tested head unit renders title + artist and ignores the richer subtitle fields. Keep
-                    // author truthful in the session model, but make that visible byline carry series context.
+                    // A tested head unit renders title + artist and ignores subtitle. Put series number
+                    // first in the visible byline, then author; keep full title and separate subtitle
+                    // metadata so other hosts can choose their own presentation.
                     .setArtist(byline)
                     .setSubtitle(seriesLabel)
                     .setAlbumTitle(seriesLabel ?: session.title)

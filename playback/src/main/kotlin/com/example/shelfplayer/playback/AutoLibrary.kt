@@ -18,7 +18,7 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.MediaProgress
-import com.example.shelfplayer.core.model.library.SeriesMembership
+import com.example.shelfplayer.domain.library.SeriesDisplayLabel
 import com.example.shelfplayer.domain.library.HomeShelves
 import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.repository.DownloadRepository
@@ -245,7 +245,7 @@ class AutoLibrary @Inject constructor(
             playable(
                 id = resumeId(book.id, progress?.position),
                 title = book.title,
-                subtitle = seriesLabel(book),
+                subtitle = SeriesDisplayLabel.primary(book.seriesMemberships),
                 author = authorLabel(book),
                 artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
                 extras = progress?.let(::completionExtras),
@@ -352,7 +352,7 @@ class AutoLibrary @Inject constructor(
         val item = playable(
             id = book.id.value,
             title = book.title,
-            subtitle = seriesLabel(book),
+            subtitle = SeriesDisplayLabel.primary(book.seriesMemberships),
             author = authorLabel(book),
             artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
             extras = extras,
@@ -405,21 +405,12 @@ class AutoLibrary @Inject constructor(
         return playable(
             id = "$BOOK_PREFIX${book.id.value}",
             title = book.title,
-            subtitle = seriesLabel(book),
+            subtitle = SeriesDisplayLabel.primary(book.seriesMemberships),
             author = authorLabel(book),
             artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
             extras = completionExtras(fraction),
         )
     }
-
-    /** Display-only primary/first series label; never changes canonical membership or order. */
-    private fun seriesLabel(book: Book): String? = book.seriesMemberships
-        .firstOrNull(SeriesMembership::isPrimary)
-        .let { membership -> membership ?: book.seriesMemberships.firstOrNull() }
-        ?.let { membership ->
-            val sequence = membership.sequence.raw.takeIf(String::isNotBlank)
-            if (sequence == null) membership.series.name else "${membership.series.name} #$sequence"
-        }
 
     private fun authorLabel(book: Book): String? =
         book.authors.joinToString { author -> author.name }.takeIf(String::isNotBlank)
