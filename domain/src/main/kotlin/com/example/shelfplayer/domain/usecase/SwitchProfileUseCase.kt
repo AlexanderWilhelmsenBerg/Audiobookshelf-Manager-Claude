@@ -97,10 +97,15 @@ class SwitchProfileUseCase @Inject constructor(
                 authRepository.restoreSession(profileId)
             }
         }
+        // NonCancellable protects only the local selection/credential commit. Returning from it
+        // does not guarantee that a cancelled caller is stopped before the next synchronous action.
+        currentCoroutineContext().ensureActive()
         if (status.isActive()) {
             // Network work remains cancellable, but it cannot leave the selected account with the
             // previous account's active token: the local transaction completed before reaching here.
             refreshPermissions(profileId)
+            // A refresh can complete without suspension; never schedule work after cancellation.
+            currentCoroutineContext().ensureActive()
             // PRODUCT_SPEC SYNC-003 — schedules are idempotent by unique work name.
             backgroundSync.schedule(profileId)
         }
