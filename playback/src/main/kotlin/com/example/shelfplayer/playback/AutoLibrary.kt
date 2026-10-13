@@ -459,7 +459,10 @@ class AutoLibrary @Inject constructor(
             MediaMetadata.Builder()
                 .setTitle(title)
                 .setSubtitle(subtitle)
-                .setArtist(author)
+                // The tested car host reads title + artist, not subtitle. Prioritize volume
+                // and series on the visible byline while keeping the author after them.
+                .setArtist(listOfNotNull(subtitle, author).filter(String::isNotBlank).joinToString(" • ")
+                    .takeIf(String::isNotBlank))
                 .setArtworkUri(artworkUri)
                 .setIsBrowsable(false)
                 .setIsPlayable(true)

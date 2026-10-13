@@ -212,7 +212,7 @@ class AutoBrowseTreeTest {
 
         assertEquals("at/book-1/${40.minutes.inWholeMilliseconds}", item?.mediaId)
         assertEquals("#2 Tidewatch", item?.mediaMetadata?.subtitle?.toString())
-        assertEquals("Marisol Holt", item?.mediaMetadata?.artist?.toString())
+        assertEquals("#2 Tidewatch • Marisol Holt", item?.mediaMetadata?.artist?.toString())
     }
 
     @Test
@@ -331,7 +331,7 @@ class AutoBrowseTreeTest {
         for (row in listOfNotNull(browse, resume)) {
             assertEquals(title, row.mediaMetadata.title?.toString())
             assertEquals("#12.5 Tidewatch", row.mediaMetadata.subtitle?.toString())
-            assertEquals("Marisol Holt", row.mediaMetadata.artist?.toString())
+            assertEquals("#12.5 Tidewatch • Marisol Holt", row.mediaMetadata.artist?.toString())
         }
     }
 

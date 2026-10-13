@@ -8,7 +8,7 @@
 ## Verified boundary
 - The BookWave `MediaLibraryService`/Media3 API supplies a complete primary title, separate series subtitle, artist, album title and per-parent grid/list *hints*. It does not supply an override for Android Auto title font size, primary-title line count or a third row of text.
 - Physical head-unit photos recorded on #251 after PR #254: long titles still appeared as a clipped single line; this host displayed artist and omitted series subtitle in browsing. The earlier code had preserved the full canonical title, so this was a host presentation limitation.
-- The live MediaSession already placed author + series together in `artist` because a physical head-unit test proved the host reads that field. #265 switches the sequence to number-first series + author so the first secondary information is the volume identifier.
+- Both Android Auto browse and the live MediaSession project a **series-first visible byline** in `artist`, because a physical head-unit test proved the host reads that field and ignores subtitle. #265 sets `#number Series • Author` so the first secondary information is the volume identifier; standalone rows still have an author-only artist. The structured series subtitle is still supplied separately. The host may clip the byline, so the author may still not get its own visible third line.
 - `SeriesDisplayLabel.primary` is a shared display-only formatter for the current primary-or-first membership. Numeric series sort order, identifiers, author source fields, and media items are not changed.
 
 ## Host experiment, not part of this metadata PR
