@@ -18,8 +18,8 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.MediaProgress
-import com.example.shelfplayer.domain.library.SeriesDisplayLabel
 import com.example.shelfplayer.domain.library.HomeShelves
+import com.example.shelfplayer.domain.library.SeriesDisplayLabel
 import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -461,8 +461,12 @@ class AutoLibrary @Inject constructor(
                 .setSubtitle(subtitle)
                 // The tested car host reads title + artist, not subtitle. Prioritize volume
                 // and series on the visible byline while keeping the author after them.
-                .setArtist(listOfNotNull(subtitle, author).filter(String::isNotBlank).joinToString(" • ")
-                    .takeIf(String::isNotBlank))
+                .setArtist(
+                    listOfNotNull(subtitle, author)
+                        .filter(String::isNotBlank)
+                        .joinToString(" • ")
+                        .takeIf(String::isNotBlank),
+                )
                 .setArtworkUri(artworkUri)
                 .setIsBrowsable(false)
                 .setIsPlayable(true)
