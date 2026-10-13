@@ -331,6 +331,7 @@ class SwitchProfileUseCaseTest {
 
         assertEquals(OTHER, profiles.activeProfileId())
         assertEquals(listOf(OTHER), auth.restoredProfiles)
+        assertTrue(auth.permissionRefreshes.isEmpty(), "canceled caller must not refresh permissions")
         assertTrue(backgroundSync.scheduled.isEmpty(), "canceled network-followup should not be scheduled")
     }
 
