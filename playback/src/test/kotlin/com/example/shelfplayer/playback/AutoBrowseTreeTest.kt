@@ -211,7 +211,7 @@ class AutoBrowseTreeTest {
         val item = auto().resumeItem()
 
         assertEquals("at/book-1/${40.minutes.inWholeMilliseconds}", item?.mediaId)
-        assertEquals("Tidewatch #2", item?.mediaMetadata?.subtitle?.toString())
+        assertEquals("#2 Tidewatch", item?.mediaMetadata?.subtitle?.toString())
         assertEquals("Marisol Holt", item?.mediaMetadata?.artist?.toString())
     }
 
