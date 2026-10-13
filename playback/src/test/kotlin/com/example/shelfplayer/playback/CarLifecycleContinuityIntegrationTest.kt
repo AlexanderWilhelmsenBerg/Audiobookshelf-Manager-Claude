@@ -312,7 +312,7 @@ class CarLifecycleContinuityIntegrationTest {
             carConnected = true,
         )
         assertEquals(CarArrivalResumeGate.Status.Rejected, pausedFocus.status)
-        assertEquals(CarArrivalResumeGate.Reason.NoQualifyingHeadset, pausedFocus.reason)
+        assertEquals(CarArrivalResumeGate.Reason.NoFreshPlaybackAfterIntentReset, pausedFocus.reason)
 
         val reselectedGate = CarArrivalResumeGate()
         reselectedGate.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 0)

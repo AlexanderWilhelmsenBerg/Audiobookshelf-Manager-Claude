@@ -38,6 +38,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         BoundaryWaitingForFocusLoss,
         BoundaryMatchedFocusLoss,
         NoQualifyingHeadset,
+        NoFreshPlaybackAfterIntentReset,
         NoPendingFocusLoss,
         NoPlayingCarHeadset,
         OutsidePairingWindow,
@@ -71,6 +72,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     private var firstArrival: ArrivalBoundary? = null
     private var arrivalRecorded = false
     private var activeRecovery: Target? = null
+    private var requiresFreshPlaybackEvidence = false
 
     /**
      * Last headset positively heard while playback was actually active.
@@ -88,6 +90,9 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         currentGeneration: Long?,
         explicitSelectionSequence: Long,
     ) {
+        // This method is invoked only after the service positively observes current playback.
+        // A previous Pause cannot authorize automatic recovery until audio has genuinely played again.
+        requiresFreshPlaybackEvidence = false
         val identity = identityOf(
             heardRoute = heardRoute,
             headsetId = headsetId,
@@ -115,6 +120,13 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         explicitSelectionSequence: Long,
         carConnected: Boolean,
     ): Decision {
+        if (requiresFreshPlaybackEvidence) {
+            return Decision(
+                phase = if (carConnected) Phase.Departure else Phase.Arrival,
+                status = Status.Rejected,
+                reason = Reason.NoFreshPlaybackAfterIntentReset,
+            )
+        }
         projectionDeparture?.let { boundary ->
             projectionDeparture = null
             val invalid = invalidReason(
@@ -376,6 +388,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     /** A deliberate/non-focus pause or book/session boundary invalidates every continuity fact. */
     fun cancelAll() {
         cancelPending()
+        requiresFreshPlaybackEvidence = true
         playingHeadset = null
     }
 
