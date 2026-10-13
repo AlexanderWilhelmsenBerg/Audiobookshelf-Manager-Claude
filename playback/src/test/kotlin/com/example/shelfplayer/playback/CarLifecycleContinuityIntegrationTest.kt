@@ -247,6 +247,62 @@ class CarLifecycleContinuityIntegrationTest {
     }
 
     @Test
+    fun `paused book with retained route owner cannot be started by focus then controller`() {
+        val owner = playingOwner()
+        val gate = CarArrivalResumeGate()
+        gate.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 0)
+
+        gate.cancelAll() // Explicit Pause, but RouteHeardOwnership still remembers the old headset.
+        val focus = gate.onAudioFocusLoss(
+            at = 10.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+        assertEquals(CarArrivalResumeGate.Status.Rejected, focus.status)
+        val arrival = gate.onCarArrival(12.seconds, owner.currentGeneration, 0)
+        assertEquals(CarArrivalResumeGate.Status.Rejected, arrival.status)
+    }
+
+    @Test
+    fun `headset Pause then car reconnect cannot recover stale route from physical trace 2026-10-13`() {
+        val owner = playingOwner()
+        val gate = CarArrivalResumeGate()
+
+        // The owner had explicitly selected the headset while the book was genuinely playing.
+        owner.onExplicitSelection(buds.id, listOf(buds), isPlaying = true, selectionSequence = 1)
+        gate.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 1)
+        assertEquals(buds.id, owner.heardRoute?.outputId)
+
+        // MediaSession keyCode=85 Pause: this cancels the gate but does not erase route-heard ownership.
+        gate.cancelAll()
+        owner.onOutputsChanged(listOf(buds), isPlaying = false)
+        assertEquals(buds.id, owner.heardRoute?.outputId)
+
+        // Twenty seconds later Media3 reports focus loss without any intervening observed Play.
+        val focus = gate.onAudioFocusLoss(
+            at = 40.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 1,
+            carConnected = false,
+        )
+        assertEquals(CarArrivalResumeGate.Phase.Arrival, focus.phase)
+        assertEquals(CarArrivalResumeGate.Status.Rejected, focus.status)
+        assertEquals(CarArrivalResumeGate.Reason.NoFreshPlaybackAfterIntentReset, focus.reason)
+
+        // Physical first Gearhead bind arrived 2.7s later, after a transient route omission.
+        owner.onOutputsChanged(emptyList(), isPlaying = false)
+        val bind = gate.onCarArrival(42_723.milliseconds, owner.currentGeneration, 1)
+        assertEquals(CarArrivalResumeGate.Status.Rejected, bind.status)
+        assertEquals(CarArrivalResumeGate.Reason.NoPendingFocusLoss, bind.reason)
+        assertEquals(null, bind.target)
+    }
+
+    @Test
     fun `late focus loss during an established car session cannot borrow old arrival authority`() {
         val owner = playingOwner()
         val gate = CarArrivalResumeGate()
@@ -292,7 +348,7 @@ class CarLifecycleContinuityIntegrationTest {
             carConnected = true,
         )
         assertEquals(CarArrivalResumeGate.Status.Rejected, pausedFocus.status)
-        assertEquals(CarArrivalResumeGate.Reason.NoQualifyingHeadset, pausedFocus.reason)
+        assertEquals(CarArrivalResumeGate.Reason.NoFreshPlaybackAfterIntentReset, pausedFocus.reason)
 
         val reselectedGate = CarArrivalResumeGate()
         reselectedGate.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 0)

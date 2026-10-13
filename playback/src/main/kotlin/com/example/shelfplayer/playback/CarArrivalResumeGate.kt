@@ -38,6 +38,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         BoundaryWaitingForFocusLoss,
         BoundaryMatchedFocusLoss,
         NoQualifyingHeadset,
+        NoFreshPlaybackAfterIntentReset,
         NoPendingFocusLoss,
         NoPlayingCarHeadset,
         OutsidePairingWindow,
@@ -71,6 +72,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     private var firstArrival: ArrivalBoundary? = null
     private var arrivalRecorded = false
     private var activeRecovery: Target? = null
+    private var requiresFreshPlaybackEvidence = false
 
     /**
      * Last headset positively heard while playback was actually active.
@@ -88,6 +90,9 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         currentGeneration: Long?,
         explicitSelectionSequence: Long,
     ) {
+        // This method is invoked only after the service positively observes current playback.
+        // A previous Pause cannot authorize automatic recovery until audio has genuinely played again.
+        requiresFreshPlaybackEvidence = false
         val identity = identityOf(
             heardRoute = heardRoute,
             headsetId = headsetId,
@@ -108,6 +113,32 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
      * loss first observed after final disconnect remains ineligible without the physical projection edge.
      */
     fun onAudioFocusLoss(
+        at: Duration,
+        heardRoute: RouteHeardOwnership.HeardRoute?,
+        headsetId: String?,
+        currentGeneration: Long?,
+        explicitSelectionSequence: Long,
+        carConnected: Boolean,
+    ): Decision {
+        if (requiresFreshPlaybackEvidence) {
+            return Decision(
+                phase = if (carConnected) Phase.Departure else Phase.Arrival,
+                status = Status.Rejected,
+                reason = Reason.NoFreshPlaybackAfterIntentReset,
+            )
+        }
+        return onEligibleAudioFocusLoss(
+            at = at,
+            heardRoute = heardRoute,
+            headsetId = headsetId,
+            currentGeneration = currentGeneration,
+            explicitSelectionSequence = explicitSelectionSequence,
+            carConnected = carConnected,
+        )
+    }
+
+    /** The existing bounded arrival/departure correlation, only after a fresh audible-play observation. */
+    private fun onEligibleAudioFocusLoss(
         at: Duration,
         heardRoute: RouteHeardOwnership.HeardRoute?,
         headsetId: String?,
@@ -376,6 +407,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     /** A deliberate/non-focus pause or book/session boundary invalidates every continuity fact. */
     fun cancelAll() {
         cancelPending()
+        requiresFreshPlaybackEvidence = true
         playingHeadset = null
     }
 
