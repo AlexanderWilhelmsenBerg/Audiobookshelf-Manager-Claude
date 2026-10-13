@@ -247,6 +247,26 @@ class CarLifecycleContinuityIntegrationTest {
     }
 
     @Test
+    fun `paused book with retained route owner cannot be started by focus then controller`() {
+        val owner = playingOwner()
+        val gate = CarArrivalResumeGate()
+        gate.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 0)
+
+        gate.cancelAll() // Explicit Pause, but RouteHeardOwnership still remembers the old headset.
+        val focus = gate.onAudioFocusLoss(
+            at = 10.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+        assertEquals(CarArrivalResumeGate.Status.Rejected, focus.status)
+        val arrival = gate.onCarArrival(12.seconds, owner.currentGeneration, 0)
+        assertEquals(CarArrivalResumeGate.Status.Rejected, arrival.status)
+    }
+
+    @Test
     fun `late focus loss during an established car session cannot borrow old arrival authority`() {
         val owner = playingOwner()
         val gate = CarArrivalResumeGate()

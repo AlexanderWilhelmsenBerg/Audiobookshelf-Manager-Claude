@@ -83,6 +83,61 @@ class CarArrivalResumeGateTest {
     }
 
     @Test
+    fun `explicitly paused book cannot regain continuity from last heard route`() {
+        val owner = heardOnBuds()
+        val gate = CarArrivalResumeGate()
+        gate.observePlayingHeadset(
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+        )
+
+        gate.cancelAll() // Listener Pause clears recovery, not the route owner's last heard record.
+        val focus = gate.onAudioFocusLoss(
+            at = 10.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds, car)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+        assertEquals(CarArrivalResumeGate.Status.Rejected, focus.status)
+        assertEquals(
+            CarArrivalResumeGate.Status.Rejected,
+            gate.onCarArrival(12.seconds, owner.currentGeneration, 0).status,
+        )
+    }
+
+    @Test
+    fun `new observed playback after pause permits one later focus recovery`() {
+        val owner = heardOnBuds()
+        val gate = CarArrivalResumeGate()
+        gate.cancelAll()
+        // The service calls this only upon a new positive isPlaying observation.
+        gate.observePlayingHeadset(
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+        )
+
+        val focus = gate.onAudioFocusLoss(
+            at = 10.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds, car)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+        assertEquals(CarArrivalResumeGate.Status.Armed, focus.status)
+
+        val arrival = gate.onCarArrival(12.seconds, owner.currentGeneration, 0)
+        assertEquals(CarArrivalResumeGate.Status.Ready, arrival.status)
+        assertTrue(gate.consumeRecovery(requireNotNull(arrival.target), owner.currentGeneration, buds.id, 0).accepted)
+    }
+
+    @Test
     fun `newer explicit play after focus loss cancels pending recovery`() {
         val owner = heardOnBuds()
         val gate = armedArrival(owner)
