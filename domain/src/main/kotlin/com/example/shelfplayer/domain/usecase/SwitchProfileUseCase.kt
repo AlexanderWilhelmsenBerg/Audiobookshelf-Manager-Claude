@@ -11,6 +11,10 @@ import com.example.shelfplayer.domain.playback.PlaybackHandover
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.sync.BackgroundSync
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
@@ -85,19 +89,22 @@ class SwitchProfileUseCase @Inject constructor(
             handover.handOver(outgoing)
         }
         // Step 4. Everything above this line belongs to the outgoing account; everything below it to the
-        // incoming one.
-        return profileRepository.setActiveProfile(profileId).flatMap {
-            authRepository.restoreSession(profileId).also { status ->
-                if (status.isActive()) {
-                    refreshPermissions(profileId)
-                    // PRODUCT_SPEC SYNC-003 — an account the user actually uses earns a background
-                    // schedule. Idempotent by unique name, so calling it on every switch is the point
-                    // rather than a cost: a profile added before this existed gets one the first time
-                    // it is used.
-                    backgroundSync.schedule(profileId)
-                }
+        // incoming one. Cancellation before this commit boundary is safe; once selection is written, the
+        // corresponding local credential activation must finish, even if the calling screen goes away.
+        currentCoroutineContext().ensureActive()
+        val status = withContext(NonCancellable) {
+            profileRepository.setActiveProfile(profileId).flatMap {
+                authRepository.restoreSession(profileId)
             }
         }
+        if (status.isActive()) {
+            // Network work remains cancellable, but it cannot leave the selected account with the
+            // previous account's active token: the local transaction completed before reaching here.
+            refreshPermissions(profileId)
+            // PRODUCT_SPEC SYNC-003 — schedules are idempotent by unique work name.
+            backgroundSync.schedule(profileId)
+        }
+        return status
     }
 
     /**
