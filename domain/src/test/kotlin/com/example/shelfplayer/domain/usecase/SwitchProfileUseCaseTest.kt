@@ -37,10 +37,8 @@ class SwitchProfileUseCaseTest {
      *   guard is a `fun interface` precisely so this test needs no double — see `ProfileActivationGuard`,
      *   which records why a duplicated fake was the thing to avoid.
      */
-    private fun useCase(
-        lockedProfiles: Set<ProfileId> = emptySet(),
-        authOverride: AuthRepository = auth,
-    ) = SwitchProfileUseCase(
+    private fun useCase(lockedProfiles: Set<ProfileId> = emptySet(), authOverride: AuthRepository = auth) =
+        SwitchProfileUseCase(
         profiles,
         authOverride,
         SyncAccountUseCase(profiles, auth, libraries, FakeBookmarkRepository()),
