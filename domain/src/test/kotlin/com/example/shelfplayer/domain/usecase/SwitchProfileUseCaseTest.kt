@@ -12,7 +12,11 @@ import com.example.shelfplayer.domain.FakeProfileRepository
 import com.example.shelfplayer.domain.TEST_PROFILE
 import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.playback.PlaybackHandover
+import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -27,19 +31,24 @@ class SwitchProfileUseCaseTest {
     private val auth = FakeAuthRepository()
     private val libraries = FakeLibraryRepository()
     private val backgroundSync = FakeBackgroundSync()
+    private val coordinator = ProfileSwitchCoordinator()
 
     /**
      * @param lockedProfiles profiles that may not be activated. A lambda rather than a fake class: the
      *   guard is a `fun interface` precisely so this test needs no double — see `ProfileActivationGuard`,
      *   which records why a duplicated fake was the thing to avoid.
      */
-    private fun useCase(lockedProfiles: Set<ProfileId> = emptySet()) = SwitchProfileUseCase(
+    private fun useCase(
+        lockedProfiles: Set<ProfileId> = emptySet(),
+        authOverride: AuthRepository = auth,
+    ): SwitchProfileUseCase = SwitchProfileUseCase(
         profiles,
-        auth,
+        authOverride,
         SyncAccountUseCase(profiles, auth, libraries, FakeBookmarkRepository()),
         backgroundSync,
         ProfileActivationGuard { profileId -> profileId !in lockedProfiles },
         handover,
+        coordinator,
     )
 
     @Test
@@ -205,8 +214,130 @@ class SwitchProfileUseCaseTest {
         assertEquals(listOf(TEST_PROFILE), handover.handedOver)
     }
 
+    /**
+     * #257: two independently injected callers (phone and car) must not both flush A while the
+     * first handover is suspended. DataStore's atomic write cannot serialize this entire operation.
+     */
+    @Test
+    fun `phone and car selections serialize the complete handover transaction`() = runTest {
+        handover.holdFirst = true
+        val phone = async(start = CoroutineStart.UNDISPATCHED) { useCase()(OTHER) }
+        handover.firstEntered.await()
+        val car = async(start = CoroutineStart.UNDISPATCHED) { useCase()(THIRD) }
+        val observedBeforeRelease = handover.handedOver.toList()
+
+        handover.releaseFirst.complete(Unit)
+        assertEquals(AppResult.Success(SessionStatus.Active), phone.await())
+        assertEquals(AppResult.Success(SessionStatus.Active), car.await())
+
+        assertEquals(listOf(TEST_PROFILE), observedBeforeRelease, "the second caller must not flush A concurrently")
+        assertEquals(
+            listOf(
+                "handover:${TEST_PROFILE.value}",
+                "active:${OTHER.value}",
+                "handover:${OTHER.value}",
+                "active:${THIRD.value}",
+            ),
+            profiles.journal,
+        )
+        assertEquals(listOf(OTHER, THIRD), auth.restoredProfiles)
+        assertEquals(THIRD, profiles.activeProfileId())
+    }
+
+    /**
+     * #257: an outgoing phone switch may suspend after B is selected but before its credentials
+     * finish restoring. Android Auto must not select C during that window, then let B finish last.
+     */
+    @Test
+    fun `car switch waits until phone credential restoration completes`() = runTest {
+        val firstEntered = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val gatedAuth = object : AuthRepository by auth {
+            override suspend fun restoreSession(profileId: ProfileId): AppResult<SessionStatus> {
+                if (profileId == OTHER) {
+                    firstEntered.complete(Unit)
+                    releaseFirst.await()
+                }
+                return auth.restoreSession(profileId)
+            }
+        }
+        val phone = async(start = CoroutineStart.UNDISPATCHED) {
+            useCase(authOverride = gatedAuth)(OTHER)
+        }
+        firstEntered.await()
+        val car = async(start = CoroutineStart.UNDISPATCHED) {
+            useCase(authOverride = gatedAuth)(THIRD)
+        }
+        val activeBeforeRelease = profiles.activeProfileId()
+
+        releaseFirst.complete(Unit)
+        assertEquals(AppResult.Success(SessionStatus.Active), phone.await())
+        assertEquals(AppResult.Success(SessionStatus.Active), car.await())
+
+        assertEquals(OTHER, activeBeforeRelease, "C must wait for B's credential transaction")
+        assertEquals(listOf(OTHER, THIRD), auth.restoredProfiles)
+        assertEquals(listOf(OTHER, THIRD), backgroundSync.scheduled)
+        assertEquals(THIRD, profiles.activeProfileId())
+    }
+
+    /**
+     * #257: cancellation of the car request while it waits for the phone transaction must not
+     * trigger an outgoing-player flush or select the car profile when the phone completes.
+     */
+    @Test
+    fun `cancelled waiting car switch never changes the profile or credentials`() = runTest {
+        handover.holdFirst = true
+        val phone = async(start = CoroutineStart.UNDISPATCHED) { useCase()(OTHER) }
+        handover.firstEntered.await()
+
+        val car = async(start = CoroutineStart.UNDISPATCHED) { useCase()(THIRD) }
+        car.cancel()
+        car.join()
+
+        handover.releaseFirst.complete(Unit)
+        assertEquals(AppResult.Success(SessionStatus.Active), phone.await())
+        assertEquals(OTHER, profiles.activeProfileId())
+        assertEquals(listOf(OTHER), auth.restoredProfiles)
+        assertEquals(listOf(TEST_PROFILE), handover.handedOver)
+        assertEquals(listOf(OTHER), backgroundSync.scheduled)
+    }
+
+    /**
+     * The profile-selection write and local credential activation are one irreversible security
+     * boundary: after selecting B, a canceled UI caller must not leave the old A token active.
+     * The network-based permission refresh is intentionally outside this non-cancellable section.
+     */
+    @Test
+    fun `cancellation during credential restoration finishes the selected profile token`() = runTest {
+        val restoreEntered = CompletableDeferred<Unit>()
+        val releaseRestore = CompletableDeferred<Unit>()
+        val gatedAuth = object : AuthRepository by auth {
+            override suspend fun restoreSession(profileId: ProfileId): AppResult<SessionStatus> {
+                restoreEntered.complete(Unit)
+                releaseRestore.await()
+                return auth.restoreSession(profileId)
+            }
+        }
+
+        val phone = async(start = CoroutineStart.UNDISPATCHED) {
+            useCase(authOverride = gatedAuth)(OTHER)
+        }
+        restoreEntered.await()
+        assertEquals(OTHER, profiles.activeProfileId())
+
+        phone.cancel()
+        releaseRestore.complete(Unit)
+        phone.join()
+
+        assertEquals(OTHER, profiles.activeProfileId())
+        assertEquals(listOf(OTHER), auth.restoredProfiles)
+        assertTrue(auth.permissionRefreshes.isEmpty(), "canceled caller must not refresh permissions")
+        assertTrue(backgroundSync.scheduled.isEmpty(), "canceled network-followup should not be scheduled")
+    }
+
     private companion object {
         val OTHER = ProfileId("profile-2")
+        val THIRD = ProfileId("profile-3")
     }
 
     /**
@@ -249,11 +380,18 @@ class SwitchProfileUseCaseTest {
     private class RecordingHandover(private val profiles: JournallingProfiles) : PlaybackHandover {
         val handedOver = mutableListOf<ProfileId>()
         val activeWhenCalled = mutableListOf<ProfileId?>()
+        var holdFirst = false
+        val firstEntered = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
 
         override suspend fun handOver(outgoing: ProfileId) {
             handedOver += outgoing
             activeWhenCalled += profiles.activeProfileId()
             profiles.journal += "handover:" + outgoing.value
+            if (holdFirst && handedOver.size == 1) {
+                firstEntered.complete(Unit)
+                releaseFirst.await()
+            }
         }
     }
 

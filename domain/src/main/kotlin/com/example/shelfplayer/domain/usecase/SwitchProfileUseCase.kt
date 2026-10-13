@@ -11,6 +11,10 @@ import com.example.shelfplayer.domain.playback.PlaybackHandover
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.sync.BackgroundSync
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
@@ -60,8 +64,13 @@ class SwitchProfileUseCase @Inject constructor(
     private val activation: ProfileActivationGuard,
     /** PRODUCT_SPEC 6.5 steps 2–3 — the outgoing account's player, stopped and flushed before step 4. */
     private val handover: PlaybackHandover,
+    /** Shared across phone, passcode unlock and Android Auto callers. */
+    private val coordinator: ProfileSwitchCoordinator,
 ) {
-    suspend operator fun invoke(profileId: ProfileId): AppResult<SessionStatus> {
+    suspend operator fun invoke(profileId: ProfileId): AppResult<SessionStatus> =
+        coordinator.serialize { switch(profileId) }
+
+    private suspend fun switch(profileId: ProfileId): AppResult<SessionStatus> {
         // Asked before anything is written. A refusal that had already changed the active profile would
         // leave the app showing an account it then declined to open.
         if (!activation.mayActivate(profileId)) {
@@ -80,19 +89,27 @@ class SwitchProfileUseCase @Inject constructor(
             handover.handOver(outgoing)
         }
         // Step 4. Everything above this line belongs to the outgoing account; everything below it to the
-        // incoming one.
-        return profileRepository.setActiveProfile(profileId).flatMap {
-            authRepository.restoreSession(profileId).also { status ->
-                if (status.isActive()) {
-                    refreshPermissions(profileId)
-                    // PRODUCT_SPEC SYNC-003 — an account the user actually uses earns a background
-                    // schedule. Idempotent by unique name, so calling it on every switch is the point
-                    // rather than a cost: a profile added before this existed gets one the first time
-                    // it is used.
-                    backgroundSync.schedule(profileId)
-                }
+        // incoming one. Cancellation before this commit boundary is safe; once selection is written, the
+        // corresponding local credential activation must finish, even if the calling screen goes away.
+        currentCoroutineContext().ensureActive()
+        val status = withContext(NonCancellable) {
+            profileRepository.setActiveProfile(profileId).flatMap {
+                authRepository.restoreSession(profileId)
             }
         }
+        // NonCancellable protects only the local selection/credential commit. Returning from it
+        // does not guarantee that a cancelled caller is stopped before the next synchronous action.
+        currentCoroutineContext().ensureActive()
+        if (status.isActive()) {
+            // Network work remains cancellable, but it cannot leave the selected account with the
+            // previous account's active token: the local transaction completed before reaching here.
+            refreshPermissions(profileId)
+            // A refresh can complete without suspension; never schedule work after cancellation.
+            currentCoroutineContext().ensureActive()
+            // PRODUCT_SPEC SYNC-003 — schedules are idempotent by unique work name.
+            backgroundSync.schedule(profileId)
+        }
+        return status
     }
 
     /**

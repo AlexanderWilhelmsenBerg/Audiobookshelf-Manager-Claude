@@ -39,6 +39,7 @@ import com.example.shelfplayer.domain.repository.ProfileLockRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.repository.RememberedBookRepository
 import com.example.shelfplayer.domain.sync.BackgroundSync
+import com.example.shelfplayer.domain.usecase.ProfileSwitchCoordinator
 import com.example.shelfplayer.domain.usecase.RemoveProfileUseCase
 import com.example.shelfplayer.domain.usecase.RestoreProfilePlaybackUseCase
 import com.example.shelfplayer.domain.usecase.SwitchProfileUseCase
@@ -99,6 +100,7 @@ class ProfileSwitcherViewModelTest {
             // interface documents is the right double here. `SwitchProfileUseCaseTest` is where the
             // ordering this seam exists to guarantee is actually asserted.
             PlaybackHandover.None,
+            ProfileSwitchCoordinator(),
         ),
         RestoreProfilePlaybackUseCase(
             library = libraries,
