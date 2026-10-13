@@ -40,8 +40,8 @@ class SwitchProfileUseCaseTest {
     private fun useCase(
         lockedProfiles: Set<ProfileId> = emptySet(),
         authOverride: AuthRepository = auth,
-    ): SwitchProfileUseCase {
-        return SwitchProfileUseCase(
+    ): SwitchProfileUseCase =
+        SwitchProfileUseCase(
             profiles,
             authOverride,
             SyncAccountUseCase(profiles, auth, libraries, FakeBookmarkRepository()),
@@ -49,7 +49,6 @@ class SwitchProfileUseCaseTest {
             ProfileActivationGuard { profileId -> profileId !in lockedProfiles },
             handover,
         )
-    }
 
     @Test
     fun `switching selects the profile and loads its credential`() = runTest {
