@@ -280,6 +280,60 @@ class SwitchProfileUseCaseTest {
         assertEquals(THIRD, profiles.activeProfileId())
     }
 
+    /**
+     * #257: cancellation of the car request while it waits for the phone transaction must not
+     * trigger an outgoing-player flush or select the car profile when the phone completes.
+     */
+    @Test
+    fun `cancelled waiting car switch never changes the profile or credentials`() = runTest {
+        handover.holdFirst = true
+        val phone = async(start = CoroutineStart.UNDISPATCHED) { useCase()(OTHER) }
+        handover.firstEntered.await()
+
+        val car = async(start = CoroutineStart.UNDISPATCHED) { useCase()(THIRD) }
+        car.cancel()
+        car.join()
+
+        handover.releaseFirst.complete(Unit)
+        assertEquals(AppResult.Success(SessionStatus.Active), phone.await())
+        assertEquals(OTHER, profiles.activeProfileId())
+        assertEquals(listOf(OTHER), auth.restoredProfiles)
+        assertEquals(listOf(TEST_PROFILE), handover.handedOver)
+        assertEquals(listOf(OTHER), backgroundSync.scheduled)
+    }
+
+    /**
+     * The profile-selection write and local credential activation are one irreversible security
+     * boundary: after selecting B, a canceled UI caller must not leave the old A token active.
+     * The network-based permission refresh is intentionally outside this non-cancellable section.
+     */
+    @Test
+    fun `cancellation during credential restoration finishes the selected profile token`() = runTest {
+        val restoreEntered = CompletableDeferred<Unit>()
+        val releaseRestore = CompletableDeferred<Unit>()
+        val gatedAuth = object : AuthRepository by auth {
+            override suspend fun restoreSession(profileId: ProfileId): AppResult<SessionStatus> {
+                restoreEntered.complete(Unit)
+                releaseRestore.await()
+                return auth.restoreSession(profileId)
+            }
+        }
+
+        val phone = async(start = CoroutineStart.UNDISPATCHED) {
+            useCase(authOverride = gatedAuth)(OTHER)
+        }
+        restoreEntered.await()
+        assertEquals(OTHER, profiles.activeProfileId())
+
+        phone.cancel()
+        releaseRestore.complete(Unit)
+        phone.join()
+
+        assertEquals(OTHER, profiles.activeProfileId())
+        assertEquals(listOf(OTHER), auth.restoredProfiles)
+        assertTrue(backgroundSync.scheduled.isEmpty(), "canceled network-followup should not be scheduled")
+    }
+
     private companion object {
         val OTHER = ProfileId("profile-2")
         val THIRD = ProfileId("profile-3")
