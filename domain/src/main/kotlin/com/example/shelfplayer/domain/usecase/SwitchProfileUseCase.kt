@@ -60,8 +60,13 @@ class SwitchProfileUseCase @Inject constructor(
     private val activation: ProfileActivationGuard,
     /** PRODUCT_SPEC 6.5 steps 2–3 — the outgoing account's player, stopped and flushed before step 4. */
     private val handover: PlaybackHandover,
+    /** Shared across phone, passcode unlock and Android Auto callers. */
+    private val coordinator: ProfileSwitchCoordinator,
 ) {
-    suspend operator fun invoke(profileId: ProfileId): AppResult<SessionStatus> {
+    suspend operator fun invoke(profileId: ProfileId): AppResult<SessionStatus> =
+        coordinator.serialize { switch(profileId) }
+
+    private suspend fun switch(profileId: ProfileId): AppResult<SessionStatus> {
         // Asked before anything is written. A refusal that had already changed the active profile would
         // leave the app showing an account it then declined to open.
         if (!activation.mayActivate(profileId)) {

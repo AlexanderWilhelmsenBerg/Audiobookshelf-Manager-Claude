@@ -31,6 +31,7 @@ class SwitchProfileUseCaseTest {
     private val auth = FakeAuthRepository()
     private val libraries = FakeLibraryRepository()
     private val backgroundSync = FakeBackgroundSync()
+    private val coordinator = ProfileSwitchCoordinator()
 
     /**
      * @param lockedProfiles profiles that may not be activated. A lambda rather than a fake class: the
@@ -47,6 +48,7 @@ class SwitchProfileUseCaseTest {
         backgroundSync,
         ProfileActivationGuard { profileId -> profileId !in lockedProfiles },
         handover,
+        coordinator,
     )
 
     @Test
