@@ -41,13 +41,13 @@ class SwitchProfileUseCaseTest {
         lockedProfiles: Set<ProfileId> = emptySet(),
         authOverride: AuthRepository = auth,
     ): SwitchProfileUseCase = SwitchProfileUseCase(
-            profiles,
-            authOverride,
-            SyncAccountUseCase(profiles, auth, libraries, FakeBookmarkRepository()),
-            backgroundSync,
-            ProfileActivationGuard { profileId -> profileId !in lockedProfiles },
-            handover,
-        )
+        profiles,
+        authOverride,
+        SyncAccountUseCase(profiles, auth, libraries, FakeBookmarkRepository()),
+        backgroundSync,
+        ProfileActivationGuard { profileId -> profileId !in lockedProfiles },
+        handover,
+    )
 
     @Test
     fun `switching selects the profile and loads its credential`() = runTest {
