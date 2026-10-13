@@ -127,6 +127,25 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
                 reason = Reason.NoFreshPlaybackAfterIntentReset,
             )
         }
+        return onEligibleAudioFocusLoss(
+            at = at,
+            heardRoute = heardRoute,
+            headsetId = headsetId,
+            currentGeneration = currentGeneration,
+            explicitSelectionSequence = explicitSelectionSequence,
+            carConnected = carConnected,
+        )
+    }
+
+    /** The existing bounded arrival/departure correlation, only after a fresh audible-play observation. */
+    private fun onEligibleAudioFocusLoss(
+        at: Duration,
+        heardRoute: RouteHeardOwnership.HeardRoute?,
+        headsetId: String?,
+        currentGeneration: Long?,
+        explicitSelectionSequence: Long,
+        carConnected: Boolean,
+    ): Decision {
         projectionDeparture?.let { boundary ->
             projectionDeparture = null
             val invalid = invalidReason(
