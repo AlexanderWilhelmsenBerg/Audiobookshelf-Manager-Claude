@@ -622,17 +622,17 @@ private fun browsableNode(
     artworkUri: Uri? = null,
     extras: Bundle? = null,
 ): MediaItem = MediaItem.Builder()
-        .setMediaId(id)
-        .setMediaMetadata(
-            MediaMetadata.Builder()
-                .setTitle(title)
-                .setSubtitle(subtitle)
-                .setArtist(subtitle)
-                .setArtworkUri(artworkUri)
-                .setIsBrowsable(true)
-                .setIsPlayable(false)
-                .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
-                .apply { extras?.let(::setExtras) }
-                .build(),
-        )
-        .build()
+    .setMediaId(id)
+    .setMediaMetadata(
+        MediaMetadata.Builder()
+            .setTitle(title)
+            .setSubtitle(subtitle)
+            .setArtist(subtitle)
+            .setArtworkUri(artworkUri)
+            .setIsBrowsable(true)
+            .setIsPlayable(false)
+            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
+            .apply { extras?.let(::setExtras) }
+            .build(),
+    )
+    .build()
