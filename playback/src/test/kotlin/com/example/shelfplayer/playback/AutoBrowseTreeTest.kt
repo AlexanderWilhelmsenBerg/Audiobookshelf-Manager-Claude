@@ -90,7 +90,7 @@ class AutoBrowseTreeTest {
     }
 
     @Test
-    fun `browse destinations request artwork grids while Profiles remains list oriented`() = runTest {
+    fun `browse destinations request text-first lists`() = runTest {
         val auto = auto()
         val root = auto.root()
         val tabs = auto.children(AutoLibrary.ROOT, now = null).associateBy { item -> item.mediaId }
@@ -118,7 +118,7 @@ class AutoBrowseTreeTest {
     }
 
     @Test
-    fun `series and author parents request grid cards for their books`() = runTest {
+    fun `series and author parents request text-first book rows`() = runTest {
         books.value = listOf(
             book("book-1", "The Salt Harbour", series = membership("series-1", "Tidewatch", "1")),
         )
@@ -198,7 +198,7 @@ class AutoBrowseTreeTest {
     }
 
     @Test
-    fun `the resumable item keeps the stored position and distinct author and series fields`() = runTest {
+    fun `the resumable item keeps the stored position and number-first series byline`() = runTest {
         books.value = listOf(
             book(
                 "book-1",
@@ -326,7 +326,7 @@ class AutoBrowseTreeTest {
     }
 
     @Test
-    fun `full long title and series sequence are distinct from the author in browse and resume`() = runTest {
+    fun `long book titles keep number-first series byline in browse and resume`() = runTest {
         val title = "The Wonderful and Astonishingly Long Adventures of the Final Tidewatcher"
         books.value = listOf(
             book(
