@@ -421,9 +421,6 @@ class AutoLibrary @Inject constructor(
         )
     }
 
-    private fun authorLabel(book: Book): String? =
-        book.authors.joinToString { author -> author.name }.takeIf(String::isNotBlank)
-
     private fun completionExtras(progress: MediaProgress): Bundle =
         completionExtras(if (progress.isFinished) FULLY_PLAYED else progress.fractionComplete.toDouble())
 
