@@ -362,7 +362,7 @@ class AutoLibrary @Inject constructor(
             id = book.id.value,
             title = book.title,
             subtitle = SeriesDisplayLabel.primary(book.seriesMemberships),
-            author = authorLabel(book),
+            author = null,
             artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
             extras = extras,
             uri = RESUME_PLACEHOLDER_URI.toUri(),
