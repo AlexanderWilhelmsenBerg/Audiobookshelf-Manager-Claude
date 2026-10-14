@@ -255,7 +255,7 @@ class AutoLibrary @Inject constructor(
                 id = resumeId(book.id, progress?.position),
                 title = book.title,
                 subtitle = SeriesDisplayLabel.primary(book.seriesMemberships),
-                author = authorLabel(book),
+                author = null,
                 artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
                 extras = progress?.let(::completionExtras),
             ),
