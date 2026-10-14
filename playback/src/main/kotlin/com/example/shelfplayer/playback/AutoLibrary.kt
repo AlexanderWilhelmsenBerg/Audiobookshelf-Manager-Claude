@@ -621,8 +621,7 @@ private fun browsableNode(
     subtitle: String? = null,
     artworkUri: Uri? = null,
     extras: Bundle? = null,
-): MediaItem =
-    MediaItem.Builder()
+): MediaItem = MediaItem.Builder()
         .setMediaId(id)
         .setMediaMetadata(
             MediaMetadata.Builder()
