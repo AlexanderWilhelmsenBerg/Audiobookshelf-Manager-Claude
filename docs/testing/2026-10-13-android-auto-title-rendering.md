@@ -21,3 +21,16 @@ Google's [typography guidance](https://developers.google.com/cars/design/android
 - Record visible number of title lines, whether the series-first byline appears, and whether author remains readable. Screenshot with no user/account data disclosed.
 - Compare list vs grid only in a separately approved experiment; do not change PD-001 by inference.
 - Existing full-title metadata tests remain required, but their PASS is not physical rendering proof.
+
+
+## Experimental text-first contextual library browse — October 14, 2026
+
+The owner's physical PR #266 APK test confirmed that number-first metadata appeared but book and series names remained clipped in artwork-first grids. The subsequent requested comparison is based on Absorb's list-oriented, two-field media display rather than copying its Flutter UI:
+
+- **Book rows:** full book title as `MediaMetadata.title`, numbered series label as `subtitle` and host-visible `artist`; do not append author to the book-row byline.
+- **Series rows:** full series name as `title`, all distinct credited authors as `subtitle` and `artist`; leave the navigation item browsable, not playable.
+- **Presentation hint:** list items for Continue, individual book children under Series/Authors, and the direct recent row; retain artwork metadata. The car decides the actual image size, line wrapping and truncation.
+- The MediaSession **Now Playing** byline is separate and unchanged.
+- This differs from accepted PD-001 artwork-first cards; leave the PR draft until car screenshots support a deliberate owner decision.
+
+Use a long title, a multi-book series with one author, a mixed-author series, and a standalone book to check this host. Photos should show title/series legibility plus cover visibility for both browse types.
