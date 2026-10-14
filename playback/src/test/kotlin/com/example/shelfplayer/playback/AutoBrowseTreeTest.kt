@@ -100,15 +100,15 @@ class AutoBrowseTreeTest {
             root.mediaMetadata.extras?.getInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE),
         )
         assertEquals(
-            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             tabs.getValue(AutoLibrary.TAB_CONTINUE).style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE),
         )
         assertEquals(
-            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             tabs.getValue(AutoLibrary.TAB_SERIES).style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE),
         )
         assertEquals(
-            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             tabs.getValue(AutoLibrary.TAB_AUTHORS).style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE),
         )
         assertEquals(
@@ -128,11 +128,11 @@ class AutoBrowseTreeTest {
         val author = auto.children(AutoLibrary.TAB_AUTHORS, now = null).single()
 
         assertEquals(
-            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             series.style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE),
         )
         assertEquals(
-            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             author.style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE),
         )
     }
@@ -212,7 +212,7 @@ class AutoBrowseTreeTest {
 
         assertEquals("at/book-1/${40.minutes.inWholeMilliseconds}", item?.mediaId)
         assertEquals("#2 Tidewatch", item?.mediaMetadata?.subtitle?.toString())
-        assertEquals("#2 Tidewatch • Marisol Holt", item?.mediaMetadata?.artist?.toString())
+        assertEquals("#2 Tidewatch", item?.mediaMetadata?.artist?.toString())
     }
 
     @Test
@@ -306,12 +306,23 @@ class AutoBrowseTreeTest {
     }
 
     @Test
-    fun `short standalone title has no invented series and keeps author as artist`() = runTest {
+    fun `series list shows series name with its credited author`() = runTest {
+        books.value = listOf(
+            book("book-1", "The Salt Harbour", series = membership("series-1", "Tidewatch", "1")),
+        )
+        val row = auto().children(AutoLibrary.TAB_SERIES, null).single()
+        assertEquals("Tidewatch", row.mediaMetadata.title?.toString())
+        assertEquals("Marisol Holt", row.mediaMetadata.subtitle?.toString())
+        assertEquals("Marisol Holt", row.mediaMetadata.artist?.toString())
+    }
+
+    @Test
+    fun `short standalone title has no invented series or author byline in book browsing`() = runTest {
         books.value = listOf(book("book-1", "Short"))
         val row = auto().children("author/author-1", null).single()
         assertEquals("Short", row.mediaMetadata.title?.toString())
         assertEquals(null, row.mediaMetadata.subtitle)
-        assertEquals("Marisol Holt", row.mediaMetadata.artist?.toString())
+        assertEquals(null, row.mediaMetadata.artist)
     }
 
     @Test
@@ -331,7 +342,7 @@ class AutoBrowseTreeTest {
         for (row in listOfNotNull(browse, resume)) {
             assertEquals(title, row.mediaMetadata.title?.toString())
             assertEquals("#12.5 Tidewatch", row.mediaMetadata.subtitle?.toString())
-            assertEquals("#12.5 Tidewatch • Marisol Holt", row.mediaMetadata.artist?.toString())
+            assertEquals("#12.5 Tidewatch", row.mediaMetadata.artist?.toString())
         }
     }
 
