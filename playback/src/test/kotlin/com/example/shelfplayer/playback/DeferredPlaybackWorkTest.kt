@@ -315,17 +315,24 @@ class DeferredPlaybackWorkTest {
         ) { _, method, _ ->
             when (method.name) {
                 "getCurrentMediaItem" -> item
+
                 "getMediaItemCount" -> 1
+
                 "getPlaybackState" -> Player.STATE_IDLE
+
                 "getPlayerError" -> failure
+
                 "prepare" -> {
                     prepares++
                     null
                 }
 
                 "toString" -> "FailedPlayer"
+
                 "hashCode" -> System.identityHashCode(this)
+
                 "equals" -> false
+
                 else -> primitiveDefault(method.returnType)
             }
         } as Player
