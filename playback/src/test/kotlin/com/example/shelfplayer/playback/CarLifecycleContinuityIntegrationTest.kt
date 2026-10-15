@@ -29,6 +29,45 @@ class CarLifecycleContinuityIntegrationTest {
     )
 
     @Test
+    fun `noisy-only before first car bind recovers the original headset once`() = runBlocking {
+        val owner = playingOwner()
+        val gate = CarArrivalResumeGate()
+        gate.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 0)
+        val noisy = gate.onAudioBecomingNoisy(
+            at = 10.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = buds.id,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+        assertEquals(CarArrivalResumeGate.Status.Armed, noisy.status)
+        owner.onOutputsChanged(emptyList(), isPlaying = false)
+        val arrival = gate.onCarArrival(12.seconds, owner.currentGeneration, 0)
+        assertEquals(CarArrivalResumeGate.Status.Ready, arrival.status)
+        val target = requireNotNull(arrival.target)
+        val outputs = MutableStateFlow<List<AudioOutput>>(emptyList())
+        val selected = MutableStateFlow<String?>(null)
+        val reappears = launch {
+            delay(10)
+            outputs.value = listOf(buds)
+        }
+        val held = CarArrivalRouteRecovery(200.milliseconds).secure(
+            target = target,
+            outputs = outputs,
+            selectedId = selected,
+            isStillEligible = { gate.isCurrent(target, owner.currentGeneration, 0) },
+        ) { id ->
+            selected.value = id
+            true
+        }
+        reappears.join()
+        assertEquals(buds.id, held)
+        assertTrue(gate.consumeRecovery(target, owner.currentGeneration, held, 0).accepted)
+        assertTrue(!gate.consumeRecovery(target, owner.currentGeneration, held, 0).accepted)
+    }
+
+    @Test
     fun `arrival route flap still reaches one exact-headset Play authorization`() = runBlocking {
         val owner = playingOwner()
         val gate = CarArrivalResumeGate()
