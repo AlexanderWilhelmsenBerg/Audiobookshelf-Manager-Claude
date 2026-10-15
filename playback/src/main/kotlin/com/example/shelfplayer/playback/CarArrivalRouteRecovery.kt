@@ -49,6 +49,18 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
                     return@withTimeoutOrNull null
                 }
 
+                // If Android still routes media exclusively to the previously heard headset, do not
+                // disturb a healthy AudioTrack by reapplying its preferred device. Automatic selection is
+                // acceptable here only with positive active-route evidence; absence/ambiguity takes the
+                // existing bounded reassertion path below.
+                if (
+                    headsetAlreadyActive(target.outputId, outputs.value) &&
+                    (selectedId.value == null || selectedId.value == target.outputId)
+                ) {
+                    onEvent(Event.Secured)
+                    return@withTimeoutOrNull target.outputId
+                }
+
                 val applied = reassert(target.outputId)
                 onEvent(Event.Reasserted)
                 if (!isStillEligible()) {
@@ -87,3 +99,11 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
         val RETRY_DELAY: Duration = 50.milliseconds
     }
 }
+
+/**
+ * Conservative continuity fast path: the captured headset is the only active output.
+ * Merely connected, preferred, or chosen-by-list-order is not sufficient evidence.
+ */
+internal fun headsetAlreadyActive(outputId: String, outputs: List<AudioOutput>): Boolean =
+    outputs.any { it.id == outputId && it.isHeadsetCandidate && it.isActive } &&
+        outputs.none { it.id != outputId && it.isActive }
