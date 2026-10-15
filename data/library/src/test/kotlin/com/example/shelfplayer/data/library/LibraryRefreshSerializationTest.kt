@@ -22,6 +22,7 @@ import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
@@ -160,7 +161,7 @@ class LibraryRefreshSerializationTest {
         return database
     }
 
-    private fun fakeGateway(dispatcher: UnconfinedTestDispatcher): FakeAudiobookshelfGateway =
+    private fun fakeGateway(dispatcher: CoroutineDispatcher): FakeAudiobookshelfGateway =
         FakeAudiobookshelfGateway(
             loader = FixtureLibraryLoader(),
             clock = TestAppClock(),
@@ -172,7 +173,7 @@ class LibraryRefreshSerializationTest {
         database: ShelfPlayerDatabase,
         upstream: AudiobookshelfGateway,
         libraryApi: LibraryApi,
-        dispatcher: UnconfinedTestDispatcher,
+        dispatcher: CoroutineDispatcher,
     ): DefaultLibraryRepository {
         val gateway = object : AudiobookshelfGateway by upstream {
             override val library: LibraryApi = libraryApi
