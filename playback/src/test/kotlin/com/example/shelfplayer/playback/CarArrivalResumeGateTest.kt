@@ -532,6 +532,92 @@ class CarArrivalResumeGateTest {
         )
     }
 
+    @Test
+    fun `noisy-only interruption before first car bind authorizes exact headset recovery`() {
+        val owner = heardOnBuds()
+        val gate = CarArrivalResumeGate()
+        gate.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 0)
+
+        val noisy = gate.onAudioBecomingNoisy(
+            at = 10.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+        assertEquals(CarArrivalResumeGate.Status.Armed, noisy.status)
+        assertEquals(CarArrivalResumeGate.Phase.Arrival, noisy.phase)
+
+        val arrival = gate.onCarArrival(12.seconds, owner.currentGeneration, 0)
+        assertEquals(CarArrivalResumeGate.Status.Ready, arrival.status)
+        val target = requireNotNull(arrival.target)
+        assertEquals(buds.id, target.outputId)
+        assertTrue(gate.consumeRecovery(target, owner.currentGeneration, buds.id, 0).accepted)
+        assertFalse(gate.consumeRecovery(target, owner.currentGeneration, buds.id, 0).accepted)
+    }
+
+    @Test
+    fun `first car bind before becoming noisy pairs without any focus callback`() {
+        val owner = heardOnBuds()
+        val gate = CarArrivalResumeGate()
+        gate.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 0)
+        assertEquals(CarArrivalResumeGate.Status.Armed, gate.onCarArrival(10.seconds, owner.currentGeneration, 0).status)
+
+        val noisy = gate.onAudioBecomingNoisy(
+            at = 11.seconds,
+            heardRoute = null,
+            headsetId = null,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = true,
+        )
+        assertEquals(CarArrivalResumeGate.Phase.Arrival, noisy.phase)
+        assertEquals(CarArrivalResumeGate.Status.Ready, noisy.status)
+        assertEquals(buds.id, noisy.target?.outputId)
+    }
+
+    @Test
+    fun `noisy event after a deliberate Pause cannot reactivate the last headset`() {
+        val owner = heardOnBuds()
+        val gate = CarArrivalResumeGate()
+        gate.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 0)
+        gate.cancelAll()
+
+        val noisy = gate.onAudioBecomingNoisy(
+            at = 10.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = buds.id,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+        assertEquals(CarArrivalResumeGate.Status.Rejected, noisy.status)
+        assertEquals(CarArrivalResumeGate.Reason.NoFreshPlaybackAfterIntentReset, noisy.reason)
+        assertEquals(CarArrivalResumeGate.Status.Rejected, gate.onCarArrival(12.seconds, owner.currentGeneration, 0).status)
+    }
+
+    @Test
+    fun `ordinary noisy headset disconnection does not authorize playback without a timely car event`() {
+        val owner = heardOnBuds()
+        val gate = CarArrivalResumeGate()
+        gate.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 0)
+        val noisy = gate.onAudioBecomingNoisy(
+            at = 10.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = buds.id,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+        assertEquals(CarArrivalResumeGate.Status.Armed, noisy.status)
+        assertFalse(noisy.status == CarArrivalResumeGate.Status.Ready)
+        assertEquals(
+            CarArrivalResumeGate.Reason.OutsidePairingWindow,
+            gate.onCarArrival(17.seconds, owner.currentGeneration, 0).reason,
+        )
+    }
+
     private fun armedArrival(owner: RouteHeardOwnership): CarArrivalResumeGate = CarArrivalResumeGate().also { gate ->
         gate.onAudioFocusLoss(
             at = 10.seconds,
