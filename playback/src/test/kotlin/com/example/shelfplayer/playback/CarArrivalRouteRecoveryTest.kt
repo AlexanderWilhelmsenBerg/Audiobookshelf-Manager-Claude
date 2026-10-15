@@ -53,6 +53,34 @@ class CarArrivalRouteRecoveryTest {
     }
 
     @Test
+    fun `known speaker route cannot authorize headset Play despite preferred selection`() = runBlocking {
+        val speaker = AudioOutput(
+            id = "speaker:phone",
+            displayName = "Phone speaker",
+            kind = DeviceKind.Speaker,
+            role = AudioOutputRole.Speaker,
+            isActive = true,
+        )
+        val outputs = MutableStateFlow(listOf(buds, speaker))
+        val selected = MutableStateFlow<String?>(null)
+        val events = mutableListOf<CarArrivalRouteRecovery.Event>()
+
+        val held = CarArrivalRouteRecovery(120.milliseconds).secure(
+            target = target,
+            outputs = outputs,
+            selectedId = selected,
+            isStillEligible = { true },
+            onEvent = events::add,
+        ) { id ->
+            selected.value = id
+            true
+        }
+        assertNull(held)
+        assertEquals(buds.id, selected.value)
+        assertTrue(CarArrivalRouteRecovery.Event.TimedOut in events)
+    }
+
+    @Test
     fun `ambiguous active outputs are not treated as a safe no-op`() = runBlocking {
         val other = buds.copy(id = "bluetooth:other", isActive = true)
         val outputs = MutableStateFlow(listOf(buds.copy(isActive = true), other))
