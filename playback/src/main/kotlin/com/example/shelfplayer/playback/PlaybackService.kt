@@ -545,6 +545,8 @@ class PlaybackService : MediaLibraryService() {
          * shows it, and the headset's own Play button starts it instantly — with no app to open and no book
          * to find. That is most of the value of auto-play without the part that makes noise in a quiet room.
          */
+        // Guard clauses are intentional: each suspension boundary must fail closed before changing audio.
+        @Suppress("ReturnCount")
         private suspend fun load(startPlaying: Boolean) {
             val claim = deferredWork.capture() ?: return
             if (claim.player.mediaItemCount > 0) return
@@ -2506,6 +2508,8 @@ class PlaybackService : MediaLibraryService() {
      * somebody who fell asleep is recorded in `docs/risks.md`, and PLAY-008's sleep timer is the answer to
      * it — this is not the control that should be trying to guess whether anybody is awake.
      */
+    // Keep race-owner checks explicit at every await rather than nesting stale-state fallthrough.
+    @Suppress("ReturnCount")
     private suspend fun advanceToNextInSeries(claim: DeferredPlaybackWork.Claim) {
         if (!deferredWork.isCurrent(claim) || claim.player.playbackState != Player.STATE_ENDED) return
         val finished = claim.item?.let(MediaItems::bookIdOf) ?: return
@@ -2518,7 +2522,7 @@ class PlaybackService : MediaLibraryService() {
         // and /play may suspend while the listener chooses a different book from phone or Android Auto.
         val prepared = prepareQueue(next.id, startAt = null) ?: return
         if (prepared.session.profileId != profileId ||
-            claim.item?.let(MediaItems::ownerOf)?.let { it != profileId } == true
+            MediaItems.ownerOf(claim.item)?.let { it != profileId } == true
         ) {
             return
         }

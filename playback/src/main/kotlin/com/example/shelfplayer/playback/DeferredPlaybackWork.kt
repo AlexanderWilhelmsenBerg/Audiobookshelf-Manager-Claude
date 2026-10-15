@@ -45,9 +45,8 @@ internal class DeferredPlaybackWork(
     /** Both identity and every relevant generation must still belong to the original request. */
     fun isCurrent(claim: Claim): Boolean {
         val active = currentPlayer() ?: return false
-        return active === claim.player &&
-            active.currentMediaItem == claim.item &&
-            commandGeneration() == claim.command &&
+        if (active !== claim.player || active.currentMediaItem != claim.item) return false
+        return commandGeneration() == claim.command &&
             itemGeneration() == claim.itemVersion &&
             profileGeneration() == claim.profile
     }
