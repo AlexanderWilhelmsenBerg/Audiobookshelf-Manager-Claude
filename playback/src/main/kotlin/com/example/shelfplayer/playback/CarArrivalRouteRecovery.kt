@@ -69,8 +69,13 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
                     return@withTimeoutOrNull null
                 }
 
-                val stillConnected = outputs.value.containsTarget(target.outputId)
-                if (applied && stillConnected && selectedId.value == target.outputId) {
+                val routeNow = outputs.value
+                val stillConnected = routeNow.containsTarget(target.outputId)
+                // A preferred device is only a request. If Android positively reports playback on
+                // another active sink, never issue an automatic Play that could reach the speaker/car.
+                // An unknown route can still use the existing exact-target preference fallback.
+                val knownWrongSink = routeNow.any { it.isActive && it.id != target.outputId }
+                if (applied && stillConnected && selectedId.value == target.outputId && !knownWrongSink) {
                     onEvent(Event.Secured)
                     return@withTimeoutOrNull target.outputId
                 }
