@@ -29,6 +29,52 @@ class CarArrivalRouteRecoveryTest {
     )
 
     @Test
+    fun `already active original headset is left untouched without reassertion`() = runBlocking {
+        val outputs = MutableStateFlow(listOf(buds.copy(isActive = true)))
+        val selected = MutableStateFlow<String?>(null)
+        var reassertions = 0
+        val events = mutableListOf<CarArrivalRouteRecovery.Event>()
+
+        val held = CarArrivalRouteRecovery(200.milliseconds).secure(
+            target = target,
+            outputs = outputs,
+            selectedId = selected,
+            isStillEligible = { true },
+            onEvent = events::add,
+        ) {
+            reassertions++
+            true
+        }
+        assertEquals(buds.id, held)
+        assertEquals(0, reassertions)
+        assertEquals(null, selected.value)
+        assertTrue(CarArrivalRouteRecovery.Event.Secured in events)
+        assertTrue(headsetAlreadyActive(buds.id, outputs.value))
+    }
+
+    @Test
+    fun `ambiguous active outputs are not treated as a safe no-op`() = runBlocking {
+        val other = buds.copy(id = "bluetooth:other", isActive = true)
+        val outputs = MutableStateFlow(listOf(buds.copy(isActive = true), other))
+        val selected = MutableStateFlow<String?>(null)
+        var reassertions = 0
+
+        assertTrue(!headsetAlreadyActive(buds.id, outputs.value))
+        val held = CarArrivalRouteRecovery(200.milliseconds).secure(
+            target = target,
+            outputs = outputs,
+            selectedId = selected,
+            isStillEligible = { true },
+        ) { id ->
+            reassertions++
+            selected.value = id
+            true
+        }
+        assertEquals(buds.id, held)
+        assertEquals(1, reassertions)
+    }
+
+    @Test
     fun `transient Automatic fallback is followed by a second reassert of captured headset`() = runBlocking {
         val outputs = MutableStateFlow(listOf(buds))
         val selected = MutableStateFlow<String?>(null)
