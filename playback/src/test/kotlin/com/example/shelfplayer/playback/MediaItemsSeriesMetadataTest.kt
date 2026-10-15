@@ -18,12 +18,12 @@ class MediaItemsSeriesMetadataTest {
 
     @Test
     fun `series and sequence are exposed in the live media metadata byline`() {
-        val metadata = MediaItems.queueFor(session(seriesLabel = "The Long Voyage #3")).item.mediaMetadata
+        val metadata = MediaItems.queueFor(session(seriesLabel = "#3 The Long Voyage")).item.mediaMetadata
 
         assertEquals("Book", metadata.title?.toString())
-        assertEquals("Marisol Holt • The Long Voyage #3", metadata.artist?.toString())
-        assertEquals("The Long Voyage #3", metadata.subtitle?.toString())
-        assertEquals("The Long Voyage #3", metadata.albumTitle?.toString())
+        assertEquals("#3 The Long Voyage • Marisol Holt", metadata.artist?.toString())
+        assertEquals("#3 The Long Voyage", metadata.subtitle?.toString())
+        assertEquals("#3 The Long Voyage", metadata.albumTitle?.toString())
     }
 
     @Test

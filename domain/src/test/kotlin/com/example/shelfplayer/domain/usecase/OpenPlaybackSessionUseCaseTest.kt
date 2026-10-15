@@ -98,7 +98,7 @@ class OpenPlaybackSessionUseCaseTest {
         val result = opener(playback, auth, library)(book)
 
         val opened = assertIs<AppResult.Success<PlaybackSession>>(result)
-        assertEquals("The Long Voyage #3", opened.value.seriesLabel)
+        assertEquals("#3 The Long Voyage", opened.value.seriesLabel)
         assertEquals(null, opened.value.author)
     }
 

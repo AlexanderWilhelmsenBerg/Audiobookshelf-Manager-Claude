@@ -90,7 +90,7 @@ class AutoBrowseTreeTest {
     }
 
     @Test
-    fun `browse destinations request artwork grids while Profiles remains list oriented`() = runTest {
+    fun `browse destinations request text-first lists`() = runTest {
         val auto = auto()
         val root = auto.root()
         val tabs = auto.children(AutoLibrary.ROOT, now = null).associateBy { item -> item.mediaId }
@@ -100,15 +100,15 @@ class AutoBrowseTreeTest {
             root.mediaMetadata.extras?.getInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE),
         )
         assertEquals(
-            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             tabs.getValue(AutoLibrary.TAB_CONTINUE).style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE),
         )
         assertEquals(
-            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             tabs.getValue(AutoLibrary.TAB_SERIES).style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE),
         )
         assertEquals(
-            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             tabs.getValue(AutoLibrary.TAB_AUTHORS).style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE),
         )
         assertEquals(
@@ -118,7 +118,7 @@ class AutoBrowseTreeTest {
     }
 
     @Test
-    fun `series and author parents request grid cards for their books`() = runTest {
+    fun `series and author parents request text-first book rows`() = runTest {
         books.value = listOf(
             book("book-1", "The Salt Harbour", series = membership("series-1", "Tidewatch", "1")),
         )
@@ -128,11 +128,11 @@ class AutoBrowseTreeTest {
         val author = auto.children(AutoLibrary.TAB_AUTHORS, now = null).single()
 
         assertEquals(
-            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             series.style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE),
         )
         assertEquals(
-            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+            MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             author.style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE),
         )
     }
@@ -198,7 +198,7 @@ class AutoBrowseTreeTest {
     }
 
     @Test
-    fun `the resumable item keeps the stored position and distinct author and series fields`() = runTest {
+    fun `the resumable item keeps the stored position and number-first series byline`() = runTest {
         books.value = listOf(
             book(
                 "book-1",
@@ -211,8 +211,8 @@ class AutoBrowseTreeTest {
         val item = auto().resumeItem()
 
         assertEquals("at/book-1/${40.minutes.inWholeMilliseconds}", item?.mediaId)
-        assertEquals("Tidewatch #2", item?.mediaMetadata?.subtitle?.toString())
-        assertEquals("Marisol Holt", item?.mediaMetadata?.artist?.toString())
+        assertEquals("#2 Tidewatch", item?.mediaMetadata?.subtitle?.toString())
+        assertEquals("#2 Tidewatch", item?.mediaMetadata?.artist?.toString())
     }
 
     @Test
@@ -306,16 +306,27 @@ class AutoBrowseTreeTest {
     }
 
     @Test
-    fun `short standalone title has no invented series and keeps author as artist`() = runTest {
-        books.value = listOf(book("book-1", "Short"))
-        val row = auto().children("author/author-1", null).single()
-        assertEquals("Short", row.mediaMetadata.title?.toString())
-        assertEquals(null, row.mediaMetadata.subtitle)
+    fun `series list shows series name with its credited author`() = runTest {
+        books.value = listOf(
+            book("book-1", "The Salt Harbour", series = membership("series-1", "Tidewatch", "1")),
+        )
+        val row = auto().children(AutoLibrary.TAB_SERIES, null).single()
+        assertEquals("Tidewatch", row.mediaMetadata.title?.toString())
+        assertEquals("Marisol Holt", row.mediaMetadata.subtitle?.toString())
         assertEquals("Marisol Holt", row.mediaMetadata.artist?.toString())
     }
 
     @Test
-    fun `full long title and series sequence are distinct from the author in browse and resume`() = runTest {
+    fun `short standalone title has no invented series or author byline in book browsing`() = runTest {
+        books.value = listOf(book("book-1", "Short"))
+        val row = auto().children("author/author-1", null).single()
+        assertEquals("Short", row.mediaMetadata.title?.toString())
+        assertEquals(null, row.mediaMetadata.subtitle)
+        assertEquals(null, row.mediaMetadata.artist)
+    }
+
+    @Test
+    fun `long book titles keep number-first series byline in browse and resume`() = runTest {
         val title = "The Wonderful and Astonishingly Long Adventures of the Final Tidewatcher"
         books.value = listOf(
             book(
@@ -330,8 +341,8 @@ class AutoBrowseTreeTest {
         val resume = auto.resumeItem()
         for (row in listOfNotNull(browse, resume)) {
             assertEquals(title, row.mediaMetadata.title?.toString())
-            assertEquals("Tidewatch #12.5", row.mediaMetadata.subtitle?.toString())
-            assertEquals("Marisol Holt", row.mediaMetadata.artist?.toString())
+            assertEquals("#12.5 Tidewatch", row.mediaMetadata.subtitle?.toString())
+            assertEquals("#12.5 Tidewatch", row.mediaMetadata.artist?.toString())
         }
     }
 

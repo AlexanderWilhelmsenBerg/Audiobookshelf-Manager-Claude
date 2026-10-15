@@ -4,7 +4,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.PlaybackSession
-import com.example.shelfplayer.core.model.library.SeriesMembership
+import com.example.shelfplayer.domain.library.SeriesDisplayLabel
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
@@ -61,10 +61,6 @@ class OpenPlaybackSessionUseCase @Inject constructor(
     /** The primary series and its sequence from the cached book, or `null` when there is nothing to add. */
     private suspend fun cachedSeriesLabel(session: PlaybackSession): String? {
         val cached = library.observeBook(session.profileId, session.bookId).first() ?: return null
-        val membership = cached.seriesMemberships.firstOrNull(SeriesMembership::isPrimary)
-            ?: cached.seriesMemberships.firstOrNull()
-            ?: return null
-        val sequence = membership.sequence.raw.takeIf(String::isNotBlank)
-        return if (sequence == null) membership.series.name else "${membership.series.name} #$sequence"
+        return SeriesDisplayLabel.primary(cached.seriesMemberships)
     }
 }

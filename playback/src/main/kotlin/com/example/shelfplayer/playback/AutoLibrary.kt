@@ -18,8 +18,8 @@ import com.example.shelfplayer.core.model.Server
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.MediaProgress
-import com.example.shelfplayer.core.model.library.SeriesMembership
 import com.example.shelfplayer.domain.library.HomeShelves
+import com.example.shelfplayer.domain.library.SeriesDisplayLabel
 import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
@@ -68,7 +68,7 @@ class AutoLibrary @Inject constructor(
     fun recentRoot(): MediaItem = browsableNode(
         id = RECENT_ROOT,
         title = string(R.string.car_tab_continue),
-        extras = contentStyle(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM),
+        extras = contentStyle(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM),
     )
 
     private val emittedNodes = ConcurrentHashMap.newKeySet<String>()
@@ -124,13 +124,22 @@ class AutoLibrary @Inject constructor(
             browsableNode(
                 id = remember("$SERIES_PREFIX${node.membership.series.id.value}"),
                 title = node.membership.series.name,
+                subtitle = seriesAuthors(node.books),
                 artworkUri = node.representativeCover?.let { book ->
                     artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book))
                 },
-                extras = contentStyle(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM),
+                extras = contentStyle(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM),
             )
         }
     }
+
+    /** Keep all credited authors rather than attributing the series to its first book. */
+    private fun seriesAuthors(books: List<Book>): String? =
+        books.flatMap { book -> book.authors.map { author -> author.name.trim() } }
+            .filter(String::isNotBlank)
+            .distinct()
+            .joinToString(", ")
+            .takeIf(String::isNotBlank)
 
     private suspend fun booksForSeries(seriesId: String): List<MediaItem> {
         val all = books()
@@ -154,7 +163,7 @@ class AutoLibrary @Inject constructor(
                     sources.serverBaseUrls,
                     node.representativeCover?.let(sources::offlineCover),
                 ),
-                extras = contentStyle(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM),
+                extras = contentStyle(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM),
             )
         }
     }
@@ -245,8 +254,8 @@ class AutoLibrary @Inject constructor(
             playable(
                 id = resumeId(book.id, progress?.position),
                 title = book.title,
-                subtitle = seriesLabel(book),
-                author = authorLabel(book),
+                subtitle = SeriesDisplayLabel.primary(book.seriesMemberships),
+                author = null,
                 artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
                 extras = progress?.let(::completionExtras),
             ),
@@ -352,8 +361,8 @@ class AutoLibrary @Inject constructor(
         val item = playable(
             id = book.id.value,
             title = book.title,
-            subtitle = seriesLabel(book),
-            author = authorLabel(book),
+            subtitle = SeriesDisplayLabel.primary(book.seriesMemberships),
+            author = null,
             artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
             extras = extras,
             uri = RESUME_PLACEHOLDER_URI.toUri(),
@@ -405,24 +414,12 @@ class AutoLibrary @Inject constructor(
         return playable(
             id = "$BOOK_PREFIX${book.id.value}",
             title = book.title,
-            subtitle = seriesLabel(book),
-            author = authorLabel(book),
+            subtitle = SeriesDisplayLabel.primary(book.seriesMemberships),
+            author = null,
             artworkUri = artwork.book(book, sources.serverBaseUrls, sources.offlineCover(book)),
             extras = completionExtras(fraction),
         )
     }
-
-    /** Display-only primary/first series label; never changes canonical membership or order. */
-    private fun seriesLabel(book: Book): String? = book.seriesMemberships
-        .firstOrNull(SeriesMembership::isPrimary)
-        .let { membership -> membership ?: book.seriesMemberships.firstOrNull() }
-        ?.let { membership ->
-            val sequence = membership.sequence.raw.takeIf(String::isNotBlank)
-            if (sequence == null) membership.series.name else "${membership.series.name} #$sequence"
-        }
-
-    private fun authorLabel(book: Book): String? =
-        book.authors.joinToString { author -> author.name }.takeIf(String::isNotBlank)
 
     private fun completionExtras(progress: MediaProgress): Bundle =
         completionExtras(if (progress.isFinished) FULLY_PLAYED else progress.fractionComplete.toDouble())
@@ -468,7 +465,14 @@ class AutoLibrary @Inject constructor(
             MediaMetadata.Builder()
                 .setTitle(title)
                 .setSubtitle(subtitle)
-                .setArtist(author)
+                // The tested car host reads title + artist, not subtitle. Prioritize volume
+                // and series on the visible byline while keeping the author after them.
+                .setArtist(
+                    listOfNotNull(subtitle, author)
+                        .filter(String::isNotBlank)
+                        .joinToString(" • ")
+                        .takeIf(String::isNotBlank),
+                )
                 .setArtworkUri(artworkUri)
                 .setIsBrowsable(false)
                 .setIsPlayable(true)
@@ -482,9 +486,9 @@ class AutoLibrary @Inject constructor(
 
     private fun tab(id: String, @StringRes titleRes: Int): MediaItem {
         val extras = when (id) {
-            TAB_CONTINUE -> contentStyle(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM)
+            TAB_CONTINUE -> contentStyle(playable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM)
 
-            TAB_SERIES, TAB_AUTHORS -> contentStyle(browsable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM)
+            TAB_SERIES, TAB_AUTHORS -> contentStyle(browsable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM)
 
             TAB_PROFILES -> contentStyle(
                 browsable = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
@@ -611,17 +615,24 @@ class AutoLibrary @Inject constructor(
 data class NowPlaying(val bookId: LibraryItemId, val position: Duration)
 
 @OptIn(UnstableApi::class)
-private fun browsableNode(id: String, title: String, artworkUri: Uri? = null, extras: Bundle? = null): MediaItem =
-    MediaItem.Builder()
-        .setMediaId(id)
-        .setMediaMetadata(
-            MediaMetadata.Builder()
-                .setTitle(title)
-                .setArtworkUri(artworkUri)
-                .setIsBrowsable(true)
-                .setIsPlayable(false)
-                .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
-                .apply { extras?.let(::setExtras) }
-                .build(),
-        )
-        .build()
+private fun browsableNode(
+    id: String,
+    title: String,
+    subtitle: String? = null,
+    artworkUri: Uri? = null,
+    extras: Bundle? = null,
+): MediaItem = MediaItem.Builder()
+    .setMediaId(id)
+    .setMediaMetadata(
+        MediaMetadata.Builder()
+            .setTitle(title)
+            .setSubtitle(subtitle)
+            .setArtist(subtitle)
+            .setArtworkUri(artworkUri)
+            .setIsBrowsable(true)
+            .setIsPlayable(false)
+            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_AUDIO_BOOKS)
+            .apply { extras?.let(::setExtras) }
+            .build(),
+    )
+    .build()
