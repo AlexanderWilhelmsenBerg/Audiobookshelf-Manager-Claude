@@ -1290,6 +1290,19 @@ class PlaybackService : MediaLibraryService() {
                         addAll(carSnapshotFields())
                     },
                 )
+                syncExplicitOutputIntent()
+                val decision = carContinuity.onAudioBecomingNoisy(
+                    at = clock.elapsed(),
+                    heardRoute = routeOwnership.heardRoute,
+                    headsetId = routeOwnership.headsetForCar(audioOutputs.outputs.value),
+                    currentGeneration = routeOwnership.currentGeneration,
+                    explicitSelectionSequence = currentExplicitSelectionSequence(),
+                    carConnected = carContinuitySessionEstablished,
+                )
+                logCarContinuityDecision("becoming-noisy", decision)
+                decision.target
+                    ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
+                    ?.let { target -> scope.launch { recoverAndResumeCarContinuity(target) } }
                 continuityPlayAwaiting = null
             } else {
                 // Deliberate pause, end-of-item and unknown causes invalidate transition evidence.
@@ -1642,7 +1655,14 @@ class PlaybackService : MediaLibraryService() {
             return null
         }
         syncExplicitOutputIntent()
-        val hold = routeOwnership.headsetForCar(audioOutputs.outputs.value) ?: return null
+        val outputs = audioOutputs.outputs.value
+        val hold = routeOwnership.headsetForCar(outputs) ?: return null
+        // Car controller binding alone must not restart or reconfigure an already-audible headset.
+        // Retain Media3's current player/focus/route when this exact headset remains the sole active sink.
+        if (player?.isPlaying == true && headsetAlreadyActive(hold, outputs)) {
+            logAuto("Car lifecycle preserved active headset without route reassertion")
+            return hold
+        }
         val reasserted = audioOutputs.reassert(hold)
         val heldHeadsetIsConnected = reasserted && audioOutputs.outputs.value.any { output ->
             output.id == hold && output.isHeadsetCandidate
@@ -1721,6 +1741,14 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun recoverAndResumeCarContinuity(target: CarArrivalResumeGate.Target) {
+        // Media3 can hold playWhenReady=true while temporarily suppressing audible playback.
+        // It owns focus restoration in that state; issuing another Play or reasserting the output
+        // would only disturb a player that is already committed to continuing.
+        if (player?.playWhenReady == true) {
+            logAuto("Car lifecycle left active playback intent with Media3")
+            carContinuity.cancelPending()
+            return
+        }
         val heldHeadset = recoverCarContinuityHeadset(target)
         resumeAfterCarContinuity(target, heldHeadset)
     }
