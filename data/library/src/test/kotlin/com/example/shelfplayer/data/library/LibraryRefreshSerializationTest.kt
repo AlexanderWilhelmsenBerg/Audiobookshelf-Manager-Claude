@@ -139,7 +139,6 @@ class LibraryRefreshSerializationTest {
         }
     }
 
-
     @Test
     fun `a cancelled queued refresh does not run after the current refresh finishes`() = runTest {
         val database = createDatabase()
