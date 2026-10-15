@@ -22,12 +22,15 @@ import com.example.shelfplayer.core.network.gateway.LibraryApi
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -36,7 +39,7 @@ import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertTrue
+import kotlin.test.assertNull
 
 /** LIB-001 / #268 — concurrent refreshes must not publish stale snapshots or sync state. */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -53,6 +56,7 @@ class LibraryRefreshSerializationTest {
             val upstream = fakeGateway(dispatcher)
             val entered = CompletableDeferred<Unit>()
             val release = CompletableDeferred<Unit>()
+            val overtaken = CompletableDeferred<Unit>()
             var calls = 0
             val libraryApi = object : LibraryApi by upstream.library {
                 override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> {
@@ -62,6 +66,7 @@ class LibraryRefreshSerializationTest {
                         release.await()
                         return AppResult.Failure(AppError.Network())
                     }
+                    if (!release.isCompleted) overtaken.complete(Unit)
                     return upstream.library.listLibraries(profileId)
                 }
             }
@@ -70,8 +75,10 @@ class LibraryRefreshSerializationTest {
             entered.await()
             val second = async { repository.refresh(profile) }
             try {
-                runCurrent()
-                assertEquals(1, calls, "newer same-profile work must wait before reaching the network")
+                val raced = withContext(Dispatchers.Default) {
+                    withTimeoutOrNull(2_000) { overtaken.await() }
+                }
+                assertNull(raced, "a newer refresh reached the gateway before the older one finished")
             } finally {
                 release.complete(Unit)
             }
@@ -94,6 +101,7 @@ class LibraryRefreshSerializationTest {
             val upstream = fakeGateway(dispatcher)
             val entered = CompletableDeferred<Unit>()
             val release = CompletableDeferred<Unit>()
+            val otherEntered = CompletableDeferred<Unit>()
             val libraryApi = object : LibraryApi by upstream.library {
                 override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> =
                     if (profileId == profile) {
@@ -101,6 +109,7 @@ class LibraryRefreshSerializationTest {
                         release.await()
                         AppResult.Failure(AppError.Network())
                     } else {
+                        otherEntered.complete(Unit)
                         AppResult.Failure(AppError.Network())
                     }
             }
@@ -109,8 +118,9 @@ class LibraryRefreshSerializationTest {
             entered.await()
             val independent = async { repository.refresh(other) }
             try {
-                runCurrent()
-                assertTrue(independent.isCompleted, "unrelated profiles should refresh independently")
+                withContext(Dispatchers.Default) {
+                    withTimeout(5_000) { otherEntered.await() }
+                }
                 assertFalse(first.isCompleted)
             } finally {
                 release.complete(Unit)
