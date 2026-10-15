@@ -562,7 +562,10 @@ class CarArrivalResumeGateTest {
         val owner = heardOnBuds()
         val gate = CarArrivalResumeGate()
         gate.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 0)
-        assertEquals(CarArrivalResumeGate.Status.Armed, gate.onCarArrival(10.seconds, owner.currentGeneration, 0).status)
+        assertEquals(
+            CarArrivalResumeGate.Status.Armed,
+            gate.onCarArrival(10.seconds, owner.currentGeneration, 0).status,
+        )
 
         val noisy = gate.onAudioBecomingNoisy(
             at = 11.seconds,
@@ -594,7 +597,10 @@ class CarArrivalResumeGateTest {
         )
         assertEquals(CarArrivalResumeGate.Status.Rejected, noisy.status)
         assertEquals(CarArrivalResumeGate.Reason.NoFreshPlaybackAfterIntentReset, noisy.reason)
-        assertEquals(CarArrivalResumeGate.Status.Rejected, gate.onCarArrival(12.seconds, owner.currentGeneration, 0).status)
+        assertEquals(
+            CarArrivalResumeGate.Status.Rejected,
+            gate.onCarArrival(12.seconds, owner.currentGeneration, 0).status,
+        )
     }
 
     @Test
