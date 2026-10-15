@@ -2518,7 +2518,7 @@ class PlaybackService : MediaLibraryService() {
         // and /play may suspend while the listener chooses a different book from phone or Android Auto.
         val prepared = prepareQueue(next.id, startAt = null) ?: return
         if (prepared.session.profileId != profileId ||
-            MediaItems.ownerOf(claim.item)?.let { it != profileId } == true
+            claim.item?.let(MediaItems::ownerOf)?.let { it != profileId } == true
         ) {
             return
         }

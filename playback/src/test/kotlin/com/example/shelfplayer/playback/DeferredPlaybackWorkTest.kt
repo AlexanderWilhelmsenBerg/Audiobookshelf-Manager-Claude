@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.test.core.app.ApplicationProvider
 import com.example.shelfplayer.core.model.LibraryItemId
@@ -37,6 +38,7 @@ import kotlin.time.Duration.Companion.seconds
  * win even when stale work returns after it. No Android device or new test runner is needed in CI.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
+@androidx.annotation.OptIn(UnstableApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 @LooperMode(LooperMode.Mode.PAUSED)
@@ -269,7 +271,7 @@ class DeferredPlaybackWorkTest {
         .build()
 
     private inner class FailedPlayer {
-        var item: MediaItem = item("failed-book")
+        var item: MediaItem = this@DeferredPlaybackWorkTest.item("failed-book")
         var prepares = 0
         private val failure = PlaybackException(
             "test",
