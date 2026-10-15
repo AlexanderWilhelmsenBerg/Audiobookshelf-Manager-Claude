@@ -189,6 +189,36 @@ class DeferredPlaybackWorkTest {
     }
 
     @Test
+    fun `a new item during suspended profile authorization cannot pass the final guard`() = runTest {
+        player.setMediaItem(item("finished"))
+        val claim = requireNotNull(work.capture())
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+
+        val pending = launch(start = CoroutineStart.UNDISPATCHED) {
+            work.installIfCurrent(
+                claim,
+                prepared(),
+                startPlaying = true,
+                condition = { true },
+                allowed = {
+                    entered.complete(Unit)
+                    release.await()
+                    true
+                },
+            )
+        }
+        entered.await()
+        player.setMediaItem(item("manual"))
+        release.complete(Unit)
+        pending.join()
+
+        assertEquals("manual", player.currentMediaItem?.mediaId)
+        assertFalse(player.playWhenReady)
+        assertEquals(0, commits)
+    }
+
+    @Test
     fun `an authorized empty-player arm installs but does not start playback`() = runTest {
         val claim = requireNotNull(work.capture())
 

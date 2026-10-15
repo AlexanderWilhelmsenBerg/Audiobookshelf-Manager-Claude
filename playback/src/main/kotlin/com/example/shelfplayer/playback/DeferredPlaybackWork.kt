@@ -80,7 +80,9 @@ internal class DeferredPlaybackWork(
         allowed: suspend () -> Boolean = { true },
     ): Boolean {
         val authorized: suspend () -> Boolean = {
-            isCurrent(claim) && condition(claim.player) && allowed()
+            // Profile/lock checks may suspend. Re-read the player and generations afterwards, as the
+            // very last synchronous part of the predicate before the session owner installs the item.
+            allowed() && isCurrent(claim) && condition(claim.player)
         }
         if (!authorized()) return false
         return acceptPrepared(prepared, authorized) {
