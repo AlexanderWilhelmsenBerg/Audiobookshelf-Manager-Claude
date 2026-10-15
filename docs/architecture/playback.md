@@ -102,6 +102,41 @@ A profile switch must not allow:
 - a widget/shortcut/system surface to expose locked or inaccessible profile metadata;
 - restore/resume selection to be inferred from another profile's state.
 
+## Android Auto headset continuity (GitHub #128)
+
+Car connection is not a playback command. For an already-loaded Media3 item, Android Auto
+must not rebuild the queue, replace the item, rewind, open a new server session or issue a
+service-originated Play simply because Gearhead connected. A deliberate headset Pause wins
+over any in-flight continuity candidate. The host's Start music automatically toggle is
+separate from BookWave's per-car `DevicePolicy`; the host may issue its own explicit Play.
+
+For playback genuinely heard through an exact headset, `RouteHeardOwnership` captures
+generation-bound and listener-selection-bound evidence. When the headset remains the only
+reported active route, first car connection leaves the player and route preference untouched.
+If Media3 itself interrupts playback, `CarArrivalResumeGate` treats either
+`AUDIO_FOCUS_LOSS` or `AUDIO_BECOMING_NOISY` as a *candidate* for recovery. A timely,
+car-specific first-arrival boundary, fresh observed playback, identical book generation
+and no newer listener command/selection are all required before route recovery can
+authorize a one-shot Play.
+
+`CarArrivalRouteRecovery` uses the already-active exact headset immediately where
+platform output evidence is unambiguous. Otherwise it retains the bounded, exact-target
+reassertion/reappearance fallback. It never chooses another headset, speaker, or car output
+on behalf of a previous headset listener. If Media3 still has `playWhenReady=true`,
+it owns focus restoration; BookWave must not issue a second Play or disturb routing.
+Do not disable ExoPlayer focus management or noisy-route safety to eliminate a pause.
+
+Android Auto `onPostConnect` retains any existing current media item; an empty player
+uses the already-shared remembered-book/server-progress fallback and applicable car
+start policy. The same Media3 resume freshness path remains authoritative for explicit Play.
+
+The deterministic gate/recovery tests establish callback-order authorization, **not**
+audible Bluetooth routing. Hardware acceptance still requires the owner's in-app Auto race
+trace with host autoplay ON and OFF, a verified same-headset physical listen, and a measured
+gap target under one second where the OS grants prompt focus/route recovery.
+A >1s interruption caused by actual Android focus or Bluetooth route removal must be
+diagnosed from the trace rather than bypassing focus or enabling speaker fallback.
+
 ## Android Auto
 
 ADR-0029 remains the routing/media-control architecture, while PD-001 is the current browse-home product decision.
