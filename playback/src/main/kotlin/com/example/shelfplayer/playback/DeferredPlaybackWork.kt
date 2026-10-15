@@ -55,13 +55,11 @@ internal class DeferredPlaybackWork(
     suspend fun retryIfCurrent(claim: Claim, retryIn: Duration) {
         delay(retryIn)
         val active = currentPlayer() ?: return
-        if (!isCurrent(claim) ||
-            active.mediaItemCount == 0 ||
-            active.playbackState != Player.STATE_IDLE ||
-            active.playerError == null
-        ) {
-            return
-        }
+        if (!isCurrent(claim)) return
+        val stillErrored = active.mediaItemCount > 0 &&
+            active.playbackState == Player.STATE_IDLE &&
+            active.playerError != null
+        if (!stillErrored) return
         // Media3 preserves playWhenReady across an error. prepare() restores the old intent without
         // manufacturing a new Play or touching any newer book selected while the delay was suspended.
         active.prepare()
