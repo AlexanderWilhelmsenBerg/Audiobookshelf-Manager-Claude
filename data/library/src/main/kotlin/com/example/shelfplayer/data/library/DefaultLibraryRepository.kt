@@ -42,8 +42,11 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -70,6 +73,9 @@ class DefaultLibraryRepository @Inject constructor(
 ) : LibraryRepository {
 
     private val recentBookHydrator = RecentBookHotSetHydrator(gateway, writer, logger)
+
+    // Small, bounded by saved profile identities. No global network lock: different profiles stay independent.
+    private val refreshGates = ConcurrentHashMap<String, Mutex>()
 
     override fun observeLibraries(profileId: ProfileId): Flow<List<Library>> =
         scopeFlow(profileId).flatMapLatest { scope ->
@@ -203,17 +209,24 @@ class DefaultLibraryRepository @Inject constructor(
         }
 
     /**
-     * PRODUCT_SPEC LIB-001 — the whole refresh, or none of it.
+     * LIB-001 / #268 — serialize the entire refresh for a single profile.
      *
-     * The gateway calls happen outside the transaction (they can be slow and can fail), and only a
-     * fully materialised result is written. That is what makes "a failed sync leaves cached content
-     * on screen" true rather than aspirational.
+     * Incremental catalogue writes are visible before final reconciliation, so atomic Room transactions
+     * alone cannot prevent a slower older sweep from publishing after a newer one. A profile-scoped
+     * coroutine lock covers network calls, streamed batches, final snapshot and sync status together.
+     * Different profiles retain independent refresh pipelines; cancellation releases the lock.
      */
-    @Suppress("LongMethod") // One orchestration boundary keeps the refresh order and fallback visible.
     override suspend fun refresh(profileId: ProfileId): AppResult<Int> = withContext(ioDispatcher) {
+        refreshGates.computeIfAbsent(profileId.value) { Mutex() }.withLock {
+            refreshUnlocked(profileId)
+        }
+    }
+
+    @Suppress("LongMethod", "NestedBlockDepth") // Preserve the existing ordered network/batch/write protocol.
+    private suspend fun refreshUnlocked(profileId: ProfileId): AppResult<Int> {
         markSyncing(profileId)
 
-        when (val libraries = gateway.library.listLibraries(profileId)) {
+        return when (val libraries = gateway.library.listLibraries(profileId)) {
             is AppResult.Failure -> {
                 recordFailure(profileId, libraries.error)
                 logger.warn(
@@ -273,7 +286,7 @@ class DefaultLibraryRepository @Inject constructor(
                     when (books) {
                         is AppResult.Failure -> {
                             recordFailure(profileId, books.error)
-                            return@withContext books
+                            return books
                         }
 
                         is AppResult.Success -> {
