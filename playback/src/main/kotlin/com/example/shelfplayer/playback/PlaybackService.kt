@@ -267,6 +267,29 @@ class PlaybackService : MediaLibraryService() {
     @Volatile
     private var controllerCommandGeneration = 0L
 
+    /** Raw Media3 item transitions are newer ownership, even when no controller command was involved. */
+    private var mediaItemGeneration = 0L
+
+    /** Only the newest failed stream may retry; book changes and successful playback cancel older delays. */
+    private var pendingRecoveryRetry: Job? = null
+
+    /**
+     * PLAY-001 / ROUTE-002 / issue #257 — one service-owned claim for delayed recovery and automatic
+     * media replacement. The controller generation remains the existing Media3 freshness authority;
+     * this guard observes it rather than creating a competing controller or session.
+     */
+    private val deferredWork by lazy {
+        DeferredPlaybackWork(
+            currentPlayer = { player },
+            commandGeneration = { controllerCommandGeneration },
+            itemGeneration = { mediaItemGeneration },
+            profileGeneration = { auto.activeProfileGeneration() },
+            acceptPrepared = { prepared, authorized, install ->
+                bookChanges.acceptBook(prepared.session, authorized, install)
+            },
+        )
+    }
+
     /** Reconcile civil wall-clock changes only while this playback service already exists. */
     private val wallClockChanges = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -523,13 +546,24 @@ class PlaybackService : MediaLibraryService() {
          * to find. That is most of the value of auto-play without the part that makes noise in a quiet room.
          */
         private suspend fun load(startPlaying: Boolean) {
-            val current = player ?: return
-            if (current.mediaItemCount > 0) return
+            val claim = deferredWork.capture() ?: return
+            if (claim.player.mediaItemCount > 0) return
+            val profileId = auto.activeProfileId() ?: return
+            if (!deferredWork.isCurrent(claim) || lock.isActiveProfileLocked()) return
             val book = auto.lastPlayed() ?: return
-            val queue = openQueue(book.id, startAt = null) ?: return
-            current.setMediaItem(queue.item, queue.startPositionMs)
-            current.prepare()
-            if (startPlaying) current.play()
+            if (!deferredWork.isCurrent(claim)) return
+
+            // A lookup and /play can both suspend. Do not announce a new session until the same listener
+            // intent, profile and empty player have won the guarded, main-thread commit.
+            val prepared = prepareQueue(book.id, startAt = null) ?: return
+            if (prepared.session.profileId != profileId) return
+            deferredWork.installIfCurrent(
+                claim = claim,
+                prepared = prepared,
+                startPlaying = startPlaying,
+                condition = { it.mediaItemCount == 0 },
+                allowed = { auto.isActiveProfile(profileId) && !lock.isActiveProfileLocked() },
+            )
         }
     }
 
@@ -1108,6 +1142,7 @@ class PlaybackService : MediaLibraryService() {
             if (isPlaying) {
                 // Audio is coming out, so whatever went wrong is over and the next failure starts from one.
                 recovery.onPlaying()
+                pendingRecoveryRetry?.cancel()
                 // ROUTE-002 — real playback is the gate for creating route-heard evidence.
                 syncExplicitOutputIntent()
                 val outputs = audioOutputs.outputs.value
@@ -1266,6 +1301,8 @@ class PlaybackService : MediaLibraryService() {
          * History sampler. Chapter lists remain in-process rather than duplicated in MediaItem extras.
          */
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            mediaItemGeneration += 1
+            pendingRecoveryRetry?.cancel()
             activeAutoTrace?.let { trace ->
                 logAuto(
                     "Media3 current item changed during Android Auto trace",
@@ -1359,7 +1396,11 @@ class PlaybackService : MediaLibraryService() {
                 // PRODUCT_SPEC 6.4 step 6 — after the position is journalled and the sync is asked for,
                 // never before: the book that just ended has to be recorded as finished whether or not
                 // anything follows it, and an advance that failed must not have cost the last write.
-                scope.launch { advanceToNextInSeries() }
+                // Capture the ended item before scheduling work; a newer manual selection must not
+                // become the "finished" book when this coroutine eventually starts.
+                deferredWork.capture()?.let { claim ->
+                    scope.launch { advanceToNextInSeries(claim) }
+                }
             }
         }
 
@@ -1378,6 +1419,7 @@ class PlaybackService : MediaLibraryService() {
          * bounded.
          */
         override fun onPlayerError(error: PlaybackException) {
+            pendingRecoveryRetry?.cancel()
             val retryIn = recovery.onError(error)
             logger.warn(
                 LogCategory.Playback,
@@ -1387,14 +1429,12 @@ class PlaybackService : MediaLibraryService() {
             )
             scope.launch { recordPosition() }
             reportFailureToControllers(error, willRetry = retryIn != null)
+            val claim = deferredWork.capture() ?: return
             if (retryIn == null) return
-            scope.launch {
-                delay(retryIn)
-                val current = player ?: return@launch
-                if (current.mediaItemCount == 0) return@launch
-                // `playWhenReady` survives an error, so re-preparing resumes a book that was playing and
-                // leaves a paused one paused. Nothing here decides to start playback that was not running.
-                current.prepare()
+            pendingRecoveryRetry = scope.launch {
+                // The retry belongs to this exact failed item, not whichever book is selected later.
+                // Only an idle, still-errored player is re-prepared; never start an unrelated book.
+                deferredWork.retryIfCurrent(claim, retryIn)
             }
         }
     }
@@ -2445,11 +2485,12 @@ class PlaybackService : MediaLibraryService() {
     /**
      * PRODUCT_SPEC 6.4 step 6 — plays the next book in the series, if there is one and the listener wants it.
      *
-     * ### Why this reads the player rather than being told what ended
+     * ### Why the listener captures the finished item before launching
      *
-     * `STATE_ENDED` says the timeline ran out, not which book it was. The current item *is* the one that
-     * just finished — ADR-0016 makes a book a single window, so there is no next item Media3 could have
-     * moved to — and reading it here is the only place that fact is still available.
+     * `STATE_ENDED` says the timeline ran out, not which book it was. Its current item is captured in
+     * the synchronous Media3 listener turn; a delayed coroutine must never reinterpret a manually
+     * selected replacement as the book that ended. The claim also owns the controller, item and profile
+     * generations until the guarded commit.
      *
      * ### The three ways this does nothing, and why each is silent
      *
@@ -2465,21 +2506,33 @@ class PlaybackService : MediaLibraryService() {
      * somebody who fell asleep is recorded in `docs/risks.md`, and PLAY-008's sleep timer is the answer to
      * it — this is not the control that should be trying to guess whether anybody is awake.
      */
-    private suspend fun advanceToNextInSeries() {
-        val finished = withContext(mainDispatcher) {
-            player?.currentMediaItem?.let(MediaItems::bookIdOf)
-        } ?: return
+    private suspend fun advanceToNextInSeries(claim: DeferredPlaybackWork.Claim) {
+        if (!deferredWork.isCurrent(claim) || claim.player.playbackState != Player.STATE_ENDED) return
+        val finished = claim.item?.let(MediaItems::bookIdOf) ?: return
+        val profileId = auto.activeProfileId() ?: return
+        if (!deferredWork.isCurrent(claim)) return
         val next = nextInSeries(finished) ?: return
-        val queue = openQueue(next.id, startAt = null) ?: return
-        withContext(mainDispatcher) {
-            val current = player ?: return@withContext
-            current.setMediaItem(queue.item, queue.startPositionMs)
-            current.prepare()
-            current.play()
+        if (!deferredWork.isCurrent(claim)) return
+
+        // Do not publish a session for an automatic candidate before it wins. Both the next-book lookup
+        // and /play may suspend while the listener chooses a different book from phone or Android Auto.
+        val prepared = prepareQueue(next.id, startAt = null) ?: return
+        if (prepared.session.profileId != profileId ||
+            MediaItems.ownerOf(claim.item)?.let { it != profileId } == true
+        ) {
+            return
         }
-        // No title and no id (14.5). That a series advanced is the diagnosable fact; which book it was is
-        // the thing a private library must not put in a log.
-        logger.info(LogCategory.Playback, "A book ended, so the next in its series was started")
+        val installed = deferredWork.installIfCurrent(
+            claim = claim,
+            prepared = prepared,
+            startPlaying = true,
+            condition = { it.playbackState == Player.STATE_ENDED },
+            allowed = { auto.isActiveProfile(profileId) && !lock.isActiveProfileLocked() },
+        )
+        if (installed) {
+            // No title or id (14.5). Only the fact of the advance is safe to log.
+            logger.info(LogCategory.Playback, "A book ended, so the next in its series was started")
+        }
     }
 
     /**
