@@ -22,12 +22,7 @@ internal object MediaButtonInputEvidence {
 
     data class Finding(val origin: Origin, val headsetNameMatches: Int)
 
-    fun classify(
-        deviceId: Int?,
-        isVirtual: Boolean?,
-        inputName: String?,
-        outputs: List<AudioOutput>,
-    ): Finding {
+    fun classify(deviceId: Int?, isVirtual: Boolean?, inputName: String?, outputs: List<AudioOutput>): Finding {
         if (deviceId == null) return Finding(Origin.MissingEvent, 0)
         if (deviceId <= 0 || isVirtual == true) return Finding(Origin.VirtualOrSystem, 0)
         if (isVirtual == null || inputName.isNullOrBlank()) return Finding(Origin.UnresolvedInput, 0)
