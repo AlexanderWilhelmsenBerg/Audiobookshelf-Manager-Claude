@@ -404,6 +404,7 @@ class PlaybackService : MediaLibraryService() {
             onPlayWhenReadyRequest = { requestedPlay ->
                 controllerCommandGeneration += 1
                 logControllerTransportRequest(requestedPlay, exoPlayer)
+                routeExplicitCarPlay(requestedPlay, exoPlayer)
                 // A duplicate Pause still matters, even if the raw player emits no state transition.
                 sleepTimer.onControllerTransportIntent()
                 // A controller's Play/Pause is newer listener intent even when ExoPlayer is already in that
@@ -451,6 +452,20 @@ class PlaybackService : MediaLibraryService() {
         outputDevices.start(scope, DeviceActions())
         observeBrowseTreeInvalidation()
         logger.info(LogCategory.Playback, "Playback service started")
+    }
+
+    /**
+     * A new Play from Android Auto is an explicit request for car audio, unlike car binding.
+     * Keep route changes outside the onCreate forwarding-player lambda: the shared policy
+     * remains testable and a duplicate Play does not steal a healthy headset route.
+     */
+    private fun routeExplicitCarPlay(requestedPlay: Boolean, mediaPlayer: ExoPlayer) {
+        val requestingController = session?.controllerForCurrentRequest
+        val isCarController = requestingController != null && requestingController.packageName in CAR_PACKAGES
+        if (!shouldSelectCarForControllerPlay(requestedPlay, isCarController, mediaPlayer.playWhenReady)) return
+        audioOutputs.selectCar()
+        syncExplicitOutputIntent()
+        logAuto("Android Auto Play selected the car audio route", fields = carSnapshotFields())
     }
 
     /**
@@ -1248,54 +1263,55 @@ class PlaybackService : MediaLibraryService() {
                 reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE
             autoRewind.onPaused(wasUserInitiated = userInitiated)
 
-            if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
-                // Issue #36 — physical drives measured audioFocusLoss on both car entry and car departure.
-                // The gate still requires a matching controller lifecycle boundary; focus loss alone can
-                // never resume playback.
-                val trace = ensureAutoTrace("audio-focus-loss")
-                logAuto(
-                    "Android Auto lifecycle input",
-                    trace,
-                    buildList {
-                        add(LogField.Public("event", "audio-focus-loss"))
-                        addAll(AndroidAutoDiagnostics.playerFields(player))
-                        addAll(carSnapshotFields())
-                    },
-                )
-                syncExplicitOutputIntent()
-                val outputs = audioOutputs.outputs.value
-                val decision = carContinuity.onAudioFocusLoss(
-                    at = clock.elapsed(),
-                    heardRoute = routeOwnership.heardRoute,
-                    headsetId = routeOwnership.headsetForCar(outputs),
-                    currentGeneration = routeOwnership.currentGeneration,
-                    explicitSelectionSequence = currentExplicitSelectionSequence(),
-                    carConnected = carContinuitySessionEstablished,
-                )
-                logCarContinuityDecision("audio-focus-loss", decision)
-                decision.target
-                    ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
-                    ?.let { target -> scope.launch { recoverAndResumeCarContinuity(target) } }
-            } else if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY) {
-                // Issue #36 — route/noisy can precede the measured car focus loss. It still cannot authorize
-                // Play, but it is automatic platform evidence rather than newer listener intent, so retain the
-                // last positively heard exact headset for the focus + car-boundary correlation that may follow.
-                val trace = ensureAutoTrace("becoming-noisy")
-                logAuto(
-                    "Android Auto lifecycle input",
-                    trace,
-                    buildList {
-                        add(LogField.Public("event", "becoming-noisy"))
-                        addAll(AndroidAutoDiagnostics.playerFields(player))
-                        addAll(carSnapshotFields())
-                    },
-                )
-                continuityPlayAwaiting = null
-            } else {
-                // Deliberate pause, end-of-item and unknown causes invalidate transition evidence.
-                carContinuity.cancelAll()
-                continuityPlayAwaiting = null
+            when (reason) {
+                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
+                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY,
+                -> onCarPlatformInterruption(reason)
+
+                else -> {
+                    // Deliberate pause, end-of-item and unknown causes invalidate transition evidence.
+                    carContinuity.cancelAll()
+                    continuityPlayAwaiting = null
+                }
             }
+        }
+
+        /**
+         * Platform pause is observable once; becoming-noisy can suppress a later focus-loss transition.
+         * The gate pairs either event with a car lifecycle boundary before any automatic Play.
+         */
+        private fun onCarPlatformInterruption(reason: Int) {
+            val focusLoss = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
+            val source = if (focusLoss) "audio-focus-loss" else "becoming-noisy"
+            val trace = ensureAutoTrace(source)
+            logAuto(
+                "Android Auto lifecycle input",
+                trace,
+                buildList {
+                    add(LogField.Public("event", source))
+                    addAll(AndroidAutoDiagnostics.playerFields(player))
+                    addAll(carSnapshotFields())
+                },
+            )
+            syncExplicitOutputIntent()
+            val observer = if (focusLoss) {
+                carContinuity::onAudioFocusLoss
+            } else {
+                carContinuity::onAudioBecomingNoisy
+            }
+            val decision = observer(
+                clock.elapsed(),
+                routeOwnership.heardRoute,
+                routeOwnership.headsetForCar(audioOutputs.outputs.value),
+                routeOwnership.currentGeneration,
+                currentExplicitSelectionSequence(),
+                carContinuitySessionEstablished,
+            )
+            logCarContinuityDecision(source, decision)
+            decision.target
+                ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
+                ?.let { target -> scope.launch { recoverAndResumeCarContinuity(target) } }
+            if (!focusLoss) continuityPlayAwaiting = null
         }
 
         /**
@@ -1642,13 +1658,21 @@ class PlaybackService : MediaLibraryService() {
             return null
         }
         syncExplicitOutputIntent()
-        val hold = routeOwnership.headsetForCar(audioOutputs.outputs.value) ?: return null
-        val reasserted = audioOutputs.reassert(hold)
-        val heldHeadsetIsConnected = reasserted && audioOutputs.outputs.value.any { output ->
-            output.id == hold && output.isHeadsetCandidate
+        val outputs = audioOutputs.outputs.value
+        val hold = routeOwnership.headsetForCar(outputs) ?: return null
+        // Car controller binding alone must not restart or reconfigure an already-audible headset.
+        // Retain Media3's current player/focus/route when this exact headset remains the sole active sink.
+        if (player?.isPlaying == true && headsetAlreadyActive(hold, outputs)) {
+            audioOutputs.protectPlayingHeadset(hold)
+            logAuto("Car lifecycle preserved active headset without route reassertion")
+        } else {
+            val reasserted = audioOutputs.reassert(hold)
+            val heldHeadsetIsConnected = reasserted && audioOutputs.outputs.value.any { output ->
+                output.id == hold && output.isHeadsetCandidate
+            }
+            if (!heldHeadsetIsConnected) return null
+            logHeldHeadset(hold)
         }
-        if (!heldHeadsetIsConnected) return null
-        logHeldHeadset(hold)
         return hold
     }
 
@@ -1721,6 +1745,14 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun recoverAndResumeCarContinuity(target: CarArrivalResumeGate.Target) {
+        // Media3 can hold playWhenReady=true while temporarily suppressing audible playback.
+        // It owns focus restoration in that state; issuing another Play or reasserting the output
+        // would only disturb a player that is already committed to continuing.
+        if (player?.playWhenReady == true) {
+            logAuto("Car lifecycle left active playback intent with Media3")
+            carContinuity.cancelPending()
+            return
+        }
         val heldHeadset = recoverCarContinuityHeadset(target)
         resumeAfterCarContinuity(target, heldHeadset)
     }
@@ -3375,12 +3407,23 @@ class PlaybackService : MediaLibraryService() {
             } else {
                 intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
             }
+            val inputDevice = keyEvent?.device
+            val inputEvidence = MediaButtonInputEvidence.classify(
+                deviceId = keyEvent?.deviceId,
+                isVirtual = inputDevice?.isVirtual,
+                inputName = inputDevice?.name,
+                outputs = audioOutputs.outputs.value,
+            )
             logAuto(
                 "MediaSession hardware media button observed",
                 fields = listOf(
                     LogField.Identifier("controllerPackage", controllerInfo.packageName),
                     LogField.Public("keyCode", keyEvent?.keyCode ?: -1),
                     LogField.Public("keyAction", keyEvent?.action ?: -1),
+                    LogField.Public("keyInputId", keyEvent?.deviceId ?: -1),
+                    LogField.Public("keyInputSource", keyEvent?.source ?: -1),
+                    LogField.Public("inputOrigin", inputEvidence.origin.name),
+                    LogField.Count("headsetNameMatches", inputEvidence.headsetNameMatches),
                 ) + carSnapshotFields(),
             )
             return super.onMediaButtonEvent(session, controllerInfo, intent)

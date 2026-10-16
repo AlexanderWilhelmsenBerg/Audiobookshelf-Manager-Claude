@@ -102,6 +102,77 @@ A profile switch must not allow:
 - a widget/shortcut/system surface to expose locked or inaccessible profile metadata;
 - restore/resume selection to be inferred from another profile's state.
 
+## Android Auto headset continuity (GitHub #128)
+
+Car connection is not a playback command. For an already-loaded Media3 item, Android Auto
+must not rebuild the queue, replace the item, rewind, open a new server session or issue a
+service-originated Play simply because Gearhead connected. A deliberate headset Pause wins
+over any in-flight continuity candidate. The host's Start music automatically toggle is
+separate from BookWave's per-car `DevicePolicy`; the host may issue its own explicit Play.
+
+For playback genuinely heard through an exact headset, `RouteHeardOwnership` captures
+generation-bound and listener-selection-bound evidence. When the headset remains the only
+reported active route, first car connection leaves the player and route preference untouched.
+If Media3 itself interrupts playback, `CarArrivalResumeGate` treats either
+`AUDIO_FOCUS_LOSS` or `AUDIO_BECOMING_NOISY` as a *candidate* for recovery. A timely,
+car-specific first-arrival boundary, fresh observed playback, identical book generation
+and no newer listener command/selection are all required before route recovery can
+authorize a one-shot Play.
+
+`CarArrivalRouteRecovery` uses the already-active exact headset immediately where
+platform output evidence is unambiguous. Otherwise it retains the bounded, exact-target
+reassertion/reappearance fallback. **A successful `setPreferredAudioDevice` request or a
+connected headset is not evidence of an actual headset route**. The replay of real
+car trace `auto-5` forbids issuing Play while `getAudioDevicesForAttributes` provides
+no positive headset route; no selected or connected-but-inactive preference is enough.
+The service will leave the book paused if Android fails to expose a route within the
+recovery window. It never chooses another headset, speaker, or car output
+on behalf of a previous headset listener.
+
+`AudioOutputRouter` preserves the exact already-heard headset preference without
+reasserting the healthy AudioTrack at initial car bind. While that policy preference
+is held, framework route changes to unknown, competing or multiple outputs suspend
+an actively playing track rather than let it become audible in a car or phone speaker.
+A temporary device-list disappearance pauses before OS fallback, preserves the same
+preference for two seconds, and reapplies it only if that exact device returns and no
+newer user output selection superseded it. The grace never automatically plays a
+previously paused item. After expiry, it may clear the preference only while paused.
+The physical Android route APIs expose media routing *policy*, not incontrovertible
+proof of the AudioTrack sink; hardware listening remains required to accept the result.
+If Media3 still has `playWhenReady=true`, it owns focus restoration; BookWave must
+not issue a second Play or disturb routing.
+Do not disable ExoPlayer focus management or noisy-route safety to eliminate a pause.
+
+**Explicit destination ownership:** a Play accepted from the Android Auto controller while
+BookWave is paused is an explicit request for car playback. The shared output router clears
+a stale guarded headset selection through the same `selectCar()` path as BookWave's Car
+button, and the normal resume-freshness pipeline handles that Play. Android Auto
+connection alone does not select the car, and a redundant host Play while BookWave already
+has `playWhenReady=true` does not steal healthy headset audio. Explicit headset output
+selection remains stronger than ambient car connection. **Hardware headset Play requirement:** a physical Play pressed on headset A is intended
+to play on A, even when headset B and Android Auto are also connected; B should similarly
+play on B. A generic Bluetooth media-key callback does not reliably identify which physical
+headset generated it. KeyEvent's `deviceId` may be zero (virtual/system) or identify only
+an input device unrelated to an audio-output identity. BookWave now logs the input-ID class,
+key source and number of unique name matches without exposing raw device names or
+Bluetooth addresses. A name match is *diagnostic only*, not verified physical identity:
+BookWave must not guess an A/B switch or silently play in the car from that evidence.
+The current build does **not** guarantee headset-A/B source-based switching; proving a
+reliable input-to-output mapping on physical Android hardware is a separate acceptance
+gate. Android may refuse a requested output route, so hardware acceptance must verify
+what was actually heard, not infer it from the selected device.
+
+Android Auto `onPostConnect` retains any existing current media item; an empty player
+uses the already-shared remembered-book/server-progress fallback and applicable car
+start policy. The same Media3 resume freshness path remains authoritative for explicit Play.
+
+The deterministic gate/recovery tests establish callback-order authorization, **not**
+audible Bluetooth routing. Hardware acceptance still requires the owner's in-app Auto race
+trace with host autoplay ON and OFF, a verified same-headset physical listen, and a measured
+gap target under one second where the OS grants prompt focus/route recovery.
+A >1s interruption caused by actual Android focus or Bluetooth route removal must be
+diagnosed from the trace rather than bypassing focus or enabling speaker fallback.
+
 ## Android Auto
 
 ADR-0029 remains the routing/media-control architecture, while PD-001 is the current browse-home product decision.

@@ -22,6 +22,8 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
         TargetReturned,
         Reasserted,
         PreferenceLost,
+        RouteUnknown,
+        RouteCompeting,
         EligibilityLost,
         Secured,
         TimedOut,
@@ -49,6 +51,15 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
                     return@withTimeoutOrNull null
                 }
 
+                // If Android still routes media exclusively to the previously heard headset, do not
+                // disturb a healthy AudioTrack by reapplying its preferred device. Automatic selection is
+                // acceptable here only with positive active-route evidence; absence/ambiguity takes the
+                // existing bounded reassertion path below.
+                if (alreadySecured(target.outputId, outputs.value, selectedId.value)) {
+                    onEvent(Event.Secured)
+                    return@withTimeoutOrNull target.outputId
+                }
+
                 val applied = reassert(target.outputId)
                 onEvent(Event.Reasserted)
                 if (!isStillEligible()) {
@@ -57,12 +68,19 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
                     return@withTimeoutOrNull null
                 }
 
-                val stillConnected = outputs.value.containsTarget(target.outputId)
-                if (applied && stillConnected && selectedId.value == target.outputId) {
+                // A preferred device is only a request. Positive evidence of playback on
+                // another output must block the one-shot automatic Play.
+                if (preferenceSecured(applied, target.outputId, outputs.value, selectedId.value)) {
                     onEvent(Event.Secured)
                     return@withTimeoutOrNull target.outputId
                 }
 
+                if (applied && selectedId.value == target.outputId) {
+                    val outputsNow = outputs.value
+                    onEvent(
+                        if (outputsNow.any(AudioOutput::isActive)) Event.RouteCompeting else Event.RouteUnknown,
+                    )
+                }
                 onEvent(Event.PreferenceLost)
                 // A remove/re-add during AudioOutputRouter's measured settle can clear selectedId to Automatic.
                 // This bounded retry yields only to let that platform transition publish before the same target
@@ -78,6 +96,22 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
         return result
     }
 
+    private fun alreadySecured(outputId: String, outputs: List<AudioOutput>, selected: String?): Boolean =
+        headsetAlreadyActive(outputId, outputs) && (selected == null || selected == outputId)
+
+    private fun preferenceSecured(
+        applied: Boolean,
+        outputId: String,
+        outputs: List<AudioOutput>,
+        selected: String?,
+    ): Boolean {
+        if (!applied || selected != outputId) return false
+        // An absent route report is not evidence for the headset. In auto-5 the
+        // preferred device was connected, but Android reported honoured=false.
+        // Treat that as unresolved until the original headset is uniquely active.
+        return headsetAlreadyActive(outputId, outputs)
+    }
+
     private fun List<AudioOutput>.containsTarget(outputId: String): Boolean =
         any { output -> output.id == outputId && output.isHeadsetCandidate }
 
@@ -87,3 +121,11 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
         val RETRY_DELAY: Duration = 50.milliseconds
     }
 }
+
+/**
+ * Conservative continuity fast path: the captured headset is the only active output.
+ * Merely connected, preferred, or chosen-by-list-order is not sufficient evidence.
+ */
+internal fun headsetAlreadyActive(outputId: String, outputs: List<AudioOutput>): Boolean =
+    outputs.any { it.id == outputId && it.isHeadsetCandidate && it.isActive } &&
+        outputs.none { it.id != outputId && it.isActive }
