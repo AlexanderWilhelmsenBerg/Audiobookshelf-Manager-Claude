@@ -72,7 +72,7 @@ class AudioOutputRouterThreadTest {
         )
         val guard = AudioOutputRouter::class.java.getDeclaredField("guardedHeadsetId").run {
             isAccessible = true
-            get(fixture.router) as String?
+            get(fixture.router) as? String
         }
         assertTrue(guard == null, "a Play directed to the car must not be cancelled by a stale headset guard")
         runCurrent()
