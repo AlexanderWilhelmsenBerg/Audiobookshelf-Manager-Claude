@@ -29,6 +29,16 @@ class CarArrivalRouteRecoveryTest {
     )
 
     @Test
+    fun `Android Auto Play selects the car only when it is a new Play intent`() {
+        assertTrue(shouldSelectCarForControllerPlay(requestedPlay = true, controllerIsCar = true, playWhenReady = false))
+        // A duplicate Gearhead Play during healthy headset playback is not permission to steal routing.
+        assertTrue(!shouldSelectCarForControllerPlay(requestedPlay = true, controllerIsCar = true, playWhenReady = true))
+        assertTrue(!shouldSelectCarForControllerPlay(requestedPlay = false, controllerIsCar = true, playWhenReady = false))
+        // Hardware media keys without a attributable Bluetooth source do not choose an arbitrary route.
+        assertTrue(!shouldSelectCarForControllerPlay(requestedPlay = true, controllerIsCar = false, playWhenReady = false))
+    }
+
+    @Test
     fun `car transient headset disappearance retains exact preference but not a newer car selection`() {
         assertTrue(shouldRetainContinuityHeadset(buds.id, buds.id, emptySet()))
         assertTrue(!shouldRetainContinuityHeadset(buds.id, buds.id, setOf(buds.id)))
