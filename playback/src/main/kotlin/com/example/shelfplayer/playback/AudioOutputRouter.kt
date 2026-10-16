@@ -287,7 +287,11 @@ class AudioOutputRouter @Inject constructor(
                 // Pause before Android can take this AudioTrack to a default speaker/car sink.
                 // Keep the previous target through bounded A2DP list churn; a missing device
                 // never authorizes releasing the preference while playback is audible.
-                if (player?.isPlaying == true) player?.pause()
+                applicationScope.launch(mainDispatcher) {
+                    if (_selectedId.value == chosen && guardedHeadsetId == chosen && chosen !in live) {
+                        player?.takeIf { it.isPlaying }?.pause()
+                    }
+                }
                 if (missingHeadsetGrace == null) {
                     logger.info(
                         LogCategory.Playback,
@@ -347,19 +351,33 @@ class AudioOutputRouter @Inject constructor(
         if (!shouldSuspendGuardedPlayback(guardedHeadsetId, _selectedId.value, routed, player?.isPlaying == true)) {
             return
         }
-        player?.pause()
-        logger.info(
-            LogCategory.Playback,
-            "Car continuity paused because the headset route is not verified",
-            LogField.Public(
-                "route",
-                when {
-                    routed == null || routed.isEmpty() -> "unknown"
-                    routed.none { it == guardedHeadsetId } -> "other"
-                    else -> "multiple"
-                },
-            ),
-        )
+        // AudioDeviceCallback may run off the player looper; all ExoPlayer commands must
+        // reach MainImmediate. Recheck on arrival to avoid pausing after a newer user choice.
+        applicationScope.launch(mainDispatcher) {
+            val latestRoute = routedIds()
+            if (!shouldSuspendGuardedPlayback(
+                    guardedHeadsetId,
+                    _selectedId.value,
+                    latestRoute,
+                    player?.isPlaying == true,
+                )
+            ) {
+                return@launch
+            }
+            player?.pause()
+            logger.info(
+                LogCategory.Playback,
+                "Car continuity paused because the headset route is not verified",
+                LogField.Public(
+                    "route",
+                    when {
+                        latestRoute == null || latestRoute.isEmpty() -> "unknown"
+                        latestRoute.none { it == guardedHeadsetId } -> "other"
+                        else -> "multiple"
+                    },
+                ),
+            )
+        }
     }
 
     /** Framework-reported devices for BookWave's media attributes, or `null` before API 33. */
