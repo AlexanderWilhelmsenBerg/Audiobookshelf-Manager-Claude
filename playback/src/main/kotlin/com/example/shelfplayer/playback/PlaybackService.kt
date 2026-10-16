@@ -1250,7 +1250,8 @@ class PlaybackService : MediaLibraryService() {
 
             when (reason) {
                 Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
-                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY -> onCarPlatformInterruption(reason)
+                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY,
+                -> onCarPlatformInterruption(reason)
 
                 else -> {
                     // Deliberate pause, end-of-item and unknown causes invalidate transition evidence.
