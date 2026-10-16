@@ -70,6 +70,7 @@ class CarArrivalRouteRecoveryTest {
         assertNull(held, "the preference was requested, but Android did not report it as active")
         assertTrue(requested > 0)
         assertTrue(CarArrivalRouteRecovery.Event.Reasserted in events)
+        assertTrue(CarArrivalRouteRecovery.Event.RouteUnknown in events)
         assertTrue(CarArrivalRouteRecovery.Event.Secured !in events)
         assertTrue(CarArrivalRouteRecovery.Event.TimedOut in events)
     }
@@ -144,6 +145,7 @@ class CarArrivalRouteRecoveryTest {
         }
         assertNull(held)
         assertEquals(buds.id, selected.value)
+        assertTrue(CarArrivalRouteRecovery.Event.RouteCompeting in events)
         assertTrue(CarArrivalRouteRecovery.Event.TimedOut in events)
     }
 
