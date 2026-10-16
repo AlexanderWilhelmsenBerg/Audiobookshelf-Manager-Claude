@@ -29,6 +29,15 @@ class CarArrivalRouteRecoveryTest {
     )
 
     @Test
+    fun `car transient headset disappearance retains exact preference but not a newer car selection`() {
+        assertTrue(shouldRetainContinuityHeadset(buds.id, buds.id, emptySet()))
+        assertTrue(!shouldRetainContinuityHeadset(buds.id, buds.id, setOf(buds.id)))
+        assertTrue(!shouldRetainContinuityHeadset(buds.id, null, emptySet()))
+        assertTrue(!shouldRetainContinuityHeadset(buds.id, "bluetooth:car", emptySet()))
+        assertTrue(!shouldRetainContinuityHeadset(null, buds.id, emptySet()))
+    }
+
+    @Test
     fun `guarded headset routing stops playback on unknown or car policy outputs`() {
         assertTrue(shouldSuspendGuardedPlayback(buds.id, buds.id, emptySet(), true))
         assertTrue(shouldSuspendGuardedPlayback(buds.id, buds.id, setOf("speaker:phone"), true))
