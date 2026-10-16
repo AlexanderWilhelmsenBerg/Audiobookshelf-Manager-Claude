@@ -284,6 +284,7 @@ class AudioOutputRouter @Inject constructor(
         val chosen = _selectedId.value
         when {
             chosen != null && chosen !in found -> onDisconnectedSelection(chosen, found.keys)
+
             chosen != null && chosen == guardedHeadsetId && missingHeadsetGrace != null ->
                 onGuardedHeadsetReappeared(chosen)
         }
