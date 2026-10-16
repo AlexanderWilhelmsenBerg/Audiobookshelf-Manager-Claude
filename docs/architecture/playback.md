@@ -143,6 +143,18 @@ If Media3 still has `playWhenReady=true`, it owns focus restoration; BookWave mu
 not issue a second Play or disturb routing.
 Do not disable ExoPlayer focus management or noisy-route safety to eliminate a pause.
 
+**Explicit destination ownership:** a Play accepted from the Android Auto controller while
+BookWave is paused is an explicit request for car playback. The shared output router clears
+a stale guarded headset selection through the same `selectCar()` path as BookWave's Car
+button, and the normal resume-freshness pipeline handles that Play. Android Auto
+connection alone does not select the car, and a redundant host Play while BookWave already
+has `playWhenReady=true` does not steal healthy headset audio. Explicit headset output
+selection remains stronger than ambient car connection. A generic Bluetooth media-key
+callback does not reliably identify which physical headset generated it: BookWave must
+retain the currently selected/confirmed output rather than inventing a headset A/B switch
+from an unattributed media key. Android may refuse a requested output route, so hardware
+acceptance must verify what was actually heard, not infer it from the selected device.
+
 Android Auto `onPostConnect` retains any existing current media item; an empty player
 uses the already-shared remembered-book/server-progress fallback and applicable car
 start policy. The same Media3 resume freshness path remains authoritative for explicit Play.
