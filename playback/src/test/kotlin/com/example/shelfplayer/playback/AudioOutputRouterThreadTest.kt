@@ -95,10 +95,7 @@ class AudioOutputRouterThreadTest {
         return Fixture(router, reads)
     }
 
-    private data class Fixture(
-        val router: AudioOutputRouter,
-        val readThreads: List<Thread>,
-    ) {
+    private data class Fixture(val router: AudioOutputRouter, val readThreads: List<Thread>) {
         fun guard(outputId: String) {
             AudioOutputRouter::class.java.getDeclaredField("guardedHeadsetId").apply {
                 isAccessible = true
