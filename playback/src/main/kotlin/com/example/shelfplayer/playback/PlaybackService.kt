@@ -1248,67 +1248,55 @@ class PlaybackService : MediaLibraryService() {
                 reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE
             autoRewind.onPaused(wasUserInitiated = userInitiated)
 
-            if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
-                // Issue #36 — physical drives measured audioFocusLoss on both car entry and car departure.
-                // The gate still requires a matching controller lifecycle boundary; focus loss alone can
-                // never resume playback.
-                val trace = ensureAutoTrace("audio-focus-loss")
-                logAuto(
-                    "Android Auto lifecycle input",
-                    trace,
-                    buildList {
-                        add(LogField.Public("event", "audio-focus-loss"))
-                        addAll(AndroidAutoDiagnostics.playerFields(player))
-                        addAll(carSnapshotFields())
-                    },
-                )
-                syncExplicitOutputIntent()
-                val outputs = audioOutputs.outputs.value
-                val decision = carContinuity.onAudioFocusLoss(
-                    at = clock.elapsed(),
-                    heardRoute = routeOwnership.heardRoute,
-                    headsetId = routeOwnership.headsetForCar(outputs),
-                    currentGeneration = routeOwnership.currentGeneration,
-                    explicitSelectionSequence = currentExplicitSelectionSequence(),
-                    carConnected = carContinuitySessionEstablished,
-                )
-                logCarContinuityDecision("audio-focus-loss", decision)
-                decision.target
-                    ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
-                    ?.let { target -> scope.launch { recoverAndResumeCarContinuity(target) } }
-            } else if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY) {
-                // Issue #36 — route/noisy can precede the measured car focus loss. It still cannot authorize
-                // Play, but it is automatic platform evidence rather than newer listener intent, so retain the
-                // last positively heard exact headset for the focus + car-boundary correlation that may follow.
-                val trace = ensureAutoTrace("becoming-noisy")
-                logAuto(
-                    "Android Auto lifecycle input",
-                    trace,
-                    buildList {
-                        add(LogField.Public("event", "becoming-noisy"))
-                        addAll(AndroidAutoDiagnostics.playerFields(player))
-                        addAll(carSnapshotFields())
-                    },
-                )
-                syncExplicitOutputIntent()
-                val decision = carContinuity.onAudioBecomingNoisy(
-                    at = clock.elapsed(),
-                    heardRoute = routeOwnership.heardRoute,
-                    headsetId = routeOwnership.headsetForCar(audioOutputs.outputs.value),
-                    currentGeneration = routeOwnership.currentGeneration,
-                    explicitSelectionSequence = currentExplicitSelectionSequence(),
-                    carConnected = carContinuitySessionEstablished,
-                )
-                logCarContinuityDecision("becoming-noisy", decision)
-                decision.target
-                    ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
-                    ?.let { target -> scope.launch { recoverAndResumeCarContinuity(target) } }
-                continuityPlayAwaiting = null
-            } else {
-                // Deliberate pause, end-of-item and unknown causes invalidate transition evidence.
-                carContinuity.cancelAll()
-                continuityPlayAwaiting = null
+            when (reason) {
+                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
+                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY,
+                -> onCarPlatformInterruption(reason)
+
+                else -> {
+                    // Deliberate pause, end-of-item and unknown causes invalidate transition evidence.
+                    carContinuity.cancelAll()
+                    continuityPlayAwaiting = null
+                }
             }
+        }
+
+        /**
+         * Platform pause is observable once; becoming-noisy can suppress a later focus-loss transition.
+         * The gate pairs either event with a car lifecycle boundary before any automatic Play.
+         */
+        private fun onCarPlatformInterruption(reason: Int) {
+            val focusLoss = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
+            val source = if (focusLoss) "audio-focus-loss" else "becoming-noisy"
+            val trace = ensureAutoTrace(source)
+            logAuto(
+                "Android Auto lifecycle input",
+                trace,
+                buildList {
+                    add(LogField.Public("event", source))
+                    addAll(AndroidAutoDiagnostics.playerFields(player))
+                    addAll(carSnapshotFields())
+                },
+            )
+            syncExplicitOutputIntent()
+            val observer = if (focusLoss) {
+                carContinuity::onAudioFocusLoss
+            } else {
+                carContinuity::onAudioBecomingNoisy
+            }
+            val decision = observer(
+                at = clock.elapsed(),
+                heardRoute = routeOwnership.heardRoute,
+                headsetId = routeOwnership.headsetForCar(audioOutputs.outputs.value),
+                currentGeneration = routeOwnership.currentGeneration,
+                explicitSelectionSequence = currentExplicitSelectionSequence(),
+                carConnected = carContinuitySessionEstablished,
+            )
+            logCarContinuityDecision(source, decision)
+            decision.target
+                ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
+                ?.let { target -> scope.launch { recoverAndResumeCarContinuity(target) } }
+            if (!focusLoss) continuityPlayAwaiting = null
         }
 
         /**
@@ -1661,14 +1649,14 @@ class PlaybackService : MediaLibraryService() {
         // Retain Media3's current player/focus/route when this exact headset remains the sole active sink.
         if (player?.isPlaying == true && headsetAlreadyActive(hold, outputs)) {
             logAuto("Car lifecycle preserved active headset without route reassertion")
-            return hold
+        } else {
+            val reasserted = audioOutputs.reassert(hold)
+            val heldHeadsetIsConnected = reasserted && audioOutputs.outputs.value.any { output ->
+                output.id == hold && output.isHeadsetCandidate
+            }
+            if (!heldHeadsetIsConnected) return null
+            logHeldHeadset(hold)
         }
-        val reasserted = audioOutputs.reassert(hold)
-        val heldHeadsetIsConnected = reasserted && audioOutputs.outputs.value.any { output ->
-            output.id == hold && output.isHeadsetCandidate
-        }
-        if (!heldHeadsetIsConnected) return null
-        logHeldHeadset(hold)
         return hold
     }
 
