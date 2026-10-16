@@ -404,6 +404,19 @@ class PlaybackService : MediaLibraryService() {
             onPlayWhenReadyRequest = { requestedPlay ->
                 controllerCommandGeneration += 1
                 logControllerTransportRequest(requestedPlay, exoPlayer)
+                // A Play received *from the projected car session* is an explicit request for the car.
+                // The stale headset guard must not cancel that command on an Android 16 unknown route.
+                // A duplicate Play while an existing headset is already running is not new route intent.
+                val isCarController = session?.controllerForCurrentRequest
+                    ?.packageName?.let { it in CAR_PACKAGES } == true
+                if (shouldSelectCarForControllerPlay(requestedPlay, isCarController, exoPlayer.playWhenReady)) {
+                    audioOutputs.selectCar()
+                    syncExplicitOutputIntent()
+                    logAuto(
+                        "Android Auto Play selected the car audio route",
+                        fields = carSnapshotFields(),
+                    )
+                }
                 // A duplicate Pause still matters, even if the raw player emits no state transition.
                 sleepTimer.onControllerTransportIntent()
                 // A controller's Play/Pause is newer listener intent even when ExoPlayer is already in that
