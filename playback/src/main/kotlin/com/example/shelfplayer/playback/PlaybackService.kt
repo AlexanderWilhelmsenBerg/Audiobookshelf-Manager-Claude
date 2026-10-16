@@ -404,19 +404,7 @@ class PlaybackService : MediaLibraryService() {
             onPlayWhenReadyRequest = { requestedPlay ->
                 controllerCommandGeneration += 1
                 logControllerTransportRequest(requestedPlay, exoPlayer)
-                // A Play received *from the projected car session* is an explicit request for the car.
-                // The stale headset guard must not cancel that command on an Android 16 unknown route.
-                // A duplicate Play while an existing headset is already running is not new route intent.
-                val currentRequest = session?.controllerForCurrentRequest
-                val isCarController = currentRequest != null && currentRequest.packageName in CAR_PACKAGES
-                if (shouldSelectCarForControllerPlay(requestedPlay, isCarController, exoPlayer.playWhenReady)) {
-                    audioOutputs.selectCar()
-                    syncExplicitOutputIntent()
-                    logAuto(
-                        "Android Auto Play selected the car audio route",
-                        fields = carSnapshotFields(),
-                    )
-                }
+                routeExplicitCarPlay(requestedPlay, exoPlayer)
                 // A duplicate Pause still matters, even if the raw player emits no state transition.
                 sleepTimer.onControllerTransportIntent()
                 // A controller's Play/Pause is newer listener intent even when ExoPlayer is already in that
@@ -470,6 +458,20 @@ class PlaybackService : MediaLibraryService() {
      * The controller identity is available only during Media3's request callback. Observe it here, never
      * infer its origin from ExoPlayer's later USER_REQUEST reason. This records intent without changing it.
      */
+    /**
+     * A new Play from Android Auto is an explicit request for car audio, unlike car binding.
+     * Keep route changes outside the onCreate forwarding-player lambda: the shared policy
+     * remains testable and a duplicate Play does not steal a healthy headset route.
+     */
+    private fun routeExplicitCarPlay(requestedPlay: Boolean, mediaPlayer: ExoPlayer) {
+        val requestingController = session?.controllerForCurrentRequest
+        val isCarController = requestingController != null && requestingController.packageName in CAR_PACKAGES
+        if (!shouldSelectCarForControllerPlay(requestedPlay, isCarController, mediaPlayer.playWhenReady)) return
+        audioOutputs.selectCar()
+        syncExplicitOutputIntent()
+        logAuto("Android Auto Play selected the car audio route", fields = carSnapshotFields())
+    }
+
     private fun logControllerTransportRequest(requestedPlay: Boolean, mediaPlayer: ExoPlayer) {
         val requestingController = session?.controllerForCurrentRequest
         logAuto(
