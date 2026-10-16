@@ -22,6 +22,8 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
         TargetReturned,
         Reasserted,
         PreferenceLost,
+        RouteUnknown,
+        RouteCompeting,
         EligibilityLost,
         Secured,
         TimedOut,
@@ -73,6 +75,12 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
                     return@withTimeoutOrNull target.outputId
                 }
 
+                if (applied && selectedId.value == target.outputId) {
+                    val outputsNow = outputs.value
+                    onEvent(
+                        if (outputsNow.any(AudioOutput::isActive)) Event.RouteCompeting else Event.RouteUnknown,
+                    )
+                }
                 onEvent(Event.PreferenceLost)
                 // A remove/re-add during AudioOutputRouter's measured settle can clear selectedId to Automatic.
                 // This bounded retry yields only to let that platform transition publish before the same target
