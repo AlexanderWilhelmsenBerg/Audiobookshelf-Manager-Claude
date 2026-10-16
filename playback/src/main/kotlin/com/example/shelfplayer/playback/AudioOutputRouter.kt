@@ -20,6 +20,7 @@ import com.example.shelfplayer.core.model.playback.AudioOutput
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +30,7 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * PRODUCT_SPEC PLAY-002 — sending the current book to a chosen output, and saying which one that is.
@@ -85,6 +87,11 @@ class AudioOutputRouter @Inject constructor(
     private var player: ExoPlayer? = null
     private var callback: AudioDeviceCallback? = null
 
+    // The route-recovery owner chooses an exact device. The router must not silently release
+    // that preference to Automatic during the transient A2DP removal observed in car trace auto-5.
+    private var guardedHeadsetId: String? = null
+    private var missingHeadsetGrace: Job? = null
+
     /** Live platform handles keyed by BookWave's stable, permission-free identity. */
     private var live: Map<String, AudioDeviceInfo> = emptyMap()
 
@@ -105,6 +112,9 @@ class AudioOutputRouter @Inject constructor(
 
     /** Releases the player. The device callback stays registered because the connected list outlives it. */
     fun detach() {
+        missingHeadsetGrace?.cancel()
+        missingHeadsetGrace = null
+        guardedHeadsetId = null
         player = null
     }
 
@@ -152,6 +162,9 @@ class AudioOutputRouter @Inject constructor(
             )
             return false
         }
+        missingHeadsetGrace?.cancel()
+        missingHeadsetGrace = null
+        guardedHeadsetId = id
         _selectedId.value = id
         publish()
         apply(id)
@@ -167,6 +180,10 @@ class AudioOutputRouter @Inject constructor(
             )
             return
         }
+        // A user choice always overrides a pending car-continuity preference and its expiry.
+        missingHeadsetGrace?.cancel()
+        missingHeadsetGrace = null
+        guardedHeadsetId = null
         explicitSelectionState.value = ExplicitSelection(
             sequence = ++nextExplicitSelectionSequence,
             outputId = id,
@@ -243,13 +260,43 @@ class AudioOutputRouter @Inject constructor(
         live = found
         val chosen = _selectedId.value
         if (chosen != null && !found.containsKey(chosen)) {
-            _selectedId.value = null
-            logger.info(
-                LogCategory.Playback,
-                "The chosen audio output disconnected, so routing is automatic again",
-                LogField.Public("kind", kindOf(chosen)),
-            )
-            applicationScope.launch { apply(null) }
+            if (chosen == guardedHeadsetId) {
+                // Pause before Android can take this AudioTrack to a default speaker/car sink.
+                // Keep the previous target through bounded A2DP list churn; a missing device
+                // never authorizes releasing the preference while playback is audible.
+                if (player?.isPlaying == true) player?.pause()
+                if (missingHeadsetGrace == null) {
+                    logger.info(
+                        LogCategory.Playback,
+                        "Car continuity headset disappeared; preserving selection while paused",
+                        LogField.Public("kind", kindOf(chosen)),
+                    )
+                    missingHeadsetGrace = applicationScope.launch {
+                        delay(MISSING_HEADSET_GRACE)
+                        if (_selectedId.value == chosen && chosen !in live) {
+                            _selectedId.value = null
+                            guardedHeadsetId = null
+                            publish()
+                            apply(null)
+                        }
+                        missingHeadsetGrace = null
+                    }
+                }
+            } else {
+                _selectedId.value = null
+                logger.info(
+                    LogCategory.Playback,
+                    "The chosen audio output disconnected, so routing is automatic again",
+                    LogField.Public("kind", kindOf(chosen)),
+                )
+                applicationScope.launch { apply(null) }
+            }
+        } else if (chosen != null && chosen == guardedHeadsetId && missingHeadsetGrace != null) {
+            // Restore the exact preference when Android republishes the same A2DP device.
+            // Do not issue Play: an explicit Pause or newer selection must still win.
+            missingHeadsetGrace?.cancel()
+            missingHeadsetGrace = null
+            applicationScope.launch { apply(chosen) }
         }
         publish()
     }
@@ -257,6 +304,24 @@ class AudioOutputRouter @Inject constructor(
     private fun publish() {
         val routed = routedIds()
         val chosen = _selectedId.value
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            shouldSuspendGuardedPlayback(guardedHeadsetId, chosen, routed, player?.isPlaying == true)
+        ) {
+            // Media3's playWhenReady is not an audible-route guarantee. On an exact
+            // headset-continuity preference, a missing/competing policy route must
+            // stop playback before the OS default car/speaker can become audible.
+            player?.pause()
+            logger.info(
+                LogCategory.Playback,
+                "Car continuity paused because the headset route is not verified",
+                LogField.Public("route", when {
+                    routed == null || routed.isEmpty() -> "unknown"
+                    guardedHeadsetId !in routed -> "other"
+                    else -> "multiple"
+                }),
+            )
+        }
         _outputs.value = live.mapNotNull { (id, info) ->
             OutputDevices.outputOf(
                 type = info.type,
@@ -292,5 +357,21 @@ class AudioOutputRouter @Inject constructor(
 
     private companion object {
         val ROUTE_SETTLE_DELAY = 400.milliseconds
+        val MISSING_HEADSET_GRACE = 2.seconds
     }
+}
+
+/**
+ * Pure route-safety guard used by the shared router's actual publish callback.
+ * A successful preference request is not proof of the destination; absent,
+ * multiple, or different framework routes are unsafe for a guarded headset.
+ */
+internal fun shouldSuspendGuardedPlayback(
+    guardedHeadsetId: String?,
+    selectedId: String?,
+    routedIds: Set<String>?,
+    isPlaying: Boolean,
+): Boolean {
+    if (!isPlaying || guardedHeadsetId == null || guardedHeadsetId != selectedId) return false
+    return routedIds == null || routedIds.size != 1 || guardedHeadsetId !in routedIds
 }
