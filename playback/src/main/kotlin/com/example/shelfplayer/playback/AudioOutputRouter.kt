@@ -270,7 +270,7 @@ class AudioOutputRouter @Inject constructor(
         live = found
         val chosen = _selectedId.value
         if (chosen != null && !found.containsKey(chosen)) {
-            if (chosen == guardedHeadsetId) {
+            if (shouldRetainContinuityHeadset(guardedHeadsetId, chosen, found.keys)) {
                 // Pause before Android can take this AudioTrack to a default speaker/car sink.
                 // Keep the previous target through bounded A2DP list churn; a missing device
                 // never authorizes releasing the preference while playback is audible.
@@ -386,3 +386,10 @@ internal fun shouldSuspendGuardedPlayback(
     if (!isPlaying || guardedHeadsetId == null || guardedHeadsetId != selectedId) return false
     return routedIds == null || routedIds.size != 1 || guardedHeadsetId !in routedIds
 }
+
+/** Preserve only an app-owned exact headset, never an unrelated or explicitly superseded selection. */
+internal fun shouldRetainContinuityHeadset(
+    guardedHeadsetId: String?,
+    selectedId: String?,
+    connectedIds: Set<String>,
+): Boolean = guardedHeadsetId != null && selectedId == guardedHeadsetId && guardedHeadsetId !in connectedIds
