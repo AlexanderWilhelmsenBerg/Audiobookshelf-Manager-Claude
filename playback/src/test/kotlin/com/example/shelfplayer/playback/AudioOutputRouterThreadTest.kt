@@ -3,7 +3,7 @@ package com.example.shelfplayer.playback
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -18,6 +18,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.lang.reflect.Proxy
+import java.util.concurrent.Executors
 import kotlin.test.assertTrue
 
 /**
@@ -36,7 +37,7 @@ class AudioOutputRouterThreadTest {
     @Test
     fun `ordinary background resettle does not read an unguarded ExoPlayer`() = runTest {
         val fixture = fixture()
-        withContext(Dispatchers.Default) { fixture.router.resettle() }
+        onDeviceCallback { fixture.router.resettle() }
 
         assertTrue(fixture.readThreads.isEmpty(), "off-thread publish must never consult Player")
         advanceTimeBy(400)
@@ -48,14 +49,21 @@ class AudioOutputRouterThreadTest {
     fun `guarded background resettle reads and pauses only on Player dispatcher`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
-        withContext(Dispatchers.Default) { fixture.router.resettle() }
+        onDeviceCallback { fixture.router.resettle() }
 
-        assertTrue(fixture.readThreads.isEmpty(), "route callback must dispatch before reading Player")
+        // The test scheduler may run the queued Main task before withContext returns;
+        // thread ownership, not an assumed callback scheduling order, is the invariant.
         runCurrent()
         advanceTimeBy(400)
         runCurrent()
         assertTrue(fixture.readThreads.isNotEmpty(), "a guarded route needs an eligibility check")
         assertTrue(fixture.readThreads.all { it == Thread.currentThread() }, "only the Player looper may read Player")
+    }
+
+    private suspend fun onDeviceCallback(block: () -> Unit) {
+        Executors.newSingleThreadExecutor().asCoroutineDispatcher().use { dispatcher ->
+            withContext(dispatcher) { block() }
+        }
     }
 
     private fun TestScope.fixture(): Fixture {
