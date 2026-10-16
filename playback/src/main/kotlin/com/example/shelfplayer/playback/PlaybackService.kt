@@ -1648,6 +1648,7 @@ class PlaybackService : MediaLibraryService() {
         // Car controller binding alone must not restart or reconfigure an already-audible headset.
         // Retain Media3's current player/focus/route when this exact headset remains the sole active sink.
         if (player?.isPlaying == true && headsetAlreadyActive(hold, outputs)) {
+            audioOutputs.protectPlayingHeadset(hold)
             logAuto("Car lifecycle preserved active headset without route reassertion")
         } else {
             val reasserted = audioOutputs.reassert(hold)
