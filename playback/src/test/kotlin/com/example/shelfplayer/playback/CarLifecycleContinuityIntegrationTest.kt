@@ -305,7 +305,7 @@ class CarLifecycleContinuityIntegrationTest {
             selected.value = id
             true
         }
-        assertEquals(listOf(buds.id), reassertions)
+        assertTrue(reassertions.isEmpty(), "a positively active headset needs no route reassertion")
         assertEquals(buds.id, held)
         assertTrue(gate.consumeRecovery(target, owner.currentGeneration, held, 0).accepted)
         assertEquals(
