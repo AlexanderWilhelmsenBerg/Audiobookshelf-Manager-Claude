@@ -149,11 +149,18 @@ a stale guarded headset selection through the same `selectCar()` path as BookWav
 button, and the normal resume-freshness pipeline handles that Play. Android Auto
 connection alone does not select the car, and a redundant host Play while BookWave already
 has `playWhenReady=true` does not steal healthy headset audio. Explicit headset output
-selection remains stronger than ambient car connection. A generic Bluetooth media-key
-callback does not reliably identify which physical headset generated it: BookWave must
-retain the currently selected/confirmed output rather than inventing a headset A/B switch
-from an unattributed media key. Android may refuse a requested output route, so hardware
-acceptance must verify what was actually heard, not infer it from the selected device.
+selection remains stronger than ambient car connection. **Hardware headset Play requirement:** a physical Play pressed on headset A is intended
+to play on A, even when headset B and Android Auto are also connected; B should similarly
+play on B. A generic Bluetooth media-key callback does not reliably identify which physical
+headset generated it. KeyEvent's `deviceId` may be zero (virtual/system) or identify only
+an input device unrelated to an audio-output identity. BookWave now logs the input-ID class,
+key source and number of unique name matches without exposing raw device names or
+Bluetooth addresses. A name match is *diagnostic only*, not verified physical identity:
+BookWave must not guess an A/B switch or silently play in the car from that evidence.
+The current build does **not** guarantee headset-A/B source-based switching; proving a
+reliable input-to-output mapping on physical Android hardware is a separate acceptance
+gate. Android may refuse a requested output route, so hardware acceptance must verify
+what was actually heard, not infer it from the selected device.
 
 Android Auto `onPostConnect` retains any existing current media item; an empty player
 uses the already-shared remembered-book/server-progress fallback and applicable car
