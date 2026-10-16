@@ -455,10 +455,6 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /**
-     * The controller identity is available only during Media3's request callback. Observe it here, never
-     * infer its origin from ExoPlayer's later USER_REQUEST reason. This records intent without changing it.
-     */
-    /**
      * A new Play from Android Auto is an explicit request for car audio, unlike car binding.
      * Keep route changes outside the onCreate forwarding-player lambda: the shared policy
      * remains testable and a duplicate Play does not steal a healthy headset route.
@@ -472,6 +468,10 @@ class PlaybackService : MediaLibraryService() {
         logAuto("Android Auto Play selected the car audio route", fields = carSnapshotFields())
     }
 
+    /**
+     * The controller identity is available only during Media3's request callback. Observe it here, never
+     * infer its origin from ExoPlayer's later USER_REQUEST reason. This records intent without changing it.
+     */
     private fun logControllerTransportRequest(requestedPlay: Boolean, mediaPlayer: ExoPlayer) {
         val requestingController = session?.controllerForCurrentRequest
         logAuto(
