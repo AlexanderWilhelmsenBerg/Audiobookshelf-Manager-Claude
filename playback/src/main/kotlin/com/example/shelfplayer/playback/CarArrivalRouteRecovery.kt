@@ -98,9 +98,10 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
         selected: String?,
     ): Boolean {
         if (!applied || selected != outputId) return false
-        if (!outputs.containsTarget(outputId)) return false
-        // Unknown output routing is permissible only after exact preference reassertion.
-        return outputs.none { it.isActive && it.id != outputId }
+        // An absent route report is not evidence for the headset. In auto-5 the
+        // preferred device was connected, but Android reported honoured=false.
+        // Treat that as unresolved until the original headset is uniquely active.
+        return headsetAlreadyActive(outputId, outputs)
     }
 
     private fun List<AudioOutput>.containsTarget(outputId: String): Boolean =
