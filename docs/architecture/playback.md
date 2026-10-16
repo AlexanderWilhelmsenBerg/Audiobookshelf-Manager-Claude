@@ -121,9 +121,26 @@ authorize a one-shot Play.
 
 `CarArrivalRouteRecovery` uses the already-active exact headset immediately where
 platform output evidence is unambiguous. Otherwise it retains the bounded, exact-target
-reassertion/reappearance fallback. It never chooses another headset, speaker, or car output
-on behalf of a previous headset listener. If Media3 still has `playWhenReady=true`,
-it owns focus restoration; BookWave must not issue a second Play or disturb routing.
+reassertion/reappearance fallback. **A successful `setPreferredAudioDevice` request or a
+connected headset is not evidence of an actual headset route**. The replay of real
+car trace `auto-5` forbids issuing Play while `getAudioDevicesForAttributes` provides
+no positive headset route; no selected or connected-but-inactive preference is enough.
+The service will leave the book paused if Android fails to expose a route within the
+recovery window. It never chooses another headset, speaker, or car output
+on behalf of a previous headset listener.
+
+`AudioOutputRouter` preserves the exact already-heard headset preference without
+reasserting the healthy AudioTrack at initial car bind. While that policy preference
+is held, framework route changes to unknown, competing or multiple outputs suspend
+an actively playing track rather than let it become audible in a car or phone speaker.
+A temporary device-list disappearance pauses before OS fallback, preserves the same
+preference for two seconds, and reapplies it only if that exact device returns and no
+newer user output selection superseded it. The grace never automatically plays a
+previously paused item. After expiry, it may clear the preference only while paused.
+The physical Android route APIs expose media routing *policy*, not incontrovertible
+proof of the AudioTrack sink; hardware listening remains required to accept the result.
+If Media3 still has `playWhenReady=true`, it owns focus restoration; BookWave must
+not issue a second Play or disturb routing.
 Do not disable ExoPlayer focus management or noisy-route safety to eliminate a pause.
 
 Android Auto `onPostConnect` retains any existing current media item; an empty player
