@@ -407,8 +407,8 @@ class PlaybackService : MediaLibraryService() {
                 // A Play received *from the projected car session* is an explicit request for the car.
                 // The stale headset guard must not cancel that command on an Android 16 unknown route.
                 // A duplicate Play while an existing headset is already running is not new route intent.
-                val isCarController = session?.controllerForCurrentRequest
-                    ?.packageName?.let { it in CAR_PACKAGES } == true
+                val currentRequest = session?.controllerForCurrentRequest
+                val isCarController = currentRequest != null && currentRequest.packageName in CAR_PACKAGES
                 if (shouldSelectCarForControllerPlay(requestedPlay, isCarController, exoPlayer.playWhenReady)) {
                     audioOutputs.selectCar()
                     syncExplicitOutputIntent()
