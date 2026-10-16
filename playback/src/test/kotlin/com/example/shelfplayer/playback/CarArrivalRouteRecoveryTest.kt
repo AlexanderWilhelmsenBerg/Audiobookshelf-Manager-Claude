@@ -29,6 +29,17 @@ class CarArrivalRouteRecoveryTest {
     )
 
     @Test
+    fun `guarded headset routing stops playback on unknown or car policy outputs`() {
+        assertTrue(shouldSuspendGuardedPlayback(buds.id, buds.id, emptySet(), true))
+        assertTrue(shouldSuspendGuardedPlayback(buds.id, buds.id, setOf("speaker:phone"), true))
+        assertTrue(shouldSuspendGuardedPlayback(buds.id, buds.id, setOf(buds.id, "bluetooth:car"), true))
+        assertTrue(!shouldSuspendGuardedPlayback(buds.id, buds.id, setOf(buds.id), true))
+        assertTrue(!shouldSuspendGuardedPlayback(buds.id, buds.id, setOf("speaker:phone"), false))
+        assertTrue(!shouldSuspendGuardedPlayback(buds.id, null, setOf("speaker:phone"), true))
+        assertTrue(!shouldSuspendGuardedPlayback(null, buds.id, emptySet(), true))
+    }
+
+    @Test
     fun `trace auto-5 unknown policy route must not authorize automatic Play`() = runBlocking {
         val outputs = MutableStateFlow(listOf(buds))
         val selected = MutableStateFlow<String?>(null)
@@ -169,6 +180,8 @@ class CarArrivalRouteRecoveryTest {
                 outputs.value = emptyList()
                 selected.value = null
                 outputs.value = listOf(buds)
+            } else {
+                outputs.value = listOf(buds.copy(isActive = true))
             }
             true
         }
@@ -213,7 +226,7 @@ class CarArrivalRouteRecoveryTest {
         val reappearance = launch {
             // This models Android publishing the same A2DP endpoint again during the bounded platform settle.
             delay(10)
-            outputs.value = listOf(buds)
+            outputs.value = listOf(buds.copy(isActive = true))
         }
         val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
