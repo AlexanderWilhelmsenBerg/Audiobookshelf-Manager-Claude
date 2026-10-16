@@ -94,7 +94,7 @@ class AudioOutputRouter @Inject constructor(
     private var missingHeadsetGrace: Job? = null
     private val routeSafetyListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
-            if (isPlaying) pauseUnsafeGuardedPlayback(routedIds())
+            if (isPlaying) pauseUnsafeGuardedPlayback()
         }
     }
 
@@ -340,7 +340,7 @@ class AudioOutputRouter @Inject constructor(
     private fun publish() {
         val routed = routedIds()
         val chosen = _selectedId.value
-        pauseUnsafeGuardedPlayback(routed)
+        pauseUnsafeGuardedPlayback()
         _outputs.value = live.mapNotNull { (id, info) ->
             OutputDevices.outputOf(
                 type = info.type,
@@ -354,25 +354,27 @@ class AudioOutputRouter @Inject constructor(
      * Check again when Media3 transitions to audible playback. A Gearhead Play can arrive
      * without any AudioDeviceCallback, so checking only publish/resettle misses that route race.
      */
-    private fun pauseUnsafeGuardedPlayback(routed: Set<String>?) {
+    private fun pauseUnsafeGuardedPlayback() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        if (!shouldSuspendGuardedPlayback(guardedHeadsetId, _selectedId.value, routed, player?.isPlaying == true)) {
-            return
-        }
-        // AudioDeviceCallback may run off the player looper; all ExoPlayer commands must
-        // reach MainImmediate. Recheck on arrival to avoid pausing after a newer user choice.
+        // The route-settle coroutine and AudioDeviceCallback may call publish() off the
+        // ExoPlayer application looper. Even reading isPlaying there crashes Media3.
+        // Check only our own routing state before dispatching; every Player access,
+        // including the initial isPlaying read, belongs on MainImmediate.
+        val guarded = guardedHeadsetId ?: return
+        if (_selectedId.value != guarded) return
         applicationScope.launch(mainDispatcher) {
+            val current = player ?: return@launch
             val latestRoute = routedIds()
             if (!shouldSuspendGuardedPlayback(
                     guardedHeadsetId,
                     _selectedId.value,
                     latestRoute,
-                    player?.isPlaying == true,
+                    current.isPlaying,
                 )
             ) {
                 return@launch
             }
-            player?.pause()
+            current.pause()
             logger.info(
                 LogCategory.Playback,
                 "Car continuity paused because the headset route is not verified",
