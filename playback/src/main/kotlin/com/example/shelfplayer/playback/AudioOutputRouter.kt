@@ -171,6 +171,16 @@ class AudioOutputRouter @Inject constructor(
         return true
     }
 
+    /**
+     * Protect an already-running exact headset without touching ExoPlayer's output selection.
+     * Car binding must be observable but must not reassert if the route is still healthy.
+     */
+    internal fun protectPlayingHeadset(id: String) {
+        if (id !in live) return
+        guardedHeadsetId = id
+        publish()
+    }
+
     private fun choose(id: String?, destination: ExplicitDestination) {
         if (id != null && id !in live) {
             logger.info(
@@ -292,11 +302,12 @@ class AudioOutputRouter @Inject constructor(
                 applicationScope.launch { apply(null) }
             }
         } else if (chosen != null && chosen == guardedHeadsetId && missingHeadsetGrace != null) {
-            // Restore the exact preference when Android republishes the same A2DP device.
-            // Do not issue Play: an explicit Pause or newer selection must still win.
+            // Restore the same preference only if no explicit choice replaced it meanwhile.
             missingHeadsetGrace?.cancel()
             missingHeadsetGrace = null
-            applicationScope.launch { apply(chosen) }
+            applicationScope.launch {
+                if (_selectedId.value == chosen && guardedHeadsetId == chosen && chosen in live) apply(chosen)
+            }
         }
         publish()
     }
