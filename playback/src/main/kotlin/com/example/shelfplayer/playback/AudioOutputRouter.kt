@@ -7,6 +7,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
 import androidx.annotation.OptIn
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.common.dispatcher.ApplicationScope
@@ -91,12 +92,19 @@ class AudioOutputRouter @Inject constructor(
     // that preference to Automatic during the transient A2DP removal observed in car trace auto-5.
     private var guardedHeadsetId: String? = null
     private var missingHeadsetGrace: Job? = null
+    private val routeSafetyListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (isPlaying) pauseUnsafeGuardedPlayback(routedIds())
+        }
+    }
 
     /** Live platform handles keyed by BookWave's stable, permission-free identity. */
     private var live: Map<String, AudioDeviceInfo> = emptyMap()
 
     fun attach(target: ExoPlayer) {
+        player?.removeListener(routeSafetyListener)
         player = target
+        target.addListener(routeSafetyListener)
         val manager = context.getSystemService(AudioManager::class.java) ?: return
         if (callback == null) {
             val registered = object : AudioDeviceCallback() {
@@ -115,6 +123,7 @@ class AudioOutputRouter @Inject constructor(
         missingHeadsetGrace?.cancel()
         missingHeadsetGrace = null
         guardedHeadsetId = null
+        player?.removeListener(routeSafetyListener)
         player = null
     }
 
@@ -319,24 +328,7 @@ class AudioOutputRouter @Inject constructor(
     private fun publish() {
         val routed = routedIds()
         val chosen = _selectedId.value
-        if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            shouldSuspendGuardedPlayback(guardedHeadsetId, chosen, routed, player?.isPlaying == true)
-        ) {
-            // Media3's playWhenReady is not an audible-route guarantee. On an exact
-            // headset-continuity preference, a missing/competing policy route must
-            // stop playback before the OS default car/speaker can become audible.
-            player?.pause()
-            logger.info(
-                LogCategory.Playback,
-                "Car continuity paused because the headset route is not verified",
-                LogField.Public("route", when {
-                    routed == null || routed.isEmpty() -> "unknown"
-                    routed.none { it == guardedHeadsetId } -> "other"
-                    else -> "multiple"
-                }),
-            )
-        }
+        pauseUnsafeGuardedPlayback(routed)
         _outputs.value = live.mapNotNull { (id, info) ->
             OutputDevices.outputOf(
                 type = info.type,
@@ -344,6 +336,30 @@ class AudioOutputRouter @Inject constructor(
                 isActive = routed?.contains(id) ?: (id == chosen),
             )
         }
+    }
+
+    /**
+     * Check again when Media3 transitions to audible playback. A Gearhead Play can arrive
+     * without any AudioDeviceCallback, so checking only publish/resettle misses that route race.
+     */
+    private fun pauseUnsafeGuardedPlayback(routed: Set<String>?) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (!shouldSuspendGuardedPlayback(guardedHeadsetId, _selectedId.value, routed, player?.isPlaying == true)) {
+            return
+        }
+        player?.pause()
+        logger.info(
+            LogCategory.Playback,
+            "Car continuity paused because the headset route is not verified",
+            LogField.Public(
+                "route",
+                when {
+                    routed == null || routed.isEmpty() -> "unknown"
+                    routed.none { it == guardedHeadsetId } -> "other"
+                    else -> "multiple"
+                },
+            ),
+        )
     }
 
     /** Framework-reported devices for BookWave's media attributes, or `null` before API 33. */
