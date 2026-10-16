@@ -282,51 +282,58 @@ class AudioOutputRouter @Inject constructor(
         }
         live = found
         val chosen = _selectedId.value
-        if (chosen != null && !found.containsKey(chosen)) {
-            if (shouldRetainContinuityHeadset(guardedHeadsetId, chosen, found.keys)) {
-                // Pause before Android can take this AudioTrack to a default speaker/car sink.
-                // Keep the previous target through bounded A2DP list churn; a missing device
-                // never authorizes releasing the preference while playback is audible.
-                applicationScope.launch(mainDispatcher) {
-                    if (_selectedId.value == chosen && guardedHeadsetId == chosen && chosen !in live) {
-                        player?.takeIf { it.isPlaying }?.pause()
-                    }
-                }
-                if (missingHeadsetGrace == null) {
-                    logger.info(
-                        LogCategory.Playback,
-                        "Car continuity headset disappeared; preserving selection while paused",
-                        LogField.Public("kind", kindOf(chosen)),
-                    )
-                    missingHeadsetGrace = applicationScope.launch {
-                        delay(MISSING_HEADSET_GRACE)
-                        if (_selectedId.value == chosen && chosen !in live) {
-                            _selectedId.value = null
-                            guardedHeadsetId = null
-                            publish()
-                            apply(null)
-                        }
-                        missingHeadsetGrace = null
-                    }
-                }
-            } else {
-                _selectedId.value = null
-                logger.info(
-                    LogCategory.Playback,
-                    "The chosen audio output disconnected, so routing is automatic again",
-                    LogField.Public("kind", kindOf(chosen)),
-                )
-                applicationScope.launch { apply(null) }
-            }
-        } else if (chosen != null && chosen == guardedHeadsetId && missingHeadsetGrace != null) {
-            // Restore the same preference only if no explicit choice replaced it meanwhile.
-            missingHeadsetGrace?.cancel()
-            missingHeadsetGrace = null
-            applicationScope.launch {
-                if (_selectedId.value == chosen && guardedHeadsetId == chosen && chosen in live) apply(chosen)
-            }
+        when {
+            chosen != null && chosen !in found -> onDisconnectedSelection(chosen, found.keys)
+            chosen != null && chosen == guardedHeadsetId && missingHeadsetGrace != null ->
+                onGuardedHeadsetReappeared(chosen)
         }
         publish()
+    }
+
+    private fun onDisconnectedSelection(chosen: String, connectedIds: Set<String>) {
+        if (!shouldRetainContinuityHeadset(guardedHeadsetId, chosen, connectedIds)) {
+            _selectedId.value = null
+            logger.info(
+                LogCategory.Playback,
+                "The chosen audio output disconnected, so routing is automatic again",
+                LogField.Public("kind", kindOf(chosen)),
+            )
+            applicationScope.launch { apply(null) }
+            return
+        }
+
+        // Pause on the player looper before OS default routing can become audible.
+        applicationScope.launch(mainDispatcher) {
+            if (_selectedId.value == chosen && guardedHeadsetId == chosen && chosen !in live) {
+                player?.takeIf { it.isPlaying }?.pause()
+            }
+        }
+        if (missingHeadsetGrace != null) return
+        logger.info(
+            LogCategory.Playback,
+            "Car continuity headset disappeared; preserving selection while paused",
+            LogField.Public("kind", kindOf(chosen)),
+        )
+        missingHeadsetGrace = applicationScope.launch {
+            delay(MISSING_HEADSET_GRACE)
+            if (_selectedId.value == chosen && chosen !in live) {
+                _selectedId.value = null
+                guardedHeadsetId = null
+                publish()
+                apply(null)
+            }
+            missingHeadsetGrace = null
+        }
+    }
+
+    private fun onGuardedHeadsetReappeared(chosen: String) {
+        // The old exact headset returned during the grace. Reapply its preference
+        // without issuing Play; a newer listener selection can still supersede it.
+        missingHeadsetGrace?.cancel()
+        missingHeadsetGrace = null
+        applicationScope.launch {
+            if (_selectedId.value == chosen && guardedHeadsetId == chosen && chosen in live) apply(chosen)
+        }
     }
 
     private fun publish() {
@@ -371,7 +378,7 @@ class AudioOutputRouter @Inject constructor(
                 LogField.Public(
                     "route",
                     when {
-                        latestRoute == null || latestRoute.isEmpty() -> "unknown"
+                        latestRoute.isNullOrEmpty() -> "unknown"
                         latestRoute.none { it == guardedHeadsetId } -> "other"
                         else -> "multiple"
                     },
