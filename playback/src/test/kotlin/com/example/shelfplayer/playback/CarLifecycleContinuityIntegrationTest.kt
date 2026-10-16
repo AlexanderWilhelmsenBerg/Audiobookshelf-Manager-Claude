@@ -80,7 +80,7 @@ class CarLifecycleContinuityIntegrationTest {
         val selected = MutableStateFlow<String?>(null)
         val reappears = launch {
             delay(10)
-            outputs.value = listOf(buds)
+            outputs.value = listOf(buds.copy(isActive = true))
         }
         val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
@@ -125,7 +125,7 @@ class CarLifecycleContinuityIntegrationTest {
         val selected = MutableStateFlow<String?>(null)
         val returns = launch {
             delay(10)
-            outputs.value = listOf(buds)
+            outputs.value = listOf(buds.copy(isActive = true))
         }
         val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
@@ -177,7 +177,7 @@ class CarLifecycleContinuityIntegrationTest {
             val selected = MutableStateFlow<String?>(null)
             val returns = launch {
                 delay(10)
-                outputs.value = listOf(buds)
+                outputs.value = listOf(buds.copy(isActive = true))
             }
             val held = CarArrivalRouteRecovery(200.milliseconds).secure(
                 target = target,
@@ -224,7 +224,7 @@ class CarLifecycleContinuityIntegrationTest {
                 explicitSelectionSequence = 0,
             ).target,
         )
-        val outputs = MutableStateFlow(listOf(buds))
+        val outputs = MutableStateFlow(listOf(buds.copy(isActive = true)))
         val selected = MutableStateFlow<String?>(null)
         val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
@@ -297,7 +297,7 @@ class CarLifecycleContinuityIntegrationTest {
         val reassertions = mutableListOf<String>()
         val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
-            outputs = MutableStateFlow(listOf(buds)),
+            outputs = MutableStateFlow(listOf(buds.copy(isActive = true))),
             selectedId = selected,
             isStillEligible = { gate.isCurrent(target, owner.currentGeneration, 0) },
         ) { id ->
