@@ -29,6 +29,53 @@ class CarArrivalRouteRecoveryTest {
     )
 
     @Test
+    fun `trace auto-5 unknown policy route must not authorize automatic Play`() = runBlocking {
+        val outputs = MutableStateFlow(listOf(buds))
+        val selected = MutableStateFlow<String?>(null)
+        val events = mutableListOf<CarArrivalRouteRecovery.Event>()
+        var requested = 0
+
+        val held = CarArrivalRouteRecovery(120.milliseconds).secure(
+            target = target,
+            outputs = outputs,
+            selectedId = selected,
+            isStillEligible = { true },
+            onEvent = events::add,
+        ) { id ->
+            requested++
+            selected.value = id
+            true
+        }
+
+        assertNull(held, "the preference was requested, but Android did not report it as active")
+        assertTrue(requested > 0)
+        assertTrue(CarArrivalRouteRecovery.Event.Reasserted in events)
+        assertTrue(CarArrivalRouteRecovery.Event.Secured !in events)
+        assertTrue(CarArrivalRouteRecovery.Event.TimedOut in events)
+    }
+
+    @Test
+    fun `confirmed headset reappearance after unknown routing secures once`() = runBlocking {
+        val outputs = MutableStateFlow(listOf(buds))
+        val selected = MutableStateFlow<String?>(null)
+        val changes = launch {
+            delay(35)
+            outputs.value = listOf(buds.copy(isActive = true))
+        }
+        val held = CarArrivalRouteRecovery(250.milliseconds).secure(
+            target = target,
+            outputs = outputs,
+            selectedId = selected,
+            isStillEligible = { true },
+        ) { id ->
+            selected.value = id
+            true
+        }
+        changes.join()
+        assertEquals(buds.id, held)
+    }
+
+    @Test
     fun `already active original headset is left untouched without reassertion`() = runBlocking {
         val outputs = MutableStateFlow(listOf(buds.copy(isActive = true)))
         val selected = MutableStateFlow<String?>(null)
