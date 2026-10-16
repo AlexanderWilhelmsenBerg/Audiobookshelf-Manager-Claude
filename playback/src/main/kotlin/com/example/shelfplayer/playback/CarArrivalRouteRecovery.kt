@@ -53,10 +53,7 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
                 // disturb a healthy AudioTrack by reapplying its preferred device. Automatic selection is
                 // acceptable here only with positive active-route evidence; absence/ambiguity takes the
                 // existing bounded reassertion path below.
-                if (
-                    headsetAlreadyActive(target.outputId, outputs.value) &&
-                    (selectedId.value == null || selectedId.value == target.outputId)
-                ) {
+                if (alreadySecured(target.outputId, outputs.value, selectedId.value)) {
                     onEvent(Event.Secured)
                     return@withTimeoutOrNull target.outputId
                 }
@@ -69,13 +66,9 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
                     return@withTimeoutOrNull null
                 }
 
-                val routeNow = outputs.value
-                val stillConnected = routeNow.containsTarget(target.outputId)
-                // A preferred device is only a request. If Android positively reports playback on
-                // another active sink, never issue an automatic Play that could reach the speaker/car.
-                // An unknown route can still use the existing exact-target preference fallback.
-                val knownWrongSink = routeNow.any { it.isActive && it.id != target.outputId }
-                if (applied && stillConnected && selectedId.value == target.outputId && !knownWrongSink) {
+                // A preferred device is only a request. Positive evidence of playback on
+                // another output must block the one-shot automatic Play.
+                if (preferenceSecured(applied, target.outputId, outputs.value, selectedId.value)) {
                     onEvent(Event.Secured)
                     return@withTimeoutOrNull target.outputId
                 }
@@ -93,6 +86,21 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
 
         if (result == null && !eligibilityLost) onEvent(Event.TimedOut)
         return result
+    }
+
+    private fun alreadySecured(outputId: String, outputs: List<AudioOutput>, selected: String?): Boolean =
+        headsetAlreadyActive(outputId, outputs) && (selected == null || selected == outputId)
+
+    private fun preferenceSecured(
+        applied: Boolean,
+        outputId: String,
+        outputs: List<AudioOutput>,
+        selected: String?,
+    ): Boolean {
+        if (!applied || selected != outputId) return false
+        if (!outputs.containsTarget(outputId)) return false
+        // Unknown output routing is permissible only after exact preference reassertion.
+        return outputs.none { it.isActive && it.id != outputId }
     }
 
     private fun List<AudioOutput>.containsTarget(outputId: String): Boolean =
