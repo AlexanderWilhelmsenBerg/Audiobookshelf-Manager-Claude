@@ -98,8 +98,8 @@ class CarArrivalRouteRecoveryTest {
             selected.value = id
             true
         }
-        assertEquals(buds.id, held)
-        assertEquals(1, reassertions)
+        assertNull(held, "ambiguous active output identity must not authorize automatic Play")
+        assertTrue(reassertions > 0, "unknown/competing active outputs must use the guarded reassertion path")
     }
 
     @Test
