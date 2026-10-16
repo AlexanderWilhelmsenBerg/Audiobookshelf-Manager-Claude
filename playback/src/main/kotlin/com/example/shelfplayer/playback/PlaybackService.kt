@@ -3407,12 +3407,23 @@ class PlaybackService : MediaLibraryService() {
             } else {
                 intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
             }
+            val inputDevice = keyEvent?.device
+            val inputEvidence = MediaButtonInputEvidence.classify(
+                deviceId = keyEvent?.deviceId,
+                isVirtual = inputDevice?.isVirtual,
+                inputName = inputDevice?.name,
+                outputs = audioOutputs.outputs.value,
+            )
             logAuto(
                 "MediaSession hardware media button observed",
                 fields = listOf(
                     LogField.Identifier("controllerPackage", controllerInfo.packageName),
                     LogField.Public("keyCode", keyEvent?.keyCode ?: -1),
                     LogField.Public("keyAction", keyEvent?.action ?: -1),
+                    LogField.Public("keyInputId", keyEvent?.deviceId ?: -1),
+                    LogField.Public("keyInputSource", keyEvent?.source ?: -1),
+                    LogField.Public("inputOrigin", inputEvidence.origin.name),
+                    LogField.Count("headsetNameMatches", inputEvidence.headsetNameMatches),
                 ) + carSnapshotFields(),
             )
             return super.onMediaButtonEvent(session, controllerInfo, intent)
