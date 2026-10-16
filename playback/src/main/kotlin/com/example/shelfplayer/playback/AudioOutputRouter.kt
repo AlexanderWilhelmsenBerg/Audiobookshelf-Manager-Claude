@@ -435,6 +435,17 @@ internal fun shouldSuspendGuardedPlayback(
     return routedIds == null || routedIds.size != 1 || guardedHeadsetId !in routedIds
 }
 
+/**
+ * Selecting Play on the Android Auto surface is an explicit car-route request, not a reason to keep
+ * an old headset-only protection active. A duplicate Gearhead Play must not steal a healthy running
+ * headset; ordinary media buttons do not identify which Bluetooth device sent the button.
+ */
+internal fun shouldSelectCarForControllerPlay(
+    requestedPlay: Boolean,
+    controllerIsCar: Boolean,
+    playWhenReady: Boolean,
+): Boolean = requestedPlay && controllerIsCar && !playWhenReady
+
 /** Preserve only an app-owned exact headset, never an unrelated or explicitly superseded selection. */
 internal fun shouldRetainContinuityHeadset(
     guardedHeadsetId: String?,
