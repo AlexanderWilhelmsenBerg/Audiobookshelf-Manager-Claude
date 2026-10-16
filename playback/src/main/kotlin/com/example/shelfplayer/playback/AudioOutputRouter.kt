@@ -177,6 +177,10 @@ class AudioOutputRouter @Inject constructor(
      */
     internal fun protectPlayingHeadset(id: String) {
         if (id !in live) return
+        // Capture an implicit system headset route as the exact temporary preference, without
+        // touching the AudioTrack. This lets refresh detect disappearance even when the user
+        // never opened BookWave's output chooser and selectedId was Automatic.
+        if (_selectedId.value == null) _selectedId.value = id
         guardedHeadsetId = id
         publish()
     }
@@ -328,7 +332,7 @@ class AudioOutputRouter @Inject constructor(
                 "Car continuity paused because the headset route is not verified",
                 LogField.Public("route", when {
                     routed == null || routed.isEmpty() -> "unknown"
-                    guardedHeadsetId !in routed -> "other"
+                    routed.none { it == guardedHeadsetId } -> "other"
                     else -> "multiple"
                 }),
             )
