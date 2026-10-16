@@ -60,6 +60,24 @@ class AudioOutputRouterThreadTest {
         assertTrue(fixture.readThreads.all { it == Thread.currentThread() }, "only the Player looper may read Player")
     }
 
+    @Test
+    fun `explicit car output choice releases transient headset guard`() = runTest {
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+        fixture.router.selectCar()
+
+        assertTrue(fixture.router.selectedId.value == null)
+        assertTrue(
+            fixture.router.explicitSelection.value?.destination == AudioOutputRouter.ExplicitDestination.Car,
+        )
+        val guard = AudioOutputRouter::class.java.getDeclaredField("guardedHeadsetId").run {
+            isAccessible = true
+            get(fixture.router) as String?
+        }
+        assertTrue(guard == null, "a Play directed to the car must not be cancelled by a stale headset guard")
+        runCurrent()
+    }
+
     private suspend fun onDeviceCallback(block: () -> Unit) {
         Executors.newSingleThreadExecutor().asCoroutineDispatcher().use { dispatcher ->
             withContext(dispatcher) { block() }
@@ -79,6 +97,8 @@ class AudioOutputRouterThreadTest {
                     reads.add(Thread.currentThread())
                     true
                 }
+
+                "setPreferredAudioDevice" -> null
 
                 "pause" -> {
                     check(Thread.currentThread() == owningThread) { "ExoPlayer pause on the wrong thread" }
