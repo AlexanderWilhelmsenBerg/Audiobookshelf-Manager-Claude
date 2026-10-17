@@ -58,7 +58,7 @@ class AudioRouteLab @Inject constructor(
 
     init {
         if (incidentFile.exists() && System.currentTimeMillis() - incidentFile.lastModified() > RETENTION_MS) {
-            incidentFile.delete()
+            atomicIncident.delete()
         }
         // Read a bounded on-disk tail: the previous process may have crashed during playback.
         val recovered = runCatching {
