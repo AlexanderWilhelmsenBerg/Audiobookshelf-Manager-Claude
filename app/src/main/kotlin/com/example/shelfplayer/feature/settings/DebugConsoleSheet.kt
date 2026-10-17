@@ -18,6 +18,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -75,12 +76,15 @@ fun DebugConsoleSheet(
     viewModel: SettingsViewModel = hiltViewModel(),
     logs: EventLogViewModel = hiltViewModel(),
     crashes: CrashReportViewModel = hiltViewModel(),
+    audioLab: AudioRouteLabViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val metrics by viewModel.playbackMetrics.collectAsStateWithLifecycle()
     val events by logs.events.collectAsStateWithLifecycle()
     val raceCapture by logs.raceCapture.collectAsStateWithLifecycle()
     val previousCrash by crashes.report.collectAsStateWithLifecycle()
+    val labState by audioLab.state.collectAsStateWithLifecycle()
+    val showLab = remember { mutableStateOf(false) }
     val account by viewModel.account.collectAsStateWithLifecycle()
     val clipboard = LocalClipboard.current
     val context = LocalContext.current
@@ -109,6 +113,40 @@ fun DebugConsoleSheet(
         modifier = modifier,
     ) {
         Column(modifier = Modifier.fillMaxHeight(SHEET_HEIGHT).padding(horizontal = 24.dp)) {
+            if (showLab.value) {
+                TextButton(onClick = { showLab.value = false }) {
+                    Text(stringResource(R.string.route_lab_back))
+                }
+                AudioRouteLabPanel(
+                    state = labState,
+                    onStart = audioLab::start,
+                    onStop = audioLab::stop,
+                    onClear = audioLab::clear,
+                    onMark = audioLab::mark,
+                    onHeard = audioLab::heardAt,
+                    onCopy = {
+                        scope.launch {
+                            clipboard.setClipEntry(
+                                ClipEntry(
+                                    ClipData.newPlainText(
+                                        "BookWave Audio Route Lab",
+                                        AnnotatedString(
+                                            audioLab.report(
+                                                state.versionLabel +
+                                                    " ${BuildConfig.BUILD_TYPE} ${BuildConfig.GIT_COMMIT} ${state.sourceLabel}",
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            )
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                TextButton(onClick = { showLab.value = true }) {
+                    Text(stringResource(R.string.route_lab_open))
+                }
             Text(
                 text = stringResource(R.string.debug_console_title),
                 style = MaterialTheme.typography.titleMedium,
@@ -225,6 +263,7 @@ fun DebugConsoleSheet(
                     .verticalScroll(rememberScrollState())
                     .horizontalScroll(rememberScrollState()),
             )
+            }
         }
     }
 }
