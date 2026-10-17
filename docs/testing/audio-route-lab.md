@@ -17,7 +17,9 @@ attempting another route switch based on a policy-level hint.
 The About → Debug Console → Audio Route Lab action is opt-in and read-only:
 
 - Records allow-listed, pre-redacted controller, Media3, projection and route-policy
-  events. Unknown log fields are never copied into persistent storage.
+  events. Unknown log fields are never copied into persistent storage. A
+  per-write subscription preserves adjacent events despite a conflated UI log
+  snapshot; any bounded-queue overflow is explicitly reported with a count.
 - Shows selected output **role**, connected output role counts and **policy-active**
   role counts. No name, Bluetooth address, route ID or media metadata is exported.
 - Hardware media buttons record the key, action, input device ID/source, and an
@@ -25,8 +27,8 @@ The About → Debug Console → Audio Route Lab action is opt-in and read-only:
   Device-ID-to-A2DP-output matching is **not** claimed or attempted.
 - Manual test markers: baseline headset A; car Bluetooth connect; Android Auto
   start; headset A/B physical Play; car Play; and human-confirmed output.
-- Preserves the last 350 bounded records in app-private `noBackupFilesDir` across
-  a process crash, only while explicitly enabled. A stale incident file is removed
+- Preserves the last 350 bounded records using `AtomicFile` in app-private
+  `noBackupFilesDir` across a process crash, only while explicitly enabled. A stale incident file is removed
   when it is older than 24 hours on next instantiation. Stop retains the evidence;
   Clear disables the recorder and deletes the file.
 - Copies a text report with commit/version supplied by the app, policy classifications,
@@ -68,6 +70,9 @@ reached the expected ear.
 ## Verification
 
 - JVM: privacy allow-list and route-role classification; no raw names/IDs.
+- JVM/Robolectric: direct event-write subscription, rapid burst, recorder stop,
+  recovered incident from a new singleton instance, clearing, and no private
+  names in report.
 - CI: warnings-as-errors `verifyDebug`, KtLint and static analysis.
 - Hardware: verify exact build and complete route events across app process restart.
 - Required follow-ups: actual AudioTrack observation; strict 24-hour per-record

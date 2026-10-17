@@ -8,12 +8,19 @@ singleton with no `Player` reference, no `AudioManager` mutations, and no routin
 audio-focus commands. The existing `AudioOutputRouter` remains the sole owner of
 selected/preferred route changes.
 
-Flow: redacted `EventLog.events` → allow-listed `AudioRouteLabEvidence` →
-bounded opt-in recorder → private no-backup file and `StateFlow` →
+Flow: redacted `EventLog.observeWrites` (non-blocking per-write subscriber) → bounded
+1024-entry queue with explicit loss counter → allow-listed `AudioRouteLabEvidence` →
+bounded opt-in recorder → atomic private no-backup file and `StateFlow` →
 `AudioRouteLabViewModel` → `AudioRouteLabPanel`. A real
 `PlaybackService.onCreate` instantiates the recorder when the media service
 launches, allowing an opted-in recording to resume after process restart.
 This trace is independent of the existing in-memory Auto race capture.
+The per-write subscriber avoids losing adjacent Play/Pause events when the UI
+`StateFlow` coalesces; the observer enqueues only, never writes to disk on the
+audio/logging thread. The recorder drains queued events on Stop, tracks overflow
+as `events-dropped count=N`, and invalidates old writes on Clear via a
+recording-generation fence. The file is replaced atomically; the previous
+completed version remains intact if the process crashes during replacement.
 
 Separation of evidence:
 1. User's selected output (preference)
