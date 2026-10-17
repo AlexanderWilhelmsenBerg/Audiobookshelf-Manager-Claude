@@ -86,6 +86,33 @@ class AudioRouteLabRecorderTest {
     }
 
     @Test
+    fun `track provider never replaces default output when diagnostics are off`() = runTest {
+        val clock = object : AppClock {
+            override fun now(): Instant = Instant.now()
+            override fun elapsed(): Duration = Duration.ZERO
+        }
+        val log = EventLog(clock)
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val logger = object : Logger {
+            override fun log(event: LogEvent) = Unit
+        }
+        val router = AudioOutputRouter(context, logger, backgroundScope, dispatcher)
+        val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
+        val monitor = AudioTrackRouteMonitor(context, lab)
+
+        assertTrue(monitor.providerIfRecording() == null)
+        assertTrue(lab.state.value.reportStatus.contains("Not installed"))
+
+        lab.start()
+        val provider = requireNotNull(monitor.providerIfRecording())
+        assertTrue(lab.state.value.reportStatus.contains("Installed"))
+        // Constructing/releasing the delegate needs no audio playback or extra track.
+        provider.release()
+        lab.stop()
+        runCurrent()
+    }
+
+    @Test
     fun `capture is strictly opt in and manual observations use fixed safe labels`() = runTest {
         val clock = object : AppClock {
             override fun now(): Instant = Instant.now()
