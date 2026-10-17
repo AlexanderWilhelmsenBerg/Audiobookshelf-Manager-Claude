@@ -38,7 +38,47 @@ The About → Debug Console → Audio Route Lab action is opt-in and read-only:
 output is NOT a verified audio sink. Do not interpret `isPlaying`, preferred device
 success or connected A2DP as proof that sound reached a specific headset.
 
-## Track-level observation — deferred to a follow-up controlled slice
+## Track-level observation — opt-in experimental integration
+
+When the recorder has already been enabled BEFORE the next `PlaybackService`
+constructs its ExoPlayer, `DefaultPlayerFactory` supplies a
+`ForwardingAudioOutputProvider` around Media3's default
+`AudioTrackAudioOutputProvider.Builder(context).build()`. The forwarding
+provider delegates audio-output creation and format support to Media3 unchanged,
+then attaches a read-only Android `AudioRouting` listener to each created
+`AudioTrack`. Normal sessions (no recording before player construction)
+use the **original ExoPlayer.Builder path with no provider override**.
+
+On API 36+, a playing track's `getRoutedDevices()` reports multiple output
+handles; earlier API levels expose the single `getRoutedDevice()` fallback.
+The report shows device aliases and roles, or explicit unknown/paused states.
+The provider is released with the player and the listener is detached when
+the track is replaced. Diagnostic samples **never** request a route, audio
+focus, additional track, or new MediaSession. Android may report a route
+not matching what a listener physically hears; human confirmation remains
+authoritative for acoustic results.
+
+**Critical:** Starting recording while the current player already exists does
+not install the provider on that running player. Leave recording enabled and
+restart the existing playback service naturally before the next hardware test.
+Do NOT force-release the currently playing service solely to change the
+diagnostic mode. The UI explicitly reports observer installation status.
+This opt-in hook is experimental until tested on real hardware; check for
+startup, buffering, offload or route differences from the normal path.
+
+The Android Route Lab also tracks short-lived, process-scoped aliases
+(`d1`, `d2`) for individual Android `AudioDeviceInfo.id` handles, detecting
+connection loss/reappearance and cases where multiple distinct handles share
+a single BookWave logical output ID. It never logs underlying IDs, addresses
+or product names; aliases are reallocated after process death.
+
+Headset A/B test buttons **arm** the *next* physical press: tap the marker
+BEFORE pressing the actual headset button, within 12 seconds. Subsequent
+media-button down and transport events are correlated only by elapsed
+timestamps and labelled `attribution=temporal-only`; a virtual Android input
+is not transformed into a verified physical headset identity.
+
+## Technical limitations of the observer
 
 Android API 24+ provides `AudioTrack.getRoutedDevice()`; API 36 provides
 `getRoutedDevices()`, and `AudioRouting.addOnRoutingChangedListener` can observe
@@ -47,10 +87,12 @@ route changes. These readings are valid only while the track is playing.
 BookWave's Media3 ExoPlayer hides its concrete `AudioTrack` behind
 `DefaultAudioSink`. Inserting a new renderer, sink or provider into
 `DefaultPlayerFactory` could itself change startup, offload, buffering and routing.
-Before adding one, verify the exact Media3 1.11.0 provider contract and test creation,
-replacement, release, and callback thread confinement. Only accept a read-only observer
-that preserves the default output path and fails open without ever stopping playback.
-Until then, surface **unavailable**, not guessed routes.
+A green CI check validates compilation and deterministic unit tests but does
+not prove byte-for-byte equivalence of the opt-in provider and default Media3
+sink across offload, short tracks or concurrent outputs. The provider only
+supplies stronger *platform* evidence, not guaranteed human-heard sound.
+Acceptance requires stationary A/B/Auto hardware tests and comparison to
+an opt-out session.
 
 ## Stationary test protocol
 
@@ -58,8 +100,8 @@ Until then, surface **unavailable**, not guessed routes.
 2. Start recording while parked. Mark Baseline and start listening on headset A.
 3. Mark Car Bluetooth, then connect the vehicle link; confirm where sound was heard.
 4. Mark Android Auto, start projection with host autoplay off; confirm route and pause.
-5. Mark Headset A Play, press the actual headset key; note where audio went.
-6. Mark Headset B Play with both A/B connected; note where audio went.
+5. Tap **Arm A Play**, then press the physical A key within 12 s, and mark where audio was heard.
+6. Tap **Arm B Play**, then press the physical B key within 12 s, and mark where audio was heard.
 7. Mark Car Play and press on the car head unit; note where audio went.
 8. Copy the report. Stop and Clear after evidence has been saved.
 
@@ -75,6 +117,6 @@ reached the expected ear.
   names in report.
 - CI: warnings-as-errors `verifyDebug`, KtLint and static analysis.
 - Hardware: verify exact build and complete route events across app process restart.
-- Required follow-ups: actual AudioTrack observation; strict 24-hour per-record
-  lifecycle/rotation validation; comparison renderer for annotated test outcomes;
-  full system-level media-input origin constraints, without guessing A/B.
+- Required follow-ups: physical AudioTrack route callback verification on API 36,
+  independent headset A/B tests and provider offload comparison, plus
+  full system-level media-input origin constraints without guessing A/B.

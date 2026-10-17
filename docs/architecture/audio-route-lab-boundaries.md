@@ -32,3 +32,15 @@ Separation of evidence:
 No section should silently substitute one evidence class for another. Route-
 identity equality cannot be inferred from a MediaSession controller package,
 `KeyEvent.deviceId` or raw Bluetooth A2DP product name.
+
+Opt-in Media3 track observer: `PlayerFactory` asks `AudioTrackRouteMonitor`
+for a provider only when recording is already enabled at construction.
+It forwards to Media3's default AudioTrack provider, observes Android route
+callbacks and releases listeners when the provider ends. For normal playback,
+there is no builder provider override at all. Track evidence is advisory and
+must never feed `AudioOutputRouter` or the playback resume gates.
+
+Physical output timeline maintains `AudioDeviceInfo.id` only in process RAM,
+never the incident/export file. Only aliases d1/d2 and semantic roles are
+recorded, with unmatched tracks printed as `unmapped`. Short-lived disappearance
+is a diagnostic event, not an automatic playback-policy change.
