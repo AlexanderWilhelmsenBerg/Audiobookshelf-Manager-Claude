@@ -63,6 +63,14 @@ class AudioRouteLab @Inject constructor(
         if (preferences.getBoolean(ENABLED, false)) start()
     }
 
+    fun serviceStarted() {
+        if (_state.value.recording) record("playback-service-started")
+    }
+
+    fun serviceStopped() {
+        if (_state.value.recording) record("playback-service-stopped")
+    }
+
     fun start() {
         if (_state.value.recording) return
         preferences.edit().putBoolean(ENABLED, true).apply()
@@ -145,7 +153,7 @@ class AudioRouteLab @Inject constructor(
                 runCatching {
                     incidentFile.parentFile?.mkdirs()
                     // Replacing one bounded file also limits a crash-recovered trace.
-                    incidentFile.writeText(updated.joinToString("\n", postfix = "\n"))
+                    incidentFile.writeText(_state.value.entries.joinToString("\n", postfix = "\n"))
                 }
             }
         }
