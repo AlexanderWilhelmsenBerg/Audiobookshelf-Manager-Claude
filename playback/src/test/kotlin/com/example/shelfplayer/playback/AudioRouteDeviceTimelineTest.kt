@@ -34,6 +34,15 @@ class AudioRouteDeviceTimelineTest {
     }
 
     @Test
+    fun `reused Android runtime ID with different logical output gets a new alias`() {
+        val timeline = AudioRouteDeviceTimeline()
+        timeline.observe(listOf(device(32, "bluetooth:headset")), null)
+        timeline.observe(emptyList(), null)
+        timeline.observe(listOf(device(32, "bluetooth:car")), null)
+        assertEquals("d2", timeline.aliasFor(32))
+    }
+
+    @Test
     fun `unmapped track output never invents a known destination`() {
         val timeline = AudioRouteDeviceTimeline()
         timeline.observe(listOf(device(21, "bluetooth:a")), null)

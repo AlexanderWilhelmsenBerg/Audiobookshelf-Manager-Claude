@@ -42,8 +42,13 @@ internal class AudioTrackRouteMonitor @Inject constructor(
             lab.trackObserverStatus("Not installed (start recording before next player creation)")
             return null
         }
+        val delegate = runCatching { AudioTrackAudioOutputProvider.Builder(context).build() }
+            .getOrElse {
+                lab.trackObserverStatus("Track observer could not initialize; default Media3 output retained")
+                return null
+            }
         lab.trackObserverStatus("Installed for this player; awaiting AudioTrack")
-        return object : ForwardingAudioOutputProvider(AudioTrackAudioOutputProvider.Builder(context).build()) {
+        return object : ForwardingAudioOutputProvider(delegate) {
             override fun getAudioOutput(config: AudioOutputProvider.OutputConfig): AudioOutput {
                 val output = super.getAudioOutput(config)
                 if (output is AudioTrackAudioOutput) {

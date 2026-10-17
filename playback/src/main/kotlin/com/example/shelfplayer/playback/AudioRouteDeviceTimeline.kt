@@ -10,7 +10,7 @@ internal class AudioRouteDeviceTimeline {
     data class Handle(val platformId: Int, val logicalId: String, val role: String)
     private data class Entry(val alias: String, val logicalId: String, val role: String)
 
-    private val aliases = mutableMapOf<Int, String>()
+    private val aliases = mutableMapOf<Pair<Int, String>, String>()
     private var nextAlias = 0
     private var connected = emptyMap<Int, Entry>()
 
@@ -18,7 +18,7 @@ internal class AudioRouteDeviceTimeline {
     fun observe(devices: List<Handle>, selectedId: String?): List<String> {
         val current = devices.associate { device ->
             device.platformId to Entry(
-                alias = aliases.getOrPut(device.platformId) { "d${++nextAlias}" },
+                alias = aliases.getOrPut(device.platformId to device.logicalId) { "d${++nextAlias}" },
                 logicalId = device.logicalId,
                 role = device.role,
             )
