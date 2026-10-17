@@ -12,7 +12,10 @@ class AudioTrackRouteMonitorTest {
     @Test
     fun `unmapped sink remains distinct from the selected headset`() {
         val timeline = AudioRouteDeviceTimeline()
-        timeline.observe(listOf(AudioRouteDeviceTimeline.Handle(1, "bluetooth:headset", "Ambiguous")), "bluetooth:headset")
+        timeline.observe(
+            listOf(AudioRouteDeviceTimeline.Handle(1, "bluetooth:headset", "Ambiguous")),
+            "bluetooth:headset",
+        )
         assertEquals("unmapped", timeline.aliasFor(23))
     }
 

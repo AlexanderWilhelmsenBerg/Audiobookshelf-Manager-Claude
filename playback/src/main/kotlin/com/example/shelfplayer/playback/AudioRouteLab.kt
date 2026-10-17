@@ -1,9 +1,9 @@
 package com.example.shelfplayer.playback
 
 import android.content.Context
-import android.media.AudioManager
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.util.AtomicFile

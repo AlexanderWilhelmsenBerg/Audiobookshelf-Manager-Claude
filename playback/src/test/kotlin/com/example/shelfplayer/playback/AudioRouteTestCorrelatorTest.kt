@@ -12,10 +12,20 @@ class AudioRouteTestCorrelatorTest {
     fun `armed button then actual media key and transport are correlated without identity claims`() {
         val observer = AudioRouteTestCorrelator()
         observer.arm("ButtonA", start)
-        val matched = requireNotNull(observer.observe("hardware-button keyCode=85 keyAction=0 keyInputId=-1", start.plusMillis(300)))
+        val matched = requireNotNull(
+            observer.observe(
+                "hardware-button keyCode=85 keyAction=0 keyInputId=-1",
+                start.plusMillis(300),
+            ),
+        )
         assertContains(matched, "step=ButtonA")
         assertContains(matched, "attribution=temporal-only")
-        val command = requireNotNull(observer.observe("transport-intent requested=Play controllerKind=external", start.plusMillis(550)))
+        val command = requireNotNull(
+            observer.observe(
+                "transport-intent requested=Play controllerKind=external",
+                start.plusMillis(550),
+            ),
+        )
         assertContains(command, "command=Play")
         assertContains(command, "attribution=temporal-only")
     }

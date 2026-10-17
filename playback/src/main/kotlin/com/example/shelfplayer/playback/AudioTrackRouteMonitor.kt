@@ -72,6 +72,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         val status = runCatching {
             when {
                 track.playState != AudioTrack.PLAYSTATE_PLAYING -> "paused-no-route-measurement"
+
                 else -> {
                     val routes = when {
                         Build.VERSION.SDK_INT >= 36 -> track.routedDevices

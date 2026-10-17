@@ -5,8 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class AudioRouteDeviceTimelineTest {
-    private fun device(id: Int, logical: String) =
-        AudioRouteDeviceTimeline.Handle(id, logical, "Ambiguous")
+    private fun device(id: Int, logical: String) = AudioRouteDeviceTimeline.Handle(id, logical, "Ambiguous")
 
     @Test
     fun `transient device loss preserves its privacy-safe process alias on return`() {
