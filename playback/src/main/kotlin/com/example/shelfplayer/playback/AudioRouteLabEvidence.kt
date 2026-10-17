@@ -2,6 +2,8 @@ package com.example.shelfplayer.playback
 
 import com.example.shelfplayer.core.common.log.LoggedEvent
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import java.time.Instant
+import kotlin.time.Duration.Companion.hours
 
 /**
  * Privacy allow-list: never persist arbitrary rendered log fields. Media titles can be included in
@@ -36,6 +38,18 @@ internal object AudioRouteLabEvidence {
             .take(14)
             .joinToString(" ") { "${it.groupValues[1]}=${it.groupValues[2]}" }
         return if (attributes.isEmpty()) category else "$category $attributes"
+    }
+
+    /** Per-record TTL even when a new event keeps the incident file's modification time fresh. */
+    fun recent(records: List<String>, now: Instant, maxRows: Int): List<String> {
+        val cutoff = now.minusSeconds(24.hours.inWholeSeconds)
+        return records.asSequence()
+            .filter { record ->
+                val at = runCatching { Instant.parse(record.substringBefore(' ')) }.getOrNull()
+                at != null && !at.isBefore(cutoff) && !at.isAfter(now.plusSeconds(60))
+            }
+            .takeLast(maxRows)
+            .toList()
     }
 
     /** Identifiers and display names must never appear in an export. */
