@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.io.IOException
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -178,7 +179,7 @@ class AudioRouteLab @Inject constructor(
                     try {
                         stream.write(bytes)
                         atomicIncident.finishWrite(stream)
-                    } catch (failure: Exception) {
+                    } catch (expected: IOException) {
                         atomicIncident.failWrite(stream)
                     }
                 }
