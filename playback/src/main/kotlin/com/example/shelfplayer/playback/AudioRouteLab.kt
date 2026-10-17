@@ -73,6 +73,7 @@ class AudioRouteLab @Inject constructor(
     private val droppedEvents = AtomicInteger(0)
     private val recordingGeneration = AtomicLong(0)
     private val deviceTimeline = AudioRouteDeviceTimeline()
+    private val correlator = AudioRouteTestCorrelator()
     private var deviceCallback: AudioDeviceCallback? = null
 
     init {
@@ -155,6 +156,9 @@ class AudioRouteLab @Inject constructor(
                 if (lost > 0) record("events-dropped count=$lost", currentGeneration, acceptedBeforeStop = true)
                 AudioRouteLabEvidence.event(event)?.let { line ->
                     record(line, currentGeneration, acceptedBeforeStop = true, at = event.at)
+                    correlator.observe(line, event.at)?.let { correlated ->
+                        record(correlated, currentGeneration, acceptedBeforeStop = true, at = event.at)
+                    }
                 }
             }
             val trailingLoss = droppedEvents.getAndSet(0)
@@ -209,7 +213,12 @@ class AudioRouteLab @Inject constructor(
     fun mark(action: String) {
         if (!_state.value.recording) return
         if (action !in MARKERS) return
-        record("test-step=$action")
+        if (action == "ButtonA" || action == "ButtonB") {
+            correlator.arm(action, clock.now())
+            record("test-armed step=$action attribution=temporal-only")
+        } else {
+            record("test-step=$action")
+        }
     }
 
     fun clear() {
