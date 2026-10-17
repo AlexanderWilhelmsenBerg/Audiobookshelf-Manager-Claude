@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.time.Instant
+import java.util.concurrent.CopyOnWriteArrayList
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration
@@ -47,6 +48,7 @@ class EventLog @Inject constructor(private val clock: AppClock) : LogSink {
 
     private val lock = Any()
     private val ring = ArrayDeque<LoggedEvent>(CAPACITY)
+    private val writeObservers = CopyOnWriteArrayList<(LoggedEvent) -> Unit>()
     private val _events = MutableStateFlow<List<LoggedEvent>>(emptyList())
     private val captureLines = ArrayDeque<String>()
     private val _raceCapture = MutableStateFlow(RaceCaptureState())
@@ -93,6 +95,16 @@ class EventLog @Inject constructor(private val clock: AppClock) : LogSink {
         captureLines.addLast("$captureSequence $line")
     }
 
+    /**
+     * Subscribe to every already-redacted write, without StateFlow's conflated snapshot semantics.
+     * Callbacks run synchronously on the logging thread. They MUST be non-blocking and never
+     * access playback; use trySend to a bounded channel. Exceptions cannot crash logging.
+     */
+    fun observeWrites(observer: (LoggedEvent) -> Unit): () -> Unit {
+        writeObservers.add(observer)
+        return { writeObservers.remove(observer) }
+    }
+
     /** Oldest first, which is the order they happened in and the order a reader follows. */
     val events: StateFlow<List<LoggedEvent>> = _events.asStateFlow()
 
@@ -103,6 +115,9 @@ class EventLog @Inject constructor(private val clock: AppClock) : LogSink {
         val snapshot = synchronized(lock) {
             if (ring.size >= CAPACITY) ring.removeFirst()
             ring.addLast(event)
+            // Preserve event order through a non-blocking callback. The regular UI
+            // StateFlow remains conflated; diagnostic subscribers must not depend on it.
+            writeObservers.forEach { observer -> runCatching { observer(event) } }
             if (captureActive) {
                 val elapsedMs = (clock.elapsed() - captureStartedAt).inWholeMilliseconds.coerceAtLeast(0L)
                 appendCaptureLine("+${elapsedMs}ms ${event.at} ${event.tag} ${event.line}")

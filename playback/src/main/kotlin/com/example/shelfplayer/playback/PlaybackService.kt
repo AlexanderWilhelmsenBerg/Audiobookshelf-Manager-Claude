@@ -121,6 +121,13 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     internal lateinit var liveSession: LivePlaybackSession
 
+    /** Opt-in, passive crash-resilient route capture. Not another playback owner. */
+    @Inject
+    internal lateinit var audioRouteLab: AudioRouteLab
+
+    @Inject
+    internal lateinit var audioTrackRouteMonitor: AudioTrackRouteMonitor
+
     /** PRODUCT_SPEC PLAY-002 — the chooser's half that can actually move audio: see [AudioOutputRouter]. */
     @Inject
     internal lateinit var audioOutputs: AudioOutputRouter
@@ -376,6 +383,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        audioRouteLab.serviceStarted()
         scope = CoroutineScope(SupervisorJob() + mainDispatcher)
         registerWallClockChanges()
         // PRODUCT_SPEC PLAY-006 — the preset in force when this player is built. Read blocking on the
@@ -622,6 +630,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        audioRouteLab.serviceStopped()
         flushProgress()
         outputDevices.stop()
         metrics.onReleased()
@@ -1131,6 +1140,7 @@ class PlaybackService : MediaLibraryService() {
      */
     private inner class PlayerEvents : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            audioTrackRouteMonitor.sample()
             logAuto(
                 "Media3 audible playback changed",
                 fields = listOf(LogField.Public("isPlaying", isPlaying)) +
@@ -3375,12 +3385,23 @@ class PlaybackService : MediaLibraryService() {
             } else {
                 intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
             }
+            val keyInput = keyEvent?.device
+            val inputOrigin = when {
+                keyEvent == null -> "missing"
+                keyEvent.deviceId <= 0 -> "virtual-or-unattributed"
+                keyInput == null -> "unresolved"
+                keyInput.isVirtual -> "virtual"
+                else -> "physical-input-unverified"
+            }
             logAuto(
                 "MediaSession hardware media button observed",
                 fields = listOf(
                     LogField.Identifier("controllerPackage", controllerInfo.packageName),
                     LogField.Public("keyCode", keyEvent?.keyCode ?: -1),
                     LogField.Public("keyAction", keyEvent?.action ?: -1),
+                    LogField.Public("keyInputId", keyEvent?.deviceId ?: -1),
+                    LogField.Public("keyInputSource", keyEvent?.source ?: -1),
+                    LogField.Public("inputOrigin", inputOrigin),
                 ) + carSnapshotFields(),
             )
             return super.onMediaButtonEvent(session, controllerInfo, intent)
