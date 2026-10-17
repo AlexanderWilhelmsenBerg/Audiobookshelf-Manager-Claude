@@ -54,6 +54,23 @@ class AudioRouteLabEvidenceTest {
     }
 
     @Test
+    fun `incident recorder bounds retained rows by age and count`() {
+        val now = Instant.parse("2026-10-17T12:00:00Z")
+        val records = listOf(
+            "2026-10-15T09:00:00Z old-row",
+            "2026-10-17T11:00:00Z first",
+            "2026-10-17T11:10:00Z second",
+            "2026-10-17T11:20:00Z third",
+            "not-a-timestamp secret",
+        )
+        val retained = AudioRouteLabEvidence.recent(records, now, 2)
+        assertFalse(retained.any { it.contains("old-row") })
+        assertFalse(retained.any { it.contains("secret") })
+        assertContains(retained.joinToString(","), "second")
+        assertContains(retained.joinToString(","), "third")
+    }
+
+    @Test
     fun `role counts expose ambiguity rather than claiming A2DP is a headset`() {
         val outputs = listOf(
             AudioOutput("one", "first", DeviceKind.Bluetooth, role = AudioOutputRole.Ambiguous),
