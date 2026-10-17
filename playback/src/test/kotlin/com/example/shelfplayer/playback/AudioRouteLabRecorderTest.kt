@@ -1,6 +1,7 @@
 package com.example.shelfplayer.playback
 
 import android.content.Context
+import androidx.core.content.edit
 import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.LogLevel
@@ -31,7 +32,7 @@ class AudioRouteLabRecorderTest {
 
     @Before
     fun resetCapture() {
-        context.getSharedPreferences("audio-route-lab", Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences("audio-route-lab", Context.MODE_PRIVATE).edit { clear() }
         File(context.noBackupFilesDir, "audio-route-lab.txt").delete()
         File(context.noBackupFilesDir, "audio-route-lab.txt.bak").delete()
     }
