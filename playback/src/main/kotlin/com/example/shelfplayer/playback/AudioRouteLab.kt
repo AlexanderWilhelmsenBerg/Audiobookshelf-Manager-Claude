@@ -2,6 +2,7 @@ package com.example.shelfplayer.playback
 
 import android.content.Context
 import android.media.AudioManager
+import android.util.AtomicFile
 import com.example.shelfplayer.core.common.dispatcher.ApplicationScope
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
@@ -48,6 +49,7 @@ class AudioRouteLab @Inject constructor(
 ) {
     private val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val incidentFile = File(context.noBackupFilesDir, "audio-route-lab.txt")
+    private val atomicIncident = AtomicFile(incidentFile)
     private val mutex = Mutex()
     private val _state = MutableStateFlow(AudioRouteLabState())
     val state: StateFlow<AudioRouteLabState> = _state.asStateFlow()
@@ -61,7 +63,7 @@ class AudioRouteLab @Inject constructor(
         // Read a bounded on-disk tail: the previous process may have crashed during playback.
         val recovered = runCatching {
             AudioRouteLabEvidence.recent(
-                incidentFile.takeIf(File::exists)?.readLines().orEmpty(),
+                atomicIncident.openRead().bufferedReader().use { it.readLines() },
                 Instant.now(),
                 MAX_ROWS,
             )
@@ -133,7 +135,7 @@ class AudioRouteLab @Inject constructor(
         _state.value = AudioRouteLabState()
         scope.launch(io) {
             mutex.withLock {
-                incidentFile.delete()
+                atomicIncident.delete()
             }
         }
     }
@@ -169,8 +171,16 @@ class AudioRouteLab @Inject constructor(
             mutex.withLock {
                 runCatching {
                     incidentFile.parentFile?.mkdirs()
-                    // Replacing one bounded file also limits a crash-recovered trace.
-                    incidentFile.writeText(_state.value.entries.joinToString("\n", postfix = "\n"))
+                    // AtomicFile leaves the previous completed capture available if this process
+                    // crashes while replacing the latest bounded incident snapshot.
+                    val bytes = _state.value.entries.joinToString("\n", postfix = "\n").toByteArray()
+                    val stream = atomicIncident.startWrite()
+                    try {
+                        stream.write(bytes)
+                        atomicIncident.finishWrite(stream)
+                    } catch (failure: Exception) {
+                        atomicIncident.failWrite(stream)
+                    }
                 }
             }
         }
