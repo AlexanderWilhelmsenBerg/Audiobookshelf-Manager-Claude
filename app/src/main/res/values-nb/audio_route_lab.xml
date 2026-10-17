@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="route_lab_title">Lydrutelab</string>
+    <string name="route_lab_open">Åpne lydrutelab</string>
+    <string name="route_lab_back">Tilbake til feilsøkingskonsoll</string>
+    <string name="route_lab_explanation">Frivillig rutediagnostikk. Bruker enhetsroller og kontrollhendelser uten navn eller lydopptak. Test bare når bilen står stille. Opptaket fortsetter ved omstart til det stoppes, og slettes automatisk etter 24 timer.</string>
+    <string name="route_lab_start">Start opptak</string>
+    <string name="route_lab_stop">Stopp opptak</string>
+    <string name="route_lab_clear">Slett opptak</string>
+    <string name="route_lab_copy">Kopier ruterapport</string>
+    <string name="route_lab_recording">Opptak aktivt</string>
+    <string name="route_lab_not_recording">Ingen opptak</string>
+    <string name="route_lab_route_title">Rutepolicy (ikke målt lyd)</string>
+    <string name="route_lab_steps_title">Veiledet maskinvaretest</string>
+    <string name="route_lab_steps_help">Marker hvert steg, utfør det på hodesettet eller i bilen, og marker hvor du faktisk hørte lyden. Test A og B hver for seg.</string>
+    <string name="route_lab_baseline">A spiller</string>
+    <string name="route_lab_car_bluetooth">Bilens Bluetooth</string>
+    <string name="route_lab_auto">Start Auto</string>
+    <string name="route_lab_car_play">Spill i bil</string>
+    <string name="route_lab_button_a">Spill på A</string>
+    <string name="route_lab_button_b">Spill på B</string>
+    <string name="route_lab_heard_title">Hvor hørte du lyden?</string>
+    <string name="route_lab_car">Bil</string>
+    <string name="route_lab_silence">Ingen lyd</string>
+    <string name="route_lab_phone">Telefon</string>
+    <string name="route_lab_latest">Nyeste hendelser</string>
+</resources>
