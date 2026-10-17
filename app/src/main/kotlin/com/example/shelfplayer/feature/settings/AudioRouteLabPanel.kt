@@ -43,20 +43,23 @@ internal fun AudioRouteLabPanel(
     ) {
         Text(stringResource(R.string.route_lab_title), style = MaterialTheme.typography.titleLarge)
         Text(stringResource(R.string.route_lab_explanation), style = MaterialTheme.typography.bodySmall)
-        Text(
-            if (state.recording) stringResource(R.string.route_lab_recording) else
-                stringResource(R.string.route_lab_not_recording),
-            style = MaterialTheme.typography.labelMedium,
-        )
+        val recordingLabel = if (state.recording) {
+            stringResource(R.string.route_lab_recording)
+        } else {
+            stringResource(R.string.route_lab_not_recording)
+        }
+        val actionLabel = if (state.recording) {
+            stringResource(R.string.route_lab_stop)
+        } else {
+            stringResource(R.string.route_lab_start)
+        }
+        Text(recordingLabel, style = MaterialTheme.typography.labelMedium)
         Row {
             TextButton(
                 onClick = if (state.recording) onStop else onStart,
                 modifier = Modifier.testTag(AUDIO_ROUTE_LAB_START),
             ) {
-                Text(
-                    if (state.recording) stringResource(R.string.route_lab_stop) else
-                        stringResource(R.string.route_lab_start),
-                )
+                Text(actionLabel)
             }
             TextButton(onClick = onClear) { Text(stringResource(R.string.route_lab_clear)) }
             TextButton(
