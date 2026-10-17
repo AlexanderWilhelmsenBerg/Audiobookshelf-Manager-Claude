@@ -8,21 +8,26 @@ import com.example.shelfplayer.core.common.dispatcher.ApplicationScope
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.common.log.EventLog
+import com.example.shelfplayer.core.common.log.LoggedEvent
 import com.example.shelfplayer.core.common.time.AppClock
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -58,6 +63,10 @@ class AudioRouteLab @Inject constructor(
     val state: StateFlow<AudioRouteLabState> = _state.asStateFlow()
     private var eventJob: Job? = null
     private var outputJob: Job? = null
+    private var eventChannel: Channel<LoggedEvent>? = null
+    private var unsubscribe: (() -> Unit)? = null
+    private val droppedEvents = AtomicInteger(0)
+    private val recordingGeneration = AtomicLong(0)
 
     init {
         if (incidentFile.exists() && clock.now().toEpochMilli() - incidentFile.lastModified() > RETENTION_MS) {
@@ -85,18 +94,28 @@ class AudioRouteLab @Inject constructor(
 
     fun start() {
         if (_state.value.recording) return
+        val currentGeneration = recordingGeneration.incrementAndGet()
+        droppedEvents.set(0)
         preferences.edit { putBoolean(ENABLED, true) }
-        _state.value = _state.value.copy(recording = true)
-        record("diagnostic-start")
+        _state.update { it.copy(recording = true) }
+        record("diagnostic-start", currentGeneration)
+        val channel = Channel<LoggedEvent>(EVENT_BUFFER_CAPACITY)
+        eventChannel = channel
+        // This receiver is allowed to run behind the producer: every event is delivered,
+        // or an explicit loss count records when the bounded buffer fills.
         eventJob = scope.launch(io) {
-            var previous: Any? = null
-            eventLog.events.collect { snapshot ->
-                val last = snapshot.lastOrNull() ?: return@collect
-                if (last === previous) return@collect
-                previous = last
-                val line = AudioRouteLabEvidence.event(last) ?: return@collect
-                record(line)
+            for (event in channel) {
+                val lost = droppedEvents.getAndSet(0)
+                if (lost > 0) record("events-dropped count=$lost", currentGeneration, acceptedBeforeStop = true)
+                AudioRouteLabEvidence.event(event)?.let { line ->
+                    record(line, currentGeneration, acceptedBeforeStop = true)
+                }
             }
+        }
+        // The callback only enqueues already-redacted data. No disk writes or Player reads
+        // may execute on the audio/logging thread.
+        unsubscribe = eventLog.observeWrites { event ->
+            if (!channel.trySend(event).isSuccess) droppedEvents.incrementAndGet()
         }
         outputJob = scope.launch(io) {
             combine(outputs.outputs, outputs.selectedId) { connected, selected -> connected to selected }
@@ -112,12 +131,21 @@ class AudioRouteLab @Inject constructor(
     }
 
     fun stop() {
+        if (!_state.value.recording) return
+        unsubscribe?.invoke()
+        unsubscribe = null
+        eventChannel?.close()
+        eventChannel = null
+        val lost = droppedEvents.getAndSet(0)
+        if (lost > 0) record("events-dropped count=$lost")
+        record("diagnostic-stop")
         preferences.edit { putBoolean(ENABLED, false) }
-        _state.value = _state.value.copy(recording = false)
-        eventJob?.cancel()
+        _state.update { it.copy(recording = false) }
+        // The receiver drains already accepted events before completing; do not cancel
+        // its job and silently drop the last hardware-button / route transition.
         outputJob?.cancel()
-        eventJob = null
         outputJob = null
+        eventJob = null
     }
 
     /** User-observed destination, not a measured audio-track output. */
@@ -135,10 +163,11 @@ class AudioRouteLab @Inject constructor(
 
     fun clear() {
         stop()
+        val clearGeneration = recordingGeneration.incrementAndGet()
         _state.value = AudioRouteLabState()
         scope.launch(io) {
             mutex.withLock {
-                atomicIncident.delete()
+                if (recordingGeneration.get() == clearGeneration) atomicIncident.delete()
             }
         }
     }
@@ -163,15 +192,26 @@ class AudioRouteLab @Inject constructor(
         return ids.size - ids.distinct().size
     }
 
-    private fun record(value: String) {
-        if (!_state.value.recording) return
+    private fun record(
+        value: String,
+        generation: Long = recordingGeneration.get(),
+        acceptedBeforeStop: Boolean = false,
+    ) {
+        if (generation != recordingGeneration.get()) return
+        if (!_state.value.recording && !acceptedBeforeStop) return
         // The only dynamic values admitted here are generated by the allow-listed
         // classifier, safe route-role summary and fixed UI enum choices.
         val line = "${clock.now()} $value"
-        val updated = AudioRouteLabEvidence.recent(_state.value.entries + line, clock.now(), MAX_ROWS)
-        _state.value = _state.value.copy(entries = updated)
+        _state.update { current ->
+            if (generation != recordingGeneration.get() || (!current.recording && !acceptedBeforeStop)) {
+                current
+            } else {
+                current.copy(entries = AudioRouteLabEvidence.recent(current.entries + line, clock.now(), MAX_ROWS))
+            }
+        }
         scope.launch(io) {
             mutex.withLock {
+                if (generation != recordingGeneration.get()) return@withLock
                 runCatching {
                     incidentFile.parentFile?.mkdirs()
                     // AtomicFile leaves the previous completed capture available if this process
@@ -193,6 +233,7 @@ class AudioRouteLab @Inject constructor(
         const val PREFS = "audio-route-lab"
         const val ENABLED = "enabled"
         const val MAX_ROWS = 350
+        const val EVENT_BUFFER_CAPACITY = 1024
         const val RETENTION_MS = 24 * 60 * 60 * 1000L
         val OBSERVATIONS = setOf("HeadsetA", "HeadsetB", "Car", "Phone", "Silence")
         val MARKERS = setOf("Baseline", "CarBluetooth", "AndroidAuto", "ButtonA", "ButtonB", "CarPlay")
