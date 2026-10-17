@@ -133,7 +133,9 @@ fun DebugConsoleSheet(
                                         AnnotatedString(
                                             audioLab.report(
                                                 state.versionLabel +
-                                                    " ${BuildConfig.BUILD_TYPE} ${BuildConfig.GIT_COMMIT} ${state.sourceLabel}",
+                                                    " ${BuildConfig.BUILD_TYPE}" +
+                                                    " ${BuildConfig.GIT_COMMIT}" +
+                                                    " ${state.sourceLabel}",
                                             ),
                                         ),
                                     ),

@@ -28,6 +28,9 @@ internal object AudioRouteLabEvidence {
         "status", "kind", "event", "source", "projection", "isPlaying", "playWhenReady",
         "routeKnown", "onHeadset", "onCar", "carBound", "routedTo", "honoured",
     )
+    private const val MAX_SAFE_FIELDS = 14
+    private const val FUTURE_SKEW_SECONDS = 60L
+
     private val token = Regex("""\b([a-zA-Z][a-zA-Z0-9]*)=([a-zA-Z0-9_-]+)\b""")
 
     fun event(event: LoggedEvent): String? {
@@ -35,7 +38,7 @@ internal object AudioRouteLabEvidence {
         val category = allowed.entries.firstOrNull { event.line.startsWith(it.key) }?.value ?: return null
         val attributes = token.findAll(event.line)
             .filter { it.groupValues[1] in safeFields }
-            .take(14)
+            .take(MAX_SAFE_FIELDS)
             .joinToString(" ") { "${it.groupValues[1]}=${it.groupValues[2]}" }
         return if (attributes.isEmpty()) category else "$category $attributes"
     }
@@ -46,7 +49,7 @@ internal object AudioRouteLabEvidence {
         return records.asSequence()
             .filter { record ->
                 val at = runCatching { Instant.parse(record.substringBefore(' ')) }.getOrNull()
-                at != null && !at.isBefore(cutoff) && !at.isAfter(now.plusSeconds(60))
+                at != null && !at.isBefore(cutoff) && !at.isAfter(now.plusSeconds(FUTURE_SKEW_SECONDS))
             }
             .toList()
             .takeLast(maxRows)
