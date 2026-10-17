@@ -75,7 +75,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
 
                 else -> {
                     val routes = when {
-                        Build.VERSION.SDK_INT >= 36 -> track.routedDevices
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA -> track.routedDevices
                         else -> listOfNotNull(track.routedDevice)
                     }
                     if (routes.isEmpty()) "playing-route-unknown" else describe(routes)

@@ -20,7 +20,8 @@ internal class AudioRouteTestCorrelator {
 
     fun observe(kind: String, at: Instant): String? {
         val current = armed
-        if (kind.startsWith("hardware-button") && "keyAction=0" in kind && current != null && !current.matched) {
+        val isKeyDown = kind.startsWith("hardware-button") && "keyAction=0" in kind
+        if (isKeyDown && current != null && !current.matched) {
             val delay = Duration.between(current.at, at).toMillis()
             if (delay in 0..WINDOW_MS) {
                 armed = current.copy(matched = true)

@@ -138,7 +138,7 @@ class AudioRouteLabRecorderTest {
         runCurrent()
         val report = lab.report("test")
         assertTrue(report.contains("user-heard=HeadsetA"))
-        assertTrue(report.contains("test-step=ButtonA"))
+        assertTrue(report.contains("test-armed step=ButtonA"))
         assertFalse(report.contains("private-headset-name"))
         assertFalse(report.contains("private-test-step"))
     }
