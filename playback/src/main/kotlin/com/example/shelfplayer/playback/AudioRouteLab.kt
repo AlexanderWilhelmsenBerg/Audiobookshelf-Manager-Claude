@@ -2,6 +2,10 @@ package com.example.shelfplayer.playback
 
 import android.content.Context
 import android.media.AudioManager
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.os.Handler
+import android.os.Looper
 import android.util.AtomicFile
 import androidx.core.content.edit
 import com.example.shelfplayer.core.common.dispatcher.ApplicationScope
@@ -68,6 +72,8 @@ class AudioRouteLab @Inject constructor(
     private var unsubscribe: (() -> Unit)? = null
     private val droppedEvents = AtomicInteger(0)
     private val recordingGeneration = AtomicLong(0)
+    private val deviceTimeline = AudioRouteDeviceTimeline()
+    private var deviceCallback: AudioDeviceCallback? = null
 
     init {
         if (incidentFile.exists() && clock.now().toEpochMilli() - incidentFile.lastModified() > RETENTION_MS) {
@@ -85,6 +91,44 @@ class AudioRouteLab @Inject constructor(
         if (preferences.getBoolean(ENABLED, false)) start()
     }
 
+    internal fun deviceAlias(platformId: Int): String = deviceTimeline.aliasFor(platformId)
+
+    internal fun trackObserverStatus(description: String) {
+        _state.update { it.copy(reportStatus = description) }
+    }
+
+    internal fun actualTrackEvidence(evidence: String) {
+        if (!_state.value.recording) return
+        _state.update { it.copy(reportStatus = evidence) }
+        record("actual-track $evidence")
+    }
+
+    private fun observeDeviceHandles() {
+        if (!_state.value.recording) return
+        val manager = context.getSystemService(AudioManager::class.java) ?: return
+        val devices = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).mapNotNull { device ->
+            val out = OutputDevices.outputOf(device.type, device.productName) ?: return@mapNotNull null
+            AudioRouteDeviceTimeline.Handle(device.id, out.id, out.role.name)
+        }
+        deviceTimeline.observe(devices, outputs.selectedId.value).forEach(::record)
+    }
+
+    private fun startDeviceObserver() {
+        val manager = context.getSystemService(AudioManager::class.java) ?: return
+        if (deviceCallback != null) return
+        deviceCallback = object : AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) = observeDeviceHandles()
+            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) = observeDeviceHandles()
+        }.also { manager.registerAudioDeviceCallback(it, Handler(Looper.getMainLooper())) }
+        observeDeviceHandles()
+    }
+
+    private fun stopDeviceObserver() {
+        val manager = context.getSystemService(AudioManager::class.java)
+        deviceCallback?.let { callback -> manager?.unregisterAudioDeviceCallback(callback) }
+        deviceCallback = null
+    }
+
     fun serviceStarted() {
         if (_state.value.recording) record("playback-service-started")
     }
@@ -100,6 +144,7 @@ class AudioRouteLab @Inject constructor(
         preferences.edit { putBoolean(ENABLED, true) }
         _state.update { it.copy(recording = true) }
         record("diagnostic-start", currentGeneration)
+        startDeviceObserver()
         val channel = Channel<LoggedEvent>(EVENT_BUFFER_CAPACITY)
         eventChannel = channel
         // This receiver is allowed to run behind the producer: every event is delivered,
@@ -133,6 +178,7 @@ class AudioRouteLab @Inject constructor(
                         _state.value = _state.value.copy(route = summary)
                         record("route-policy $summary")
                     }
+                    observeDeviceHandles()
                 }
         }
     }
@@ -141,6 +187,7 @@ class AudioRouteLab @Inject constructor(
         if (!_state.value.recording) return
         unsubscribe?.invoke()
         unsubscribe = null
+        stopDeviceObserver()
         eventChannel?.close()
         eventChannel = null
         preferences.edit { putBoolean(ENABLED, false) }
@@ -181,8 +228,9 @@ class AudioRouteLab @Inject constructor(
         appendLine("app: $version")
         appendLine("recording: ${state.value.recording}")
         appendLine("routePolicy: ${state.value.route}")
-        appendLine("actualTrack: unavailable; not installed in this passive instrumentation")
-        appendLine("evidence: router-selected and platform policy routes are NOT the AudioTrack sink")
+        appendLine("actualTrack: ${state.value.reportStatus}")
+        appendLine("devices: ${deviceTimeline.snapshot()} (aliases are process-scoped)")
+        appendLine("evidence: track-route when available is platform-reported; not human-heard sound")
         appendLine("retention: private no-backup file, at most 24h; opt-in recording")
         appendLine("[incident]")
         state.value.entries.forEach { appendLine(it) }

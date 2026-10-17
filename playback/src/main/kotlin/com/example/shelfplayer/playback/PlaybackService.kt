@@ -125,6 +125,9 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     internal lateinit var audioRouteLab: AudioRouteLab
 
+    @Inject
+    internal lateinit var audioTrackRouteMonitor: AudioTrackRouteMonitor
+
     /** PRODUCT_SPEC PLAY-002 — the chooser's half that can actually move audio: see [AudioOutputRouter]. */
     @Inject
     internal lateinit var audioOutputs: AudioOutputRouter
@@ -1137,6 +1140,7 @@ class PlaybackService : MediaLibraryService() {
      */
     private inner class PlayerEvents : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            audioTrackRouteMonitor.sample()
             logAuto(
                 "Media3 audible playback changed",
                 fields = listOf(LogField.Public("isPlaying", isPlaying)) +
