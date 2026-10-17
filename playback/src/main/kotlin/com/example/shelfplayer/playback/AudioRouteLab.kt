@@ -12,6 +12,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -138,7 +139,7 @@ class AudioRouteLab @Inject constructor(
         appendLine("evidence: router-selected and platform policy routes are NOT the AudioTrack sink")
         appendLine("retention: private no-backup file, at most 24h; opt-in recording")
         appendLine("[incident]")
-        state.value.entries.forEach(::appendLine)
+        state.value.entries.forEach { appendLine(it) }
     }
 
     private fun record(value: String) {
