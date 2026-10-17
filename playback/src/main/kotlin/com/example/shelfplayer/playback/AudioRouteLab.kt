@@ -107,9 +107,14 @@ class AudioRouteLab @Inject constructor(
     private fun observeDeviceHandles() {
         if (!_state.value.recording) return
         val manager = context.getSystemService(AudioManager::class.java) ?: return
-        val devices = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).mapNotNull { device ->
-            val out = OutputDevices.outputOf(device.type, device.productName) ?: return@mapNotNull null
-            AudioRouteDeviceTimeline.Handle(device.id, out.id, out.role.name)
+        val devices = runCatching {
+            manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).mapNotNull { device ->
+                val out = OutputDevices.outputOf(device.type, device.productName) ?: return@mapNotNull null
+                AudioRouteDeviceTimeline.Handle(device.id, out.id, out.role.name)
+            }
+        }.getOrElse {
+            record("device-enumeration-unavailable")
+            return
         }
         deviceTimeline.observe(devices, outputs.selectedId.value).forEach(::record)
     }
@@ -117,10 +122,13 @@ class AudioRouteLab @Inject constructor(
     private fun startDeviceObserver() {
         val manager = context.getSystemService(AudioManager::class.java) ?: return
         if (deviceCallback != null) return
-        deviceCallback = object : AudioDeviceCallback() {
+        val callback = object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) = observeDeviceHandles()
             override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) = observeDeviceHandles()
-        }.also { manager.registerAudioDeviceCallback(it, Handler(Looper.getMainLooper())) }
+        }
+        runCatching { manager.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper())) }
+            .onSuccess { deviceCallback = callback }
+            .onFailure { record("device-callback-unavailable") }
         observeDeviceHandles()
     }
 
