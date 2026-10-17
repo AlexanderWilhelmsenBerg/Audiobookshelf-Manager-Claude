@@ -48,8 +48,8 @@ internal object AudioRouteLabEvidence {
                 val at = runCatching { Instant.parse(record.substringBefore(' ')) }.getOrNull()
                 at != null && !at.isBefore(cutoff) && !at.isAfter(now.plusSeconds(60))
             }
-            .takeLast(maxRows)
             .toList()
+            .takeLast(maxRows)
     }
 
     /** Identifiers and display names must never appear in an export. */
