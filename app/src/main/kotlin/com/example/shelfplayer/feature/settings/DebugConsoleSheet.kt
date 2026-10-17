@@ -147,122 +147,122 @@ fun DebugConsoleSheet(
                 TextButton(onClick = { showLab.value = true }) {
                     Text(stringResource(R.string.route_lab_open))
                 }
-            Text(
-                text = stringResource(R.string.debug_console_title),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                text = stringResource(R.string.debug_console_subtitle),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = 4.dp),
-            )
-            if (BuildConfig.DEBUG) {
                 Text(
-                    text = stringResource(R.string.debug_background_sync_title),
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(top = 8.dp),
+                    text = stringResource(R.string.debug_console_title),
+                    style = MaterialTheme.typography.titleMedium,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        onClick = { account?.id?.let { enqueueBackgroundSyncTest(context, it) } },
-                        enabled = account != null,
-                        modifier = Modifier.testTag(DEBUG_BACKGROUND_SYNC_RUN),
-                    ) {
-                        Text(text = stringResource(R.string.debug_background_sync_run))
+                Text(
+                    text = stringResource(R.string.debug_console_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
+                if (BuildConfig.DEBUG) {
+                    Text(
+                        text = stringResource(R.string.debug_background_sync_title),
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            onClick = { account?.id?.let { enqueueBackgroundSyncTest(context, it) } },
+                            enabled = account != null,
+                            modifier = Modifier.testTag(DEBUG_BACKGROUND_SYNC_RUN),
+                        ) {
+                            Text(text = stringResource(R.string.debug_background_sync_run))
+                        }
+                        TextButton(
+                            onClick = { account?.id?.let { cancelBackgroundSyncTest(context, it) } },
+                            enabled = account != null,
+                            modifier = Modifier.testTag(DEBUG_BACKGROUND_SYNC_CANCEL),
+                        ) {
+                            Text(text = stringResource(R.string.debug_background_sync_cancel))
+                        }
                     }
-                    TextButton(
-                        onClick = { account?.id?.let { cancelBackgroundSyncTest(context, it) } },
-                        enabled = account != null,
-                        modifier = Modifier.testTag(DEBUG_BACKGROUND_SYNC_CANCEL),
-                    ) {
-                        Text(text = stringResource(R.string.debug_background_sync_cancel))
-                    }
+                    Text(
+                        text = stringResource(R.string.debug_background_sync_body),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 Text(
-                    text = stringResource(R.string.debug_background_sync_body),
+                    text = stringResource(R.string.debug_race_capture_description),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            Text(
-                text = stringResource(R.string.debug_race_capture_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(
-                    onClick = logs::startRaceCapture,
-                    enabled = !raceCapture.recording,
-                ) {
-                    Text(stringResource(R.string.debug_race_capture_start))
-                }
-                TextButton(
-                    onClick = logs::stopRaceCapture,
-                    enabled = raceCapture.recording,
-                ) {
-                    Text(stringResource(R.string.debug_race_capture_stop))
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            clipboard.setClipEntry(
-                                ClipEntry(
-                                    ClipData.newPlainText(
-                                        "BookWave race trace",
-                                        AnnotatedString(raceCapture.lines.joinToString("\n")),
-                                    ),
-                                ),
-                            )
-                        }
-                    },
-                    enabled = raceCapture.lines.isNotEmpty(),
-                ) {
-                    Text(stringResource(R.string.debug_race_capture_copy))
-                }
-                TextButton(
-                    onClick = logs::clearRaceCapture,
-                    enabled = raceCapture.lines.isNotEmpty(),
-                ) {
-                    Text(stringResource(R.string.debug_race_capture_clear))
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            clipboard.setClipEntry(
-                                ClipEntry(ClipData.newPlainText(LABEL, AnnotatedString(report))),
-                            )
-                        }
-                    },
-                    modifier = Modifier.testTag(DEBUG_CONSOLE_COPY),
-                ) {
-                    Text(text = stringResource(R.string.debug_console_copy))
-                }
-                if (previousCrash != null) {
-                    TextButton(onClick = crashes::onClear) {
-                        Text(text = stringResource(R.string.event_log_clear))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = logs::startRaceCapture,
+                        enabled = !raceCapture.recording,
+                    ) {
+                        Text(stringResource(R.string.debug_race_capture_start))
+                    }
+                    TextButton(
+                        onClick = logs::stopRaceCapture,
+                        enabled = raceCapture.recording,
+                    ) {
+                        Text(stringResource(R.string.debug_race_capture_stop))
                     }
                 }
-            }
-            Text(
-                text = report,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                ),
-                // Horizontal scroll rather than wrapping: this is a report to be read in columns, and a
-                // wrapped `lastFailure:` line is harder to scan than one that runs off the edge.
-                overflow = TextOverflow.Clip,
-                softWrap = false,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .horizontalScroll(rememberScrollState()),
-            )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                clipboard.setClipEntry(
+                                    ClipEntry(
+                                        ClipData.newPlainText(
+                                            "BookWave race trace",
+                                            AnnotatedString(raceCapture.lines.joinToString("\n")),
+                                        ),
+                                    ),
+                                )
+                            }
+                        },
+                        enabled = raceCapture.lines.isNotEmpty(),
+                    ) {
+                        Text(stringResource(R.string.debug_race_capture_copy))
+                    }
+                    TextButton(
+                        onClick = logs::clearRaceCapture,
+                        enabled = raceCapture.lines.isNotEmpty(),
+                    ) {
+                        Text(stringResource(R.string.debug_race_capture_clear))
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                clipboard.setClipEntry(
+                                    ClipEntry(ClipData.newPlainText(LABEL, AnnotatedString(report))),
+                                )
+                            }
+                        },
+                        modifier = Modifier.testTag(DEBUG_CONSOLE_COPY),
+                    ) {
+                        Text(text = stringResource(R.string.debug_console_copy))
+                    }
+                    if (previousCrash != null) {
+                        TextButton(onClick = crashes::onClear) {
+                            Text(text = stringResource(R.string.event_log_clear))
+                        }
+                    }
+                }
+                Text(
+                    text = report,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    ),
+                    // Horizontal scroll rather than wrapping: this is a report to be read in columns, and a
+                    // wrapped `lastFailure:` line is harder to scan than one that runs off the edge.
+                    overflow = TextOverflow.Clip,
+                    softWrap = false,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .horizontalScroll(rememberScrollState()),
+                )
             }
         }
     }
