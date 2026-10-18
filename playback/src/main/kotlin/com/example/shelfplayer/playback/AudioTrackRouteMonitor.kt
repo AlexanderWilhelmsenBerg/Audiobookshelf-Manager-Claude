@@ -38,15 +38,18 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     private var generation = 0
 
     fun providerIfRecording(): AudioOutputProvider? {
+        lab.trackLifecycle("player-create recording=${lab.state.value.recording}")
         if (!lab.state.value.recording) {
             lab.trackObserverStatus("Not installed (start recording before next player creation)")
             return null
         }
         val delegate = runCatching { AudioTrackAudioOutputProvider.Builder(context).build() }
             .getOrElse {
+                lab.trackLifecycle("provider-fallback")
                 lab.trackObserverStatus("Track observer could not initialize; default Media3 output retained")
                 return null
             }
+        lab.trackLifecycle("provider-installed")
         lab.trackObserverStatus("Installed for this player; awaiting AudioTrack")
         return object : ForwardingAudioOutputProvider(delegate) {
             override fun getAudioOutput(config: AudioOutputProvider.OutputConfig): AudioOutput {
@@ -59,6 +62,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
             }
 
             override fun release() {
+                lab.trackLifecycle("provider-released")
                 forget()
                 super.release()
             }
@@ -103,6 +107,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         }
         listener = callback
         track.addOnRoutingChangedListener(callback, mainHandler)
+        lab.trackLifecycle("audio-track-attached")
         lab.trackObserverStatus("AudioTrack attached; live routed device evidence")
         sample()
     }
@@ -116,6 +121,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         if (previous != null && callback != null) {
             runCatching { previous.removeOnRoutingChangedListener(callback) }
         }
-        lab.trackObserverStatus("AudioTrack released or replaced")
+        if (previous != null) lab.trackLifecycle("audio-track-released-or-replaced")
+        if (previous != null) lab.trackObserverStatus("AudioTrack released or replaced")
     }
 }

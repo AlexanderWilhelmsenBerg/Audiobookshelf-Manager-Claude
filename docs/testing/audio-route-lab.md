@@ -120,3 +120,9 @@ reached the expected ear.
 - Required follow-ups: physical AudioTrack route callback verification on API 36,
   independent headset A/B tests and provider offload comparison, plus
   full system-level media-input origin constraints without guessing A/B.
+
+## Observer activation triage (18 October 2026)
+
+The 2230 physical run captured `actualTrack: Not installed`, but no player-construction timestamp. Since the player is created in `PlaybackService.onCreate`, starting recording from the already-running Debug Console cannot retrofit the provider. This is the leading explanation, not yet proof of the creation order on that phone. The next build records allow-listed `observer-player-create recording=true/false`, `observer-provider-installed`, `observer-provider-fallback`, `observer-audio-track-attached`, `observer-audio-track-released-or-replaced`, and `observer-provider-released` events while recording is enabled. Absent those lifecycle events, do not interpret route absence as an Android routing result.
+
+Park the vehicle. Start recording, then allow the playback service to terminate **naturally** (do not force-stop or reconstruct playback solely for a diagnostic). When a new player naturally starts, check the lifecycle events. If it is already active, the UI now explicitly says it is awaiting the next player. Only then test headset A physical Play, mark heard destination, and compare measured `actual-track` with the device timeline. `keyInputId=-1` remains temporal-only attribution. If `provider-installed` appears without `audio-track-attached`, investigate Media3 output type/offload before claiming a route. If `audio-track-attached` appears but only paused/no route events follow, ensure real playback started and inspect the next `onIsPlayingChanged` sample. Never interpret `d2`→`d3`→`d4` as the same headset without independently confirmed identity.

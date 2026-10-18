@@ -92,6 +92,11 @@ class AudioRouteLab @Inject constructor(
         if (preferences.getBoolean(ENABLED, false)) start()
     }
 
+    internal fun trackLifecycle(event: String) {
+        if (!_state.value.recording) return
+        record("observer-$event")
+    }
+
     internal fun deviceAlias(platformId: Int): String = deviceTimeline.aliasFor(platformId)
 
     internal fun trackObserverStatus(description: String) {
@@ -151,7 +156,12 @@ class AudioRouteLab @Inject constructor(
         val currentGeneration = recordingGeneration.incrementAndGet()
         droppedEvents.set(0)
         preferences.edit { putBoolean(ENABLED, true) }
-        _state.update { it.copy(recording = true) }
+        _state.update {
+            it.copy(
+                recording = true,
+                reportStatus = "Awaiting next player creation; existing player is not instrumented",
+            )
+        }
         record("diagnostic-start", currentGeneration)
         startDeviceObserver()
         val channel = Channel<LoggedEvent>(EVENT_BUFFER_CAPACITY)
