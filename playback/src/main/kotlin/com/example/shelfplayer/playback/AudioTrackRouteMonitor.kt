@@ -44,7 +44,8 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val lab: AudioRouteLab,
 ) {
-    @Volatile private var active: AudioTrack? = null
+    @Volatile
+    private var active: AudioTrack? = null
     private var listener: AudioRouting.OnRoutingChangedListener? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val epoch = AudioTrackObserverEpoch()
@@ -78,6 +79,8 @@ internal class AudioTrackRouteMonitor @Inject constructor(
                             lab.trackObserverStatus("Routing listener could not attach; audio remains Media3-owned")
                         }
                 } else {
+                    // A new non-track output invalidates any previous track measurement.
+                    forget()
                     lab.trackLifecycle("provider-output-unobserved")
                     lab.trackObserverStatus("Media3 output is not an observable AudioTrack")
                 }

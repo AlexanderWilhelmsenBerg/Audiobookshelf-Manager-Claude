@@ -326,7 +326,7 @@ class AudioRouteLab @Inject constructor(
             "playing-route-unknown", "route-query-unavailable",
         )
         val TRACK_ROUTE_PATTERN = Regex(
-            """playing-to=(?:d[0-9]+|unmapped):[A-Za-z]+(?:\\+(?:d[0-9]+|unmapped):[A-Za-z]+)* measured=AudioTrack""",
+            """playing-to=(?:d[0-9]+|unmapped):[A-Za-z]+(?:\+(?:d[0-9]+|unmapped):[A-Za-z]+)* measured=AudioTrack""",
         )
         const val PREFS = "audio-route-lab"
         const val ENABLED = "enabled"
