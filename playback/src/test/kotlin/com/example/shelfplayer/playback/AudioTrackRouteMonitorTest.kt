@@ -10,6 +10,27 @@ import kotlin.test.assertTrue
  */
 class AudioTrackRouteMonitorTest {
     @Test
+    fun `released and replaced AudioTracks invalidate late route callbacks`() {
+        val epoch = AudioTrackObserverEpoch()
+        val first = epoch.next()
+        assertTrue(epoch.isCurrent(first))
+        val next = epoch.next()
+        assertFalse(epoch.isCurrent(first))
+        assertTrue(epoch.isCurrent(next))
+        epoch.next()
+        assertFalse(epoch.isCurrent(next))
+    }
+
+    @Test
+    fun `query generation guard refuses obsolete observations`() {
+        val epoch = AudioTrackObserverEpoch()
+        epoch.next()
+        val duringQuery = epoch.nextSnapshot()
+        epoch.next()
+        assertFalse(epoch.isCurrent(duringQuery))
+    }
+
+    @Test
     fun `unmapped sink remains distinct from the selected headset`() {
         val timeline = AudioRouteDeviceTimeline()
         timeline.observe(

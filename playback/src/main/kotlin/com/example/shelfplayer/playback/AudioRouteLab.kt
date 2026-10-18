@@ -93,7 +93,7 @@ class AudioRouteLab @Inject constructor(
     }
 
     internal fun trackLifecycle(event: String) {
-        if (!_state.value.recording) return
+        if (!_state.value.recording || event !in TRACK_LIFECYCLE_EVENTS) return
         record("observer-$event")
     }
 
@@ -104,10 +104,13 @@ class AudioRouteLab @Inject constructor(
     }
 
     internal fun actualTrackEvidence(evidence: String) {
-        if (!_state.value.recording) return
+        if (!_state.value.recording || !isSafeTrackEvidence(evidence)) return
         _state.update { it.copy(reportStatus = evidence) }
         record("actual-track $evidence")
     }
+
+    private fun isSafeTrackEvidence(evidence: String): Boolean =
+        evidence in TRACK_STATES || TRACK_ROUTE_PATTERN.matches(evidence)
 
     private fun observeDeviceHandles() {
         if (!_state.value.recording) return
@@ -310,6 +313,21 @@ class AudioRouteLab @Inject constructor(
     }
 
     private companion object {
+        // Only known diagnostic state transitions may reach durable storage, never arbitrary text.
+        val TRACK_LIFECYCLE_EVENTS = setOf(
+            "player-create recording=true", "provider-installed", "provider-fallback",
+            "provider-output-unobserved", "provider-released", "audio-track-attached",
+            "audio-track-attach-failed", "audio-track-playing", "audio-track-route-changed",
+            "audio-track-released-or-replaced",
+        )
+        val TRACK_STATES = setOf(
+            "released-or-uninitialized-no-route-measurement", "paused-no-route-measurement",
+            "stopped-no-route-measurement", "playstate-unknown-no-route-measurement",
+            "playing-route-unknown", "route-query-unavailable",
+        )
+        val TRACK_ROUTE_PATTERN = Regex(
+            """playing-to=(?:d[0-9]+|unmapped):[A-Za-z]+(?:\\+(?:d[0-9]+|unmapped):[A-Za-z]+)* measured=AudioTrack""",
+        )
         const val PREFS = "audio-route-lab"
         const val ENABLED = "enabled"
         const val MAX_ROWS = 350

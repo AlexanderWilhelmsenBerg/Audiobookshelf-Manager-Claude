@@ -113,6 +113,74 @@ class AudioRouteLabRecorderTest {
     }
 
     @Test
+    fun `recording activated after a player creation waits for the next provider decision`() = runTest {
+        val clock = object : AppClock {
+            override fun now(): Instant = Instant.now()
+            override fun elapsed(): Duration = Duration.ZERO
+        }
+        val log = EventLog(clock)
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val logger = object : Logger {
+            override fun log(event: LogEvent) = Unit
+        }
+        val router = AudioOutputRouter(context, logger, backgroundScope, dispatcher)
+        val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
+        val monitor = AudioTrackRouteMonitor(context, lab)
+
+        // Simulate the construction-time hook being evaluated before recording is enabled.
+        assertTrue(monitor.providerIfRecording() == null)
+        lab.start()
+        assertTrue(lab.state.value.reportStatus.contains("Awaiting next player creation"))
+        monitor.sample()
+        assertFalse(lab.report("test").contains("observer-provider-installed"))
+
+        // Next natural creation installs the wrapper; no player recreation is requested.
+        val provider = requireNotNull(monitor.providerIfRecording())
+        assertTrue(lab.report("test").contains("observer-player-create recording=true"))
+        assertTrue(lab.report("test").contains("observer-provider-installed"))
+        assertTrue(lab.state.value.reportStatus.contains("awaiting Media3 AudioTrack"))
+        provider.release()
+        assertTrue(lab.report("test").contains("observer-provider-released"))
+        lab.stop()
+        runCurrent()
+    }
+
+    @Test
+    fun `track events reject arbitrary device metadata and recording off is inert`() = runTest {
+        val clock = object : AppClock {
+            override fun now(): Instant = Instant.now()
+            override fun elapsed(): Duration = Duration.ZERO
+        }
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val logger = object : Logger {
+            override fun log(event: LogEvent) = Unit
+        }
+        val log = EventLog(clock)
+        val router = AudioOutputRouter(context, logger, backgroundScope, dispatcher)
+        val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
+
+        lab.trackLifecycle("provider-installed")
+        lab.actualTrackEvidence("playing-route-unknown")
+        assertTrue(lab.state.value.entries.isEmpty())
+        lab.start()
+        lab.trackLifecycle("provider-installed")
+        lab.trackLifecycle("device-name=HeadsetABC")
+        lab.actualTrackEvidence("playing-to=privateDeviceName:Car measured=AudioTrack")
+        lab.actualTrackEvidence("playing-route-unknown password=token")
+        lab.actualTrackEvidence("paused-no-route-measurement")
+        lab.actualTrackEvidence("playing-to=d7:Ambiguous measured=AudioTrack")
+        val report = lab.report("test")
+        assertTrue(report.contains("observer-provider-installed"))
+        assertTrue(report.contains("actual-track paused-no-route-measurement"))
+        assertTrue(report.contains("actual-track playing-to=d7:Ambiguous measured=AudioTrack"))
+        assertFalse(report.contains("HeadsetABC"))
+        assertFalse(report.contains("privateDeviceName"))
+        assertFalse(report.contains("password=token"))
+        lab.stop()
+        runCurrent()
+    }
+
+    @Test
     fun `capture is strictly opt in and manual observations use fixed safe labels`() = runTest {
         val clock = object : AppClock {
             override fun now(): Instant = Instant.now()
