@@ -249,6 +249,8 @@ class PlaybackService : MediaLibraryService() {
     @Dispatcher(ShelfDispatcher.MainImmediate)
     internal lateinit var mainDispatcher: CoroutineDispatcher
 
+    private val coldStartToggleGate = ColdStartToggleGate()
+    private var serviceStartedAt: Duration = Duration.ZERO
     private var player: ExoPlayer? = null
     private var session: MediaLibrarySession? = null
     private var journal: Job? = null
@@ -383,6 +385,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        serviceStartedAt = clock.elapsed()
         audioRouteLab.serviceStarted()
         scope = CoroutineScope(SupervisorJob() + mainDispatcher)
         registerWallClockChanges()
@@ -3436,6 +3439,23 @@ class PlaybackService : MediaLibraryService() {
                     LogField.Count("headsetNameMatches", inputEvidence.headsetNameMatches),
                 ) + carSnapshotFields(),
             )
+            // #273: one virtual toggle can arrive just from powering on a Bluetooth device.
+            // Only cold, empty-player toggles are suspect; genuine PLAY, car intent and warm
+            // headset buttons still flow to Media3. This can intentionally require a second
+            // PLAY_PAUSE press during the three-second cold-start window.
+            val suppressed = coldStartToggleGate.consume(
+                sinceServiceStart = clock.elapsed() - serviceStartedAt,
+                keyCode = keyEvent?.keyCode ?: -1,
+                keyAction = keyEvent?.action ?: -1,
+                inputDeviceId = keyEvent?.deviceId,
+                hasBluetooth = audioOutputs.outputs.value.any { it.id.startsWith("bluetooth:") },
+                emptyQueue = (player?.mediaItemCount ?: 0) == 0,
+                carConnected = carConnections.isConnected() || projectionState.carConnected,
+            )
+            if (suppressed) {
+                logAuto("Cold virtual Bluetooth toggle consumed before playback resumption")
+                return true
+            }
             return super.onMediaButtonEvent(session, controllerInfo, intent)
         }
 

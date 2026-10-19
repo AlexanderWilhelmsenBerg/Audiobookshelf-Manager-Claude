@@ -48,6 +48,7 @@ internal object OutputClassifierFacts {
         AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "BUILTIN_SPEAKER"
         AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE -> "BUILTIN_SPEAKER_SAFE"
         AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "BUILTIN_EARPIECE"
+        AudioDeviceInfo.TYPE_TELEPHONY -> "TELEPHONY"
         AudioDeviceInfo.TYPE_HDMI -> "HDMI"
         AudioDeviceInfo.TYPE_HDMI_ARC -> "HDMI_ARC"
         AudioDeviceInfo.TYPE_HDMI_EARC -> "HDMI_EARC"

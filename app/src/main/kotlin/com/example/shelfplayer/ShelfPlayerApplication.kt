@@ -20,6 +20,7 @@ import com.example.shelfplayer.download.DownloadNotificationCoordinator
 import com.example.shelfplayer.garmin.GarminBridge
 import com.example.shelfplayer.lock.ProcessLockWatcher
 import com.example.shelfplayer.playback.AutoLibrary
+import com.example.shelfplayer.playback.UnifiedDiagnosticsCapture
 import com.example.shelfplayer.sync.ProcessRealtimeSyncWatcher
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -151,8 +152,16 @@ class ShelfPlayerApplication :
     @Inject
     lateinit var logger: Logger
 
+    @Inject
+    lateinit var unifiedDiagnostics: UnifiedDiagnosticsCapture
+
     override fun onCreate() {
         super.onCreate()
+        // The isolated diagnostic restart trampoline is not another BookWave process owner.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P &&
+            Application.getProcessName() != packageName
+        ) return
+        unifiedDiagnostics.restoreOptInAfterProcessRestart()
         crashReporter.install()
         logger.info(LogCategory.App, "Application started")
         lockWatcher.attach(this)

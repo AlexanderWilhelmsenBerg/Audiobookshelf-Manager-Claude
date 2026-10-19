@@ -286,6 +286,7 @@ fun SettingsScreen(
     var isDebugConsoleOpen by rememberSaveable { mutableStateOf(false) }
     var isAudioRouteLabOpen by rememberSaveable { mutableStateOf(false) }
     var isOutputClassifierOpen by rememberSaveable { mutableStateOf(false) }
+    var isUnifiedDiagnosticsOpen by rememberSaveable { mutableStateOf(false) }
     // The header's own blur source, and it must be *this* one rather than the app-wide state the mini
     // player uses. A haze effect that is a descendant of its own source draws nothing, and the header is
     // inside the navigation graph the app-wide source covers — the trap that made the navigation capsule
@@ -476,6 +477,7 @@ fun SettingsScreen(
                                 onOpenDebugConsole = { isDebugConsoleOpen = true },
                                 onOpenAudioRouteLab = { isAudioRouteLabOpen = true },
                                 onOpenOutputClassifier = { isOutputClassifierOpen = true },
+                                onOpenUnifiedDiagnostics = { isUnifiedDiagnosticsOpen = true },
                             ),
                             recovery = recovery,
                         )
@@ -489,6 +491,7 @@ fun SettingsScreen(
     if (isDebugConsoleOpen) DebugConsoleSheet(onDismiss = { isDebugConsoleOpen = false })
     if (isAudioRouteLabOpen) AudioRouteLabSheet(onDismiss = { isAudioRouteLabOpen = false })
     if (isOutputClassifierOpen) OutputClassifierSheet(onDismiss = { isOutputClassifierOpen = false })
+    if (isUnifiedDiagnosticsOpen) UnifiedDiagnosticsSheet(onDismiss = { isUnifiedDiagnosticsOpen = false })
 }
 
 /**
@@ -594,6 +597,11 @@ private fun LazyListScope.aboutTab(
     item { SectionHeader(text = stringResource(R.string.about_section_debug)) }
     item { Hint(text = stringResource(R.string.about_debug_body)) }
     item {
+        TextButton(onClick = diagnostics.onOpenUnifiedDiagnostics, modifier = Modifier.padding(horizontal = 8.dp)) {
+            Text(stringResource(R.string.unified_diag_open))
+        }
+    }
+    item {
         TextButton(onClick = diagnostics.onOpenEventLog, modifier = Modifier.padding(horizontal = 8.dp)) {
             Text(stringResource(R.string.event_log_open))
         }
@@ -658,6 +666,7 @@ data class DiagnosticsInputs(
     val onOpenDebugConsole: () -> Unit = {},
     val onOpenAudioRouteLab: () -> Unit = {},
     val onOpenOutputClassifier: () -> Unit = {},
+    val onOpenUnifiedDiagnostics: () -> Unit = {},
 )
 
 /**

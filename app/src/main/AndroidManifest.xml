@@ -130,6 +130,14 @@
           alternatives (`LauncherIcons`). `exported="false"` is correct here — every entry point is an alias, and
           nothing outside the app starts this activity directly.
         -->
+        <!-- Explicitly user-confirmed diagnostic process restart. Never externally launchable. -->
+        <activity
+            android:name=".diagnostics.DiagnosticRestartActivity"
+            android:exported="false"
+            android:process=":diagnostics-restart"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <activity
             android:name=".MainActivity"
             android:exported="false"
