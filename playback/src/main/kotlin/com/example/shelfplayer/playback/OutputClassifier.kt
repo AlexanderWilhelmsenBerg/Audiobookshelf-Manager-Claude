@@ -204,12 +204,17 @@ class OutputClassifier @Inject constructor(
             if (id !in seen) append("output-disappeared ${old.substringBefore(" channels=")}")
         }
         seen.forEach { (id, facts) ->
-            if (id !in previous) append("output-appeared $facts")
-            else if (previous[id] != facts) append("output-changed $facts")
+            if (id !in previous) {
+                append("output-appeared $facts")
+            } else if (previous[id] != facts) {
+                append("output-changed $facts")
+            }
         }
         val collisions = OutputClassifierFacts.collisions(rows)
-        append("snapshot reason=$reason outputs=${outputs.size} mappedCollisions=$collisions " +
-            "predictedCount=${predicted?.size ?: -1}")
+        append(
+            "snapshot reason=$reason outputs=${outputs.size} mappedCollisions=$collisions " +
+                "predictedCount=${predicted?.size ?: -1}",
+        )
         previous.clear()
         previous.putAll(seen)
         stateMutable.value = stateMutable.value.copy(

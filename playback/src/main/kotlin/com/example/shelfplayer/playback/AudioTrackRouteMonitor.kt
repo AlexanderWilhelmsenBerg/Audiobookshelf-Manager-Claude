@@ -43,13 +43,18 @@ internal object AudioTrackRouteTypes {
     @SuppressLint("InlinedApi")
     fun label(type: Int): String = OutputDevices.outputOf(type, null)?.role?.name ?: when (type) {
         AudioDeviceInfo.TYPE_REMOTE_SUBMIX -> "RemoteSubmix"
+
         AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "BluetoothSco"
+
         AudioDeviceInfo.TYPE_HDMI,
         AudioDeviceInfo.TYPE_HDMI_ARC,
         AudioDeviceInfo.TYPE_HDMI_EARC,
         -> "Hdmi"
+
         AudioDeviceInfo.TYPE_TELEPHONY -> "Telephony"
+
         AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "Earpiece"
+
         else -> "Unclassified"
     }
 }
