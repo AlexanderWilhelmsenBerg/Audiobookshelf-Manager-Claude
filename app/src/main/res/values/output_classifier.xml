@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_section_debug">Debug</string>
+    <string name="about_debug_body">Diagnostic tools for troubleshooting. Audio output captures are opt-in and never change playback routing.</string>
+    <string name="output_classifier_title">Output classifier</string>
+    <string name="output_classifier_open">Output classifier</string>
+    <string name="output_classifier_explanation">Records every Android output type as it appears, including types BookWave does not recognize. Shows raw type numbers, current BookWave role, policy-predicted route, capabilities and potential duplicate identities. No device names, Bluetooth addresses, media titles or audio are collected. This session-only capture does not change audio routing. Unknown output means insufficient evidence, not a preferred output.</string>
+    <string name="output_classifier_refresh">Snapshot</string>
+    <string name="output_classifier_copy">Copy classifier report</string>
+    <string name="output_classifier_connected">Connected outputs</string>
+    <string name="output_classifier_history">Output changes</string>
+</resources>
