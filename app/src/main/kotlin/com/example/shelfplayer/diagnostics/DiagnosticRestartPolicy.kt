@@ -9,7 +9,9 @@ package com.example.shelfplayer.diagnostics
  * never starts the helper automatically on platforms where detection is less reliable.
  */
 internal object DiagnosticRestartPolicy {
-    fun canUseTrampoline(api: Int): Boolean = api >= 28
+    private const val FIRST_TRAMPOLINE_API = 28
+
+    fun canUseTrampoline(api: Int): Boolean = api >= FIRST_TRAMPOLINE_API
 
     fun shouldInitializeApp(processName: String?, appPackage: String): Boolean =
         processName == null || processName == appPackage
