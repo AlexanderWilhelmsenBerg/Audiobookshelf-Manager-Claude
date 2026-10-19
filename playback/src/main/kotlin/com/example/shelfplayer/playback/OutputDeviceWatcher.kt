@@ -212,7 +212,7 @@ class OutputDeviceWatcher @Inject constructor(
         val manager = context.getSystemService(AudioManager::class.java) ?: return null
         val handles = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).orEmpty()
             .asSequence()
-            .filter(AudioDeviceInfo::isSink)
+            .filter { info -> info.isSink }
             .mapNotNull { info ->
                 OutputDevices.outputOf(info.type, info.productName)?.let { output ->
                     LiveOutputIdentity.Handle(info.id, output.id)
