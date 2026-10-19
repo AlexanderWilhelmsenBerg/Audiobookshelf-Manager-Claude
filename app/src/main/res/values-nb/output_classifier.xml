@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="about_section_debug">Feilsøking</string>
+    <string name="about_debug_body">Verktøy for feilsøking. Registrering av lydutganger er valgfri og endrer aldri lydruting.</string>
+    <string name="output_classifier_title">Klassifisering av lydutganger</string>
+    <string name="output_classifier_open">Klassifisering av lydutganger</string>
+    <string name="output_classifier_explanation">Registrerer alle Android-typer for lydutganger, også typer BookWave ikke kjenner igjen. Viser rå typekoder, BookWave-rolle, forventet rute og mulige duplikatidentiteter. Enhetsnavn, Bluetooth-adresser, boktitler og lyd samles ikke inn. Registreringen varer bare i denne økten og endrer aldri lydruting. Ukjent utgang betyr manglende informasjon, ikke prioritert utgang.</string>
+    <string name="output_classifier_refresh">Øyeblikksbilde</string>
+    <string name="output_classifier_copy">Kopier rapport</string>
+    <string name="output_classifier_connected">Tilkoblede lydutganger</string>
+    <string name="output_classifier_history">Endringer i lydutganger</string>
+</resources>

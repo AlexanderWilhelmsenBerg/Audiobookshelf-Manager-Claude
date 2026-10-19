@@ -121,6 +121,13 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     internal lateinit var liveSession: LivePlaybackSession
 
+    /** PR #272 opt-in passive route observer; never changes playback policy. */
+    @Inject
+    internal lateinit var audioRouteLab: AudioRouteLab
+
+    @Inject
+    internal lateinit var audioTrackRouteMonitor: AudioTrackRouteMonitor
+
     /** PRODUCT_SPEC PLAY-002 — the chooser's half that can actually move audio: see [AudioOutputRouter]. */
     @Inject
     internal lateinit var audioOutputs: AudioOutputRouter
@@ -376,6 +383,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        audioRouteLab.serviceStarted()
         scope = CoroutineScope(SupervisorJob() + mainDispatcher)
         registerWallClockChanges()
         // PRODUCT_SPEC PLAY-006 — the preset in force when this player is built. Read blocking on the
@@ -637,6 +645,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        audioRouteLab.serviceStopped()
         flushProgress()
         outputDevices.stop()
         metrics.onReleased()
@@ -1146,6 +1155,7 @@ class PlaybackService : MediaLibraryService() {
      */
     private inner class PlayerEvents : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            audioTrackRouteMonitor.sample()
             logAuto(
                 "Media3 audible playback changed",
                 fields = listOf(LogField.Public("isPlaying", isPlaying)) +
