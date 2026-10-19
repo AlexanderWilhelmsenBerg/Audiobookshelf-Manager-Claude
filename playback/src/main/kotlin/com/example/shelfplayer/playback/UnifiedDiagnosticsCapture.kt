@@ -50,6 +50,7 @@ class UnifiedDiagnosticsCapture @Inject constructor(
         classifier.clear()
         audioRouteLab.clear()
         eventLog.clearRaceCapture()
+        eventLog.clear()
     }
 
     private fun activate() {

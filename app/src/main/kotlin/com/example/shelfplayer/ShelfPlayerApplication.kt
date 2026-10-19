@@ -160,7 +160,9 @@ class ShelfPlayerApplication :
         // The isolated diagnostic restart trampoline is not another BookWave process owner.
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P &&
             Application.getProcessName() != packageName
-        ) return
+        ) {
+            return
+        }
         unifiedDiagnostics.restoreOptInAfterProcessRestart()
         crashReporter.install()
         logger.info(LogCategory.App, "Application started")
@@ -182,7 +184,13 @@ class ShelfPlayerApplication :
                 syncAccount()
                 Unit
             }
-            applyStartupMode(lastPlayed?.id)
+            // A user-requested diagnostic restart must never itself manufacture audio.
+            // Explicit Play and external media controls retain their normal Media3 paths.
+            if (!unifiedDiagnostics.active.value) {
+                applyStartupMode(lastPlayed?.id)
+            } else {
+                logger.info(LogCategory.App, "Startup autoplay withheld during unified diagnostic capture")
+            }
         }
         applicationScope.launch {
             sleepTimers.closeOrphanedSessions()

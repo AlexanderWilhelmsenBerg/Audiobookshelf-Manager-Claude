@@ -89,22 +89,33 @@ fun UnifiedDiagnosticsSheet(
             Text(stringResource(R.string.unified_diag_title), style = MaterialTheme.typography.titleLarge)
             Text(stringResource(R.string.unified_diag_description), style = MaterialTheme.typography.bodySmall)
             Text(
-                if (active) stringResource(R.string.unified_diag_recording)
-                else stringResource(R.string.unified_diag_stopped),
+                if (active) {
+                    stringResource(R.string.unified_diag_recording)
+                } else {
+                    stringResource(R.string.unified_diag_stopped)
+                },
                 style = MaterialTheme.typography.labelLarge,
             )
             Text(lab.reportStatus, style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(
                     onClick = {
-                        if (active) capture.stop() else {
+                        if (active) {
+                            capture.stop()
+                        } else {
                             capture.start()
                             confirmRestart = true
                         }
                     },
                     modifier = Modifier.testTag(UNIFIED_DIAGNOSTICS_START),
                 ) {
-                    Text(if (active) stringResource(R.string.unified_diag_stop) else stringResource(R.string.unified_diag_start))
+                    Text(
+                        if (active) {
+                            stringResource(R.string.unified_diag_stop)
+                        } else {
+                            stringResource(R.string.unified_diag_start)
+                        },
+                    )
                 }
                 TextButton(onClick = capture::clear) { Text(stringResource(R.string.unified_diag_clear)) }
             }

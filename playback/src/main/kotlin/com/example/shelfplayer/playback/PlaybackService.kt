@@ -3450,7 +3450,8 @@ class PlaybackService : MediaLibraryService() {
                 inputDeviceId = keyEvent?.deviceId,
                 hasBluetooth = audioOutputs.outputs.value.any { it.id.startsWith("bluetooth:") },
                 emptyQueue = (player?.mediaItemCount ?: 0) == 0,
-                carConnected = carConnections.isConnected() || projectionState.carConnected,
+                carConnected = carConnections.isConnected() || projectionState.carConnected ||
+                    controllerInfo.packageName in CAR_PACKAGES,
             )
             if (suppressed) {
                 logAuto("Cold virtual Bluetooth toggle consumed before playback resumption")
