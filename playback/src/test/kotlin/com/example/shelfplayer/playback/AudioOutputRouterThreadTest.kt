@@ -86,6 +86,19 @@ class AudioOutputRouterThreadTest {
         )
         assertEquals("bluetooth:original", fixture.guardId())
 
+        // A later unrelated device callback must not restart the expired two-second grace.
+        AudioOutputRouter::class.java.getDeclaredMethod(
+            "onDisconnectedSelection",
+            String::class.java,
+            Set::class.java,
+        ).apply { isAccessible = true }.invoke(fixture.router, "bluetooth:original", emptySet<String>())
+        runCurrent()
+        val missingWait = AudioOutputRouter::class.java.getDeclaredField("missingHeadsetGrace").run {
+            isAccessible = true
+            get(fixture.router)
+        }
+        assertEquals(null, missingWait, "later device churn must not rearm the elapsed timeout")
+
         // Physical headset media keys typically appear as virtual/system input (-1). The route
         // guard must still be active when Media3 moves back into its playing state.
         val safety = AudioOutputRouter::class.java.getDeclaredField("routeSafetyListener").run {
