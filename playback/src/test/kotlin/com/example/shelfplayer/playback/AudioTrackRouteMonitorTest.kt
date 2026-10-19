@@ -2,6 +2,7 @@ package com.example.shelfplayer.playback
 
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**

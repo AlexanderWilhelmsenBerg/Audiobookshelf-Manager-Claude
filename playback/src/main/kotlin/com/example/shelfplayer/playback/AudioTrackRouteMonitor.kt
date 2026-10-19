@@ -100,27 +100,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         val track = active ?: return
         val token = epoch.nextSnapshot()
         if (!lab.state.value.recording) return
-        val result = runCatching {
-            when {
-                track.state == AudioTrack.STATE_UNINITIALIZED ->
-                    "released-or-uninitialized-no-route-measurement"
-
-                track.playState == AudioTrack.PLAYSTATE_PAUSED -> "paused-no-route-measurement"
-
-                track.playState == AudioTrack.PLAYSTATE_STOPPED -> "stopped-no-route-measurement"
-
-                track.playState != AudioTrack.PLAYSTATE_PLAYING -> "playstate-unknown-no-route-measurement"
-
-                else -> {
-                    val routes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
-                        track.routedDevices
-                    } else {
-                        listOfNotNull(track.routedDevice)
-                    }
-                    if (routes.isEmpty()) "playing-route-unknown" else describe(routes)
-                }
-            }
-        }.getOrElse { "route-query-unavailable" }
+        val result = runCatching { routeEvidence(track) }.getOrElse { "route-query-unavailable" }
         // A query can race with another track's release. Never publish it against the successor.
         if (!epoch.isCurrent(token) || active !== track) return
         val playing = result == "playing-route-unknown" || result.startsWith("playing-to=")
@@ -129,6 +109,26 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         if (lastEvidence != result) {
             lastEvidence = result
             lab.actualTrackEvidence(result)
+        }
+    }
+
+    private fun routeEvidence(track: AudioTrack): String = when {
+        track.state == AudioTrack.STATE_UNINITIALIZED ->
+            "released-or-uninitialized-no-route-measurement"
+
+        track.playState == AudioTrack.PLAYSTATE_PAUSED -> "paused-no-route-measurement"
+
+        track.playState == AudioTrack.PLAYSTATE_STOPPED -> "stopped-no-route-measurement"
+
+        track.playState != AudioTrack.PLAYSTATE_PLAYING -> "playstate-unknown-no-route-measurement"
+
+        else -> {
+            val routes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
+                track.routedDevices
+            } else {
+                listOfNotNull(track.routedDevice)
+            }
+            if (routes.isEmpty()) "playing-route-unknown" else describe(routes)
         }
     }
 
