@@ -318,8 +318,9 @@ class AudioOutputRouter @Inject constructor(
                 player?.takeIf { it.isPlaying }?.pause()
             }
         }
+        val alreadyMissing = guardedHeadsetMissing
         guardedHeadsetMissing = true
-        if (missingHeadsetGrace != null) return
+        if (alreadyMissing || missingHeadsetGrace != null) return
         logger.info(
             LogCategory.Playback,
             "Car continuity headset disappeared; preserving selection while paused",
