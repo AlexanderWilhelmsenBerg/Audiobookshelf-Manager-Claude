@@ -18,6 +18,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
@@ -84,6 +87,8 @@ fun DebugConsoleSheet(
     val clipboard = LocalClipboard.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var showRouteLab by remember { mutableStateOf(false) }
+    var showClassifier by remember { mutableStateOf(false) }
 
     // Rebuilt when the inputs change rather than on every recomposition: this walks the whole event buffer,
     // and the sheet recomposes on every scroll.
@@ -108,6 +113,14 @@ fun DebugConsoleSheet(
         modifier = modifier,
     ) {
         Column(modifier = Modifier.fillMaxHeight(SHEET_HEIGHT).padding(horizontal = 24.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { showRouteLab = true }) {
+                        Text(stringResource(R.string.route_lab_open))
+                    }
+                    TextButton(onClick = { showClassifier = true }) {
+                        Text(stringResource(R.string.output_classifier_open))
+                    }
+                }
                 Text(
                     text = stringResource(R.string.debug_console_title),
                     style = MaterialTheme.typography.titleMedium,
@@ -226,6 +239,8 @@ fun DebugConsoleSheet(
                 )
         }
     }
+    if (showRouteLab) AudioRouteLabSheet(onDismiss = { showRouteLab = false })
+    if (showClassifier) OutputClassifierSheet(onDismiss = { showClassifier = false })
 }
 
 /** What the clipboard entry calls itself in a paste preview. */
