@@ -12,9 +12,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.time.Instant
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33], manifest = Config.NONE)
 class UnifiedDiagnosticsJsonTest {
     @Test fun `JSON combines independent source records and remains parseable`() {
         val raw = UnifiedDiagnosticsJson.build(
