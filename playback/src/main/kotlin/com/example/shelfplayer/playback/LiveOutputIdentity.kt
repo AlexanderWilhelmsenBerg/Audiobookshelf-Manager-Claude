@@ -24,9 +24,11 @@ internal object LiveOutputIdentity {
         val grouped = handles.distinctBy { it.platformId to it.logicalId }.groupBy(Handle::logicalId)
         val ambiguous = grouped.filterValues { group ->
             group.map(Handle::platformId).distinct().size > 1 &&
-                group.any { it.kind == DeviceKind.Bluetooth ||
-                    it.kind == DeviceKind.HearingAid ||
-                    it.kind == DeviceKind.Other }
+                group.any { handle ->
+                    handle.kind == DeviceKind.Bluetooth ||
+                        handle.kind == DeviceKind.HearingAid ||
+                        handle.kind == DeviceKind.Other
+                }
         }.keys
         // Wired/car/speaker logical keys are intentionally shared categories, not claims of unique devices.
         return Snapshot(ambiguousIds = ambiguous)
