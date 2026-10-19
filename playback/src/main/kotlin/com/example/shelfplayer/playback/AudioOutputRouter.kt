@@ -92,6 +92,11 @@ class AudioOutputRouter @Inject constructor(
     // that preference to Automatic during the transient A2DP removal observed in car trace auto-5.
     private var guardedHeadsetId: String? = null
     private var missingHeadsetGrace: Job? = null
+
+    // A timed-out A2DP omission does not transfer playback ownership to Android's default route.
+    // Retain the guard beyond the bounded recovery timer until the exact output reappears or
+    // the listener explicitly chooses a different destination.
+    private var guardedHeadsetMissing = false
     private val routeSafetyListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) pauseUnsafeGuardedPlayback()
@@ -123,6 +128,7 @@ class AudioOutputRouter @Inject constructor(
         missingHeadsetGrace?.cancel()
         missingHeadsetGrace = null
         guardedHeadsetId = null
+        guardedHeadsetMissing = false
         player?.removeListener(routeSafetyListener)
         player = null
     }
@@ -173,6 +179,7 @@ class AudioOutputRouter @Inject constructor(
         }
         missingHeadsetGrace?.cancel()
         missingHeadsetGrace = null
+        guardedHeadsetMissing = false
         guardedHeadsetId = id
         _selectedId.value = id
         publish()
@@ -191,6 +198,7 @@ class AudioOutputRouter @Inject constructor(
         // never opened BookWave's output chooser and selectedId was Automatic.
         if (_selectedId.value == null) _selectedId.value = id
         guardedHeadsetId = id
+        guardedHeadsetMissing = false
         publish()
     }
 
@@ -207,6 +215,7 @@ class AudioOutputRouter @Inject constructor(
         missingHeadsetGrace?.cancel()
         missingHeadsetGrace = null
         guardedHeadsetId = null
+        guardedHeadsetMissing = false
         explicitSelectionState.value = ExplicitSelection(
             sequence = ++nextExplicitSelectionSequence,
             outputId = id,
@@ -285,7 +294,7 @@ class AudioOutputRouter @Inject constructor(
         when {
             chosen != null && chosen !in found -> onDisconnectedSelection(chosen, found.keys)
 
-            chosen != null && chosen == guardedHeadsetId && missingHeadsetGrace != null ->
+            chosen != null && chosen == guardedHeadsetId && guardedHeadsetMissing ->
                 onGuardedHeadsetReappeared(chosen)
         }
         publish()
@@ -309,6 +318,7 @@ class AudioOutputRouter @Inject constructor(
                 player?.takeIf { it.isPlaying }?.pause()
             }
         }
+        guardedHeadsetMissing = true
         if (missingHeadsetGrace != null) return
         logger.info(
             LogCategory.Playback,
@@ -317,11 +327,15 @@ class AudioOutputRouter @Inject constructor(
         )
         missingHeadsetGrace = applicationScope.launch {
             delay(MISSING_HEADSET_GRACE)
-            if (_selectedId.value == chosen && chosen !in live) {
-                _selectedId.value = null
-                guardedHeadsetId = null
-                publish()
-                apply(null)
+            if (_selectedId.value == chosen && guardedHeadsetId == chosen && chosen !in live) {
+                // The waiting window ended, not the owner's explicit headset destination.
+                // Clearing the guard here allowed a subsequent virtual/unattributed headset
+                // Play to resume through the car on Android Auto. Stay fail-closed.
+                logger.info(
+                    LogCategory.Playback,
+                    "Car continuity headset still absent after grace; keeping route guarded",
+                    LogField.Public("kind", kindOf(chosen)),
+                )
             }
             missingHeadsetGrace = null
         }
@@ -332,6 +346,7 @@ class AudioOutputRouter @Inject constructor(
         // without issuing Play; a newer listener selection can still supersede it.
         missingHeadsetGrace?.cancel()
         missingHeadsetGrace = null
+        guardedHeadsetMissing = false
         applicationScope.launch {
             if (_selectedId.value == chosen && guardedHeadsetId == chosen && chosen in live) apply(chosen)
         }

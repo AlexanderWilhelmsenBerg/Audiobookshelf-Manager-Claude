@@ -136,7 +136,12 @@ an actively playing track rather than let it become audible in a car or phone sp
 A temporary device-list disappearance pauses before OS fallback, preserves the same
 preference for two seconds, and reapplies it only if that exact device returns and no
 newer user output selection superseded it. The grace never automatically plays a
-previously paused item. After expiry, it may clear the preference only while paused.
+previously paused item. After the two-second reconnection window expires, the selection remains guarded and
+the player stays fail-closed until that exact output returns or a newer explicit listener
+destination (including Car) supersedes it. The expiry timer never silently switches to
+Automatic: doing so allowed a later unattributed headset media key to play in the car.
+A stale disconnected preference may remain visible until the listener selects another
+output; it cannot automatically choose a new ambiguous A2DP device.
 The physical Android route APIs expose media routing *policy*, not incontrovertible
 proof of the AudioTrack sink; hardware listening remains required to accept the result.
 If Media3 still has `playWhenReady=true`, it owns focus restoration; BookWave must

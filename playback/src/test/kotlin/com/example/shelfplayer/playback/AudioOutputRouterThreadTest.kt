@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
@@ -19,6 +20,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.lang.reflect.Proxy
 import java.util.concurrent.Executors
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -61,6 +63,63 @@ class AudioOutputRouterThreadTest {
     }
 
     @Test
+    fun `after grace expires unattributed Play still cannot escape to default car route`() = runTest {
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+
+        // Emulate the exact missing-output branch reached by AudioDeviceCallback after car arrival.
+        // The OS may expose only an unmapped projection output for much longer than two seconds.
+        AudioOutputRouter::class.java.getDeclaredMethod(
+            "onDisconnectedSelection",
+            String::class.java,
+            Set::class.java,
+        ).apply { isAccessible = true }.invoke(fixture.router, "bluetooth:original", emptySet<String>())
+        runCurrent()
+        assertEquals(1, fixture.pauseThreads.size, "the missing headset must immediately suspend audio")
+
+        advanceTimeBy(2_100)
+        runCurrent()
+        assertEquals(
+            "bluetooth:original",
+            fixture.router.selectedId.value,
+            "an expired grace period is not consent for automatic car routing",
+        )
+        assertEquals("bluetooth:original", fixture.guardId())
+
+        // Physical headset media keys typically appear as virtual/system input (-1). The route
+        // guard must still be active when Media3 moves back into its playing state.
+        val safety = AudioOutputRouter::class.java.getDeclaredField("routeSafetyListener").run {
+            isAccessible = true
+            get(fixture.router) as Player.Listener
+        }
+        safety.onIsPlayingChanged(true)
+        runCurrent()
+        assertTrue(fixture.pauseThreads.size >= 2, "post-expiry Play must be paused on an unknown route")
+        assertTrue(fixture.pauseThreads.all { it == Thread.currentThread() })
+    }
+
+    @Test
+    fun `explicit car Play after grace removes headset ownership without restoring it`() = runTest {
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+        AudioOutputRouter::class.java.getDeclaredMethod(
+            "onDisconnectedSelection",
+            String::class.java,
+            Set::class.java,
+        ).apply { isAccessible = true }.invoke(fixture.router, "bluetooth:original", emptySet<String>())
+        runCurrent()
+        advanceTimeBy(2_100)
+        runCurrent()
+        fixture.router.selectCar()
+        runCurrent()
+        assertEquals(null, fixture.router.selectedId.value)
+        assertEquals(null, fixture.guardId())
+        assertTrue(
+            fixture.router.explicitSelection.value?.destination == AudioOutputRouter.ExplicitDestination.Car,
+        )
+    }
+
+    @Test
     fun `explicit car output choice releases transient headset guard`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
@@ -86,6 +145,7 @@ class AudioOutputRouterThreadTest {
 
     private fun TestScope.fixture(): Fixture {
         val reads = mutableListOf<Thread>()
+        val pauses = mutableListOf<Thread>()
         val owningThread = Thread.currentThread()
         val player = Proxy.newProxyInstance(
             ExoPlayer::class.java.classLoader,
@@ -102,6 +162,7 @@ class AudioOutputRouterThreadTest {
 
                 "pause" -> {
                     check(Thread.currentThread() == owningThread) { "ExoPlayer pause on the wrong thread" }
+                    pauses.add(Thread.currentThread())
                     null
                 }
 
@@ -120,10 +181,19 @@ class AudioOutputRouterThreadTest {
             isAccessible = true
             set(router, player)
         }
-        return Fixture(router, reads)
+        return Fixture(router, reads, pauses)
     }
 
-    private data class Fixture(val router: AudioOutputRouter, val readThreads: List<Thread>) {
+    private data class Fixture(
+        val router: AudioOutputRouter,
+        val readThreads: List<Thread>,
+        val pauseThreads: List<Thread>,
+    ) {
+        fun guardId(): String? = AudioOutputRouter::class.java.getDeclaredField("guardedHeadsetId").run {
+            isAccessible = true
+            get(router) as? String
+        }
+
         fun guard(outputId: String) {
             AudioOutputRouter::class.java.getDeclaredField("guardedHeadsetId").apply {
                 isAccessible = true
