@@ -471,7 +471,7 @@ fun SettingsScreen(
                             uiState = uiState,
                             launcherIcon = launcherIcon,
                             onLauncherIconChanged = onLauncherIconChanged,
-                                                diagnostics = DiagnosticsInputs(
+                            diagnostics = DiagnosticsInputs(
                                 onOpenEventLog = { isEventLogOpen = true },
                                 onOpenDebugConsole = { isDebugConsoleOpen = true },
                                 onOpenAudioRouteLab = { isAudioRouteLabOpen = true },
