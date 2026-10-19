@@ -1,6 +1,9 @@
 package com.example.shelfplayer
 
+import android.app.ActivityManager
 import android.app.Application
+import android.os.Build
+import android.os.Process
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.example.shelfplayer.core.common.dispatcher.ApplicationScope
@@ -9,6 +12,7 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.data.auth.SessionRestorer
 import com.example.shelfplayer.diagnostics.CrashReporter
+import com.example.shelfplayer.diagnostics.DiagnosticRestartPolicy
 import com.example.shelfplayer.domain.download.DownloadLocations
 import com.example.shelfplayer.domain.download.OfflineFiles
 import com.example.shelfplayer.domain.download.OfflineVerification
@@ -157,12 +161,19 @@ class ShelfPlayerApplication :
 
     override fun onCreate() {
         super.onCreate()
-        // The isolated diagnostic restart trampoline is not another BookWave process owner.
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P &&
-            Application.getProcessName() != packageName
-        ) {
-            return
+        // The diagnostic restart trampoline lives in another process and must not start
+        // profile restoration, realtime collectors or download workers on any supported API.
+        // Application.getProcessName is unavailable on API 26/27, so read this process PID
+        // from ActivityManager there. The diagnostic UI uses manual restart on those APIs.
+        val processName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            Application.getProcessName()
+        } else {
+            getSystemService(ActivityManager::class.java)
+                ?.runningAppProcesses
+                ?.firstOrNull { it.pid == Process.myPid() }
+                ?.processName
         }
+        if (!DiagnosticRestartPolicy.shouldInitializeApp(processName, packageName)) return
         unifiedDiagnostics.restoreOptInAfterProcessRestart()
         crashReporter.install()
         logger.info(LogCategory.App, "Application started")
