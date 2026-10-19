@@ -14,10 +14,12 @@ clipboard report. No remote uploads, raw Bluetooth identities, server URLs, or m
 3. Confirm **Restart BookWave** to install the AudioTrack observer when the next Media3
    ExoPlayer is created. Restart is explicit because an existing player cannot receive a newly
    injected `AudioOutputProvider` and modifying playback mid-book violates continuity.
-4. The restart trampoline is private, runs in a separate process, closes only the app's main
+4. On Android API 28+, the restart trampoline is private, runs in a separate process, closes only the app's main
    process and reopens the launcher. If the OS does not report the main process or refuses
    restarting it, the app asks the tester to close/reopen BookWave manually. Diagnostic
-   opt-in survives. This remains a hardware acceptance requirement, not a promise about OEMs.
+   opt-in survives. On API 26/27, Start diagnostics retains the opt-in but asks for manual close/reopen instead
+   of starting a second app process. Main-process-only initialization uses a PID-based compatibility fallback.
+   This remains a hardware acceptance requirement, not a promise about OEMs.
 5. Open Debug → Unified diagnostics after reboot. The lab's status must say
    `Installed for this player`, `AudioTrack attached`, or a measured playing route
    before a test can claim AudioTrack coverage. `Not installed` means no route observation.

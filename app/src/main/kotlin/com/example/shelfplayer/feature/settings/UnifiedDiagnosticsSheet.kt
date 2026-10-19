@@ -2,6 +2,8 @@ package com.example.shelfplayer.feature.settings
 
 import android.content.ClipData
 import android.content.Intent
+import android.os.Build
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,6 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.R
 import com.example.shelfplayer.diagnostics.DiagnosticRestartActivity
+import com.example.shelfplayer.diagnostics.DiagnosticRestartPolicy
 import kotlinx.coroutines.launch
 import java.time.Instant
 
@@ -147,7 +150,13 @@ fun UnifiedDiagnosticsSheet(
             confirmButton = {
                 TextButton(onClick = {
                     confirmRestart = false
-                    context.startActivity(Intent(context, DiagnosticRestartActivity::class.java))
+                    if (DiagnosticRestartPolicy.canUseTrampoline(Build.VERSION.SDK_INT)) {
+                        context.startActivity(Intent(context, DiagnosticRestartActivity::class.java))
+                    } else {
+                        // API 26/27 cannot use Application.getProcessName. Keep diagnostics
+                        // opt-in and ask for a normal manual app restart instead.
+                        Toast.makeText(context, R.string.unified_diag_restart_manual, Toast.LENGTH_LONG).show()
+                    }
                 }) { Text(stringResource(R.string.unified_diag_restart_yes)) }
             },
             dismissButton = {
