@@ -15,7 +15,12 @@ class DiagnosticRestartPolicyTest {
 
     @Test
     fun `secondary diagnostic process never runs primary collectors`() {
-        assertTrue(DiagnosticRestartPolicy.shouldInitializeApp("org.homebord.bookwave.debug", "org.homebord.bookwave.debug"))
+        assertTrue(
+            DiagnosticRestartPolicy.shouldInitializeApp(
+                "org.homebord.bookwave.debug",
+                "org.homebord.bookwave.debug",
+            ),
+        )
         assertFalse(
             DiagnosticRestartPolicy.shouldInitializeApp(
                 "org.homebord.bookwave.debug:diagnostics_restart",

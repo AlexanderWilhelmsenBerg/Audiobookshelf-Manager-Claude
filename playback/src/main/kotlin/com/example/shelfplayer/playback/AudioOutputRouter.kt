@@ -328,8 +328,11 @@ class AudioOutputRouter @Inject constructor(
         val chosen = _selectedId.value
         when {
             chosen != null && identity.isAmbiguous(chosen) -> holdAmbiguousSelection(chosen)
+
             chosen != null && chosen !in found -> onDisconnectedSelection(chosen, found.keys)
+
             chosen != null && collisionHeldSelectionId == chosen -> restoreUniqueSelection(chosen)
+
             chosen != null && chosen == guardedHeadsetId && guardedHeadsetMissing ->
                 onGuardedHeadsetReappeared(chosen)
         }
