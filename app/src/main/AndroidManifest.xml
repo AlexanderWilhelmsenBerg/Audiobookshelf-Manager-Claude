@@ -134,7 +134,7 @@
         <activity
             android:name=".diagnostics.DiagnosticRestartActivity"
             android:exported="false"
-            android:process=":diagnostics-restart"
+            android:process=":diagnostics_restart"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
