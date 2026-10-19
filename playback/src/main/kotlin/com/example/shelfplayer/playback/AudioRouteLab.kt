@@ -321,9 +321,12 @@ class AudioRouteLab @Inject constructor(
             "audio-track-released-or-replaced",
         )
         val TRACK_STATES = setOf(
-            "released-or-uninitialized-no-route-measurement", "paused-no-route-measurement",
-            "stopped-no-route-measurement", "playstate-unknown-no-route-measurement",
-            "playing-route-unknown", "route-query-unavailable",
+            "released-or-uninitialized-no-route-measurement",
+            "paused-no-route-measurement",
+            "stopped-no-route-measurement",
+            "playstate-unknown-no-route-measurement",
+            "playing-route-unknown",
+            "route-query-unavailable",
         )
         val TRACK_ROUTE_PATTERN = Regex(
             """playing-to=(?:d[0-9]+|unmapped):[A-Za-z]+(?:\+(?:d[0-9]+|unmapped):[A-Za-z]+)* measured=AudioTrack""",

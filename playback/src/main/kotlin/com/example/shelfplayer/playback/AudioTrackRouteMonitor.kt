@@ -106,8 +106,11 @@ internal class AudioTrackRouteMonitor @Inject constructor(
                     "released-or-uninitialized-no-route-measurement"
 
                 track.playState == AudioTrack.PLAYSTATE_PAUSED -> "paused-no-route-measurement"
+
                 track.playState == AudioTrack.PLAYSTATE_STOPPED -> "stopped-no-route-measurement"
+
                 track.playState != AudioTrack.PLAYSTATE_PLAYING -> "playstate-unknown-no-route-measurement"
+
                 else -> {
                     val routes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
                         track.routedDevices
