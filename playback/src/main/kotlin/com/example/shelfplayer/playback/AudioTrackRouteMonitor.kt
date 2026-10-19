@@ -66,7 +66,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
                 return null
             }
         lab.trackLifecycle("provider-installed")
-        lab.trackObserverStatus("Provider installed; awaiting Media3 AudioTrack creation")
+        lab.trackObserverStatus("Installed for this player; awaiting Media3 AudioTrack creation")
         return object : ForwardingAudioOutputProvider(delegate) {
             override fun getAudioOutput(config: AudioOutputProvider.OutputConfig): AudioOutput {
                 // Deliberately do not catch Media3's own output-creation errors or alter its return value.
