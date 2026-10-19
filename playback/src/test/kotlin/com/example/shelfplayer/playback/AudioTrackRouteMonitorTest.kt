@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import android.media.AudioDeviceInfo
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -10,6 +11,23 @@ import kotlin.test.assertTrue
  * the diagnostic classifier from turning a missing or unmatched sink into a guessed car/headset.
  */
 class AudioTrackRouteMonitorTest {
+    @Test
+    fun `unlisted platform routes are classified only by safe audio type`() {
+        assertEquals("RemoteSubmix", AudioTrackRouteTypes.label(AudioDeviceInfo.TYPE_REMOTE_SUBMIX))
+        assertEquals("BluetoothSco", AudioTrackRouteTypes.label(AudioDeviceInfo.TYPE_BLUETOOTH_SCO))
+        assertEquals("Hdmi", AudioTrackRouteTypes.label(AudioDeviceInfo.TYPE_HDMI))
+        assertEquals("Telephony", AudioTrackRouteTypes.label(AudioDeviceInfo.TYPE_TELEPHONY))
+        assertEquals("Earpiece", AudioTrackRouteTypes.label(AudioDeviceInfo.TYPE_BUILTIN_EARPIECE))
+    }
+
+    @Test
+    fun `ambiguous Bluetooth stays ambiguous and an unsupported type stays unclassified`() {
+        assertEquals("Ambiguous", AudioTrackRouteTypes.label(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP))
+        assertEquals("Car", AudioTrackRouteTypes.label(AudioDeviceInfo.TYPE_BUS))
+        assertEquals("Unclassified", AudioTrackRouteTypes.label(Int.MAX_VALUE))
+        assertFalse(AudioTrackRouteTypes.label(AudioDeviceInfo.TYPE_REMOTE_SUBMIX) == "Car")
+    }
+
     @Test
     fun `released and replaced AudioTracks invalidate late route callbacks`() {
         val epoch = AudioTrackObserverEpoch()

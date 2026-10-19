@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioRouting
@@ -31,6 +32,26 @@ internal class AudioTrackObserverEpoch {
     fun nextSnapshot(): Long = generation.get()
 
     fun isCurrent(value: Long): Boolean = generation.get() == value
+}
+
+/**
+ * Type-only labels for AudioTrack routes excluded from BookWave's selectable output inventory.
+ * No route name, address, platform device ID or product metadata is read. A transport/category
+ * must never be treated as proof that an unattributed media key came from a physical headset.
+ */
+internal object AudioTrackRouteTypes {
+    @SuppressLint("InlinedApi")
+    fun label(type: Int): String = OutputDevices.outputOf(type, null)?.role?.name ?: when (type) {
+        AudioDeviceInfo.TYPE_REMOTE_SUBMIX -> "RemoteSubmix"
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "BluetoothSco"
+        AudioDeviceInfo.TYPE_HDMI,
+        AudioDeviceInfo.TYPE_HDMI_ARC,
+        AudioDeviceInfo.TYPE_HDMI_EARC,
+        -> "Hdmi"
+        AudioDeviceInfo.TYPE_TELEPHONY -> "Telephony"
+        AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "Earpiece"
+        else -> "Unclassified"
+    }
 }
 
 /**
@@ -134,7 +155,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
 
     private fun describe(routes: List<AudioDeviceInfo>): String {
         val values = routes.map { device ->
-            val role = OutputDevices.outputOf(device.type, null)?.role?.name ?: "Other"
+            val role = AudioTrackRouteTypes.label(device.type)
             "${lab.deviceAlias(device.id)}:$role"
         }
         return "playing-to=${values.joinToString("+")} measured=AudioTrack"
