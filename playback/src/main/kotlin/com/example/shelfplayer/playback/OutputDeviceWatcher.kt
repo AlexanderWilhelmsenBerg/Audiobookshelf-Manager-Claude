@@ -116,9 +116,14 @@ class OutputDeviceWatcher @Inject constructor(
             }
 
             override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+                // Two physical devices may share one remembered name. A partial removal
+                // must not reset the shared policy identity and manufacture a fresh connect.
+                val presentIds = liveIdentities()?.presentLogicalIds ?: return
                 removedDevices.orEmpty()
                     .mapNotNull { info -> OutputDevices.of(info.type, info.productName, clock.now()) }
-                    .forEach { device -> connections.onDisconnected(device.id) }
+                    .forEach { device ->
+                        if (device.id !in presentIds) connections.onDisconnected(device.id)
+                    }
             }
         }
         // Null handler: delivered on the main looper, which is where every `Player` read has to happen
@@ -144,6 +149,20 @@ class OutputDeviceWatcher @Inject constructor(
             // itself is delivered serially, but each callback is launched into a coroutine and may suspend;
             // without one lock two callbacks can both pass the gate before either records/loads anything.
             if (!connections.shouldAct(device.id, clock.now())) return@withLock
+
+            // One logical category/name with two live handles is not enough to apply a
+            // per-device Arm/AutoPlay policy to a specific physical output.
+            val identity = liveIdentities()
+            if (identity == null || device.id !in identity.presentLogicalIds ||
+                identity.isAmbiguous(device.id)
+            ) {
+                logger.info(
+                    LogCategory.Playback,
+                    "A device connection was ignored because its output identity was unresolved",
+                    LogField.Public("kind", device.kind.name),
+                )
+                return@withLock
+            }
 
             devices.remember(device)
             // Read *after* the debounce and the remember, so a first-ever connection has been stored and gets
@@ -186,6 +205,20 @@ class OutputDeviceWatcher @Inject constructor(
                 AutoStartAction.None -> Unit
             }
         }
+    }
+
+    /** Fresh, private Android handle census; numeric handles are never saved or logged. */
+    private fun liveIdentities(): LiveOutputIdentity.Snapshot? {
+        val manager = context.getSystemService(AudioManager::class.java) ?: return null
+        val handles = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).orEmpty()
+            .asSequence()
+            .filter(AudioDeviceInfo::isSink)
+            .mapNotNull { info ->
+                OutputDevices.outputOf(info.type, info.productName)?.let { output ->
+                    LiveOutputIdentity.Handle(info.id, output.id)
+                }
+            }.toList()
+        return LiveOutputIdentity.snapshot(handles)
     }
 
     /**

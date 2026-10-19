@@ -102,6 +102,24 @@ A profile switch must not allow:
 - a widget/shortcut/system surface to expose locked or inaccessible profile metadata;
 - restore/resume selection to be inferred from another profile's state.
 
+## Collision-safe live output identity (#274)
+
+A remembered `KnownDevice.id` is an intentionally permission-free transport/name **policy key**, not
+verified physical identity. `AudioDeviceInfo.id` is only a process-scoped live handle; it is never
+persisted or exported. `LiveOutputIdentity` counts distinct live handles for each legacy policy key.
+If two handles map to one key, the key is ambiguous: the router does not pick the first handle,
+does not offer an ambiguous choice as a verified destination, preserves an existing explicit
+selection while pausing instead of falling back to Automatic, and restores only the preference
+when the ambiguity clears (never an automatic Play). Framework-predicted routes naming that
+ambiguous key provide no positive headset evidence for continuity recovery.
+
+`OutputDeviceWatcher` also suppresses per-device Arm/AutoPlay when a newly observed
+connection is ambiguous or no longer present. Removing one same-name handle does not
+manufacture a disconnected/reconnected policy event while another handle remains.
+Stored policies and the existing chooser identity are unchanged; persistent physical aliases,
+optional Bluetooth permission, headset lock and controlled handoff are separately scoped.
+The live index cannot identify which physical device sent a virtual media button.
+
 ## Android Auto headset continuity (GitHub #128)
 
 Car connection is not a playback command. For an already-loaded Media3 item, Android Auto

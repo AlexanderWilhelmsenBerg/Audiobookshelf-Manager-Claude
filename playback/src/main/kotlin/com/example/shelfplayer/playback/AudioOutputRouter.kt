@@ -106,6 +106,11 @@ class AudioOutputRouter @Inject constructor(
     /** Live platform handles keyed by BookWave's stable, permission-free identity. */
     private var live: Map<String, AudioDeviceInfo> = emptyMap()
 
+    // Multiple live platform handles can share a name-based BookWave policy ID. In that
+    // case there is no unique device to select, protect, or advertise as an exact route.
+    private var liveIdentity: LiveOutputIdentity.Snapshot = LiveOutputIdentity.snapshot(emptyList())
+    private var collisionHeldSelectionId: String? = null
+
     fun attach(target: ExoPlayer) {
         player?.removeListener(routeSafetyListener)
         player = target
@@ -129,6 +134,7 @@ class AudioOutputRouter @Inject constructor(
         missingHeadsetGrace = null
         guardedHeadsetId = null
         guardedHeadsetMissing = false
+        collisionHeldSelectionId = null
         player?.removeListener(routeSafetyListener)
         player = null
     }
@@ -203,6 +209,14 @@ class AudioOutputRouter @Inject constructor(
     }
 
     private fun choose(id: String?, destination: ExplicitDestination) {
+        if (id != null && liveIdentity.isAmbiguous(id)) {
+            logger.info(
+                LogCategory.Playback,
+                "Cannot select an audio output whose identity matches multiple connected devices",
+                LogField.Public("kind", kindOf(id)),
+            )
+            return
+        }
         if (id != null && id !in live) {
             logger.info(
                 LogCategory.Playback,
@@ -216,6 +230,7 @@ class AudioOutputRouter @Inject constructor(
         missingHeadsetGrace = null
         guardedHeadsetId = null
         guardedHeadsetMissing = false
+        collisionHeldSelectionId = null
         explicitSelectionState.value = ExplicitSelection(
             sequence = ++nextExplicitSelectionSequence,
             outputId = id,
@@ -228,7 +243,14 @@ class AudioOutputRouter @Inject constructor(
 
     private suspend fun apply(id: String?) = withContext(mainDispatcher) {
         val target = player ?: return@withContext
+        if (id != null && liveIdentity.isAmbiguous(id)) {
+            // A delayed selection coroutine must not clear the preferred device merely
+            // because two physical handles now share one logical name.
+            if (target.isPlaying) target.pause()
+            return@withContext
+        }
         val device = id?.let(live::get)
+        if (id != null && device == null) return@withContext
         target.setPreferredAudioDevice(device)
         publish()
         val routed = routedIds()
@@ -284,20 +306,65 @@ class AudioOutputRouter @Inject constructor(
     private fun refresh() {
         val manager = context.getSystemService(AudioManager::class.java) ?: return
         val devices = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).orEmpty()
-        val found = LinkedHashMap<String, AudioDeviceInfo>()
-        devices.forEach { info ->
-            val output = OutputDevices.outputOf(info.type, info.productName) ?: return@forEach
-            found.putIfAbsent(output.id, info)
+        val mapped = devices.mapNotNull { info ->
+            OutputDevices.outputOf(info.type, info.productName)?.let { output -> info to output.id }
         }
+        val identity = LiveOutputIdentity.snapshot(
+            mapped.map { (info, id) -> LiveOutputIdentity.Handle(info.id, id) },
+        )
+        val found = LinkedHashMap<String, AudioDeviceInfo>()
+        mapped.forEach { (info, id) ->
+            if (identity.uniqueHandleByLogicalId[id] == info.id) found[id] = info
+        }
+        if (identity.ambiguousLogicalIds != liveIdentity.ambiguousLogicalIds) {
+            logger.info(
+                LogCategory.Playback,
+                "Live audio identity collision count changed",
+                LogField.Count("collisions", identity.ambiguousLogicalIds.size),
+            )
+        }
+        liveIdentity = identity
         live = found
         val chosen = _selectedId.value
         when {
+            chosen != null && identity.isAmbiguous(chosen) -> holdAmbiguousSelection(chosen)
             chosen != null && chosen !in found -> onDisconnectedSelection(chosen, found.keys)
-
+            chosen != null && collisionHeldSelectionId == chosen -> restoreUniqueSelection(chosen)
             chosen != null && chosen == guardedHeadsetId && guardedHeadsetMissing ->
                 onGuardedHeadsetReappeared(chosen)
         }
         publish()
+    }
+
+    /** Never use an arbitrary first matching Bluetooth handle or fall back to Automatic. */
+    private fun holdAmbiguousSelection(chosen: String) {
+        if (collisionHeldSelectionId != chosen) {
+            logger.info(
+                LogCategory.Playback,
+                "Audio output identity became ambiguous; keeping intent and pausing",
+                LogField.Public("kind", kindOf(chosen)),
+            )
+        }
+        collisionHeldSelectionId = chosen
+        applicationScope.launch(mainDispatcher) {
+            if (_selectedId.value == chosen && liveIdentity.isAmbiguous(chosen)) {
+                player?.takeIf { it.isPlaying }?.pause()
+            }
+        }
+    }
+
+    /** Recover only the preference when a unique handle returns; never manufacture Play. */
+    private fun restoreUniqueSelection(chosen: String) {
+        collisionHeldSelectionId = null
+        if (chosen == guardedHeadsetId && guardedHeadsetMissing) {
+            onGuardedHeadsetReappeared(chosen)
+        } else {
+            applicationScope.launch {
+                if (_selectedId.value == chosen && chosen in live && !liveIdentity.isAmbiguous(chosen)) {
+                    apply(chosen)
+                }
+            }
+        }
     }
 
     private fun onDisconnectedSelection(chosen: String, connectedIds: Set<String>) {
@@ -414,9 +481,10 @@ class AudioOutputRouter @Inject constructor(
             .setUsage(AudioAttributes.USAGE_MEDIA)
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .build()
-        return manager.getAudioDevicesForAttributes(attributes)
+        val routes = manager.getAudioDevicesForAttributes(attributes)
             .mapNotNull { info -> OutputDevices.outputOf(info.type, info.productName)?.id }
             .toSet()
+        return liveIdentity.safePredictedRoutes(routes)
     }
 
     /**
