@@ -31,6 +31,8 @@ data class OutputClassifierState(
 )
 
 internal object OutputClassifierFacts {
+    // An exhaustive Android constant-name table is intentionally a large when statement.
+    @Suppress("CyclomaticComplexMethod")
     fun typeName(type: Int): String = when (type) {
         AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "BLUETOOTH_A2DP"
         AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "BLUETOOTH_SCO"
@@ -190,7 +192,9 @@ class OutputClassifier @Inject constructor(
             val mapped = OutputDevices.outputOf(type, info.productName)
             val collisionKey = mapped?.id
             val facts = "alias=$alias rawType=$type type=${OutputClassifierFacts.typeName(type)} " +
-                "bookWaveRole=${OutputClassifierFacts.role(type)} " +
+                "bookWaveRole=${mapped?.role?.name ?: "Unclassified"} " +
+                "assessedRole=${OutputClassifierFacts.role(type)} " +
+                "headsetCandidate=${mapped?.isHeadsetCandidate == true} " +
                 "bookWaveMapped=${mapped != null} route=$route " +
                 "evidence=${OutputClassifierFacts.evidence(type)} " +
                 "sink=${info.isSink} source=${info.isSource} " +
@@ -200,16 +204,7 @@ class OutputClassifier @Inject constructor(
             seen[info.id] = facts
             collisionKey
         }
-        previous.forEach { (id, old) ->
-            if (id !in seen) append("output-disappeared ${old.substringBefore(" channels=")}")
-        }
-        seen.forEach { (id, facts) ->
-            if (id !in previous) {
-                append("output-appeared $facts")
-            } else if (previous[id] != facts) {
-                append("output-changed $facts")
-            }
-        }
+        recordChanges(seen)
         val collisions = OutputClassifierFacts.collisions(rows)
         append(
             "snapshot reason=$reason outputs=${outputs.size} mappedCollisions=$collisions " +
@@ -221,6 +216,19 @@ class OutputClassifier @Inject constructor(
             current = seen.values.toList(),
             status = "${outputs.size} outputs · $collisions BookWave identity collisions",
         )
+    }
+
+    private fun recordChanges(seen: Map<Int, String>) {
+        previous.forEach { (id, old) ->
+            if (id !in seen) append("output-disappeared ${old.substringBefore(" channels=")}")
+        }
+        seen.forEach { (id, facts) ->
+            if (id !in previous) {
+                append("output-appeared $facts")
+            } else if (previous[id] != facts) {
+                append("output-changed $facts")
+            }
+        }
     }
 
     private fun append(line: String) {

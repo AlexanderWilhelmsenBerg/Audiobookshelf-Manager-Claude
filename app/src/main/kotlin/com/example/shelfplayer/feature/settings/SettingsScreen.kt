@@ -69,7 +69,6 @@ import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.DevicePolicy
 import com.example.shelfplayer.core.model.playback.KnownDevice
-import com.example.shelfplayer.core.model.playback.PlaybackMetrics
 import com.example.shelfplayer.feature.lock.LockPreferencesUi
 import com.example.shelfplayer.feature.lock.LockSettingsMessage
 import com.example.shelfplayer.feature.lock.LockSettingsUiState
@@ -86,11 +85,9 @@ import com.example.shelfplayer.ui.glass.reportsBackdropScroll
 import com.example.shelfplayer.ui.glass.systemGlass
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
-import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.roundToInt
-import kotlin.time.Duration
 
 @Composable
 fun SettingsRoute(
@@ -115,7 +112,6 @@ fun SettingsRoute(
     val launcherIcon by viewModel.launcherIcon.collectAsStateWithLifecycle()
     val account by viewModel.account.collectAsStateWithLifecycle()
     val knownDevices by viewModel.knownDevices.collectAsStateWithLifecycle()
-    val metrics by viewModel.playbackMetrics.collectAsStateWithLifecycle()
     val appearance by appearanceViewModel.state.collectAsStateWithLifecycle()
     val lock by lockViewModel.state.collectAsStateWithLifecycle()
     val lockPreferences by lockViewModel.preferences.collectAsStateWithLifecycle()
@@ -125,7 +121,6 @@ fun SettingsRoute(
         uiState = uiState,
         launcherIcon = launcherIcon,
         onLauncherIconChanged = viewModel::onLauncherIconChanged,
-        metrics = metrics,
         devices = DeviceSettingsActions(
             watch = GarminDeviceActions(
                 watch,
@@ -225,6 +220,8 @@ fun SettingsRoute(
  * The selection is `rememberSaveable`, so a rotation or a trip through the background comes back to the
  * tab the user was on. Losing it would be a small thing that reads as the screen restarting.
  */
+// Four independent diagnostic sheets make this Compose host intentionally branch-rich.
+@Suppress("CyclomaticComplexMethod")
 @Composable
 fun SettingsScreen(
     uiState: SettingsUiState,
@@ -236,7 +233,6 @@ fun SettingsScreen(
     launcherIcon: LauncherIcon = LauncherIcon.Default,
     onLauncherIconChanged: (LauncherIcon) -> Unit = {},
     devices: DeviceSettingsActions = DeviceSettingsActions(),
-    metrics: PlaybackMetrics = PlaybackMetrics.Empty,
     appearance: AppearanceUiState = AppearanceUiState(),
     appearanceActions: AppearanceActions = AppearanceActions(),
     sleepScheduleActions: SleepScheduleSettingsActions = SleepScheduleSettingsActions(),
@@ -475,8 +471,7 @@ fun SettingsScreen(
                             uiState = uiState,
                             launcherIcon = launcherIcon,
                             onLauncherIconChanged = onLauncherIconChanged,
-                            metrics = metrics,
-                            diagnostics = DiagnosticsInputs(
+                                                diagnostics = DiagnosticsInputs(
                                 onOpenEventLog = { isEventLogOpen = true },
                                 onOpenDebugConsole = { isDebugConsoleOpen = true },
                                 onOpenAudioRouteLab = { isAudioRouteLabOpen = true },
@@ -568,17 +563,15 @@ private fun LazyListScope.serverTab(uiState: SettingsUiState, inputs: ServerTabI
 }
 
 /**
- * PRODUCT_SPEC SET-002 — the app's own version, and the readings.
+ * PRODUCT_SPEC SET-002 — BookWave identity and a focused Debug toolbox.
  *
- * Everything below the Testing heading exists to make an acceptance case checkable on a device rather
- * than through `adb`. It is deliberately grouped and deliberately labelled as such: these are numbers to
- * verify a build against, not settings to change.
+ * Previous per-device acceptance readings remain in the copyable Debug Console,
+ * rather than occupying the About page.
  */
 private fun LazyListScope.aboutTab(
     uiState: SettingsUiState,
     launcherIcon: LauncherIcon,
     onLauncherIconChanged: (LauncherIcon) -> Unit,
-    metrics: PlaybackMetrics,
     diagnostics: DiagnosticsInputs,
     recovery: RecoveryTestInputs,
 ) {
@@ -765,42 +758,6 @@ data class DeviceSettingsActions(
     val onPolicyChanged: (String, DevicePolicy) -> Unit = { _, _ -> },
     val onForget: (String) -> Unit = {},
 )
-
-/**
- * PRODUCT_SPEC PLAY-006 — rebuffer count and startup latency, with nowhere to put a title.
- *
- * The rebuffer count and the startup times pull in opposite directions, which is exactly why both are
- * shown: a larger buffer should reduce the first and lengthen the others, and somebody choosing a preset on
- * a slow connection needs to see the trade rather than one half of it.
- */
-private fun LazyListScope.playbackMetricsRows(metrics: PlaybackMetrics) {
-    if (metrics.isEmpty) {
-        item { Hint(text = stringResource(R.string.about_metrics_empty)) }
-        return
-    }
-    item {
-        TextRow(labelRes = R.string.about_metrics_rebuffers, value = metrics.rebuffers.toString())
-    }
-    metrics.lastStartup?.let { latency ->
-        item { TextRow(labelRes = R.string.about_metrics_last_startup, value = latency.asSeconds()) }
-    }
-    metrics.slowestStartup?.let { latency ->
-        item { TextRow(labelRes = R.string.about_metrics_slowest_startup, value = latency.asSeconds()) }
-    }
-    item {
-        TextRow(labelRes = R.string.about_metrics_startups, value = metrics.startupsMeasured.toString())
-    }
-    item { Hint(text = stringResource(R.string.about_metrics_hint)) }
-}
-
-/** One decimal. A startup of "1.4 s" is worth a digit; "1.437 s" is a number nobody asked for. */
-@Composable
-private fun Duration.asSeconds(): String = stringResource(
-    R.string.about_metrics_seconds,
-    String.format(Locale.getDefault(), "%.1f", inWholeMilliseconds / MILLIS_PER_SECOND),
-)
-
-private const val MILLIS_PER_SECOND = 1000.0
 
 /**
  * PRODUCT_SPEC SET-002 — the tabs, in the order the owner asked for.

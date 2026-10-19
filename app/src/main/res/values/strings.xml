@@ -623,7 +623,6 @@
       clothes. It went stale between every phase and told a listener nothing they could act on. What a
       user needs from this screen is the version — which is the row above it.
     -->
-    <string name="about_phase">An Audiobookshelf client for Android. Streaming and offline listening, chapters, bookmarks, a sleep timer, Android Auto, and the server management tools.</string>
 
     <!--
       PRODUCT_SPEC SET-003 — the launcher icons.
@@ -655,14 +654,6 @@
     <string name="settings_startup_resume">Play the last book</string>
 
     <!-- PRODUCT_SPEC PLAY-006 — the two readings that say whether the buffer preset is the right one. -->
-    <string name="about_section_playback_metrics">Playback since the app started</string>
-    <string name="about_metrics_empty">Nothing has played yet.</string>
-    <string name="about_metrics_rebuffers">Times playback ran out of buffer</string>
-    <string name="about_metrics_last_startup">Last wait before a book started</string>
-    <string name="about_metrics_slowest_startup">Longest wait</string>
-    <string name="about_metrics_startups">Books started</string>
-    <string name="about_metrics_hint">A larger buffer should make the first number smaller and the others larger. No book titles are recorded here.</string>
-    <string name="about_metrics_seconds">%1$s s</string>
     <string name="settings_section_devices">When a device connects</string>
     <string name="settings_devices_hint">Each headset, speaker or car gets its own answer. New devices start at Ready — the book is loaded and paused, so the play button on your headphones starts it instantly. A device appears here the first time you connect it.</string>
     <string name="settings_devices_empty">No devices yet. Connect headphones, a speaker or a car and it will appear here.</string>
@@ -682,8 +673,6 @@
     <string name="settings_icon_monochrome">Mono</string>
     <string name="settings_icon_hint">Changing the icon does not interrupt anything that is playing. Your home screen may take a moment to catch up, and an icon you placed there by hand can need placing again.</string>
     <!-- PRODUCT_SPEC 14.4 — the in-app log. -->
-    <string name="about_section_diagnostics">Diagnostics</string>
-    <string name="event_log_body">A record of what the app has done since it started: playback, sync, network and errors. Nothing here is sent anywhere, and it is cleared when the app closes.</string>
     <string name="event_log_open">Open the event log</string>
     <string name="event_log_title">Event log</string>
     <!-- %1$d is the number of lines held. -->
@@ -704,8 +693,6 @@
     <string name="event_log_filter_reset">Reset</string>
     <string name="event_log_count_filtered">Showing %1$d of %2$d</string>
     <string name="event_log_no_matches">No events match this search or filter. Reset to see everything.</string>
-    <string name="about_section_testing">This device</string>
-    <string name="about_testing_body">What the app can see about this phone and this server: what the server supports, what is stored here, and whether the notification and car surfaces are reachable. Nothing here changes how the app behaves.</string>
 
     <string name="settings_section_libraries">Libraries</string>
     <!-- PRODUCT_SPEC 6.1 step 9 — the library the app opens on. %1$s is the library's name. -->
@@ -737,9 +724,6 @@
     <string name="settings_server_confirmed">Confirmed</string>
     <string name="settings_server_unconfirmed">Not confirmed</string>
 
-    <string name="settings_section_storage">Storage on this device</string>
-    <string name="settings_storage_body">What this app has saved. Two accounts share a server\'s books, so a number can be larger than what you can see.</string>
-    <string name="settings_storage_loading">Reading…</string>
     <string name="settings_storage_servers">Servers</string>
     <string name="settings_storage_servers_hint">Two accounts on one server count once.</string>
     <string name="settings_storage_profiles">Profiles</string>
@@ -1046,7 +1030,6 @@
 
     <!-- PRODUCT_SPEC 14.4 - the debug console. -->
     <string name="debug_console_open">Open the debug console</string>
-    <string name="debug_console_body">Everything this build knows about itself, as one block you can copy and paste into a report. It carries no server address, no library or book names, and no device names.</string>
     <string name="debug_console_title">Debug console</string>
     <string name="debug_console_subtitle">Copy this and paste it wherever you are reporting the problem.</string>
     <string name="debug_console_copy">Copy everything</string>

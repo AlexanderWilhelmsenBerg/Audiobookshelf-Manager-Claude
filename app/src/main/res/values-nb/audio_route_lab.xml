@@ -2,7 +2,6 @@
 <resources>
     <string name="route_lab_title">Lydrutelab</string>
     <string name="route_lab_open">Åpne lydrutelab</string>
-    <string name="route_lab_back">Tilbake til feilsøkingskonsoll</string>
     <string name="route_lab_explanation">Frivillig rutediagnostikk. Bruker enhetsroller og kontrollhendelser uten navn eller lydopptak. Faktisk AudioTrack-rute kan bare måles hvis opptaket allerede er aktivert når neste avspillertjeneste starter. Start opptaket og la tjenesten starte på nytt før testen. Test bare når bilen står stille. Opptaket slettes automatisk etter 24 timer.</string>
     <string name="route_lab_start">Start opptak</string>
     <string name="route_lab_stop">Stopp opptak</string>

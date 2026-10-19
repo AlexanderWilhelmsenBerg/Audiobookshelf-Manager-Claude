@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import android.annotation.SuppressLint
 import android.media.AudioDeviceInfo
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -10,6 +11,7 @@ import kotlin.test.assertTrue
  * The actual Android AudioTrack integration needs device acceptance; these pure contracts prevent
  * the diagnostic classifier from turning a missing or unmatched sink into a guessed car/headset.
  */
+@SuppressLint("InlinedApi")
 class AudioTrackRouteMonitorTest {
     @Test
     fun `unlisted platform routes are classified only by safe audio type`() {
