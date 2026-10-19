@@ -116,8 +116,16 @@ class OutputDeviceWatcher @Inject constructor(
             }
 
             override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+                // A duplicate-name peer may still be connected. Do not erase the shared
+                // connection debounce state when only one physical handle disappeared.
+                val remaining = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                    .asSequence()
+                    .filter { it.isSink }
+                    .mapNotNull { info -> OutputDevices.of(info.type, info.productName, clock.now())?.id }
+                    .toSet()
                 removedDevices.orEmpty()
                     .mapNotNull { info -> OutputDevices.of(info.type, info.productName, clock.now()) }
+                    .filter { it.id !in remaining }
                     .forEach { device -> connections.onDisconnected(device.id) }
             }
         }
@@ -140,6 +148,17 @@ class OutputDeviceWatcher @Inject constructor(
         val device = OutputDevices.of(info.type, info.productName, clock.now()) ?: return
 
         actionGate.withLock {
+            // No stored name-based AutoPlay policy can identify one of two simultaneous
+            // same-name Bluetooth devices. Suppress connection actions, not just routing.
+            if (isAmbiguousConnectedOutput(device.id)) {
+                logger.info(
+                    LogCategory.Playback,
+                    "Connection policy suppressed because multiple outputs share an identity",
+                    LogField.Public("kind", device.kind.name),
+                )
+                return@withLock
+            }
+
             // The startup-replay and duplicate checks belong inside the same lock as the action. The callback
             // itself is delivered serially, but each callback is launched into a coroutine and may suspend;
             // without one lock two callbacks can both pass the gate before either records/loads anything.
@@ -186,6 +205,20 @@ class OutputDeviceWatcher @Inject constructor(
                 AutoStartAction.None -> Unit
             }
         }
+    }
+
+    /** A permission-free current snapshot. It cannot infer persistent physical identity. */
+    private fun isAmbiguousConnectedOutput(logicalId: String): Boolean {
+        val manager = context.getSystemService(AudioManager::class.java) ?: return true
+        val handles = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).asSequence()
+            .filter { it.isSink }
+            .mapNotNull { info ->
+                OutputDevices.outputOf(info.type, info.productName)?.let { output ->
+                    LiveOutputIdentity.Handle(info.id, output.id, output.kind)
+                }
+            }
+            .toList()
+        return LiveOutputIdentity.classify(handles).isAmbiguous(logicalId)
     }
 
     /**
