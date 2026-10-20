@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="unified_diag_open">Start diagnostics / JSON report</string>
+    <string name="unified_diag_title">Unified diagnostics</string>
+    <string name="unified_diag_description">Record the event log, playback race, Audio Route Lab and output classifier together. The structured JSON is copied only when you choose Copy. No names or addresses are collected. Use while stationary.</string>
+    <string name="unified_diag_recording">Recording all diagnostics</string>
+    <string name="unified_diag_stopped">Recording stopped</string>
+    <string name="unified_diag_start">Start diagnostics</string>
+    <string name="unified_diag_stop">Stop diagnostics</string>
+    <string name="unified_diag_clear">Clear all</string>
+    <string name="unified_diag_copy_json">Copy complete JSON report</string>
+    <string name="unified_diag_export_help">One versioned JSON report includes the event log, Debug Console, AudioTrack evidence, route-policy events, output classifier, and race capture. Reports are bounded and remain local until copied.</string>
+    <string name="unified_diag_restart_title">Restart BookWave for AudioTrack capture?</string>
+    <string name="unified_diag_restart_body">The player must be created after recording starts to observe its actual AudioTrack route. Please pause playback first. Restarting BookWave closes the current playback process and opens the app again. The opt-in recorders start automatically in the new process. Unsaved playback may be interrupted.</string>
+    <string name="unified_diag_restart_yes">Restart BookWave</string>
+    <string name="unified_diag_restart_later">I will restart later</string>
+    <string name="unified_diag_restart_manual">Could not restart automatically. Close BookWave completely and open it again; diagnostic recording remains enabled.</string>
+</resources>

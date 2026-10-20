@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="route_lab_title">Lydrutelab</string>
+    <string name="route_lab_open">Åpne lydrutelab</string>
+    <string name="route_lab_explanation">Frivillig rutediagnostikk. Bruker enhetsroller og kontrollhendelser uten navn eller lydopptak. Faktisk AudioTrack-rute kan bare måles hvis opptaket allerede er aktivert når neste avspillertjeneste starter. Start opptaket og la tjenesten starte på nytt før testen. Test bare når bilen står stille. Opptaket slettes automatisk etter 24 timer.</string>
+    <string name="route_lab_start">Start opptak</string>
+    <string name="route_lab_stop">Stopp opptak</string>
+    <string name="route_lab_clear">Slett opptak</string>
+    <string name="route_lab_copy">Kopier ruterapport</string>
+    <string name="route_lab_recording">Opptak aktivt</string>
+    <string name="route_lab_not_recording">Ingen opptak</string>
+    <string name="route_lab_route_title">Rutepolicy (ikke målt lyd)</string>
+    <string name="route_lab_steps_title">Veiledet maskinvaretest</string>
+    <string name="route_lab_steps_help">Trykk klargjør A/B FØR du trykker på den fysiske knappen (innen 12 sekunder), og marker hvor du hørte lyden. Kilden er bare merket av brukeren og ikke verifisert av Android.</string>
+    <string name="route_lab_baseline">A spiller</string>
+    <string name="route_lab_car_bluetooth">Bilens Bluetooth</string>
+    <string name="route_lab_auto">Start Auto</string>
+    <string name="route_lab_car_play">Spill i bil</string>
+    <string name="route_lab_button_a">Klargjør A</string>
+    <string name="route_lab_button_b">Klargjør B</string>
+    <string name="route_lab_heard_title">Hvor hørte du lyden?</string>
+    <string name="route_lab_car">Bil</string>
+    <string name="route_lab_silence">Ingen lyd</string>
+    <string name="route_lab_phone">Telefon</string>
+    <string name="route_lab_latest">Nyeste hendelser</string>
+</resources>

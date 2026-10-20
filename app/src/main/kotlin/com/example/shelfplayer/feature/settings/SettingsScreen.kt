@@ -69,7 +69,6 @@ import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.playback.DevicePolicy
 import com.example.shelfplayer.core.model.playback.KnownDevice
-import com.example.shelfplayer.core.model.playback.PlaybackMetrics
 import com.example.shelfplayer.feature.lock.LockPreferencesUi
 import com.example.shelfplayer.feature.lock.LockSettingsMessage
 import com.example.shelfplayer.feature.lock.LockSettingsUiState
@@ -86,11 +85,9 @@ import com.example.shelfplayer.ui.glass.reportsBackdropScroll
 import com.example.shelfplayer.ui.glass.systemGlass
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
-import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.roundToInt
-import kotlin.time.Duration
 
 @Composable
 fun SettingsRoute(
@@ -115,7 +112,6 @@ fun SettingsRoute(
     val launcherIcon by viewModel.launcherIcon.collectAsStateWithLifecycle()
     val account by viewModel.account.collectAsStateWithLifecycle()
     val knownDevices by viewModel.knownDevices.collectAsStateWithLifecycle()
-    val metrics by viewModel.playbackMetrics.collectAsStateWithLifecycle()
     val appearance by appearanceViewModel.state.collectAsStateWithLifecycle()
     val lock by lockViewModel.state.collectAsStateWithLifecycle()
     val lockPreferences by lockViewModel.preferences.collectAsStateWithLifecycle()
@@ -125,7 +121,6 @@ fun SettingsRoute(
         uiState = uiState,
         launcherIcon = launcherIcon,
         onLauncherIconChanged = viewModel::onLauncherIconChanged,
-        metrics = metrics,
         devices = DeviceSettingsActions(
             watch = GarminDeviceActions(
                 watch,
@@ -225,6 +220,8 @@ fun SettingsRoute(
  * The selection is `rememberSaveable`, so a rotation or a trip through the background comes back to the
  * tab the user was on. Losing it would be a small thing that reads as the screen restarting.
  */
+// Four independent diagnostic sheets make this Compose host intentionally branch-rich.
+@Suppress("CyclomaticComplexMethod")
 @Composable
 fun SettingsScreen(
     uiState: SettingsUiState,
@@ -236,7 +233,6 @@ fun SettingsScreen(
     launcherIcon: LauncherIcon = LauncherIcon.Default,
     onLauncherIconChanged: (LauncherIcon) -> Unit = {},
     devices: DeviceSettingsActions = DeviceSettingsActions(),
-    metrics: PlaybackMetrics = PlaybackMetrics.Empty,
     appearance: AppearanceUiState = AppearanceUiState(),
     appearanceActions: AppearanceActions = AppearanceActions(),
     sleepScheduleActions: SleepScheduleSettingsActions = SleepScheduleSettingsActions(),
@@ -288,6 +284,9 @@ fun SettingsScreen(
     // PRODUCT_SPEC 14.4 — the debug console, alongside the event log for the same reason it is on this tab:
     // both exist to be *reported*, and the console is the log plus everything around it.
     var isDebugConsoleOpen by rememberSaveable { mutableStateOf(false) }
+    var isAudioRouteLabOpen by rememberSaveable { mutableStateOf(false) }
+    var isOutputClassifierOpen by rememberSaveable { mutableStateOf(false) }
+    var isUnifiedDiagnosticsOpen by rememberSaveable { mutableStateOf(false) }
     // The header's own blur source, and it must be *this* one rather than the app-wide state the mini
     // player uses. A haze effect that is a descendant of its own source draws nothing, and the header is
     // inside the navigation graph the app-wide source covers — the trap that made the navigation capsule
@@ -473,10 +472,12 @@ fun SettingsScreen(
                             uiState = uiState,
                             launcherIcon = launcherIcon,
                             onLauncherIconChanged = onLauncherIconChanged,
-                            metrics = metrics,
                             diagnostics = DiagnosticsInputs(
                                 onOpenEventLog = { isEventLogOpen = true },
                                 onOpenDebugConsole = { isDebugConsoleOpen = true },
+                                onOpenAudioRouteLab = { isAudioRouteLabOpen = true },
+                                onOpenOutputClassifier = { isOutputClassifierOpen = true },
+                                onOpenUnifiedDiagnostics = { isUnifiedDiagnosticsOpen = true },
                             ),
                             recovery = recovery,
                         )
@@ -488,6 +489,9 @@ fun SettingsScreen(
 
     if (isEventLogOpen) EventLogSheet(onDismiss = { isEventLogOpen = false })
     if (isDebugConsoleOpen) DebugConsoleSheet(onDismiss = { isDebugConsoleOpen = false })
+    if (isAudioRouteLabOpen) AudioRouteLabSheet(onDismiss = { isAudioRouteLabOpen = false })
+    if (isOutputClassifierOpen) OutputClassifierSheet(onDismiss = { isOutputClassifierOpen = false })
+    if (isUnifiedDiagnosticsOpen) UnifiedDiagnosticsSheet(onDismiss = { isUnifiedDiagnosticsOpen = false })
 }
 
 /**
@@ -562,17 +566,15 @@ private fun LazyListScope.serverTab(uiState: SettingsUiState, inputs: ServerTabI
 }
 
 /**
- * PRODUCT_SPEC SET-002 — the app's own version, and the readings.
+ * PRODUCT_SPEC SET-002 — BookWave identity and a focused Debug toolbox.
  *
- * Everything below the Testing heading exists to make an acceptance case checkable on a device rather
- * than through `adb`. It is deliberately grouped and deliberately labelled as such: these are numbers to
- * verify a build against, not settings to change.
+ * Previous per-device acceptance readings remain in the copyable Debug Console,
+ * rather than occupying the About page.
  */
 private fun LazyListScope.aboutTab(
     uiState: SettingsUiState,
     launcherIcon: LauncherIcon,
     onLauncherIconChanged: (LauncherIcon) -> Unit,
-    metrics: PlaybackMetrics,
     diagnostics: DiagnosticsInputs,
     recovery: RecoveryTestInputs,
 ) {
@@ -584,7 +586,6 @@ private fun LazyListScope.aboutTab(
     // And which branch it came from. This row exists because the version no longer says: the code is a
     // build counter now, so a tester holding two APKs reads the branch here rather than decoding a number.
     item { TextRow(labelRes = R.string.about_source, value = uiState.sourceLabel) }
-    item { Hint(text = stringResource(R.string.about_phase)) }
 
     // PRODUCT_SPEC SET-003 — on the About tab because it is about the app's own identity rather than
     // about a server, a book or how playback behaves.
@@ -592,56 +593,35 @@ private fun LazyListScope.aboutTab(
     item { LauncherIconPicker(selected = launcherIcon, onSelected = onLauncherIconChanged) }
     item { Hint(text = stringResource(R.string.settings_icon_hint)) }
 
-    // PRODUCT_SPEC 14.4 — before the readings, because this is the one thing on the tab somebody reaches
-    // for while something is wrong rather than while checking a build.
-    item { SectionHeader(text = stringResource(R.string.about_section_diagnostics)) }
-    item { Hint(text = stringResource(R.string.event_log_body)) }
+    // Keep About about BookWave; historical acceptance telemetry remains in Debug Console.
+    item { SectionHeader(text = stringResource(R.string.about_section_debug)) }
+    item { Hint(text = stringResource(R.string.about_debug_body)) }
+    item {
+        TextButton(onClick = diagnostics.onOpenUnifiedDiagnostics, modifier = Modifier.padding(horizontal = 8.dp)) {
+            Text(stringResource(R.string.unified_diag_open))
+        }
+    }
     item {
         TextButton(onClick = diagnostics.onOpenEventLog, modifier = Modifier.padding(horizontal = 8.dp)) {
-            Text(text = stringResource(R.string.event_log_open))
+            Text(stringResource(R.string.event_log_open))
         }
     }
-
-    // PRODUCT_SPEC 14.4 — the log plus everything around it, in one copyable block.
-    item { Hint(text = stringResource(R.string.debug_console_body)) }
     item {
         TextButton(onClick = diagnostics.onOpenDebugConsole, modifier = Modifier.padding(horizontal = 8.dp)) {
-            Text(text = stringResource(R.string.debug_console_open))
+            Text(stringResource(R.string.debug_console_open))
         }
     }
-
-    // AUTH-004 — the control that makes the renewal path reachable on a device. Debug builds only, and
-    // the gate is here rather than in the ViewModel so the row simply does not exist in a release APK.
+    item {
+        TextButton(onClick = diagnostics.onOpenAudioRouteLab, modifier = Modifier.padding(horizontal = 8.dp)) {
+            Text(stringResource(R.string.route_lab_open))
+        }
+    }
+    item {
+        TextButton(onClick = diagnostics.onOpenOutputClassifier, modifier = Modifier.padding(horizontal = 8.dp)) {
+            Text(stringResource(R.string.output_classifier_open))
+        }
+    }
     if (BuildConfig.DEBUG) recoveryTestRows(recovery)
-
-    // PRODUCT_SPEC PLAY-006 — beside the diagnostics rather than under Testing, because these are
-    // readings a listener uses to choose a buffer preset, not numbers to verify a build against.
-    item { SectionHeader(text = stringResource(R.string.about_section_playback_metrics)) }
-    playbackMetricsRows(metrics)
-
-    item { SectionHeader(text = stringResource(R.string.about_section_testing)) }
-    item { Hint(text = stringResource(R.string.about_testing_body)) }
-
-    uiState.server?.let { server -> capabilityRows(server) }
-
-    item { SubHeader(text = stringResource(R.string.settings_section_storage)) }
-    item { Hint(text = stringResource(R.string.settings_storage_body)) }
-    if (uiState.isLoaded) {
-        storageRows(uiState.storage)
-    } else {
-        item { Hint(text = stringResource(R.string.settings_storage_loading)) }
-    }
-
-    // PRODUCT_SPEC PLAY-004 / PLAY-005 — the outbox's readings, then the checks they exist to settle. In
-    // that order: a checklist above the numbers it is judged by would send the reader scrolling.
-    if (uiState.isLoaded) {
-        item { HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-        notificationRows(uiState.notifications)
-        // PRODUCT_SPEC PLAY-001 / ROUTE-002 — beside the notification block because it answers the same
-        // shape of question: a control surface the app cannot see, and the reasons it might not be there.
-        carRows(uiState.car)
-        sessionSyncRows(uiState.sessionSync)
-    }
 }
 
 /**
@@ -681,7 +661,13 @@ private fun LazyListScope.recoveryTestRows(inputs: RecoveryTestInputs) {
  * open/closed state belongs to [SettingsScreen] and never leaves it.
  */
 @Immutable
-data class DiagnosticsInputs(val onOpenEventLog: () -> Unit = {}, val onOpenDebugConsole: () -> Unit = {})
+data class DiagnosticsInputs(
+    val onOpenEventLog: () -> Unit = {},
+    val onOpenDebugConsole: () -> Unit = {},
+    val onOpenAudioRouteLab: () -> Unit = {},
+    val onOpenOutputClassifier: () -> Unit = {},
+    val onOpenUnifiedDiagnostics: () -> Unit = {},
+)
 
 /**
  * The debug recovery control's three parameters, bundled for the reason the other `*Inputs` types are:
@@ -781,42 +767,6 @@ data class DeviceSettingsActions(
     val onPolicyChanged: (String, DevicePolicy) -> Unit = { _, _ -> },
     val onForget: (String) -> Unit = {},
 )
-
-/**
- * PRODUCT_SPEC PLAY-006 — rebuffer count and startup latency, with nowhere to put a title.
- *
- * The rebuffer count and the startup times pull in opposite directions, which is exactly why both are
- * shown: a larger buffer should reduce the first and lengthen the others, and somebody choosing a preset on
- * a slow connection needs to see the trade rather than one half of it.
- */
-private fun LazyListScope.playbackMetricsRows(metrics: PlaybackMetrics) {
-    if (metrics.isEmpty) {
-        item { Hint(text = stringResource(R.string.about_metrics_empty)) }
-        return
-    }
-    item {
-        TextRow(labelRes = R.string.about_metrics_rebuffers, value = metrics.rebuffers.toString())
-    }
-    metrics.lastStartup?.let { latency ->
-        item { TextRow(labelRes = R.string.about_metrics_last_startup, value = latency.asSeconds()) }
-    }
-    metrics.slowestStartup?.let { latency ->
-        item { TextRow(labelRes = R.string.about_metrics_slowest_startup, value = latency.asSeconds()) }
-    }
-    item {
-        TextRow(labelRes = R.string.about_metrics_startups, value = metrics.startupsMeasured.toString())
-    }
-    item { Hint(text = stringResource(R.string.about_metrics_hint)) }
-}
-
-/** One decimal. A startup of "1.4 s" is worth a digit; "1.437 s" is a number nobody asked for. */
-@Composable
-private fun Duration.asSeconds(): String = stringResource(
-    R.string.about_metrics_seconds,
-    String.format(Locale.getDefault(), "%.1f", inWholeMilliseconds / MILLIS_PER_SECOND),
-)
-
-private const val MILLIS_PER_SECOND = 1000.0
 
 /**
  * PRODUCT_SPEC SET-002 — the tabs, in the order the owner asked for.

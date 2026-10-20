@@ -29,6 +29,183 @@ class CarArrivalRouteRecoveryTest {
     )
 
     @Test
+    fun `Android Auto Play selects the car only when it is a new Play intent`() {
+        assertTrue(
+            shouldSelectCarForControllerPlay(
+                requestedPlay = true,
+                controllerIsCar = true,
+                playWhenReady = false,
+            ),
+        )
+        // A duplicate Gearhead Play during healthy headset playback is not permission to steal routing.
+        assertTrue(
+            !shouldSelectCarForControllerPlay(
+                requestedPlay = true,
+                controllerIsCar = true,
+                playWhenReady = true,
+            ),
+        )
+        assertTrue(
+            !shouldSelectCarForControllerPlay(
+                requestedPlay = false,
+                controllerIsCar = true,
+                playWhenReady = false,
+            ),
+        )
+        // Hardware media keys without an attributable Bluetooth source do not choose an arbitrary route.
+        assertTrue(
+            !shouldSelectCarForControllerPlay(
+                requestedPlay = true,
+                controllerIsCar = false,
+                playWhenReady = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `car transient headset disappearance retains exact preference but not a newer car selection`() {
+        assertTrue(shouldRetainContinuityHeadset(buds.id, buds.id, emptySet()))
+        assertTrue(!shouldRetainContinuityHeadset(buds.id, buds.id, setOf(buds.id)))
+        assertTrue(!shouldRetainContinuityHeadset(buds.id, null, emptySet()))
+        assertTrue(!shouldRetainContinuityHeadset(buds.id, "bluetooth:car", emptySet()))
+        assertTrue(!shouldRetainContinuityHeadset(null, buds.id, emptySet()))
+    }
+
+    @Test
+    fun `guarded headset routing stops playback on unknown or car policy outputs`() {
+        assertTrue(shouldSuspendGuardedPlayback(buds.id, buds.id, emptySet(), true))
+        assertTrue(shouldSuspendGuardedPlayback(buds.id, buds.id, setOf("speaker:phone"), true))
+        assertTrue(shouldSuspendGuardedPlayback(buds.id, buds.id, setOf(buds.id, "bluetooth:car"), true))
+        assertTrue(!shouldSuspendGuardedPlayback(buds.id, buds.id, setOf(buds.id), true))
+        assertTrue(!shouldSuspendGuardedPlayback(buds.id, buds.id, setOf("speaker:phone"), false))
+        assertTrue(!shouldSuspendGuardedPlayback(buds.id, null, setOf("speaker:phone"), true))
+        assertTrue(!shouldSuspendGuardedPlayback(null, buds.id, emptySet(), true))
+    }
+
+    @Test
+    fun `trace auto-5 unknown policy route must not authorize automatic Play`() = runBlocking {
+        val outputs = MutableStateFlow(listOf(buds))
+        val selected = MutableStateFlow<String?>(null)
+        val events = mutableListOf<CarArrivalRouteRecovery.Event>()
+        var requested = 0
+
+        val held = CarArrivalRouteRecovery(120.milliseconds).secure(
+            target = target,
+            outputs = outputs,
+            selectedId = selected,
+            isStillEligible = { true },
+            onEvent = events::add,
+        ) { id ->
+            requested++
+            selected.value = id
+            true
+        }
+
+        assertNull(held, "the preference was requested, but Android did not report it as active")
+        assertTrue(requested > 0)
+        assertTrue(CarArrivalRouteRecovery.Event.Reasserted in events)
+        assertTrue(CarArrivalRouteRecovery.Event.RouteUnknown in events)
+        assertTrue(CarArrivalRouteRecovery.Event.Secured !in events)
+        assertTrue(CarArrivalRouteRecovery.Event.TimedOut in events)
+    }
+
+    @Test
+    fun `confirmed headset reappearance after unknown routing secures once`() = runBlocking {
+        val outputs = MutableStateFlow(listOf(buds))
+        val selected = MutableStateFlow<String?>(null)
+        val changes = launch {
+            delay(35)
+            outputs.value = listOf(buds.copy(isActive = true))
+        }
+        val held = CarArrivalRouteRecovery(250.milliseconds).secure(
+            target = target,
+            outputs = outputs,
+            selectedId = selected,
+            isStillEligible = { true },
+        ) { id ->
+            selected.value = id
+            true
+        }
+        changes.join()
+        assertEquals(buds.id, held)
+    }
+
+    @Test
+    fun `already active original headset is left untouched without reassertion`() = runBlocking {
+        val outputs = MutableStateFlow(listOf(buds.copy(isActive = true)))
+        val selected = MutableStateFlow<String?>(null)
+        var reassertions = 0
+        val events = mutableListOf<CarArrivalRouteRecovery.Event>()
+
+        val held = CarArrivalRouteRecovery(200.milliseconds).secure(
+            target = target,
+            outputs = outputs,
+            selectedId = selected,
+            isStillEligible = { true },
+            onEvent = events::add,
+        ) {
+            reassertions++
+            true
+        }
+        assertEquals(buds.id, held)
+        assertEquals(0, reassertions)
+        assertEquals(null, selected.value)
+        assertTrue(CarArrivalRouteRecovery.Event.Secured in events)
+        assertTrue(headsetAlreadyActive(buds.id, outputs.value))
+    }
+
+    @Test
+    fun `known speaker route cannot authorize headset Play despite preferred selection`() = runBlocking {
+        val speaker = AudioOutput(
+            id = "speaker:phone",
+            displayName = "Phone speaker",
+            kind = DeviceKind.Speaker,
+            role = AudioOutputRole.Speaker,
+            isActive = true,
+        )
+        val outputs = MutableStateFlow(listOf(buds, speaker))
+        val selected = MutableStateFlow<String?>(null)
+        val events = mutableListOf<CarArrivalRouteRecovery.Event>()
+
+        val held = CarArrivalRouteRecovery(120.milliseconds).secure(
+            target = target,
+            outputs = outputs,
+            selectedId = selected,
+            isStillEligible = { true },
+            onEvent = events::add,
+        ) { id ->
+            selected.value = id
+            true
+        }
+        assertNull(held)
+        assertEquals(buds.id, selected.value)
+        assertTrue(CarArrivalRouteRecovery.Event.RouteCompeting in events)
+        assertTrue(CarArrivalRouteRecovery.Event.TimedOut in events)
+    }
+
+    @Test
+    fun `ambiguous active outputs are not treated as a safe no-op`() = runBlocking {
+        val other = buds.copy(id = "bluetooth:other", isActive = true)
+        val outputs = MutableStateFlow(listOf(buds.copy(isActive = true), other))
+        val selected = MutableStateFlow<String?>(null)
+        var reassertions = 0
+
+        assertTrue(!headsetAlreadyActive(buds.id, outputs.value))
+        val held = CarArrivalRouteRecovery(200.milliseconds).secure(
+            target = target,
+            outputs = outputs,
+            selectedId = selected,
+            isStillEligible = { true },
+        ) { id ->
+            reassertions++
+            selected.value = id
+            true
+        }
+        assertNull(held, "ambiguous active output identity must not authorize automatic Play")
+        assertTrue(reassertions > 0, "unknown/competing active outputs must use the guarded reassertion path")
+    }
+
+    @Test
     fun `transient Automatic fallback is followed by a second reassert of captured headset`() = runBlocking {
         val outputs = MutableStateFlow(listOf(buds))
         val selected = MutableStateFlow<String?>(null)
@@ -48,6 +225,8 @@ class CarArrivalRouteRecoveryTest {
                 outputs.value = emptyList()
                 selected.value = null
                 outputs.value = listOf(buds)
+            } else {
+                outputs.value = listOf(buds.copy(isActive = true))
             }
             true
         }
@@ -92,7 +271,7 @@ class CarArrivalRouteRecoveryTest {
         val reappearance = launch {
             // This models Android publishing the same A2DP endpoint again during the bounded platform settle.
             delay(10)
-            outputs.value = listOf(buds)
+            outputs.value = listOf(buds.copy(isActive = true))
         }
         val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,

@@ -137,6 +137,30 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         )
     }
 
+    /**
+     * Media3 may pause for AUDIO_BECOMING_NOISY before its focus callback. Once playWhenReady is false,
+     * there may be no second listener transition when focus later changes. Retain exactly the same
+     * car-boundary, previously-audible-headset and explicit-intent protections as a focus loss.
+     *
+     * This records a candidate only: it never authorizes Play without a timely car-specific boundary.
+     * An ordinary unplug therefore remains paused and cannot fall through to the phone speaker.
+     */
+    fun onAudioBecomingNoisy(
+        at: Duration,
+        heardRoute: RouteHeardOwnership.HeardRoute?,
+        headsetId: String?,
+        currentGeneration: Long?,
+        explicitSelectionSequence: Long,
+        carConnected: Boolean,
+    ): Decision = onAudioFocusLoss(
+        at = at,
+        heardRoute = heardRoute,
+        headsetId = headsetId,
+        currentGeneration = currentGeneration,
+        explicitSelectionSequence = explicitSelectionSequence,
+        carConnected = carConnected,
+    )
+
     /** The existing bounded arrival/departure correlation, only after a fresh audible-play observation. */
     private fun onEligibleAudioFocusLoss(
         at: Duration,

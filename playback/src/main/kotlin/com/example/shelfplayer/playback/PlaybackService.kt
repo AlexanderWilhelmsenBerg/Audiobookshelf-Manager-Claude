@@ -121,6 +121,13 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     internal lateinit var liveSession: LivePlaybackSession
 
+    /** PR #272 opt-in passive route observer; never changes playback policy. */
+    @Inject
+    internal lateinit var audioRouteLab: AudioRouteLab
+
+    @Inject
+    internal lateinit var audioTrackRouteMonitor: AudioTrackRouteMonitor
+
     /** PRODUCT_SPEC PLAY-002 — the chooser's half that can actually move audio: see [AudioOutputRouter]. */
     @Inject
     internal lateinit var audioOutputs: AudioOutputRouter
@@ -242,6 +249,8 @@ class PlaybackService : MediaLibraryService() {
     @Dispatcher(ShelfDispatcher.MainImmediate)
     internal lateinit var mainDispatcher: CoroutineDispatcher
 
+    private val coldStartToggleGate = ColdStartToggleGate()
+    private var serviceStartedAt: Duration = Duration.ZERO
     private var player: ExoPlayer? = null
     private var session: MediaLibrarySession? = null
     private var journal: Job? = null
@@ -376,6 +385,8 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        serviceStartedAt = clock.elapsed()
+        audioRouteLab.serviceStarted()
         scope = CoroutineScope(SupervisorJob() + mainDispatcher)
         registerWallClockChanges()
         // PRODUCT_SPEC PLAY-006 — the preset in force when this player is built. Read blocking on the
@@ -404,6 +415,7 @@ class PlaybackService : MediaLibraryService() {
             onPlayWhenReadyRequest = { requestedPlay ->
                 controllerCommandGeneration += 1
                 logControllerTransportRequest(requestedPlay, exoPlayer)
+                routeExplicitCarPlay(requestedPlay, exoPlayer)
                 // A duplicate Pause still matters, even if the raw player emits no state transition.
                 sleepTimer.onControllerTransportIntent()
                 // A controller's Play/Pause is newer listener intent even when ExoPlayer is already in that
@@ -442,7 +454,7 @@ class PlaybackService : MediaLibraryService() {
         }
         // PRODUCT_SPEC PLAY-002 — after the player exists and before anything can be chosen. A preference
         // set on a released player routes nothing, so this is re-run on every player this service builds.
-        audioOutputs.attach(exoPlayer)
+        attachRouteSafetyMonitor(exoPlayer)
         startJournal()
         observeSleepTimer()
         observeSkipIntervals()
@@ -451,6 +463,25 @@ class PlaybackService : MediaLibraryService() {
         outputDevices.start(scope, DeviceActions())
         observeBrowseTreeInvalidation()
         logger.info(LogCategory.Playback, "Playback service started")
+    }
+
+    private fun attachRouteSafetyMonitor(exoPlayer: ExoPlayer) {
+        audioTrackRouteMonitor.onRouteChanged = audioOutputs::onActualTrackRouteChanged
+        audioOutputs.attach(exoPlayer, audioTrackRouteMonitor::currentRouteIds)
+    }
+
+    /**
+     * A new Play from Android Auto is an explicit request for car audio, unlike car binding.
+     * Keep route changes outside the onCreate forwarding-player lambda: the shared policy
+     * remains testable and a duplicate Play does not steal a healthy headset route.
+     */
+    private fun routeExplicitCarPlay(requestedPlay: Boolean, mediaPlayer: ExoPlayer) {
+        val requestingController = session?.controllerForCurrentRequest
+        val isCarController = requestingController != null && requestingController.packageName in CAR_PACKAGES
+        if (!shouldSelectCarForControllerPlay(requestedPlay, isCarController, mediaPlayer.playWhenReady)) return
+        audioOutputs.selectCar()
+        syncExplicitOutputIntent()
+        logAuto("Android Auto Play selected the car audio route", fields = carSnapshotFields())
     }
 
     /**
@@ -622,6 +653,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        audioRouteLab.serviceStopped()
         flushProgress()
         outputDevices.stop()
         metrics.onReleased()
@@ -969,6 +1001,9 @@ class PlaybackService : MediaLibraryService() {
             if (current.mediaItemCount == 0) return@withContext false
             if (current.playbackState == Player.STATE_IDLE || current.playerError != null) current.prepare()
             if (!stillAuthorized()) return@withContext false
+            // The freshness network request may take seconds. Start the muted route
+            // probe only NOW, immediately before the actual raw ExoPlayer Play.
+            if (!current.playWhenReady) audioOutputs.protectManualPlayOnGuardedHeadset()
             current.play()
             true
         }
@@ -1116,6 +1151,7 @@ class PlaybackService : MediaLibraryService() {
             if (!stillAuthorized()) {
                 false
             } else {
+                if (!media.playWhenReady) audioOutputs.protectManualPlayOnGuardedHeadset()
                 media.play()
                 true
             }
@@ -1131,6 +1167,7 @@ class PlaybackService : MediaLibraryService() {
      */
     private inner class PlayerEvents : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            audioTrackRouteMonitor.sample()
             logAuto(
                 "Media3 audible playback changed",
                 fields = listOf(LogField.Public("isPlaying", isPlaying)) +
@@ -1248,54 +1285,55 @@ class PlaybackService : MediaLibraryService() {
                 reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE
             autoRewind.onPaused(wasUserInitiated = userInitiated)
 
-            if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
-                // Issue #36 — physical drives measured audioFocusLoss on both car entry and car departure.
-                // The gate still requires a matching controller lifecycle boundary; focus loss alone can
-                // never resume playback.
-                val trace = ensureAutoTrace("audio-focus-loss")
-                logAuto(
-                    "Android Auto lifecycle input",
-                    trace,
-                    buildList {
-                        add(LogField.Public("event", "audio-focus-loss"))
-                        addAll(AndroidAutoDiagnostics.playerFields(player))
-                        addAll(carSnapshotFields())
-                    },
-                )
-                syncExplicitOutputIntent()
-                val outputs = audioOutputs.outputs.value
-                val decision = carContinuity.onAudioFocusLoss(
-                    at = clock.elapsed(),
-                    heardRoute = routeOwnership.heardRoute,
-                    headsetId = routeOwnership.headsetForCar(outputs),
-                    currentGeneration = routeOwnership.currentGeneration,
-                    explicitSelectionSequence = currentExplicitSelectionSequence(),
-                    carConnected = carContinuitySessionEstablished,
-                )
-                logCarContinuityDecision("audio-focus-loss", decision)
-                decision.target
-                    ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
-                    ?.let { target -> scope.launch { recoverAndResumeCarContinuity(target) } }
-            } else if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY) {
-                // Issue #36 — route/noisy can precede the measured car focus loss. It still cannot authorize
-                // Play, but it is automatic platform evidence rather than newer listener intent, so retain the
-                // last positively heard exact headset for the focus + car-boundary correlation that may follow.
-                val trace = ensureAutoTrace("becoming-noisy")
-                logAuto(
-                    "Android Auto lifecycle input",
-                    trace,
-                    buildList {
-                        add(LogField.Public("event", "becoming-noisy"))
-                        addAll(AndroidAutoDiagnostics.playerFields(player))
-                        addAll(carSnapshotFields())
-                    },
-                )
-                continuityPlayAwaiting = null
-            } else {
-                // Deliberate pause, end-of-item and unknown causes invalidate transition evidence.
-                carContinuity.cancelAll()
-                continuityPlayAwaiting = null
+            when (reason) {
+                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
+                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY,
+                -> onCarPlatformInterruption(reason)
+
+                else -> {
+                    // Deliberate pause, end-of-item and unknown causes invalidate transition evidence.
+                    carContinuity.cancelAll()
+                    continuityPlayAwaiting = null
+                }
             }
+        }
+
+        /**
+         * Platform pause is observable once; becoming-noisy can suppress a later focus-loss transition.
+         * The gate pairs either event with a car lifecycle boundary before any automatic Play.
+         */
+        private fun onCarPlatformInterruption(reason: Int) {
+            val focusLoss = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
+            val source = if (focusLoss) "audio-focus-loss" else "becoming-noisy"
+            val trace = ensureAutoTrace(source)
+            logAuto(
+                "Android Auto lifecycle input",
+                trace,
+                buildList {
+                    add(LogField.Public("event", source))
+                    addAll(AndroidAutoDiagnostics.playerFields(player))
+                    addAll(carSnapshotFields())
+                },
+            )
+            syncExplicitOutputIntent()
+            val observer = if (focusLoss) {
+                carContinuity::onAudioFocusLoss
+            } else {
+                carContinuity::onAudioBecomingNoisy
+            }
+            val decision = observer(
+                clock.elapsed(),
+                routeOwnership.heardRoute,
+                routeOwnership.headsetForCar(audioOutputs.outputs.value),
+                routeOwnership.currentGeneration,
+                currentExplicitSelectionSequence(),
+                carContinuitySessionEstablished,
+            )
+            logCarContinuityDecision(source, decision)
+            decision.target
+                ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
+                ?.let { target -> scope.launch { recoverAndResumeCarContinuity(target) } }
+            if (!focusLoss) continuityPlayAwaiting = null
         }
 
         /**
@@ -1642,13 +1680,21 @@ class PlaybackService : MediaLibraryService() {
             return null
         }
         syncExplicitOutputIntent()
-        val hold = routeOwnership.headsetForCar(audioOutputs.outputs.value) ?: return null
-        val reasserted = audioOutputs.reassert(hold)
-        val heldHeadsetIsConnected = reasserted && audioOutputs.outputs.value.any { output ->
-            output.id == hold && output.isHeadsetCandidate
+        val outputs = audioOutputs.outputs.value
+        val hold = routeOwnership.headsetForCar(outputs) ?: return null
+        // Car controller binding alone must not restart or reconfigure an already-audible headset.
+        // Retain Media3's current player/focus/route when this exact headset remains the sole active sink.
+        if (player?.isPlaying == true && headsetAlreadyActive(hold, outputs)) {
+            audioOutputs.protectPlayingHeadset(hold)
+            logAuto("Car lifecycle preserved active headset without route reassertion")
+        } else {
+            val reasserted = audioOutputs.reassert(hold)
+            val heldHeadsetIsConnected = reasserted && audioOutputs.outputs.value.any { output ->
+                output.id == hold && output.isHeadsetCandidate
+            }
+            if (!heldHeadsetIsConnected) return null
+            logHeldHeadset(hold)
         }
-        if (!heldHeadsetIsConnected) return null
-        logHeldHeadset(hold)
         return hold
     }
 
@@ -1682,6 +1728,18 @@ class PlaybackService : MediaLibraryService() {
                     LogField.Public("reason", currentContinuityInvalidation(target)),
                 ) + carSnapshotFields(),
             )
+            // A paused track cannot report its actual route. If Android Auto exposes only
+            // REMOTE_SUBMIX, allow a bounded MUTED playback probe of the original exact
+            // headset. The router must prove this player's sink before it unmutes.
+            if (carContinuity.isCurrent(
+                    target,
+                    routeOwnership.currentGeneration,
+                    currentExplicitSelectionSequence(),
+                ) && audioOutputs.canProbeHeldHeadset(target.outputId)
+            ) {
+                logAuto("Car lifecycle will verify original headset silently")
+                return target.outputId
+            }
             carContinuity.cancelPending()
             return null
         }
@@ -1721,6 +1779,14 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private suspend fun recoverAndResumeCarContinuity(target: CarArrivalResumeGate.Target) {
+        // Media3 can hold playWhenReady=true while temporarily suppressing audible playback.
+        // It owns focus restoration in that state; issuing another Play or reasserting the output
+        // would only disturb a player that is already committed to continuing.
+        if (player?.playWhenReady == true) {
+            logAuto("Car lifecycle left active playback intent with Media3")
+            carContinuity.cancelPending()
+            return
+        }
         val heldHeadset = recoverCarContinuityHeadset(target)
         resumeAfterCarContinuity(target, heldHeadset)
     }
@@ -1786,6 +1852,18 @@ class PlaybackService : MediaLibraryService() {
             return
         }
 
+        // A headset that stayed uniquely active can satisfy route recovery without reassertion.
+        // Preserve that exact original target as the safety guard before the muted probe.
+        if (heldHeadset != null && headsetAlreadyActive(heldHeadset, audioOutputs.outputs.value)) {
+            audioOutputs.protectPlayingHeadset(heldHeadset)
+        }
+        // An AudioManager preference is NOT proof of a physical route. Only the playing
+        // AudioTrack may unmute this one-shot recovery; other routes fail closed.
+        if (heldHeadset == null || !audioOutputs.beginMutedHeadsetProbe(heldHeadset)) {
+            continuityPlayAwaiting = null
+            logAuto("Car lifecycle refused unverified headset probe")
+            return
+        }
         continuityPlayAwaiting = target
         logAuto(
             "Car lifecycle continuity issued Play",
@@ -3375,14 +3453,43 @@ class PlaybackService : MediaLibraryService() {
             } else {
                 intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
             }
+            val inputDevice = keyEvent?.device
+            val inputEvidence = MediaButtonInputEvidence.classify(
+                deviceId = keyEvent?.deviceId,
+                isVirtual = inputDevice?.isVirtual,
+                inputName = inputDevice?.name,
+                outputs = audioOutputs.outputs.value,
+            )
             logAuto(
                 "MediaSession hardware media button observed",
                 fields = listOf(
                     LogField.Identifier("controllerPackage", controllerInfo.packageName),
                     LogField.Public("keyCode", keyEvent?.keyCode ?: -1),
                     LogField.Public("keyAction", keyEvent?.action ?: -1),
+                    LogField.Public("keyInputId", keyEvent?.deviceId ?: -1),
+                    LogField.Public("keyInputSource", keyEvent?.source ?: -1),
+                    LogField.Public("inputOrigin", inputEvidence.origin.name),
+                    LogField.Count("headsetNameMatches", inputEvidence.headsetNameMatches),
                 ) + carSnapshotFields(),
             )
+            // #273: one virtual toggle can arrive just from powering on a Bluetooth device.
+            // Only cold, empty-player toggles are suspect; genuine PLAY, car intent and warm
+            // headset buttons still flow to Media3. This can intentionally require a second
+            // PLAY_PAUSE press during the three-second cold-start window.
+            val suppressed = coldStartToggleGate.consume(
+                sinceServiceStart = clock.elapsed() - serviceStartedAt,
+                keyCode = keyEvent?.keyCode ?: -1,
+                keyAction = keyEvent?.action ?: -1,
+                inputDeviceId = keyEvent?.deviceId,
+                hasBluetooth = audioOutputs.outputs.value.any { it.id.startsWith("bluetooth:") },
+                emptyQueue = (player?.mediaItemCount ?: 0) == 0,
+                carConnected = carConnections.isConnected() || projectionState.carConnected ||
+                    controllerInfo.packageName in CAR_PACKAGES,
+            )
+            if (suppressed) {
+                logAuto("Cold virtual Bluetooth toggle consumed before playback resumption")
+                return true
+            }
             return super.onMediaButtonEvent(session, controllerInfo, intent)
         }
 

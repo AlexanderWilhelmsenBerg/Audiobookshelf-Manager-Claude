@@ -7,6 +7,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
 import androidx.annotation.OptIn
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.common.dispatcher.ApplicationScope
@@ -20,6 +21,7 @@ import com.example.shelfplayer.core.model.playback.AudioOutput
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +31,7 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * PRODUCT_SPEC PLAY-002 — sending the current book to a chosen output, and saying which one that is.
@@ -85,11 +88,43 @@ class AudioOutputRouter @Inject constructor(
     private var player: ExoPlayer? = null
     private var callback: AudioDeviceCallback? = null
 
+    // The route-recovery owner chooses an exact device. The router must not silently release
+    // that preference to Automatic during the transient A2DP removal observed in car trace auto-5.
+    private var guardedHeadsetId: String? = null
+    private var missingHeadsetGrace: Job? = null
+
+    // A timed-out A2DP omission does not transfer playback ownership to Android's default route.
+    // Retain the guard beyond the bounded recovery timer until the exact output reappears or
+    // the listener explicitly chooses a different destination.
+    private var guardedHeadsetMissing = false
+    private var currentTrackRoutes: () -> Set<String>? = { null }
+    private var collidingOutputIds: Set<String> = emptySet()
+
+    /** A guarded auto-resume is silent until its playing track proves the original output. */
+    private class MutedHeadsetProbe(val id: String, val oldVolume: Float) {
+        var expiry: Job? = null
+        var playingExpiry: Job? = null
+    }
+
+    private var mutedProbe: MutedHeadsetProbe? = null
+    private val routeSafetyListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (isPlaying) pauseUnsafeGuardedPlayback()
+        }
+
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            if (!playWhenReady) cancelMutedProbe()
+        }
+    }
+
     /** Live platform handles keyed by BookWave's stable, permission-free identity. */
     private var live: Map<String, AudioDeviceInfo> = emptyMap()
 
-    fun attach(target: ExoPlayer) {
+    fun attach(target: ExoPlayer, trackRoutes: () -> Set<String>? = { null }) {
+        player?.removeListener(routeSafetyListener)
+        currentTrackRoutes = trackRoutes
         player = target
+        target.addListener(routeSafetyListener)
         val manager = context.getSystemService(AudioManager::class.java) ?: return
         if (callback == null) {
             val registered = object : AudioDeviceCallback() {
@@ -105,6 +140,14 @@ class AudioOutputRouter @Inject constructor(
 
     /** Releases the player. The device callback stays registered because the connected list outlives it. */
     fun detach() {
+        cancelMutedProbe()
+        missingHeadsetGrace?.cancel()
+        missingHeadsetGrace = null
+        guardedHeadsetId = null
+        guardedHeadsetMissing = false
+        currentTrackRoutes = { null }
+        collidingOutputIds = emptySet()
+        player?.removeListener(routeSafetyListener)
         player = null
     }
 
@@ -152,10 +195,29 @@ class AudioOutputRouter @Inject constructor(
             )
             return false
         }
+        missingHeadsetGrace?.cancel()
+        missingHeadsetGrace = null
+        guardedHeadsetMissing = false
+        guardedHeadsetId = id
         _selectedId.value = id
         publish()
         apply(id)
         return true
+    }
+
+    /**
+     * Protect an already-running exact headset without touching ExoPlayer's output selection.
+     * Car binding must be observable but must not reassert if the route is still healthy.
+     */
+    internal fun protectPlayingHeadset(id: String) {
+        if (id !in live) return
+        // Capture an implicit system headset route as the exact temporary preference, without
+        // touching the AudioTrack. This lets refresh detect disappearance even when the user
+        // never opened BookWave's output chooser and selectedId was Automatic.
+        if (_selectedId.value == null) _selectedId.value = id
+        guardedHeadsetId = id
+        guardedHeadsetMissing = false
+        publish()
     }
 
     private fun choose(id: String?, destination: ExplicitDestination) {
@@ -167,6 +229,12 @@ class AudioOutputRouter @Inject constructor(
             )
             return
         }
+        // A user choice always overrides a pending car-continuity preference and its expiry.
+        missingHeadsetGrace?.cancel()
+        missingHeadsetGrace = null
+        guardedHeadsetId = null
+        guardedHeadsetMissing = false
+        applicationScope.launch(mainDispatcher) { cancelMutedProbe() }
         explicitSelectionState.value = ExplicitSelection(
             sequence = ++nextExplicitSelectionSequence,
             outputId = id,
@@ -236,13 +304,25 @@ class AudioOutputRouter @Inject constructor(
         val manager = context.getSystemService(AudioManager::class.java) ?: return
         val devices = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).orEmpty()
         val found = LinkedHashMap<String, AudioDeviceInfo>()
+        val collisions = mutableSetOf<String>()
         devices.forEach { info ->
             val output = OutputDevices.outputOf(info.type, info.productName) ?: return@forEach
-            found.putIfAbsent(output.id, info)
+            if (found.putIfAbsent(output.id, info) != null) collisions.add(output.id)
         }
         live = found
+        collidingOutputIds = collisions
         val chosen = _selectedId.value
-        if (chosen != null && !found.containsKey(chosen)) {
+        when {
+            chosen != null && chosen !in found -> onDisconnectedSelection(chosen, found.keys)
+
+            chosen != null && chosen == guardedHeadsetId && guardedHeadsetMissing ->
+                onGuardedHeadsetReappeared(chosen)
+        }
+        publish()
+    }
+
+    private fun onDisconnectedSelection(chosen: String, connectedIds: Set<String>) {
+        if (!shouldRetainContinuityHeadset(guardedHeadsetId, chosen, connectedIds)) {
             _selectedId.value = null
             logger.info(
                 LogCategory.Playback,
@@ -250,18 +330,191 @@ class AudioOutputRouter @Inject constructor(
                 LogField.Public("kind", kindOf(chosen)),
             )
             applicationScope.launch { apply(null) }
+            return
         }
+
+        // Pause on the player looper before OS default routing can become audible.
+        applicationScope.launch(mainDispatcher) {
+            if (_selectedId.value == chosen && guardedHeadsetId == chosen && chosen !in live) {
+                player?.takeIf { it.isPlaying }?.pause()
+            }
+        }
+        val alreadyMissing = guardedHeadsetMissing
+        guardedHeadsetMissing = true
+        if (alreadyMissing || missingHeadsetGrace != null) return
+        logger.info(
+            LogCategory.Playback,
+            "Car continuity headset disappeared; preserving selection while paused",
+            LogField.Public("kind", kindOf(chosen)),
+        )
+        missingHeadsetGrace = applicationScope.launch {
+            delay(MISSING_HEADSET_GRACE)
+            if (_selectedId.value == chosen && guardedHeadsetId == chosen && chosen !in live) {
+                // The waiting window ended, not the owner's explicit headset destination.
+                // Clearing the guard here allowed a subsequent virtual/unattributed headset
+                // Play to resume through the car on Android Auto. Stay fail-closed.
+                logger.info(
+                    LogCategory.Playback,
+                    "Car continuity headset still absent after grace; keeping route guarded",
+                    LogField.Public("kind", kindOf(chosen)),
+                )
+            }
+            missingHeadsetGrace = null
+        }
+    }
+
+    private fun onGuardedHeadsetReappeared(chosen: String) {
+        // The old exact headset returned during the grace. Reapply its preference
+        // without issuing Play; a newer listener selection can still supersede it.
+        missingHeadsetGrace?.cancel()
+        missingHeadsetGrace = null
+        guardedHeadsetMissing = false
+        applicationScope.launch {
+            if (_selectedId.value == chosen && guardedHeadsetId == chosen && chosen in live) apply(chosen)
+        }
+    }
+
+    /** An unknown projection prediction permits only a SILENT verification of the exact original headset. */
+    internal fun canProbeHeldHeadset(id: String): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+        return canAttemptMutedHeadsetProbe(
+            id,
+            guardedHeadsetId,
+            _selectedId.value,
+            id in live && id !in collidingOutputIds,
+            routedIds(),
+        )
+    }
+
+    /** Called on Media3's application thread before the automatic continuity Play. */
+    internal fun beginMutedHeadsetProbe(id: String): Boolean = canProbeHeldHeadset(id) && startMutedProbe(id)
+
+    /** An unattributed manual Play can only become audible on this already-guarded headset. */
+    internal fun protectManualPlayOnGuardedHeadset(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+        val id = guardedHeadsetId ?: return false
+        if (_selectedId.value != id || id in collidingOutputIds) return false
+        return startMutedProbe(id)
+    }
+
+    private fun startMutedProbe(id: String): Boolean {
+        val current = player ?: return false
+        if (mutedProbe != null) return false
+        val probe = MutedHeadsetProbe(id, current.volume)
+        current.volume = 0f
+        mutedProbe = probe
+        probe.expiry = applicationScope.launch(mainDispatcher) {
+            delay(PROBE_STARTUP_TIMEOUT)
+            if (mutedProbe === probe) finishMutedProbe(probe, verified = false)
+        }
+        logger.info(LogCategory.Playback, "Car continuity began silent headset verification")
+        return true
+    }
+
+    private fun cancelMutedProbe() {
+        val probe = mutedProbe ?: return
+        mutedProbe = null
+        probe.expiry?.cancel()
+        probe.playingExpiry?.cancel()
+        player?.volume = probe.oldVolume
+    }
+
+    private fun finishMutedProbe(probe: MutedHeadsetProbe, verified: Boolean) {
+        if (mutedProbe !== probe) return
+        val current = player ?: return
+        mutedProbe = null
+        probe.expiry?.cancel()
+        probe.playingExpiry?.cancel()
+        if (!verified) current.pause()
+        current.volume = probe.oldVolume
+        logger.info(
+            LogCategory.Playback,
+            "Car continuity silent headset verification completed",
+            LogField.Public("verified", verified),
+        )
+    }
+
+    /** The playing AudioTrack is authoritative; an unmeasured probe remains silent. */
+    private fun verifyMutedHeadsetProbe(current: ExoPlayer, actualRoute: Set<String>?, probe: MutedHeadsetProbe) {
+        if (!current.isPlaying) return
+        val provedOriginalHeadset = actualRoute?.singleOrNull() == probe.id &&
+            probe.id !in collidingOutputIds
+        when {
+            provedOriginalHeadset -> finishMutedProbe(probe, verified = true)
+
+            !actualRoute.isNullOrEmpty() -> finishMutedProbe(probe, verified = false)
+
+            probe.playingExpiry == null -> {
+                // Give a new AudioTrack time to announce its route, without restoring volume.
+                probe.playingExpiry = applicationScope.launch(mainDispatcher) {
+                    delay(PROBE_PLAYING_ROUTE_TIMEOUT)
+                    if (mutedProbe === probe) finishMutedProbe(probe, verified = false)
+                }
+            }
+        }
+    }
+
+    /** AudioTrack can change sinks without an AudioManager device-list callback. */
+    internal fun onActualTrackRouteChanged() {
+        pauseUnsafeGuardedPlayback()
         publish()
     }
 
     private fun publish() {
-        val routed = routedIds()
+        val routed = currentTrackRoutes() ?: routedIds()
         val chosen = _selectedId.value
+        pauseUnsafeGuardedPlayback()
         _outputs.value = live.mapNotNull { (id, info) ->
             OutputDevices.outputOf(
                 type = info.type,
                 productName = info.productName,
                 isActive = routed?.contains(id) ?: (id == chosen),
+            )
+        }
+    }
+
+    /**
+     * Check again when Media3 transitions to audible playback. A Gearhead Play can arrive
+     * without any AudioDeviceCallback, so checking only publish/resettle misses that route race.
+     */
+    private fun pauseUnsafeGuardedPlayback() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        // The route-settle coroutine and AudioDeviceCallback may call publish() off the
+        // ExoPlayer application looper. Even reading isPlaying there crashes Media3.
+        // Check only our own routing state before dispatching; every Player access,
+        // including the initial isPlaying read, belongs on MainImmediate.
+        val guarded = guardedHeadsetId ?: return
+        if (_selectedId.value != guarded) return
+        applicationScope.launch(mainDispatcher) {
+            val current = player ?: return@launch
+            val actualRoute = currentTrackRoutes()
+            val latestRoute = actualRoute ?: routedIds()
+            val probe = mutedProbe
+            if (probe != null) {
+                verifyMutedHeadsetProbe(current, actualRoute, probe)
+                return@launch
+            }
+            if (guarded !in collidingOutputIds && !shouldSuspendGuardedPlayback(
+                    guardedHeadsetId,
+                    _selectedId.value,
+                    latestRoute,
+                    current.isPlaying,
+                )
+            ) {
+                return@launch
+            }
+            current.pause()
+            logger.info(
+                LogCategory.Playback,
+                "Car continuity paused because the headset route is not verified",
+                LogField.Public(
+                    "route",
+                    when {
+                        latestRoute.isNullOrEmpty() -> "unknown"
+                        latestRoute.none { it == guardedHeadsetId } -> "other"
+                        else -> "multiple"
+                    },
+                ),
             )
         }
     }
@@ -292,5 +545,54 @@ class AudioOutputRouter @Inject constructor(
 
     private companion object {
         val ROUTE_SETTLE_DELAY = 400.milliseconds
+        val MISSING_HEADSET_GRACE = 2.seconds
+        val PROBE_STARTUP_TIMEOUT = 4.seconds
+        val PROBE_PLAYING_ROUTE_TIMEOUT = 500.milliseconds
     }
 }
+
+/**
+ * Pure route-safety guard used by the shared router's actual publish callback.
+ * The caller prefers a measured AudioTrack sink over AudioManager's predicted output.
+ * Unknown, multiple and other sinks fail closed even when a preference was accepted.
+ */
+internal fun shouldSuspendGuardedPlayback(
+    guardedHeadsetId: String?,
+    selectedId: String?,
+    routedIds: Set<String>?,
+    isPlaying: Boolean,
+): Boolean {
+    if (!isPlaying || guardedHeadsetId == null || guardedHeadsetId != selectedId) return false
+    return routedIds == null || routedIds.size != 1 || guardedHeadsetId !in routedIds
+}
+
+/**
+ * Selecting Play on the Android Auto surface is an explicit car-route request, not a reason to keep
+ * an old headset-only protection active. A duplicate Gearhead Play must not steal a healthy running
+ * headset; ordinary media buttons do not identify which Bluetooth device sent the button.
+ */
+internal fun shouldSelectCarForControllerPlay(
+    requestedPlay: Boolean,
+    controllerIsCar: Boolean,
+    playWhenReady: Boolean,
+): Boolean = requestedPlay && controllerIsCar && !playWhenReady
+
+/**
+ * A silent probe never uses a different connected device or a known competing route.
+ * An empty prediction (as for projected REMOTE_SUBMIX) is unknown, not permission to play audibly.
+ */
+internal fun canAttemptMutedHeadsetProbe(
+    targetId: String,
+    guardedId: String?,
+    selectedId: String?,
+    targetConnected: Boolean,
+    predictedIds: Set<String>?,
+): Boolean = targetConnected && targetId == guardedId && targetId == selectedId &&
+    (predictedIds.isNullOrEmpty() || predictedIds == setOf(targetId))
+
+/** Preserve only an app-owned exact headset, never an unrelated or explicitly superseded selection. */
+internal fun shouldRetainContinuityHeadset(
+    guardedHeadsetId: String?,
+    selectedId: String?,
+    connectedIds: Set<String>,
+): Boolean = guardedHeadsetId != null && selectedId == guardedHeadsetId && guardedHeadsetId !in connectedIds

@@ -49,6 +49,7 @@ internal class DefaultPlayerFactory @Inject constructor(
     @param:MediaDataSource private val dataSourceFactory: DataSource.Factory,
     private val artwork: BitmapLoader,
     private val logger: Logger,
+    private val audioTrackRouteMonitor: AudioTrackRouteMonitor,
 ) : PlayerFactory {
 
     override fun create(buffer: BufferPreset, focus: FocusBehaviour): ExoPlayer = ExoPlayer.Builder(context)
@@ -60,6 +61,9 @@ internal class DefaultPlayerFactory @Inject constructor(
         .apply { loadControlFor(buffer)?.let(::setLoadControl) }
         // The `true` is `handleAudioFocus`: Media3 requests and releases focus itself.
         .setAudioAttributes(attributesFor(focus), true)
+        // Standard Media3 AudioTrack provider, observed in memory for route safety even without
+        // diagnostic capture. Null fallback retains Media3's original output provider.
+        .apply { audioTrackRouteMonitor.providerForPlayer()?.let(::setAudioOutputProvider) }
         // PRODUCT_SPEC PLAY-002 — headphones out pauses, and audio never moves to the phone speaker.
         .setHandleAudioBecomingNoisy(true)
         // The stream keeps arriving with the screen off. `WAKE_MODE_NETWORK` also holds a WifiLock,

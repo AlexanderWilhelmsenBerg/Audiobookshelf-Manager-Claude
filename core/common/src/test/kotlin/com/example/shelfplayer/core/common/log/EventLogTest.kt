@@ -133,6 +133,30 @@ class EventLogTest {
     }
 
     @Test
+    fun `per-write observer receives every event beyond the conflated 500 line UI ring`() {
+        val delivered = mutableListOf<String>()
+        val unsubscribe = sink.observeWrites { delivered.add(it.line) }
+        repeat(620) { sink.write(LogLevel.Info, "AndroidAuto", "event-$it") }
+        unsubscribe()
+        sink.write(LogLevel.Info, "AndroidAuto", "after unsubscribe")
+        assertEquals(620, delivered.size)
+        assertEquals("event-0", delivered.first())
+        assertEquals("event-619", delivered.last())
+        assertEquals(500, sink.events.value.size)
+    }
+
+    @Test
+    fun `observer exception cannot crash media logging or stop other subscribers`() {
+        val unsubscribeFailing = sink.observeWrites { error("callback failure") }
+        val delivered = mutableListOf<String>()
+        val unsubscribeGood = sink.observeWrites { delivered.add(it.line) }
+        sink.write(LogLevel.Info, "Playback", "route changed")
+        unsubscribeGood()
+        unsubscribeFailing()
+        assertEquals(listOf("route changed"), delivered)
+    }
+
+    @Test
     fun `problem filter includes warnings and errors only`() {
         LogLevel.entries.forEach { sink.write(it, "App", "Severity sample") }
 
