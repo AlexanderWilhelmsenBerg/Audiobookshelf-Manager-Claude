@@ -375,7 +375,8 @@ class AudioOutputRouter @Inject constructor(
     }
 
     /** An unknown projection prediction permits only a SILENT verification of the exact original headset. */
-    internal fun canProbeHeldHeadset(id: String): Boolean = canAttemptMutedHeadsetProbe(
+    internal fun canProbeHeldHeadset(id: String): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && canAttemptMutedHeadsetProbe(
         id,
         guardedHeadsetId,
         _selectedId.value,
@@ -388,6 +389,7 @@ class AudioOutputRouter @Inject constructor(
 
     /** An unattributed manual Play can only become audible on this already-guarded headset. */
     internal fun protectManualPlayOnGuardedHeadset(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
         val id = guardedHeadsetId ?: return false
         if (_selectedId.value != id || id in collidingOutputIds) return false
         return startMutedProbe(id)
