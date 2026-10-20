@@ -85,7 +85,9 @@ class CarContinuityRecoveryCoordinatorTest {
             val (coordinator, target) = ready()
             val result = when (change) {
                 0 -> coordinator.assess(target, CarContinuityPlayPrecheck.Proceed, target.generation + 1, 0, headset.id)
+
                 1 -> coordinator.assess(target, CarContinuityPlayPrecheck.Proceed, target.generation, 1, headset.id)
+
                 else -> coordinator.assess(
                     target,
                     CarContinuityPlayPrecheck.Proceed,
