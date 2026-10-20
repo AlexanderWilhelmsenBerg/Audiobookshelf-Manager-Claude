@@ -63,6 +63,21 @@ class AudioOutputRouterThreadTest {
     }
 
     @Test
+    fun `route guard prefers verified AudioTrack over projected remote mix prediction`() = runTest {
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+        fixture.measuredRoutes { setOf("bluetooth:original") }
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+        assertEquals(0, fixture.pauseThreads.size, "the actual headset is carrying the AudioTrack")
+
+        fixture.measuredRoutes { emptySet() }
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+        assertEquals(1, fixture.pauseThreads.size, "a remote submix is not the physical headset")
+    }
+
+    @Test
     fun `silent probe allows only reasserted exact device when prediction is unknown`() {
         assertTrue(canAttemptMutedHeadsetProbe("bluetooth:original", "bluetooth:original", "bluetooth:original", true, emptySet()))
         assertTrue(!canAttemptMutedHeadsetProbe("bluetooth:original", "bluetooth:original", "bluetooth:original", true, setOf("bluetooth:car")))
@@ -225,6 +240,18 @@ class AudioOutputRouterThreadTest {
         val readThreads: List<Thread>,
         val pauseThreads: List<Thread>,
     ) {
+        fun measuredRoutes(routes: () -> Set<String>?) {
+            AudioOutputRouter::class.java.getDeclaredField("currentTrackRoutes").apply {
+                isAccessible = true
+                set(router, routes)
+            }
+        }
+
+        fun safetyListener(): Player.Listener = AudioOutputRouter::class.java.getDeclaredField("routeSafetyListener").run {
+            isAccessible = true
+            get(router) as Player.Listener
+        }
+
         fun guardId(): String? = AudioOutputRouter::class.java.getDeclaredField("guardedHeadsetId").run {
             isAccessible = true
             get(router) as? String
