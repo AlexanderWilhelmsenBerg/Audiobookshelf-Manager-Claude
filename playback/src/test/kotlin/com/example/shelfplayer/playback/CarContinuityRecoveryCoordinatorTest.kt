@@ -68,7 +68,15 @@ class CarContinuityRecoveryCoordinatorTest {
         }
         val (coordinator, target) = ready()
         coordinator.cancelAll()
-        assertFalse(coordinator.assess(target, CarContinuityPlayPrecheck.Proceed, target.generation, 0, headset.id).mayPlay)
+        assertFalse(
+            coordinator.assess(
+                target,
+                CarContinuityPlayPrecheck.Proceed,
+                target.generation,
+                0,
+                headset.id,
+            ).mayPlay,
+        )
     }
 
     @Test
@@ -78,7 +86,13 @@ class CarContinuityRecoveryCoordinatorTest {
             val result = when (change) {
                 0 -> coordinator.assess(target, CarContinuityPlayPrecheck.Proceed, target.generation + 1, 0, headset.id)
                 1 -> coordinator.assess(target, CarContinuityPlayPrecheck.Proceed, target.generation, 1, headset.id)
-                else -> coordinator.assess(target, CarContinuityPlayPrecheck.Proceed, target.generation, 0, "other-headset")
+                else -> coordinator.assess(
+                    target,
+                    CarContinuityPlayPrecheck.Proceed,
+                    target.generation,
+                    0,
+                    "other-headset",
+                )
             }
             assertFalse(result.mayPlay)
         }
