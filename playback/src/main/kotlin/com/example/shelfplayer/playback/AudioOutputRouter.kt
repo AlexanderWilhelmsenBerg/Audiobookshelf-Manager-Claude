@@ -97,6 +97,7 @@ class AudioOutputRouter @Inject constructor(
     // Retain the guard beyond the bounded recovery timer until the exact output reappears or
     // the listener explicitly chooses a different destination.
     private var guardedHeadsetMissing = false
+    private var currentTrackRoutes: () -> Set<String>? = { null }
     private val routeSafetyListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) pauseUnsafeGuardedPlayback()
@@ -106,8 +107,9 @@ class AudioOutputRouter @Inject constructor(
     /** Live platform handles keyed by BookWave's stable, permission-free identity. */
     private var live: Map<String, AudioDeviceInfo> = emptyMap()
 
-    fun attach(target: ExoPlayer) {
+    fun attach(target: ExoPlayer, trackRoutes: () -> Set<String>? = { null }) {
         player?.removeListener(routeSafetyListener)
+        currentTrackRoutes = trackRoutes
         player = target
         target.addListener(routeSafetyListener)
         val manager = context.getSystemService(AudioManager::class.java) ?: return
@@ -129,6 +131,7 @@ class AudioOutputRouter @Inject constructor(
         missingHeadsetGrace = null
         guardedHeadsetId = null
         guardedHeadsetMissing = false
+        currentTrackRoutes = { null }
         player?.removeListener(routeSafetyListener)
         player = null
     }
@@ -353,8 +356,14 @@ class AudioOutputRouter @Inject constructor(
         }
     }
 
+    /** AudioTrack can change sinks without an AudioManager device-list callback. */
+    internal fun onActualTrackRouteChanged() {
+        pauseUnsafeGuardedPlayback()
+        publish()
+    }
+
     private fun publish() {
-        val routed = routedIds()
+        val routed = currentTrackRoutes() ?: routedIds()
         val chosen = _selectedId.value
         pauseUnsafeGuardedPlayback()
         _outputs.value = live.mapNotNull { (id, info) ->
@@ -380,7 +389,8 @@ class AudioOutputRouter @Inject constructor(
         if (_selectedId.value != guarded) return
         applicationScope.launch(mainDispatcher) {
             val current = player ?: return@launch
-            val latestRoute = routedIds()
+            val actualRoute = currentTrackRoutes()
+            val latestRoute = actualRoute ?: routedIds()
             if (!shouldSuspendGuardedPlayback(
                     guardedHeadsetId,
                     _selectedId.value,
@@ -438,8 +448,8 @@ class AudioOutputRouter @Inject constructor(
 
 /**
  * Pure route-safety guard used by the shared router's actual publish callback.
- * A successful preference request is not proof of the destination; absent,
- * multiple, or different framework routes are unsafe for a guarded headset.
+ * The caller prefers a measured AudioTrack sink over AudioManager's predicted output.
+ * Unknown, multiple and other sinks fail closed even when a preference was accepted.
  */
 internal fun shouldSuspendGuardedPlayback(
     guardedHeadsetId: String?,
