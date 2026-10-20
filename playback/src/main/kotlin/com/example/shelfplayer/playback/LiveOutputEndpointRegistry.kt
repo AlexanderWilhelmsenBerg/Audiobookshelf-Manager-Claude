@@ -1,6 +1,7 @@
 package com.example.shelfplayer.playback
 
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,6 +23,7 @@ class LiveOutputEndpointRegistry @Inject constructor() {
         val output: AudioOutput,
     )
 
+    private val processToken = UUID.randomUUID().toString()
     private var next = 0L
     private var connected: Map<Int, Endpoint> = emptyMap()
 
@@ -40,7 +42,7 @@ class LiveOutputEndpointRegistry @Inject constructor() {
                 platformId = handle,
                 type = observation.type,
                 productName = observation.productName,
-                id = output.kind.name.lowercase() + ":endpoint:e" + ++next,
+                id = output.kind.name.lowercase() + ":endpoint:" + processToken + ":e" + ++next,
                 knownDeviceId = output.id,
                 output = output,
             )

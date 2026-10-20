@@ -21,7 +21,7 @@ class LiveOutputEndpointRegistryTest {
         assertNotEquals(endpoints[0].id, endpoints[1].id)
         assertEquals(endpoints[0].knownDeviceId, endpoints[1].knownDeviceId)
         assertEquals("bluetooth:buds", endpoints[0].knownDeviceId)
-        assertTrue(endpoints.all { it.id.startsWith("bluetooth:endpoint:e") })
+        assertTrue(endpoints.all { it.id.startsWith("bluetooth:endpoint:") })
         assertFalse(endpoints.any { it.id.contains("Buds") || it.id.contains("31") || it.id.contains("49") })
         assertEquals(endpoints[1].id, registry.find(49, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "Buds")?.id)
     }
@@ -44,6 +44,7 @@ class LiveOutputEndpointRegistryTest {
         val next = LiveOutputEndpointRegistry()
         val newOutput = next.reconcile(listOf(seen(2, "Other"))).single().id
         assertNull(next.find(1, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "Buds"))
+        assertNotEquals(old, newOutput, "a new process must not reuse the prior route token")
         assertFalse(RouteEvidence(RouteEvidenceSource.MediaButtonUnknown, RouteConfidence.Unknown, old)
             .confirms(newOutput))
     }
