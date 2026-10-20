@@ -219,7 +219,7 @@ class AudioOutputRouterThreadTest {
         val player = Proxy.newProxyInstance(
             ExoPlayer::class.java.classLoader,
             arrayOf(ExoPlayer::class.java),
-        ) { _, method, _ ->
+        ) { _, method, args ->
             when (method.name) {
                 "isPlaying" -> {
                     check(Thread.currentThread() == owningThread) { "ExoPlayer isPlaying on the wrong thread" }
@@ -230,7 +230,7 @@ class AudioOutputRouterThreadTest {
                 "setPreferredAudioDevice" -> null
                 "getVolume" -> volumes.lastOrNull() ?: 1f
                 "setVolume" -> {
-                    volumes.add(it?.get(0) as Float)
+                    volumes.add(args?.get(0) as Float)
                     null
                 }
 
