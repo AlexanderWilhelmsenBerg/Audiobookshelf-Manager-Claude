@@ -66,6 +66,7 @@ class PlaybackContinuityInvariantMatrixTest {
                 assertEquals(CarArrivalResumeGate.Status.Armed, interrupt(10.seconds, false).status)
                 gate.onCarArrival(11.seconds, generation, 0)
             }
+
             Order.CarBeforeInterruption -> {
                 assertEquals(CarArrivalResumeGate.Status.Armed, gate.onCarArrival(10.seconds, generation, 0).status)
                 interrupt(11.seconds, true)
@@ -78,76 +79,84 @@ class PlaybackContinuityInvariantMatrixTest {
 
     @Test
     fun callbackOrderOnlyAuthorizesOriginalHeadsetOnce() = runBlocking {
-        for (order in Order.entries) for (event in Interruption.entries) {
-            val item = readyRecovery(order, event)
-            var reassertions = 0
-            val held = CarArrivalRouteRecovery(100.milliseconds).secure(
-                target = item.target,
-                outputs = MutableStateFlow(listOf(headset.copy(isActive = true))),
-                selectedId = MutableStateFlow<String?>(null),
-                isStillEligible = { item.gate.isCurrent(item.target, item.generation, 0) },
-            ) {
-                reassertions++
-                true
+        for (order in Order.entries) {
+            for (event in Interruption.entries) {
+                val item = readyRecovery(order, event)
+                var reassertions = 0
+                val held = CarArrivalRouteRecovery(100.milliseconds).secure(
+                    target = item.target,
+                    outputs = MutableStateFlow(listOf(headset.copy(isActive = true))),
+                    selectedId = MutableStateFlow<String?>(null),
+                    isStillEligible = { item.gate.isCurrent(item.target, item.generation, 0) },
+                ) {
+                    reassertions++
+                    true
+                }
+                val label = "$order / $event"
+                assertEquals(headset.id, held, label)
+                assertEquals(0, reassertions, "actively routed headset must not be reasserted: $label")
+                assertTrue(item.gate.consumeRecovery(item.target, item.generation, held, 0).accepted, label)
+                assertFalse(item.gate.consumeRecovery(item.target, item.generation, held, 0).accepted, label)
+                assertEquals(
+                    CarArrivalResumeGate.Status.Rejected,
+                    item.gate.onCarArrival(12.seconds, item.generation, 0).status,
+                    "duplicate car callback: $label",
+                )
             }
-            val label = "$order / $event"
-            assertEquals(headset.id, held, label)
-            assertEquals(0, reassertions, "actively routed headset must not be reasserted: $label")
-            assertTrue(item.gate.consumeRecovery(item.target, item.generation, held, 0).accepted, label)
-            assertFalse(item.gate.consumeRecovery(item.target, item.generation, held, 0).accepted, label)
-            assertEquals(
-                CarArrivalResumeGate.Status.Rejected,
-                item.gate.onCarArrival(12.seconds, item.generation, 0).status,
-                "duplicate car callback: $label",
-            )
         }
     }
 
     @Test
     fun stalePauseBookOrSelectionNeverReassertsOrResumes() = runBlocking {
-        for (order in Order.entries) for (event in Interruption.entries) for (invalidation in Invalidation.entries) {
-            val item = readyRecovery(order, event)
-            val generation = if (invalidation == Invalidation.BookGenerationChanged) {
-                requireNotNull(item.generation) + 1
-            } else {
-                item.generation
+        for (order in Order.entries) {
+            for (event in Interruption.entries) {
+                for (invalidation in Invalidation.entries) {
+                    val item = readyRecovery(order, event)
+                    val generation = if (invalidation == Invalidation.BookGenerationChanged) {
+                        requireNotNull(item.generation) + 1
+                    } else {
+                        item.generation
+                    }
+                    val selection = if (invalidation == Invalidation.OutputSelectionChanged) 1L else 0L
+                    if (invalidation == Invalidation.ExplicitPause) item.gate.cancelAll()
+                    var reassertions = 0
+                    val held = CarArrivalRouteRecovery(100.milliseconds).secure(
+                        target = item.target,
+                        outputs = MutableStateFlow(listOf(headset.copy(isActive = true))),
+                        selectedId = MutableStateFlow<String?>(null),
+                        isStillEligible = { item.gate.isCurrent(item.target, generation, selection) },
+                    ) {
+                        reassertions++
+                        true
+                    }
+                    val label = "$order / $event / $invalidation"
+                    assertNull(held, label)
+                    assertEquals(0, reassertions, "invalidated attempt may not touch routing: $label")
+                    assertFalse(item.gate.consumeRecovery(item.target, generation, held, selection).accepted, label)
+                }
             }
-            val selection = if (invalidation == Invalidation.OutputSelectionChanged) 1L else 0L
-            if (invalidation == Invalidation.ExplicitPause) item.gate.cancelAll()
-            var reassertions = 0
-            val held = CarArrivalRouteRecovery(100.milliseconds).secure(
-                target = item.target,
-                outputs = MutableStateFlow(listOf(headset.copy(isActive = true))),
-                selectedId = MutableStateFlow<String?>(null),
-                isStillEligible = { item.gate.isCurrent(item.target, generation, selection) },
-            ) {
-                reassertions++
-                true
-            }
-            val label = "$order / $event / $invalidation"
-            assertNull(held, label)
-            assertEquals(0, reassertions, "invalidated attempt may not touch routing: $label")
-            assertFalse(item.gate.consumeRecovery(item.target, generation, held, selection).accepted, label)
         }
     }
 
     @Test
     fun competingSpeakerEvidenceNeverAuthorizesHeadsetRecovery() = runBlocking {
-        for (order in Order.entries) for (event in Interruption.entries) {
-            val item = readyRecovery(order, event)
-            val selected = MutableStateFlow<String?>(headset.id)
-            val held = CarArrivalRouteRecovery(80.milliseconds).secure(
-                target = item.target,
-                outputs = MutableStateFlow(listOf(headset, speaker)),
-                selectedId = selected,
-                isStillEligible = { item.gate.isCurrent(item.target, item.generation, 0) },
-            ) { id ->
-                selected.value = id
-                true
+        for (order in Order.entries) {
+            for (event in Interruption.entries) {
+                val item = readyRecovery(order, event)
+                val selected = MutableStateFlow<String?>(headset.id)
+                val held = CarArrivalRouteRecovery(80.milliseconds).secure(
+                    target = item.target,
+                    outputs = MutableStateFlow(listOf(headset, speaker)),
+                    selectedId = selected,
+                    isStillEligible = { item.gate.isCurrent(item.target, item.generation, 0) },
+                ) { id ->
+                    selected.value = id
+                    true
+                }
+                val label = "$order / $event"
+                assertNull(held, "preferred-device request does not override reported speaker: $label")
+                assertFalse(item.gate.consumeRecovery(item.target, item.generation, held, 0).accepted, label)
             }
-            val label = "$order / $event"
-            assertNull(held, "preferred-device request does not override reported speaker: $label")
-            assertFalse(item.gate.consumeRecovery(item.target, item.generation, held, 0).accepted, label)
         }
     }
 }
