@@ -63,6 +63,21 @@ class AudioOutputRouterThreadTest {
     }
 
     @Test
+    fun `measured exact headset overrides remote mix prediction`() {
+        val predictedRemoteMix = emptySet<String>()
+        val measuredHeadset = setOf("bluetooth:original")
+        assertTrue(shouldSuspendGuardedPlayback("bluetooth:original", "bluetooth:original", predictedRemoteMix, true))
+        assertTrue(!shouldSuspendGuardedPlayback("bluetooth:original", "bluetooth:original", measuredHeadset, true))
+    }
+
+    @Test
+    fun `measured different or multiple sinks cannot authorize headset playback`() {
+        assertTrue(shouldSuspendGuardedPlayback("bluetooth:original", "bluetooth:original", setOf("bluetooth:car"), true))
+        assertTrue(shouldSuspendGuardedPlayback("bluetooth:original", "bluetooth:original", setOf("bluetooth:original", "bluetooth:car"), true))
+        assertTrue(shouldSuspendGuardedPlayback("bluetooth:original", "bluetooth:original", emptySet(), true))
+    }
+
+    @Test
     fun `after grace expires unattributed Play still cannot escape to default car route`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
