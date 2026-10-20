@@ -375,14 +375,16 @@ class AudioOutputRouter @Inject constructor(
     }
 
     /** An unknown projection prediction permits only a SILENT verification of the exact original headset. */
-    internal fun canProbeHeldHeadset(id: String): Boolean =
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && canAttemptMutedHeadsetProbe(
-        id,
-        guardedHeadsetId,
-        _selectedId.value,
-        id in live && id !in collidingOutputIds,
-        routedIds(),
-    )
+    internal fun canProbeHeldHeadset(id: String): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+        return canAttemptMutedHeadsetProbe(
+            id,
+            guardedHeadsetId,
+            _selectedId.value,
+            id in live && id !in collidingOutputIds,
+            routedIds(),
+        )
+    }
 
     /** Called on Media3's application thread before the automatic continuity Play. */
     internal fun beginMutedHeadsetProbe(id: String): Boolean = canProbeHeldHeadset(id) && startMutedProbe(id)
