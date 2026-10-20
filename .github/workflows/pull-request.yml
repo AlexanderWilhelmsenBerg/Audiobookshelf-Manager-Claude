@@ -396,6 +396,24 @@ jobs:
         continue-on-error: true
         run: python3 scripts/ci/check_architecture_boundaries.py
 
+      - name: Report Kotlin complexity trends
+        id: complexity_trends
+        env:
+          COMPARISON_BASE: ${{ steps.classify.outputs.comparison_base }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/report_complexity_trends.py --base "$COMPARISON_BASE" --output ci-architecture
+          cat ci-architecture/complexity-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload complexity trend report
+        if: ${{ always() && steps.complexity_trends.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: kotlin-complexity-trends
+          path: ci-architecture/complexity-report.*
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Summarize preflight
         id: preflight_summary
         if: ${{ always() }}
