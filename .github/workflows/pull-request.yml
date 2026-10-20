@@ -1,4 +1,4 @@
-name: CI · PR verification
+name: CI · Verification
 
 run-name: "CI · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.ref_name }} · ${{ github.event_name == 'pull_request' && 'standard' || github.event_name == 'push' && 'cache seed' || inputs.depth }}"
 
@@ -20,10 +20,10 @@ run-name: "CI · ${{ github.event_name == 'pull_request' && format('PR #{0}', gi
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, closed]
   # Every merge re-runs Standard on the new main and saves its Gradle state, so the next PR starts warm from
-  # the current main instead of a hand-seeded snapshot. main.yml skips its own verifyDebug on push for that
-  # reason: the merge pays for one debug verification, not two.
+  # the current main instead of a hand-seeded snapshot. Release checks are a separate main-push job
+  # in this workflow, so debug verification is not duplicated.
   push:
     branches: [main]
   workflow_dispatch:
@@ -78,6 +78,7 @@ env:
 
 jobs:
   identity:
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
     name: "CI · ${{ github.ref_name }} · resolve target"
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -235,6 +236,8 @@ jobs:
     outputs:
       build_changed: ${{ steps.classify.outputs.build_changed }}
       ci_infra_changed: ${{ steps.classify.outputs.ci_infra_changed }}
+      workflows_changed: ${{ steps.classify.outputs.workflows_changed }}
+      ci_image_changed: ${{ steps.classify.outputs.ci_image_changed }}
       dependency_inputs_changed: ${{ steps.classify.outputs.dependency_inputs_changed }}
       checked_head: ${{ steps.classify.outputs.checked_head }}
       status_description: ${{ steps.preflight_summary.outputs.status_description }}
@@ -780,7 +783,7 @@ jobs:
   # PR refs retain one generation per Gradle kind. Successful current-main seeds prune only home-state
   # generations: dependency/transform/build-cache blobs can be referenced by other jobs' home states.
   # Runs no repository code, so the actions:write token never meets PR-controlled scripts.
-  # Closing a PR removes its remaining entries (pr-cache-cleanup.yml).
+  # Closing a PR removes its remaining entries through the cache-cleanup job below.
   prune-gradle-cache:
     name: "CI · ${{ needs.identity.outputs.display_label }} · prune superseded Gradle cache"
     if: ${{ always() && !cancelled() && needs.identity.outputs.cache_write == 'true' && ((github.event_name == 'pull_request' && (needs.verify.result == 'success' || needs.verify.result == 'failure')) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.verify.result == 'success')) }}
@@ -863,3 +866,275 @@ jobs:
             | gh api --method POST "repos/$GITHUB_REPOSITORY/dispatches" --input -
 
           echo "Dispatched trusted Build APK for PR #$PR_NUMBER @ ${VERIFIED_SHA:0:8}; signing remains isolated in apk.yml."
+
+  release-checks:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: preflight
+    name: Release lint and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: gradle/actions/wrapper-validation@v6
+
+      - name: Verify pinned Gradle wrapper checksum
+        shell: bash
+        env:
+          GRADLE_WRAPPER_JAR_SHA256: 7d3a4ac4de1c32b59bc6a4eb8ecb8e612ccd0cf1ae1e99f66902da64df296172
+        run: |
+          set -euo pipefail
+          distribution_sha="$(grep '^distributionSha256Sum=' gradle/wrapper/gradle-wrapper.properties | cut -d= -f2-)"
+          [[ "$distribution_sha" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::distributionSha256Sum must be pinned"; exit 1; }
+          actual="$(sha256sum gradle/wrapper/gradle-wrapper.jar | awk '{print $1}')"
+          test "$actual" = "$GRADLE_WRAPPER_JAR_SHA256" || { echo "::error::Gradle wrapper JAR checksum mismatch"; exit 1; }
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: enhanced
+
+      # PRODUCT_SPEC 16.5 — the release verification additionally runs release lint.
+      - name: Release lint
+        run: ./gradlew :app:lintRelease -Pshelfplayer.warningsAsErrors=true
+
+      # Release unit tests moved here from the PR gate: `verifyDebug` measures coverage on debug only, so it no
+      # longer runs `testReleaseUnitTest`. This is the only place the release variant's tests execute (it also
+      # starts covering :playback and :data:downloads, which never had release tests run). `:app` excludes
+      # `*ScreenTest` from this task by design.
+      - name: Release unit tests
+        run: ./gradlew testReleaseUnitTest --continue -Pshelfplayer.warningsAsErrors=true
+
+      # PRODUCT_SPEC 18 — the Software Bill of Materials, unblocked by ADR-0024's licence decision.
+      #
+      # Run before the release assembly rather than after it: the task resolves
+      # `releaseRuntimeClasspath` and builds nothing, so a component that reaches the app without a
+      # pinned checksum fails here in seconds instead of after a full R8 run. It is also the reason
+      # this step is not `if: always()` — a failing SBOM is a supply-chain finding, and continuing to
+      # produce an APK past one would be the wrong order of business.
+      - name: Software Bill of Materials
+        run: ./gradlew :app:sbom
+
+      # PRODUCT_SPEC 18 — the dependency vulnerability scan, over the SBOM produced above.
+      #
+      # `curl` against OSV's documented batch endpoint rather than a third-party scanning action: every
+      # other action in this repository is first-party, and the SBOM already carries every purl the query
+      # needs. `jq` is present on GitHub's Ubuntu runners.
+      #
+      # This reports what OSV knows about a published coordinate and says nothing about reachability, so
+      # an advisory in a library the app never calls fails the build exactly like one in a library it
+      # calls constantly. That is deliberate: deciding a vulnerability is unreachable belongs in a written
+      # exemption rather than in a script's silence.
+      - name: Dependency vulnerability scan
+        run: ./scripts/vulnerability-scan.sh
+
+      # PRODUCT_SPEC 18 — the release build is unsigned here on purpose. Signing happens only in a
+      # protected environment with the key material, never in a workflow triggered by a push.
+      - name: Assemble release (unsigned)
+        run: ./gradlew :app:assembleRelease -Pshelfplayer.warningsAsErrors=true
+
+      # PRODUCT_SPEC 18 — the mapping archive. R8 writes these whenever minification runs, so this
+      # needs no signing key and was never actually blocked on one; `docs/release.md` said it was.
+      # Kept for the life of the build's retention rather than a release's, which is a gap this
+      # cannot close: a crash report arriving months after a release needs the mapping from *that*
+      # build, and that is a job for the store's own upload rather than for CI.
+      - name: Upload mapping and SBOM
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-supply-chain
+          path: |
+            app/build/reports/sbom/bom.json
+            app/build/outputs/mapping/release/**
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: main-quality-reports
+          path: |
+            **/build/reports/detekt/**
+            **/build/reports/lint-results-*.html
+            **/build/reports/tests/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+  ci-image:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.preflight.outputs.ci_image_changed == 'true' }}
+    needs: preflight
+    permissions:
+      contents: read
+      packages: write
+    name: Build, verify and publish CI image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Resolve image identity
+        id: image
+        env:
+          REQUESTED_TAG: android36-jdk17-v1
+        run: |
+          set -euo pipefail
+          tag="${REQUESTED_TAG:-android36-jdk17-v1}"
+          if ! [[ "$tag" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+            echo "::error::Invalid OCI tag: $tag"
+            exit 1
+          fi
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          image="ghcr.io/$owner/bookwave-ci"
+          sha_tag="sha-${GITHUB_SHA:0:12}"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=$sha_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        run: |
+          set -euo pipefail
+          docker build --pull \
+            --file ci/bookwave-ci/Dockerfile \
+            --build-arg "SOURCE_REVISION=$GITHUB_SHA" \
+            --tag bookwave-ci:validation \
+            .
+
+      - name: Verify image contract
+        run: |
+          set -euo pipefail
+          docker run --rm bookwave-ci:validation bookwave-ci-verify
+          docker run --rm bookwave-ci:validation bash -c 'node --version && java -version && sdkmanager --version && gitleaks version'
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Publish validated image
+        id: publish
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          HUMAN_TAG: ${{ steps.image.outputs.tag }}
+          SHA_TAG: ${{ steps.image.outputs.sha_tag }}
+        run: |
+          set -euo pipefail
+
+          # This job runs only on trusted main after image-source changes. Published digests are not
+          # consumed by PR verification until a reviewed digest-pin update is merged.
+          docker tag bookwave-ci:validation "$IMAGE:$SHA_TAG"
+          docker push "$IMAGE:$SHA_TAG"
+
+          if [ "$GITHUB_REF" = "refs/heads/main" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            docker tag bookwave-ci:validation "$IMAGE:$HUMAN_TAG"
+            docker push "$IMAGE:$HUMAN_TAG"
+            echo "human_tag_published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "human_tag_published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          docker pull "$IMAGE:$SHA_TAG" >/dev/null
+          digest="$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:$SHA_TAG")"
+          test -n "$digest" || { echo "::error::Could not resolve pushed image digest."; exit 1; }
+          echo "reference=$digest" >> "$GITHUB_OUTPUT"
+          echo "Published immutable source image $digest"
+
+      - name: Summary
+        if: always()
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+          HUMAN_TAG: ${{ steps.image.outputs.tag }}
+          SHA_TAG: ${{ steps.image.outputs.sha_tag }}
+          REFERENCE: ${{ steps.publish.outputs.reference }}
+        run: |
+          {
+            echo '### BookWave CI image'
+            echo
+            echo "- Source: \`$GITHUB_SHA\`"
+            echo "- Image: \`$IMAGE\`"
+            if [ "${{ steps.publish.outputs.human_tag_published }}" = "true" ]; then
+              echo "- Human tag: \`$HUMAN_TAG\` (published)"
+            else
+              echo "- Human tag: \`$HUMAN_TAG\` (unchanged; branch candidate)"
+            fi
+            echo "- Source tag: \`$SHA_TAG\`"
+            echo "- Android platform/build-tools: \`36 / 36.0.0\`"
+            echo "- JDK / Node: \`17 / 22\`"
+            if [ -n "${REFERENCE:-}" ]; then
+              echo "- Immutable reference: \`$REFERENCE\`"
+            else
+              echo '- Published: no (validation-only run)'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  cleanup-pr-cache:
+    if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository }}
+    permissions:
+      actions: write
+    name: Delete closed PR cache
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Delete every cache entry on the PR ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --paginate --method GET "repos/$GITHUB_REPOSITORY/actions/caches" \
+            -f ref="$CACHE_REF" -F per_page=100 --jq '.actions_caches[].id' \
+            | while read -r id; do
+                echo "Deleting cache entry $id"
+                gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent
+              done
+
+  retire-old-workflows:
+    # GitHub retains registrations for deleted workflow files; disable them after merging a workflow change.
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.preflight.outputs.workflows_changed == 'true' }}
+    needs: preflight
+    name: Disable workflow registrations whose files were retired
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Disable retired workflow identities
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          disabled=0
+          while IFS=$'\t' read -r id path state; do
+            case "$path" in
+              .github/workflows/*.yml|.github/workflows/*.yaml) ;;
+              *) continue ;; # GitHub-managed dynamic workflows are not ours to disable.
+            esac
+            if [ "$state" != active ] || [ -f "$path" ]; then
+              continue
+            fi
+            echo "Disabling retired workflow $id ($path)"
+            gh api --method PUT "repos/$GITHUB_REPOSITORY/actions/workflows/$id/disable" --silent
+            disabled=$((disabled + 1))
+          done < <(
+            gh api --paginate "repos/$GITHUB_REPOSITORY/actions/workflows?per_page=100" \
+              --jq '.workflows[] | [.id, .path, .state] | @tsv'
+          )
+          echo "Disabled $disabled retired workflow registration(s)." >> "$GITHUB_STEP_SUMMARY"

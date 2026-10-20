@@ -32,12 +32,26 @@ changed_files="$(git diff --name-only "${base}...${head}")"
 build_changed=false
 ci_infra_changed=false
 dependency_inputs_changed=false
+workflows_changed=false
+ci_image_changed=false
 
 while IFS= read -r path; do
   [ -n "$path" ] || continue
   case "$path" in
     .github/workflows/*|ci/*|.forgejo/workflows/*|.forgejo/ci/*|scripts/ci/*|scripts/codex/*)
       ci_infra_changed=true
+      ;;
+  esac
+
+  case "$path" in
+    .github/workflows/*.yml|.github/workflows/*.yaml)
+      workflows_changed=true
+      ;;
+  esac
+
+  case "$path" in
+    ci/bookwave-ci/*)
+      ci_image_changed=true
       ;;
   esac
 
@@ -59,6 +73,8 @@ printf '%s\n' "$changed_files"
 printf 'build_changed=%s\n' "$build_changed"
 printf 'ci_infra_changed=%s\n' "$ci_infra_changed"
 printf 'dependency_inputs_changed=%s\n' "$dependency_inputs_changed"
+printf 'workflows_changed=%s\n' "$workflows_changed"
+printf 'ci_image_changed=%s\n' "$ci_image_changed"
 printf 'comparison_base=%s\n' "$comparison_base"
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
@@ -66,6 +82,8 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
     echo "build_changed=$build_changed"
     echo "ci_infra_changed=$ci_infra_changed"
     echo "dependency_inputs_changed=$dependency_inputs_changed"
+    echo "workflows_changed=$workflows_changed"
+    echo "ci_image_changed=$ci_image_changed"
     echo "comparison_base=$comparison_base"
   } >> "$GITHUB_OUTPUT"
 fi
