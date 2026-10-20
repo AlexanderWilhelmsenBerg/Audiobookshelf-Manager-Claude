@@ -38,3 +38,29 @@ logic, mutable state owners, or fully-qualified references. Keep other architect
 review and behavioral verification. New module families must update the documented
 dependency policy and guard together. Failure messages identify the source file
 and line and block the preflight gate.
+
+## Complexity trend report (Phase 1B)
+
+Preflight compares production Kotlin files against the exact `comparison_base` SHA
+validated by `scripts/ci/classify-changes.sh`. This comparison works both on PRs
+and on trusted `main` pushes (where the base is the previous commit).
+
+The report lists the largest files, watchlist metrics for central playback/library
+components, and baseline-relative changes for up to 30 changed files. All changed
+files are retained in the JSON artifact (`kotlin-complexity-trends`, 30 days).
+The report also appears in the GitHub job summary.
+
+Measurements are nonblank code lines, branching token counts, and mutable
+declaration token counts after masking strings/comments. They are **proxies**, not
+Detekt cognitive complexity, cyclomatic complexity, state ownership, or verified
+duplication. Existing Detekt/ktlint remain authoritative for code-quality gates.
+
+Initial advisory conditions: a new 300+ line production Kotlin file, an existing
+250+ line file growing at least 30 lines and 4%, or an existing 150+ line file
+gaining five or more branch tokens. Historical size/complexity never blocks a PR;
+advisories require review, not automatic failure. Analysis/tool errors do fail
+preflight because missing report evidence must not be mistaken for a clean result.
+
+Before changing any thresholds or making them blocking, compare the trends with
+Repowise, jCodeMunch, and an actual responsibility/ownership review. Splitting
+one file into many competing state holders is not a simplification.
