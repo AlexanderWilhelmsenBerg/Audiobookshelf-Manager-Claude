@@ -94,7 +94,9 @@ internal class AudioTrackRouteMonitor @Inject constructor(
                 listOfNotNull(track.routedDevice)
             }
             // Multiple physical sinks cannot be collapsed into a single name-based identity.
-            if (routed.size != 1) emptySet() else {
+            if (routed.size != 1) {
+                emptySet()
+            } else {
                 val output = routed.single().let { OutputDevices.outputOf(it.type, it.productName) }
                 if (output == null) emptySet() else setOf(output.id)
             }
