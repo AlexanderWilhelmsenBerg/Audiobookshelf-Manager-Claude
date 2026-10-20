@@ -128,6 +128,10 @@ class CarContinuityRecoveryCoordinatorTest {
         assertFalse(coordinator.isPlayAwaiting)
         coordinator.notePlayIssued(target)
         coordinator.cancelPending()
+        assertTrue(coordinator.isPlayAwaiting, "Media3 playWhenReady must not swallow the audible confirmation")
+        assertEquals(target, coordinator.playbackBecameActive(target.generation, 0))
+        coordinator.notePlayIssued(target)
+        coordinator.cancelAll()
         assertFalse(coordinator.isPlayAwaiting)
         assertNull(coordinator.playbackBecameActive(target.generation, 0))
     }

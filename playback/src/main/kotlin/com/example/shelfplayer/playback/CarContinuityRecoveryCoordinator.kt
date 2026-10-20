@@ -22,8 +22,9 @@ internal class CarContinuityRecoveryCoordinator(
     val isPlayAwaiting: Boolean get() = awaiting != null
 
     fun cancelPending() {
+        // Media3 invokes playWhenReady before isPlaying. Do not erase the diagnostic
+        // claim on our own successful automatic Play before audible playback is observed.
         gate.cancelPending()
-        awaiting = null
     }
 
     fun cancelAll() {
@@ -76,6 +77,7 @@ internal class CarContinuityRecoveryCoordinator(
         CarContinuityPlayPrecheck.AlreadyPlaying,
         -> {
             cancelPending()
+            clearAwaiting()
             Assessment(precheck)
         }
 
