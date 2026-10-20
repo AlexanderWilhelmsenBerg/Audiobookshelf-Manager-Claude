@@ -396,7 +396,6 @@ class PlaybackService : MediaLibraryService() {
         // and the audio attributes when the player is built, so both apply to the *next* player. Read once,
         // together, rather than as two blocking reads.
         val settings = runBlocking { playbackSettings.observeSettings().first() }
-        audioTrackRouteMonitor.onRouteChanged = audioOutputs::onActualTrackRouteChanged
         val exoPlayer = players.create(buffer = settings.buffer, focus = settings.focusBehaviour)
             .also { player = it }
         exoPlayer.addListener(PlayerEvents())
@@ -455,7 +454,7 @@ class PlaybackService : MediaLibraryService() {
         }
         // PRODUCT_SPEC PLAY-002 — after the player exists and before anything can be chosen. A preference
         // set on a released player routes nothing, so this is re-run on every player this service builds.
-        audioOutputs.attach(exoPlayer, audioTrackRouteMonitor::currentRouteIds)
+        attachRouteSafetyMonitor(exoPlayer)
         startJournal()
         observeSleepTimer()
         observeSkipIntervals()
@@ -464,6 +463,11 @@ class PlaybackService : MediaLibraryService() {
         outputDevices.start(scope, DeviceActions())
         observeBrowseTreeInvalidation()
         logger.info(LogCategory.Playback, "Playback service started")
+    }
+
+    private fun attachRouteSafetyMonitor(exoPlayer: ExoPlayer) {
+        audioTrackRouteMonitor.onRouteChanged = audioOutputs::onActualTrackRouteChanged
+        audioOutputs.attach(exoPlayer, audioTrackRouteMonitor::currentRouteIds)
     }
 
     /**
