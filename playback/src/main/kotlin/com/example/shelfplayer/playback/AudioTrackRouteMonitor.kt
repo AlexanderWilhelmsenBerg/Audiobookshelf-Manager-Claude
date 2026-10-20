@@ -93,10 +93,10 @@ internal class AudioTrackRouteMonitor @Inject constructor(
             } else {
                 listOfNotNull(track.routedDevice)
             }
-            if (routed.isEmpty() || routed.any { OutputDevices.outputOf(it.type, it.productName) == null }) {
-                emptySet()
-            } else {
-                routed.mapNotNull { OutputDevices.outputOf(it.type, it.productName)?.id }.toSet()
+            // Multiple physical sinks cannot be collapsed into a single name-based identity.
+            if (routed.size != 1) emptySet() else {
+                val output = routed.single().let { OutputDevices.outputOf(it.type, it.productName) }
+                if (output == null) emptySet() else setOf(output.id)
             }
         }.getOrNull()
     }
