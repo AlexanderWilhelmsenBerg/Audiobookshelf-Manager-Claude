@@ -391,6 +391,11 @@ jobs:
           python3 -m compileall -q scripts/ci
           python3 -m unittest discover -s scripts/ci/tests -p 'test_*.py'
 
+      - name: Enforce architecture boundaries
+        id: architecture_check
+        continue-on-error: true
+        run: python3 scripts/ci/check_architecture_boundaries.py
+
       - name: Summarize preflight
         id: preflight_summary
         if: ${{ always() }}
@@ -402,6 +407,7 @@ jobs:
           SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
           SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
           SCRIPT_OUTCOME: ${{ steps.script_check.outcome }}
+          ARCHITECTURE_OUTCOME: ${{ steps.architecture_check.outcome }}
         run: |
           set -euo pipefail
           summary="${FORGEJO_STEP_SUMMARY:-${GITHUB_STEP_SUMMARY:-}}"
@@ -428,6 +434,7 @@ jobs:
             render "Secret scan" "$SECRET_SCAN_OUTCOME"
             render "Committed Room schemas" "$SCHEMA_OUTCOME"
             render "CI script syntax/tests" "$SCRIPT_OUTCOME"
+            render "Architecture boundaries" "$ARCHITECTURE_OUTCOME"
             echo
           } > /tmp/bookwave-preflight-summary.md
 
@@ -452,6 +459,7 @@ jobs:
           SECRET_SCAN_OUTCOME: ${{ steps.secret_scan.outcome }}
           SCHEMA_OUTCOME: ${{ steps.schema_check.outcome }}
           SCRIPT_OUTCOME: ${{ steps.script_check.outcome }}
+          ARCHITECTURE_OUTCOME: ${{ steps.architecture_check.outcome }}
         run: |
           set -euo pipefail
           failed=0
@@ -460,7 +468,8 @@ jobs:
             "Gradle wrapper validation:$WRAPPER_OUTCOME" \
             "Secret scan:$SECRET_SCAN_OUTCOME" \
             "Room schema immutability:$SCHEMA_OUTCOME" \
-            "CI script validation:$SCRIPT_OUTCOME"; do
+            "CI script validation:$SCRIPT_OUTCOME" \
+            "Architecture boundaries:$ARCHITECTURE_OUTCOME"; do
             name="${result%%:*}"
             outcome="${result#*:}"
             if [ "$outcome" != "success" ]; then
