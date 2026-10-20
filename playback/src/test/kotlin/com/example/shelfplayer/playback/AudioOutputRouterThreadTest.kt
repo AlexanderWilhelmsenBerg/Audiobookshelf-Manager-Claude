@@ -122,25 +122,28 @@ class AudioOutputRouterThreadTest {
 
     @Test
     fun `silent probe allows only reasserted exact device when prediction is unknown`() {
-        assertTrue(canAttemptMutedHeadsetProbe("bluetooth:original", "bluetooth:original", "bluetooth:original", true, emptySet()))
-        assertTrue(!canAttemptMutedHeadsetProbe("bluetooth:original", "bluetooth:original", "bluetooth:original", true, setOf("bluetooth:car")))
-        assertTrue(!canAttemptMutedHeadsetProbe("bluetooth:original", "bluetooth:original", "bluetooth:other", true, emptySet()))
-        assertTrue(!canAttemptMutedHeadsetProbe("bluetooth:original", "bluetooth:original", "bluetooth:original", false, emptySet()))
+        val id = "bluetooth:original"
+        assertTrue(canAttemptMutedHeadsetProbe(id, id, id, true, emptySet()))
+        assertTrue(!canAttemptMutedHeadsetProbe(id, id, id, true, setOf("bluetooth:car")))
+        assertTrue(!canAttemptMutedHeadsetProbe(id, id, "bluetooth:other", true, emptySet()))
+        assertTrue(!canAttemptMutedHeadsetProbe(id, id, id, false, emptySet()))
     }
 
     @Test
     fun `measured exact headset overrides remote mix prediction`() {
         val predictedRemoteMix = emptySet<String>()
         val measuredHeadset = setOf("bluetooth:original")
-        assertTrue(shouldSuspendGuardedPlayback("bluetooth:original", "bluetooth:original", predictedRemoteMix, true))
-        assertTrue(!shouldSuspendGuardedPlayback("bluetooth:original", "bluetooth:original", measuredHeadset, true))
+        val id = "bluetooth:original"
+        assertTrue(shouldSuspendGuardedPlayback(id, id, predictedRemoteMix, true))
+        assertTrue(!shouldSuspendGuardedPlayback(id, id, measuredHeadset, true))
     }
 
     @Test
     fun `measured different or multiple sinks cannot authorize headset playback`() {
-        assertTrue(shouldSuspendGuardedPlayback("bluetooth:original", "bluetooth:original", setOf("bluetooth:car"), true))
-        assertTrue(shouldSuspendGuardedPlayback("bluetooth:original", "bluetooth:original", setOf("bluetooth:original", "bluetooth:car"), true))
-        assertTrue(shouldSuspendGuardedPlayback("bluetooth:original", "bluetooth:original", emptySet(), true))
+        val id = "bluetooth:original"
+        assertTrue(shouldSuspendGuardedPlayback(id, id, setOf("bluetooth:car"), true))
+        assertTrue(shouldSuspendGuardedPlayback(id, id, setOf(id, "bluetooth:car"), true))
+        assertTrue(shouldSuspendGuardedPlayback(id, id, emptySet(), true))
     }
 
     @Test
@@ -254,7 +257,9 @@ class AudioOutputRouterThreadTest {
                 }
 
                 "setPreferredAudioDevice" -> null
+
                 "getVolume" -> volumes.lastOrNull() ?: 1f
+
                 "setVolume" -> {
                     volumes.add(args?.get(0) as Float)
                     null
@@ -297,10 +302,11 @@ class AudioOutputRouterThreadTest {
             }
         }
 
-        fun safetyListener(): Player.Listener = AudioOutputRouter::class.java.getDeclaredField("routeSafetyListener").run {
-            isAccessible = true
-            get(router) as Player.Listener
-        }
+        fun safetyListener(): Player.Listener =
+            AudioOutputRouter::class.java.getDeclaredField("routeSafetyListener").run {
+                isAccessible = true
+                get(router) as Player.Listener
+            }
 
         fun guardId(): String? = AudioOutputRouter::class.java.getDeclaredField("guardedHeadsetId").run {
             isAccessible = true
