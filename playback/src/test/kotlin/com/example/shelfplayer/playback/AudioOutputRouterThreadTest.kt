@@ -63,6 +63,23 @@ class AudioOutputRouterThreadTest {
     }
 
     @Test
+    fun `manual headset Play stays silent until the actual track route is verified`() = runTest {
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+        assertTrue(fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(listOf(0f), fixture.volumeChanges)
+        fixture.measuredRoutes { emptySet() }
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+        assertEquals(listOf(0f), fixture.volumeChanges, "unknown route must remain muted")
+        fixture.measuredRoutes { setOf("bluetooth:original") }
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+        assertEquals(listOf(0f, 1f), fixture.volumeChanges, "exact track route restores volume")
+        assertTrue(fixture.pauseThreads.isEmpty())
+    }
+
+    @Test
     fun `route guard prefers verified AudioTrack over projected remote mix prediction`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
@@ -197,6 +214,7 @@ class AudioOutputRouterThreadTest {
     private fun TestScope.fixture(): Fixture {
         val reads = mutableListOf<Thread>()
         val pauses = mutableListOf<Thread>()
+        val volumes = mutableListOf<Float>()
         val owningThread = Thread.currentThread()
         val player = Proxy.newProxyInstance(
             ExoPlayer::class.java.classLoader,
@@ -210,6 +228,11 @@ class AudioOutputRouterThreadTest {
                 }
 
                 "setPreferredAudioDevice" -> null
+                "getVolume" -> volumes.lastOrNull() ?: 1f
+                "setVolume" -> {
+                    volumes.add(it?.get(0) as Float)
+                    null
+                }
 
                 "pause" -> {
                     check(Thread.currentThread() == owningThread) { "ExoPlayer pause on the wrong thread" }
@@ -232,13 +255,14 @@ class AudioOutputRouterThreadTest {
             isAccessible = true
             set(router, player)
         }
-        return Fixture(router, reads, pauses)
+        return Fixture(router, reads, pauses, volumes)
     }
 
     private data class Fixture(
         val router: AudioOutputRouter,
         val readThreads: List<Thread>,
         val pauseThreads: List<Thread>,
+        val volumeChanges: List<Float>,
     ) {
         fun measuredRoutes(routes: () -> Set<String>?) {
             AudioOutputRouter::class.java.getDeclaredField("currentTrackRoutes").apply {
