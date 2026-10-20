@@ -78,21 +78,44 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     private var lastEvidence: String? = null
     private var lastPlaying = false
 
-    fun providerIfRecording(): AudioOutputProvider? {
-        // Called exactly when DefaultPlayerFactory constructs its player, not when the UI opens.
-        if (!lab.state.value.recording) {
-            lab.trackObserverStatus("Not installed (recording was off when player was created)")
+    /** Used only in memory by the route safety guard. Never exported without diagnostic opt-in. */
+    var onRouteChanged: (() -> Unit)? = null
+
+    /** This AudioTrack's physical sinks, or null if there is no measurable playing track. */
+    fun currentRouteIds(): Set<String>? {
+        val track = active ?: return null
+        if (track.state != AudioTrack.STATE_INITIALIZED || track.playState != AudioTrack.PLAYSTATE_PLAYING) {
             return null
         }
-        lab.trackLifecycle("player-create recording=true")
+        return runCatching {
+            val routed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
+                track.routedDevices
+            } else {
+                listOfNotNull(track.routedDevice)
+            }
+            if (routed.isEmpty() || routed.any { OutputDevices.outputOf(it.type, it.productName) == null }) {
+                emptySet()
+            } else {
+                routed.mapNotNull { OutputDevices.outputOf(it.type, it.productName)?.id }.toSet()
+            }
+        }.getOrNull()
+    }
+
+    fun providerForPlayer(): AudioOutputProvider? {
+        // Observe route identity in normal playback; diagnostics stay strictly opt-in.
+        if (lab.state.value.recording) lab.trackLifecycle("player-create recording=true")
         val delegate = runCatching { AudioTrackAudioOutputProvider.Builder(context).build() }
             .getOrElse {
-                lab.trackLifecycle("provider-fallback")
-                lab.trackObserverStatus("Provider initialization failed; default Media3 output retained")
+                if (lab.state.value.recording) {
+                    lab.trackLifecycle("provider-fallback")
+                    lab.trackObserverStatus("Provider initialization failed; default Media3 output retained")
+                }
                 return null
             }
-        lab.trackLifecycle("provider-installed")
-        lab.trackObserverStatus("Installed for this player; awaiting Media3 AudioTrack creation")
+        if (lab.state.value.recording) {
+            lab.trackLifecycle("provider-installed")
+            lab.trackObserverStatus("Installed for this player; awaiting Media3 AudioTrack creation")
+        }
         return object : ForwardingAudioOutputProvider(delegate) {
             override fun getAudioOutput(config: AudioOutputProvider.OutputConfig): AudioOutput {
                 // Deliberately do not catch Media3's own output-creation errors or alter its return value.
@@ -101,21 +124,25 @@ internal class AudioTrackRouteMonitor @Inject constructor(
                     runCatching { observe(output.audioTrack) }
                         .onFailure {
                             forget()
-                            lab.trackLifecycle("audio-track-attach-failed")
-                            lab.trackObserverStatus("Routing listener could not attach; audio remains Media3-owned")
+                            if (lab.state.value.recording) {
+                                lab.trackLifecycle("audio-track-attach-failed")
+                                lab.trackObserverStatus("Routing listener could not attach; audio remains Media3-owned")
+                            }
                         }
                 } else {
                     // A new non-track output invalidates any previous track measurement.
                     forget()
-                    lab.trackLifecycle("provider-output-unobserved")
-                    lab.trackObserverStatus("Media3 output is not an observable AudioTrack")
+                    if (lab.state.value.recording) {
+                        lab.trackLifecycle("provider-output-unobserved")
+                        lab.trackObserverStatus("Media3 output is not an observable AudioTrack")
+                    }
                 }
                 return output
             }
 
             override fun release() {
                 forget()
-                lab.trackLifecycle("provider-released")
+                if (lab.state.value.recording) lab.trackLifecycle("provider-released")
                 super.release()
             }
         }
@@ -171,16 +198,21 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         val token = epoch.next()
         active = track
         val callback = AudioRouting.OnRoutingChangedListener {
-            if (epoch.isCurrent(token) && active === track && lab.state.value.recording) {
-                lab.trackLifecycle("audio-track-route-changed")
-                sample()
+            if (epoch.isCurrent(token) && active === track) {
+                if (lab.state.value.recording) {
+                    lab.trackLifecycle("audio-track-route-changed")
+                    sample()
+                }
+                onRouteChanged?.invoke()
             }
         }
         listener = callback
         track.addOnRoutingChangedListener(callback, mainHandler)
-        lab.trackLifecycle("audio-track-attached")
-        lab.trackObserverStatus("AudioTrack attached; awaiting a playing route sample")
-        sample()
+        if (lab.state.value.recording) {
+            lab.trackLifecycle("audio-track-attached")
+            lab.trackObserverStatus("AudioTrack attached; awaiting a playing route sample")
+            sample()
+        }
     }
 
     private fun forget() {
@@ -195,8 +227,10 @@ internal class AudioTrackRouteMonitor @Inject constructor(
             runCatching { previous.removeOnRoutingChangedListener(callback) }
         }
         if (previous != null) {
-            lab.trackLifecycle("audio-track-released-or-replaced")
-            lab.trackObserverStatus("AudioTrack released or replaced; no current route measurement")
+            if (lab.state.value.recording) {
+                lab.trackLifecycle("audio-track-released-or-replaced")
+                lab.trackObserverStatus("AudioTrack released or replaced; no current route measurement")
+            }
         }
     }
 }
