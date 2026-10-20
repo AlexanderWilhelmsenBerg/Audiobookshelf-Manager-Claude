@@ -69,6 +69,7 @@ internal object AudioTrackRouteTypes {
 internal class AudioTrackRouteMonitor @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val lab: AudioRouteLab,
+    private val endpointRegistry: LiveOutputEndpointRegistry = LiveOutputEndpointRegistry(),
 ) {
     @Volatile
     private var active: AudioTrack? = null
@@ -97,8 +98,9 @@ internal class AudioTrackRouteMonitor @Inject constructor(
             if (routed.size != 1) {
                 emptySet()
             } else {
-                val output = routed.single().let { OutputDevices.outputOf(it.type, it.productName) }
-                if (output == null) emptySet() else setOf(output.id)
+                val route = routed.single()
+                val matched = endpointRegistry.find(route.id, route.type, route.productName?.toString())
+                if (matched == null) emptySet() else setOf(matched.id)
             }
         }.getOrNull()
     }

@@ -10,7 +10,7 @@ import javax.inject.Singleton
  * appearance a new opaque route token and never persists a handle or address.
  */
 @Singleton
-internal class LiveOutputEndpointRegistry @Inject constructor() {
+class LiveOutputEndpointRegistry @Inject constructor() {
     data class Observation(val platformId: Int, val type: Int, val productName: String?)
 
     data class Endpoint(

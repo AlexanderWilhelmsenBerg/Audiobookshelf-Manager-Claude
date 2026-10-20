@@ -51,6 +51,7 @@ class AudioOutputRouter @Inject constructor(
     private val logger: Logger,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
     @param:Dispatcher(ShelfDispatcher.MainImmediate) private val mainDispatcher: CoroutineDispatcher,
+    private val endpointRegistry: LiveOutputEndpointRegistry = LiveOutputEndpointRegistry(),
 ) {
 
     private val _outputs = MutableStateFlow<List<AudioOutput>>(emptyList())
@@ -117,7 +118,7 @@ class AudioOutputRouter @Inject constructor(
         }
     }
 
-    /** Live platform handles keyed by BookWave's stable, permission-free identity. */
+    /** Process-scoped live endpoints; never key physical routing by persistent name-based policy ID. */
     private var live: Map<String, AudioDeviceInfo> = emptyMap()
 
     fun attach(target: ExoPlayer, trackRoutes: () -> Set<String>? = { null }) {
@@ -303,14 +304,19 @@ class AudioOutputRouter @Inject constructor(
     private fun refresh() {
         val manager = context.getSystemService(AudioManager::class.java) ?: return
         val devices = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).orEmpty()
-        val found = LinkedHashMap<String, AudioDeviceInfo>()
-        val collisions = mutableSetOf<String>()
-        devices.forEach { info ->
-            val output = OutputDevices.outputOf(info.type, info.productName) ?: return@forEach
-            if (found.putIfAbsent(output.id, info) != null) collisions.add(output.id)
+        val observations = devices.map { info ->
+            LiveOutputEndpointRegistry.Observation(info.id, info.type, info.productName?.toString())
         }
-        live = found
-        collidingOutputIds = collisions
+        val endpointEntries = endpointRegistry.reconcile(observations)
+        val byHandle = devices.associateBy(AudioDeviceInfo::getId)
+        live = endpointEntries.mapNotNull { endpoint ->
+            byHandle[endpoint.platformId]?.let { endpoint.id to it }
+        }.toMap()
+        // Distinct live endpoints that share a legacy saved name are not one physical route.
+        val duplicates = endpointEntries.groupBy { it.knownDeviceId }
+            .values.filter { it.size > 1 }
+        collidingOutputIds = duplicates.flatMap { group -> group.map { it.id } }.toSet()
+        val found = live
         val chosen = _selectedId.value
         when {
             chosen != null && chosen !in found -> onDisconnectedSelection(chosen, found.keys)
@@ -465,9 +471,8 @@ class AudioOutputRouter @Inject constructor(
         val chosen = _selectedId.value
         pauseUnsafeGuardedPlayback()
         _outputs.value = live.mapNotNull { (id, info) ->
-            OutputDevices.outputOf(
-                type = info.type,
-                productName = info.productName,
+            endpointRegistry.find(info.id, info.type, info.productName?.toString())?.output?.copy(
+                id = id,
                 isActive = routed?.contains(id) ?: (id == chosen),
             )
         }
@@ -528,7 +533,9 @@ class AudioOutputRouter @Inject constructor(
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .build()
         return manager.getAudioDevicesForAttributes(attributes)
-            .mapNotNull { info -> OutputDevices.outputOf(info.type, info.productName)?.id }
+            .mapNotNull { info ->
+                endpointRegistry.find(info.id, info.type, info.productName?.toString())?.id
+            }
             .toSet()
     }
 
