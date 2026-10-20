@@ -39,12 +39,16 @@ class ClassifyChangesTest(unittest.TestCase):
         self.assertIn("build_changed=false", out)
         self.assertIn("ci_infra_changed=true", out)
         self.assertIn("dependency_inputs_changed=false", out)
+        self.assertIn("workflows_changed=true", out)
+        self.assertIn("ci_image_changed=false", out)
 
     def test_ci_image_is_ci_only(self):
         out = self.classify("ci/bookwave-ci/Dockerfile")
         self.assertIn("build_changed=false", out)
         self.assertIn("ci_infra_changed=true", out)
         self.assertIn("dependency_inputs_changed=false", out)
+        self.assertIn("workflows_changed=false", out)
+        self.assertIn("ci_image_changed=true", out)
 
     def test_build_file_requires_rerun_and_dependency_report(self):
         out = self.classify("playback/build.gradle.kts")
@@ -56,6 +60,8 @@ class ClassifyChangesTest(unittest.TestCase):
         self.assertIn("build_changed=false", out)
         self.assertIn("ci_infra_changed=false", out)
         self.assertIn("dependency_inputs_changed=false", out)
+        self.assertIn("workflows_changed=false", out)
+        self.assertIn("ci_image_changed=false", out)
 
     def test_main_push_detects_classpath_change_since_previous_main(self):
         out = self.classify("gradle/libs.versions.toml", main_push=True)
