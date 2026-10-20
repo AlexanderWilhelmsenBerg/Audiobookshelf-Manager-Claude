@@ -434,6 +434,28 @@ class AudioOutputRouter @Inject constructor(
         )
     }
 
+    /** The playing AudioTrack is authoritative; an unmeasured probe remains silent. */
+    private fun verifyMutedHeadsetProbe(
+        current: ExoPlayer,
+        actualRoute: Set<String>?,
+        probe: MutedHeadsetProbe,
+    ) {
+        if (!current.isPlaying) return
+        val provedOriginalHeadset = actualRoute?.singleOrNull() == probe.id &&
+            probe.id !in collidingOutputIds
+        when {
+            provedOriginalHeadset -> finishMutedProbe(probe, verified = true)
+            !actualRoute.isNullOrEmpty() -> finishMutedProbe(probe, verified = false)
+            probe.playingExpiry == null -> {
+                // Give a new AudioTrack time to announce its route, without restoring volume.
+                probe.playingExpiry = applicationScope.launch(mainDispatcher) {
+                    delay(PROBE_PLAYING_ROUTE_TIMEOUT)
+                    if (mutedProbe === probe) finishMutedProbe(probe, verified = false)
+                }
+            }
+        }
+    }
+
     /** AudioTrack can change sinks without an AudioManager device-list callback. */
     internal fun onActualTrackRouteChanged() {
         pauseUnsafeGuardedPlayback()
@@ -471,20 +493,7 @@ class AudioOutputRouter @Inject constructor(
             val latestRoute = actualRoute ?: routedIds()
             val probe = mutedProbe
             if (probe != null) {
-                if (!current.isPlaying) return@launch
-                if (actualRoute != null && actualRoute.size == 1 &&
-                    probe.id in actualRoute && probe.id !in collidingOutputIds
-                ) {
-                    finishMutedProbe(probe, verified = true)
-                } else if (actualRoute != null && actualRoute.isNotEmpty()) {
-                    finishMutedProbe(probe, verified = false)
-                } else if (probe.playingExpiry == null) {
-                    // Wait briefly for the first usable track route, WITHOUT restoring volume.
-                    probe.playingExpiry = applicationScope.launch(mainDispatcher) {
-                        delay(PROBE_PLAYING_ROUTE_TIMEOUT)
-                        if (mutedProbe === probe) finishMutedProbe(probe, verified = false)
-                    }
-                }
+                verifyMutedHeadsetProbe(current, actualRoute, probe)
                 return@launch
             }
             if (guarded !in collidingOutputIds && !shouldSuspendGuardedPlayback(
@@ -581,7 +590,7 @@ internal fun canAttemptMutedHeadsetProbe(
     targetConnected: Boolean,
     predictedIds: Set<String>?,
 ): Boolean = targetConnected && targetId == guardedId && targetId == selectedId &&
-    (predictedIds == null || predictedIds.isEmpty() || predictedIds == setOf(targetId))
+    (predictedIds.isNullOrEmpty() || predictedIds == setOf(targetId))
 
 /** Preserve only an app-owned exact headset, never an unrelated or explicitly superseded selection. */
 internal fun shouldRetainContinuityHeadset(
