@@ -40,11 +40,7 @@ internal object AutoStartDecision {
      * Category-wide wired and explicit car policies retain their documented behavior.
      * Historical AutoPlay setting is not deleted; it cannot grant an unverified route Play.
      */
-    fun forObservedOutput(
-        policy: DevicePolicy,
-        isProfileLocked: Boolean,
-        kind: DeviceKind,
-    ): AutoStartAction {
+    fun forObservedOutput(policy: DevicePolicy, isProfileLocked: Boolean, kind: DeviceKind): AutoStartAction {
         val verifiedCategory = kind == DeviceKind.Wired || kind == DeviceKind.Car
         val safePolicy = if (policy == DevicePolicy.AutoPlay && !verifiedCategory) DevicePolicy.ArmOnly else policy
         return decide(safePolicy, isProfileLocked)
