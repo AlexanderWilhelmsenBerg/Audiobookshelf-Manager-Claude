@@ -380,9 +380,19 @@ class AudioOutputRouter @Inject constructor(
     )
 
     /** Called on Media3's application thread before the automatic continuity Play. */
-    internal fun beginMutedHeadsetProbe(id: String): Boolean {
+    internal fun beginMutedHeadsetProbe(id: String): Boolean =
+        canProbeHeldHeadset(id) && startMutedProbe(id)
+
+    /** An unattributed manual Play can only become audible on this already-guarded headset. */
+    internal fun protectManualPlayOnGuardedHeadset(): Boolean {
+        val id = guardedHeadsetId ?: return false
+        if (_selectedId.value != id || id in collidingOutputIds) return false
+        return startMutedProbe(id)
+    }
+
+    private fun startMutedProbe(id: String): Boolean {
         val current = player ?: return false
-        if (!canProbeHeldHeadset(id) || mutedProbe != null) return false
+        if (mutedProbe != null) return false
         val probe = MutedHeadsetProbe(id, current.volume)
         current.volume = 0f
         mutedProbe = probe
