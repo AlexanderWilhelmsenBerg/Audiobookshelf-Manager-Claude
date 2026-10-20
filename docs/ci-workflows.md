@@ -17,3 +17,24 @@ PR CI does not package an APK automatically. APK signing stays in its separately
 One-time upgrade, formatting, migration and diagnostic workflows must not be left permanently registered. The normal CI checks and the APK producer remain the supported surfaces. Contract fixture scripts and the Codex bootstrap remain available locally if explicitly needed; no recurring maintenance workflow runs them automatically.
 
 Keep action tokens least-privileged, preserve stable APK signing, and never expose release secrets or privileged Actions/Packages tokens to PR-controlled code.
+
+## Architecture boundary gate (Phase 1A)
+
+The preflight job runs \`python3 scripts/ci/check_architecture_boundaries.py\` on
+every Standard/Quick/Intensive PR, and on trusted main. The gate is intentionally
+**dependency-free**: it checks the real Gradle project declarations and production
+Kotlin import lines without adding another test framework or changing Gradle locks.
+
+It enforces the existing \`docs/architecture/module-boundaries.md\` contracts:
+\`:domain\` and \`:core:model\` cannot reach Android implementation modules;
+\`:data:*\` cannot depend on UI/playback; \`:playback\` cannot depend on Room/Proto
+storage implementations or UI; Media3 ExoPlayer/MediaSession owners stay inside
+\`:playback\`; Compose feature packages cannot import core database/datastore/network
+implementation APIs. Intentional \`:app\` composition-root wiring and test-only imports
+are allowed.
+
+This is **not** a complete Kotlin AST analysis or detection of duplicate business
+logic, mutable state owners, or fully-qualified references. Keep other architectural
+review and behavioral verification. New module families must update the documented
+dependency policy and guard together. Failure messages identify the source file
+and line and block the preflight gate.
