@@ -98,6 +98,7 @@ class AudioOutputRouter @Inject constructor(
     // the listener explicitly chooses a different destination.
     private var guardedHeadsetMissing = false
     private var currentTrackRoutes: () -> Set<String>? = { null }
+    private var collidingOutputIds: Set<String> = emptySet()
 
     /** A guarded auto-resume is silent until its playing track proves the original output. */
     private class MutedHeadsetProbe(val id: String, val oldVolume: Float) {
@@ -145,6 +146,7 @@ class AudioOutputRouter @Inject constructor(
         guardedHeadsetId = null
         guardedHeadsetMissing = false
         currentTrackRoutes = { null }
+        collidingOutputIds = emptySet()
         player?.removeListener(routeSafetyListener)
         player = null
     }
@@ -302,11 +304,13 @@ class AudioOutputRouter @Inject constructor(
         val manager = context.getSystemService(AudioManager::class.java) ?: return
         val devices = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).orEmpty()
         val found = LinkedHashMap<String, AudioDeviceInfo>()
+        val collisions = mutableSetOf<String>()
         devices.forEach { info ->
             val output = OutputDevices.outputOf(info.type, info.productName) ?: return@forEach
-            found.putIfAbsent(output.id, info)
+            if (found.putIfAbsent(output.id, info) != null) collisions.add(output.id)
         }
         live = found
+        collidingOutputIds = collisions
         val chosen = _selectedId.value
         when {
             chosen != null && chosen !in found -> onDisconnectedSelection(chosen, found.keys)
@@ -372,7 +376,7 @@ class AudioOutputRouter @Inject constructor(
 
     /** An unknown projection prediction permits only a SILENT verification of the exact original headset. */
     internal fun canProbeHeldHeadset(id: String): Boolean = canAttemptMutedHeadsetProbe(
-        id, guardedHeadsetId, _selectedId.value, id in live, routedIds(),
+        id, guardedHeadsetId, _selectedId.value, id in live && id !in collidingOutputIds, routedIds(),
     )
 
     /** Called on Media3's application thread before the automatic continuity Play. */
@@ -451,7 +455,9 @@ class AudioOutputRouter @Inject constructor(
             val probe = mutedProbe
             if (probe != null) {
                 if (!current.isPlaying) return@launch
-                if (actualRoute != null && actualRoute.size == 1 && probe.id in actualRoute) {
+                if (actualRoute != null && actualRoute.size == 1 &&
+                    probe.id in actualRoute && probe.id !in collidingOutputIds
+                ) {
                     finishMutedProbe(probe, verified = true)
                 } else if (actualRoute != null && actualRoute.isNotEmpty()) {
                     finishMutedProbe(probe, verified = false)
@@ -464,7 +470,7 @@ class AudioOutputRouter @Inject constructor(
                 }
                 return@launch
             }
-            if (!shouldSuspendGuardedPlayback(
+            if (guarded !in collidingOutputIds && !shouldSuspendGuardedPlayback(
                     guardedHeadsetId,
                     _selectedId.value,
                     latestRoute,
