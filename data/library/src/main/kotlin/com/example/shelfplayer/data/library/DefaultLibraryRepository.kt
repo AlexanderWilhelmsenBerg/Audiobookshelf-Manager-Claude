@@ -222,7 +222,7 @@ class DefaultLibraryRepository @Inject constructor(
         }
     }
 
-    @Suppress("LongMethod") // Keep the existing ordered network/batch/write protocol in one place.
+    @Suppress("LongMethod", "NestedBlockDepth") // Preserve the existing ordered network/batch/write protocol.
     private suspend fun refreshUnlocked(profileId: ProfileId): AppResult<Int> {
         markSyncing(profileId)
 
