@@ -446,7 +446,7 @@ class AudioOutputRouter @Inject constructor(
         val evidence = RouteEvidence(
             source = RouteEvidenceSource.ActualAudioTrack,
             confidence = when {
-                actualRoute == null || actualRoute.isEmpty() -> RouteConfidence.Unknown
+                actualRoute.isNullOrEmpty() -> RouteConfidence.Unknown
                 actualRoute.size > 1 -> RouteConfidence.Ambiguous
                 else -> RouteConfidence.Confirmed
             },

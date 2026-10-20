@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import android.annotation.SuppressLint
 import android.media.AudioDeviceInfo
 import org.junit.Test
 import java.time.Instant
@@ -8,6 +9,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /** Distinct same-name startup callbacks must each be consumed as discovery, not autoplay. */
+@SuppressLint("InlinedApi")
 class ConnectionHandleIdentityTest {
     @Test
     fun twoSameNameEndpointsAtStartupDoNotBecomeFreshConnectionActions() {

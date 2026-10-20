@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import android.annotation.SuppressLint
 import android.media.AudioDeviceInfo
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -9,6 +10,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Behavior, not symbols: same-name endpoints must never share route authorization. */
+@SuppressLint("InlinedApi")
 class LiveOutputEndpointRegistryTest {
     private fun seen(id: Int, name: String?) =
         LiveOutputEndpointRegistry.Observation(id, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, name)
