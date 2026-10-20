@@ -80,6 +80,32 @@ class AudioOutputRouterThreadTest {
     }
 
     @Test
+    fun `wrong actual sink aborts silent manual Play without unmuting early`() = runTest {
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+        assertTrue(fixture.router.protectManualPlayOnGuardedHeadset())
+        fixture.measuredRoutes { setOf("bluetooth:car") }
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+        assertEquals(listOf(0f, 1f), fixture.volumeChanges)
+        assertEquals(1, fixture.pauseThreads.size, "wrong physical sink must be paused while silent")
+    }
+
+    @Test
+    fun `unknown actual sink times out while silent and pauses`() = runTest {
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+        assertTrue(fixture.router.protectManualPlayOnGuardedHeadset())
+        fixture.measuredRoutes { emptySet() }
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+        advanceTimeBy(550)
+        runCurrent()
+        assertEquals(1, fixture.pauseThreads.size)
+        assertEquals(listOf(0f, 1f), fixture.volumeChanges)
+    }
+
+    @Test
     fun `route guard prefers verified AudioTrack over projected remote mix prediction`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
