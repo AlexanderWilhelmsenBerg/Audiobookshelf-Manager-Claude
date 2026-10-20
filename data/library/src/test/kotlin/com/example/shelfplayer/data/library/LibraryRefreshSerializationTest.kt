@@ -48,6 +48,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** LIB-001 / #268 — concurrent refreshes must not publish stale snapshots or sync state. */
+// Room uses a real DB executor. Bounded negative gateway-entry checks must not elapse on virtual test time.
+@Suppress("InjectDispatcher")
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
