@@ -166,7 +166,7 @@ class OutputDeviceWatcher @Inject constructor(
             // playing later when the profile is unlocked. ROUTE-002 licenses that: it calls auto-play
             // "best-effort", and a book beginning minutes after a headset was plugged in is worse than one
             // that never began.
-            when (AutoStartDecision.decide(policy, isProfileLocked = lock.isActiveProfileLocked())) {
+            when (AutoStartDecision.forObservedOutput(policy, lock.isActiveProfileLocked(), device.kind)) {
                 AutoStartAction.ArmAndPlay -> {
                     logger.log(device, "A device connected and its policy is to start playing")
                     actions.armAndPlay()
