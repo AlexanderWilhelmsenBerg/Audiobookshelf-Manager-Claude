@@ -73,6 +73,6 @@ internal data class RouteEvidence(
     val endpointId: String? = null,
 ) {
     fun confirms(target: String): Boolean = source == RouteEvidenceSource.ActualAudioTrack &&
-            confidence == RouteConfidence.Confirmed &&
-            endpointId == target
+        confidence == RouteConfidence.Confirmed &&
+        endpointId == target
 }
