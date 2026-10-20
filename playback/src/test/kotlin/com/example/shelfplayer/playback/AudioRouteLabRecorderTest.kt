@@ -86,7 +86,7 @@ class AudioRouteLabRecorderTest {
     }
 
     @Test
-    fun `track provider never replaces default output when diagnostics are off`() = runTest {
+    fun `track safety observer is present without recording diagnostic events`() = runTest {
         val clock = object : AppClock {
             override fun now(): Instant = Instant.now()
             override fun elapsed(): Duration = Duration.ZERO
@@ -100,13 +100,18 @@ class AudioRouteLabRecorderTest {
         val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
         val monitor = AudioTrackRouteMonitor(context, lab)
 
-        assertTrue(monitor.providerIfRecording() == null)
-        assertTrue(lab.state.value.reportStatus.contains("Not installed"))
+        // Passive route verification is always installed, but recording is opt-in.
+        val provider = requireNotNull(monitor.providerForPlayer())
+        assertFalse(lab.state.value.recording)
+        assertTrue(lab.state.value.entries.isEmpty())
 
         lab.start()
-        val provider = requireNotNull(monitor.providerIfRecording())
+        // The existing provider was created before recording; it emitted no diagnostic event.
+        assertTrue(lab.state.value.reportStatus.contains("Awaiting next player creation"))
+        val recordedProvider = requireNotNull(monitor.providerForPlayer())
         assertTrue(lab.state.value.reportStatus.contains("Installed"))
-        // Constructing/releasing the delegate needs no audio playback or extra track.
+        // Constructing/releasing the delegate creates no extra playback track.
+        recordedProvider.release()
         provider.release()
         lab.stop()
         runCurrent()
@@ -127,19 +132,20 @@ class AudioRouteLabRecorderTest {
         val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
         val monitor = AudioTrackRouteMonitor(context, lab)
 
-        // Simulate the construction-time hook being evaluated before recording is enabled.
-        assertTrue(monitor.providerIfRecording() == null)
+        // The in-memory safety observer is present, even though diagnostic capture is off.
+        val firstProvider = requireNotNull(monitor.providerForPlayer())
         lab.start()
         assertTrue(lab.state.value.reportStatus.contains("Awaiting next player creation"))
         monitor.sample()
         assertFalse(lab.report("test").contains("observer-provider-installed"))
 
-        // Next natural creation installs the wrapper; no player recreation is requested.
-        val provider = requireNotNull(monitor.providerIfRecording())
+        // The next natural creation begins emitting diagnostic lifecycle events.
+        val provider = requireNotNull(monitor.providerForPlayer())
         assertTrue(lab.report("test").contains("observer-player-create recording=true"))
         assertTrue(lab.report("test").contains("observer-provider-installed"))
         assertTrue(lab.state.value.reportStatus.contains("awaiting Media3 AudioTrack"))
         provider.release()
+        firstProvider.release()
         assertTrue(lab.report("test").contains("observer-provider-released"))
         lab.stop()
         runCurrent()
