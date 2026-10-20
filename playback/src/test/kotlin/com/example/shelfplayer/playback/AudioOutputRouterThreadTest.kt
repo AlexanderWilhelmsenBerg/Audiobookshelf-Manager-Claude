@@ -63,6 +63,14 @@ class AudioOutputRouterThreadTest {
     }
 
     @Test
+    fun `silent probe allows only reasserted exact device when prediction is unknown`() {
+        assertTrue(canAttemptMutedHeadsetProbe("bluetooth:original", "bluetooth:original", "bluetooth:original", true, emptySet()))
+        assertTrue(!canAttemptMutedHeadsetProbe("bluetooth:original", "bluetooth:original", "bluetooth:original", true, setOf("bluetooth:car")))
+        assertTrue(!canAttemptMutedHeadsetProbe("bluetooth:original", "bluetooth:original", "bluetooth:other", true, emptySet()))
+        assertTrue(!canAttemptMutedHeadsetProbe("bluetooth:original", "bluetooth:original", "bluetooth:original", false, emptySet()))
+    }
+
+    @Test
     fun `measured exact headset overrides remote mix prediction`() {
         val predictedRemoteMix = emptySet<String>()
         val measuredHeadset = setOf("bluetooth:original")
