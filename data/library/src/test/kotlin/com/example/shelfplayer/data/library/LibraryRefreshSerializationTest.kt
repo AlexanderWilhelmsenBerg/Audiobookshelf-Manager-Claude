@@ -162,11 +162,11 @@ class LibraryRefreshSerializationTest {
     }
 
     private fun fakeGateway(dispatcher: CoroutineDispatcher): FakeAudiobookshelfGateway = FakeAudiobookshelfGateway(
-            loader = FixtureLibraryLoader(),
-            clock = TestAppClock(),
-            logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
-            ioDispatcher = dispatcher,
-        )
+        loader = FixtureLibraryLoader(),
+        clock = TestAppClock(),
+        logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
+        ioDispatcher = dispatcher,
+    )
 
     private fun repository(
         database: ShelfPlayerDatabase,
