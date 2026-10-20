@@ -1720,6 +1720,18 @@ class PlaybackService : MediaLibraryService() {
                     LogField.Public("reason", currentContinuityInvalidation(target)),
                 ) + carSnapshotFields(),
             )
+            // A paused track cannot report its actual route. If Android Auto exposes only
+            // REMOTE_SUBMIX, allow a bounded MUTED playback probe of the original exact
+            // headset. The router must prove this player's sink before it unmutes.
+            if (carContinuity.isCurrent(
+                    target,
+                    routeOwnership.currentGeneration,
+                    currentExplicitSelectionSequence(),
+                ) && audioOutputs.canProbeHeldHeadset(target.outputId)
+            ) {
+                logAuto("Car lifecycle will verify original headset silently")
+                return target.outputId
+            }
             carContinuity.cancelPending()
             return null
         }
@@ -1832,6 +1844,13 @@ class PlaybackService : MediaLibraryService() {
             return
         }
 
+        // A successful AudioManager preference is NOT a physical-route measurement.
+        // Start muted; AudioOutputRouter unmutes only after this AudioTrack proves the exact target.
+        if (heldHeadset == null || !audioOutputs.beginMutedHeadsetProbe(heldHeadset)) {
+            continuityPlayAwaiting = null
+            logAuto("Car lifecycle refused unverified headset probe")
+            return
+        }
         continuityPlayAwaiting = target
         logAuto(
             "Car lifecycle continuity issued Play",
