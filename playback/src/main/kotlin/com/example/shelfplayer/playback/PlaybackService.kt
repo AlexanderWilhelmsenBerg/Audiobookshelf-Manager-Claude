@@ -417,11 +417,6 @@ class PlaybackService : MediaLibraryService() {
                 controllerCommandGeneration += 1
                 logControllerTransportRequest(requestedPlay, exoPlayer)
                 routeExplicitCarPlay(requestedPlay, exoPlayer)
-                // An unattributed media key during car projection is not headset identity.
-                // Start silent validation BEFORE the raw player sees the Play request.
-                if (requestedPlay && !exoPlayer.playWhenReady) {
-                    audioOutputs.protectManualPlayOnGuardedHeadset()
-                }
                 // A duplicate Pause still matters, even if the raw player emits no state transition.
                 sleepTimer.onControllerTransportIntent()
                 // A controller's Play/Pause is newer listener intent even when ExoPlayer is already in that
@@ -1002,6 +997,9 @@ class PlaybackService : MediaLibraryService() {
             if (current.mediaItemCount == 0) return@withContext false
             if (current.playbackState == Player.STATE_IDLE || current.playerError != null) current.prepare()
             if (!stillAuthorized()) return@withContext false
+            // The freshness network request may take seconds. Start the muted route
+            // probe only NOW, immediately before the actual raw ExoPlayer Play.
+            if (!current.playWhenReady) audioOutputs.protectManualPlayOnGuardedHeadset()
             current.play()
             true
         }
@@ -1149,6 +1147,7 @@ class PlaybackService : MediaLibraryService() {
             if (!stillAuthorized()) {
                 false
             } else {
+                if (!media.playWhenReady) audioOutputs.protectManualPlayOnGuardedHeadset()
                 media.play()
                 true
             }
