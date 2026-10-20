@@ -161,8 +161,7 @@ class LibraryRefreshSerializationTest {
         return database
     }
 
-    private fun fakeGateway(dispatcher: CoroutineDispatcher): FakeAudiobookshelfGateway =
-        FakeAudiobookshelfGateway(
+    private fun fakeGateway(dispatcher: CoroutineDispatcher): FakeAudiobookshelfGateway = FakeAudiobookshelfGateway(
             loader = FixtureLibraryLoader(),
             clock = TestAppClock(),
             logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
