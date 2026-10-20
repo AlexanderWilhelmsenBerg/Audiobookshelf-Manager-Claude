@@ -435,17 +435,15 @@ class AudioOutputRouter @Inject constructor(
     }
 
     /** The playing AudioTrack is authoritative; an unmeasured probe remains silent. */
-    private fun verifyMutedHeadsetProbe(
-        current: ExoPlayer,
-        actualRoute: Set<String>?,
-        probe: MutedHeadsetProbe,
-    ) {
+    private fun verifyMutedHeadsetProbe(current: ExoPlayer, actualRoute: Set<String>?, probe: MutedHeadsetProbe) {
         if (!current.isPlaying) return
         val provedOriginalHeadset = actualRoute?.singleOrNull() == probe.id &&
             probe.id !in collidingOutputIds
         when {
             provedOriginalHeadset -> finishMutedProbe(probe, verified = true)
+
             !actualRoute.isNullOrEmpty() -> finishMutedProbe(probe, verified = false)
+
             probe.playingExpiry == null -> {
                 // Give a new AudioTrack time to announce its route, without restoring volume.
                 probe.playingExpiry = applicationScope.launch(mainDispatcher) {
