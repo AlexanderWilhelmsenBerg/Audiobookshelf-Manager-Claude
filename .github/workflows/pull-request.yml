@@ -55,8 +55,10 @@ on:
         default: false
 
 concurrency:
-  # Keep explicit manual runs independent; only automatic work on the same PR/main ref is superseded.
-  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && format('manual-{0}', github.run_id) || github.ref }}
+  # A merge emits both push:main and pull_request.closed; GitHub gives both refs/heads/main.
+  # Scope the group by event, then by PR number or branch, so closed-PR cache cleanup
+  # cannot cancel main verification or another PR's cleanup. Manual runs remain independent.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && format('manual-{0}', github.run_id) || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 permissions:
