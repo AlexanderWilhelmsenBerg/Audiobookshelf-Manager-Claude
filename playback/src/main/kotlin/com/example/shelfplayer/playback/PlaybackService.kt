@@ -1848,8 +1848,13 @@ class PlaybackService : MediaLibraryService() {
             return
         }
 
-        // A successful AudioManager preference is NOT a physical-route measurement.
-        // Start muted; AudioOutputRouter unmutes only after this AudioTrack proves the exact target.
+        // A headset that stayed uniquely active can satisfy route recovery without reassertion.
+        // Preserve that exact original target as the safety guard before the muted probe.
+        if (heldHeadset != null && headsetAlreadyActive(heldHeadset, audioOutputs.outputs.value)) {
+            audioOutputs.protectPlayingHeadset(heldHeadset)
+        }
+        // An AudioManager preference is NOT proof of a physical route. Only the playing
+        // AudioTrack may unmute this one-shot recovery; other routes fail closed.
         if (heldHeadset == null || !audioOutputs.beginMutedHeadsetProbe(heldHeadset)) {
             continuityPlayAwaiting = null
             logAuto("Car lifecycle refused unverified headset probe")
