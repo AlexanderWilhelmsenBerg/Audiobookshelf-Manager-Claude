@@ -80,31 +80,32 @@ internal class PlaybackScenarioContractTest {
         }
     }
 
-    private fun replay(steps: List<Step>, initiallyAudible: Boolean = true): List<Observation> {
-        require(steps.zipWithNext().all { (a, b) -> a.at <= b.at }) {
-            "Nonmonotonic scenario clock"
-        }
-        require(steps.map(Step::id).distinct().size == steps.size) {
-            "Duplicate causal ID"
-        }
-
-        val headset = AudioOutput(
+    /**
+     * Test-only state holder. Each callback delegates to the production recovery coordinator;
+     * this fixture intentionally owns no independent route or playback decision policy.
+     */
+    private class Fixture(initiallyAudible: Boolean) {
+        private val headset = AudioOutput(
             id = "synthetic:headset-appearance-1",
             displayName = "Synthetic device",
             kind = DeviceKind.Bluetooth,
             role = AudioOutputRole.Ambiguous,
             isActive = true,
         )
-        val owner = RouteHeardOwnership().apply {
+        private val owner = RouteHeardOwnership().apply {
             onBookChanged(hasBook = true)
             if (initiallyAudible) onPlaybackObserved(listOf(headset))
         }
-        val coordinator = CarContinuityRecoveryCoordinator(CarArrivalResumeGate())
-        var sequence = 0L
-        var carConnected = false
-        var target: CarArrivalResumeGate.Target? = null
+        private val coordinator = CarContinuityRecoveryCoordinator(CarArrivalResumeGate())
+        private var sequence = 0L
+        private var carConnected = false
+        private var target: CarArrivalResumeGate.Target? = null
 
-        fun inputs() = CarContinuityRecoveryCoordinator.Inputs(
+        init {
+            if (initiallyAudible) coordinator.observePlayingHeadset(inputs())
+        }
+
+        private fun inputs() = CarContinuityRecoveryCoordinator.Inputs(
             heardRoute = owner.heardRoute,
             headsetId = owner.headsetForCar(listOf(headset)),
             generation = owner.currentGeneration,
@@ -112,9 +113,17 @@ internal class PlaybackScenarioContractTest {
             carConnected = carConnected,
         )
 
-        if (initiallyAudible) coordinator.observePlayingHeadset(inputs())
+        private fun claimRecovery(): Boolean = target?.let {
+            coordinator.assess(
+                target = it,
+                precheck = CarContinuityPlayPrecheck.Proceed,
+                currentGeneration = owner.currentGeneration,
+                selectionSequence = sequence,
+                securedHeadsetId = headset.id,
+            ).mayPlay
+        } ?: false
 
-        return steps.map { step ->
+        fun apply(step: Step): Observation {
             var decision: CarArrivalResumeGate.Decision? = null
             var authorized: Boolean? = null
             when (val event = step.input) {
@@ -151,22 +160,24 @@ internal class PlaybackScenarioContractTest {
                 }
 
                 Input.ClaimPlay -> {
-                    authorized = target?.let {
-                        coordinator.assess(
-                            target = it,
-                            precheck = CarContinuityPlayPrecheck.Proceed,
-                            currentGeneration = owner.currentGeneration,
-                            selectionSequence = sequence,
-                            securedHeadsetId = headset.id,
-                        ).mayPlay
-                    } ?: false
+                    authorized = claimRecovery()
                 }
             }
             decision?.target?.let { target = it }
-            Observation(step.id, decision?.status, decision?.reason, authorized)
+            return Observation(step.id, decision?.status, decision?.reason, authorized)
         }
     }
 
+    private fun replay(steps: List<Step>, initiallyAudible: Boolean = true): List<Observation> {
+        require(steps.zipWithNext().all { (a, b) -> a.at <= b.at }) {
+            "Nonmonotonic scenario clock"
+        }
+        require(steps.map(Step::id).distinct().size == steps.size) {
+            "Duplicate causal ID"
+        }
+        val fixture = Fixture(initiallyAudible)
+        return steps.map(fixture::apply)
+    }
     @Test
     fun focusBeforeCarArrivalClaimsExactlyOnePlay() {
         val observations = replay(
