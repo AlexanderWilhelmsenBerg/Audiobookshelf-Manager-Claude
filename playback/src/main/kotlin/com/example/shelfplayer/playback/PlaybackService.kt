@@ -1578,9 +1578,8 @@ class PlaybackService : MediaLibraryService() {
      * its live record, while the continuity owner retains the last positively proven target until newer
      * listener/book/playback intent makes it ineligible.
      */
-    private fun continuityInputs(
-        outputs: List<AudioOutput> = audioOutputs.outputs.value,
-    ) = CarContinuityRecoveryCoordinator.Inputs(
+    private fun continuityInputs(outputs: List<AudioOutput> = audioOutputs.outputs.value) =
+        CarContinuityRecoveryCoordinator.Inputs(
         heardRoute = routeOwnership.heardRoute,
         headsetId = routeOwnership.headsetForCar(outputs),
         generation = routeOwnership.currentGeneration,

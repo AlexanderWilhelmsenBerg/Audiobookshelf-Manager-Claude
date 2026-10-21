@@ -19,7 +19,6 @@ internal class CarContinuityRecoveryCoordinator(
         val mayPlay: Boolean get() = precheck == CarContinuityPlayPrecheck.Proceed && consumed?.accepted == true
     }
 
-
     /** Snapshot of service-owned truth. No second command, player, or route generation is introduced. */
     internal data class Inputs(
         val heardRoute: RouteHeardOwnership.HeardRoute?,
