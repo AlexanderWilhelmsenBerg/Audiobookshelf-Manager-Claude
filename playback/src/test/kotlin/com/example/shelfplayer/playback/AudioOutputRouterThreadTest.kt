@@ -63,6 +63,19 @@ class AudioOutputRouterThreadTest {
     }
 
     @Test
+    fun `delayed automatic request cannot override newer guarded headset selection`() = runTest {
+        val fixture = fixture()
+        // Both calls happen before the main-dispatcher work is drained.
+        fixture.router.selectCar()
+        fixture.guard("bluetooth:original")
+        runCurrent()
+        assertTrue(
+            fixture.preferredRequests.isEmpty(),
+            "stale Automatic/Car work must not clear a later exact headset preference",
+        )
+    }
+
+    @Test
     fun `manual headset Play stays silent until the actual track route is verified`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
@@ -296,6 +309,7 @@ class AudioOutputRouterThreadTest {
         val reads = mutableListOf<Thread>()
         val pauses = mutableListOf<Thread>()
         val volumes = mutableListOf<Float>()
+        val preferredRequests = mutableListOf<Any?>()
         val owningThread = Thread.currentThread()
         val player = Proxy.newProxyInstance(
             ExoPlayer::class.java.classLoader,
@@ -308,7 +322,10 @@ class AudioOutputRouterThreadTest {
                     true
                 }
 
-                "setPreferredAudioDevice" -> null
+                "setPreferredAudioDevice" -> {
+                    preferredRequests.add(args?.get(0))
+                    null
+                }
 
                 "getVolume" -> volumes.lastOrNull() ?: 1f
 
@@ -338,7 +355,7 @@ class AudioOutputRouterThreadTest {
             isAccessible = true
             set(router, player)
         }
-        return Fixture(router, reads, pauses, volumes)
+        return Fixture(router, reads, pauses, volumes, preferredRequests)
     }
 
     private data class Fixture(
@@ -346,6 +363,7 @@ class AudioOutputRouterThreadTest {
         val readThreads: List<Thread>,
         val pauseThreads: List<Thread>,
         val volumeChanges: List<Float>,
+        val preferredRequests: List<Any?>,
     ) {
         fun measuredRoutes(routes: () -> Set<String>?) {
             AudioOutputRouter::class.java.getDeclaredField("currentTrackRoutes").apply {

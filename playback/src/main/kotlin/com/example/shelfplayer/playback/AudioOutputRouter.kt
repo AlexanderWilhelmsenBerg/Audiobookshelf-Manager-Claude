@@ -247,6 +247,10 @@ class AudioOutputRouter @Inject constructor(
     }
 
     private suspend fun apply(id: String?) = withContext(mainDispatcher) {
+        // A queued Automatic/Car request may run after a newer headset choice or
+        // continuity reassertion. Never let stale work clear the new preferred sink.
+        // Automatic and Car both request null, so their hardware operation is identical.
+        if (_selectedId.value != id) return@withContext
         val target = player ?: return@withContext
         val device = id?.let(live::get)
         target.setPreferredAudioDevice(device)

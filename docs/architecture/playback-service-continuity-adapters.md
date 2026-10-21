@@ -54,3 +54,15 @@ constraint that media-policy prediction cannot authenticate the playing track.
 **Hardware acceptance remains OPEN**: verify the safety pause and test an explicit
 headset output selection on repeated car reconnects, including new profile/book
 and cold start. Do not interpret a safety pause as successful headset routing.
+
+### Async output command ordering
+
+The router previously queued an `apply(null)` for Car/Automatic without rechecking
+selection on the ExoPlayer dispatcher. A subsequent exact-headset reassertion or
+explicit output choice could therefore be overwritten by an older queued request.
+`apply` now drops requests whose target no longer equals the currently selected
+endpoint. This fixes a concrete stale-command race at the production Media3 routing
+boundary. It is a plausible additional cause of intermittent switching, but the
+existing hardware trace does not prove that the stale command executed. A
+Robolectric test uses a delayed Automatic request and newer exact guarded
+selection to prove the old preference call is not sent.
