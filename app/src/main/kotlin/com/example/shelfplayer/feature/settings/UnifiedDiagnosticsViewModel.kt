@@ -12,8 +12,8 @@ import com.example.shelfplayer.playback.UnifiedDiagnosticsCapture
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /** UI adapter. The three read-only diagnostic sources retain independent ownership. */
