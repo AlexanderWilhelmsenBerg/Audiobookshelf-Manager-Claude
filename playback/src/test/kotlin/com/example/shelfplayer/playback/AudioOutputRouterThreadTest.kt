@@ -135,23 +135,23 @@ class AudioOutputRouterThreadTest {
 
     @Test
     fun `unmeasured track cannot authorize guarded playback after reconnect`() = runTest {
-            val fixture = fixture()
-            fixture.guard("bluetooth:original")
-            // Null means no playing AudioTrack was measured; a framework prediction is weaker.
-            fixture.measuredRoutes { null }
-            fixture.safetyListener().onIsPlayingChanged(true)
-            runCurrent()
-            assertEquals(1, fixture.pauseThreads.size, "an unmeasured guarded track must pause safely")
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+        // Null means no playing AudioTrack was measured; a framework prediction is weaker.
+        fixture.measuredRoutes { null }
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+        assertEquals(1, fixture.pauseThreads.size, "an unmeasured guarded track must pause safely")
 
-            // Source-backed production entrypoint guard: Robolectric cannot model an OEM
-            // media-policy prediction that contradicts the real AudioTrack. This assertion
-            // ensures a future change cannot reintroduce that unsafe fallback.
-            val source = java.io.File("src/main/kotlin/com/example/shelfplayer/playback/AudioOutputRouter.kt")
-                .readText()
-            val guard = source.substringAfter("private fun pauseUnsafeGuardedPlayback() {")
-                .substringBefore("/** Framework-reported devices")
-            assertTrue(!guard.contains("routedIds()"), "route safety must require measured AudioTrack evidence")
-        }
+        // Source-backed production entrypoint guard: Robolectric cannot model an OEM
+        // media-policy prediction that contradicts the real AudioTrack. This assertion
+        // ensures a future change cannot reintroduce that unsafe fallback.
+        val source = java.io.File("src/main/kotlin/com/example/shelfplayer/playback/AudioOutputRouter.kt")
+            .readText()
+        val guard = source.substringAfter("private fun pauseUnsafeGuardedPlayback() {")
+            .substringBefore("/** Framework-reported devices")
+        assertTrue(!guard.contains("routedIds()"), "route safety must require measured AudioTrack evidence")
+    }
 
     @Test
     fun `repeated car route transitions preserve exact guard and car selection can supersede it`() = runTest {
