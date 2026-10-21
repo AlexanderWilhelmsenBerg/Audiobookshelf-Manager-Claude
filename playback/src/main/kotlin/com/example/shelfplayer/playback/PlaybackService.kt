@@ -1580,12 +1580,12 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun continuityInputs(outputs: List<AudioOutput> = audioOutputs.outputs.value) =
         CarContinuityRecoveryCoordinator.Inputs(
-        heardRoute = routeOwnership.heardRoute,
-        headsetId = routeOwnership.headsetForCar(outputs),
-        generation = routeOwnership.currentGeneration,
-        selectionSequence = currentExplicitSelectionSequence(),
-        carConnected = carContinuitySessionEstablished,
-    )
+            heardRoute = routeOwnership.heardRoute,
+            headsetId = routeOwnership.headsetForCar(outputs),
+            generation = routeOwnership.currentGeneration,
+            selectionSequence = currentExplicitSelectionSequence(),
+            carConnected = carContinuitySessionEstablished,
+        )
 
     private fun observeCarContinuityHeadset(outputs: List<AudioOutput>) {
         carRecovery.observePlayingHeadset(continuityInputs(outputs))
