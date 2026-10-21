@@ -24,7 +24,10 @@ class LiveOutputEndpointRegistryTest {
         assertEquals(endpoints[0].knownDeviceId, endpoints[1].knownDeviceId)
         assertEquals("bluetooth:buds", endpoints[0].knownDeviceId)
         assertTrue(endpoints.all { it.id.startsWith("bluetooth:endpoint:") })
-        assertFalse(endpoints.any { it.id.contains("Buds") || it.id.contains("31") || it.id.contains("49") })
+        // The process token is a random UUID. A coincidental "31" or "49" substring
+        // inside that opaque token is not evidence that an Android device handle leaked.
+        assertFalse(endpoints.any { it.id.contains("Buds") })
+        assertEquals(listOf("e1", "e2"), endpoints.map { it.id.substringAfterLast(':') })
         assertEquals(endpoints[1].id, registry.find(49, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "Buds")?.id)
     }
 
