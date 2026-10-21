@@ -41,9 +41,7 @@ import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.R
 import com.example.shelfplayer.diagnostics.DiagnosticRestartActivity
 import com.example.shelfplayer.diagnostics.DiagnosticRestartPolicy
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.time.Instant
 
 internal const val UNIFIED_DIAGNOSTICS_START = "unified-diagnostics-start"
@@ -86,13 +84,7 @@ fun UnifiedDiagnosticsSheet(
         pendingExport = null
         if (uri != null && report != null) {
             scope.launch {
-                val saved = withContext(Dispatchers.IO) {
-                    runCatching {
-                        val output = context.contentResolver.openOutputStream(uri, "wt")
-                            ?: error("Document provider returned no writable stream")
-                        UnifiedDiagnosticsFileExport.write(output, report)
-                    }.isSuccess
-                }
+                val saved = capture.saveJson(uri, report)
                 Toast.makeText(
                     context,
                     if (saved) R.string.unified_diag_save_success else R.string.unified_diag_save_failed,
