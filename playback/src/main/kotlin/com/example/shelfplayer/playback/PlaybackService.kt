@@ -337,8 +337,7 @@ class PlaybackService : MediaLibraryService() {
      * headset captured by this policy. continuityPlayAwaiting is diagnostic only; it never authorizes Play.
      */
     private val carContinuity = CarArrivalResumeGate()
-    private val carContinuityRouteRecovery = CarArrivalRouteRecovery()
-    private var continuityPlayAwaiting: CarArrivalResumeGate.Target? = null
+    private val carRecovery = CarContinuityRecoveryCoordinator(carContinuity)
     private var projectionState = AndroidAutoProjectionMonitor.State.Unknown
     private var projectionOwnsCarLifecycle = false
 
@@ -422,11 +421,11 @@ class PlaybackService : MediaLibraryService() {
                 // state and therefore emits no onPlayWhenReadyChanged callback. Automatic continuity uses the
                 // raw ExoPlayer and bypasses this forwarding boundary, so it cannot cancel itself here.
                 if (requestedPlay) {
-                    carContinuity.cancelPending()
+                    carRecovery.cancelPending()
                 } else {
-                    carContinuity.cancelAll()
+                    carRecovery.cancelAll()
                 }
-                continuityPlayAwaiting = null
+                carRecovery.clearAwaiting()
             },
             // #197 — headset Previous/Back become the configured relative skip.
             skipIntervals = { skips },
@@ -1187,20 +1186,17 @@ class PlaybackService : MediaLibraryService() {
                 val outputs = audioOutputs.outputs.value
                 routeOwnership.onPlaybackObserved(outputs)
                 observeCarContinuityHeadset(outputs)
-                continuityPlayAwaiting?.let { target ->
-                    val sameContext =
-                        target.generation == routeOwnership.currentGeneration &&
-                            target.explicitSelectionSequence == currentExplicitSelectionSequence()
-                    if (sameContext) {
-                        logAuto(
-                            "Car lifecycle continuity playback became active",
-                            fields = listOf(
-                                LogField.Public("phase", target.phase.name),
-                                LogField.Public("kind", target.outputId.substringBefore(':')),
-                            ) + carSnapshotFields(),
-                        )
-                    }
-                    continuityPlayAwaiting = null
+                carRecovery.playbackBecameActive(
+                    routeOwnership.currentGeneration,
+                    currentExplicitSelectionSequence(),
+                )?.let { target ->
+                    logAuto(
+                        "Car lifecycle continuity playback became active",
+                        fields = listOf(
+                            LogField.Public("phase", target.phase.name),
+                            LogField.Public("kind", target.outputId.substringBefore(':')),
+                        ) + carSnapshotFields(),
+                    )
                 }
                 // PRODUCT_SPEC SYNC-002 — the book is moving again, so the position it was resting at is no
                 // longer a description of where this device is. See `ResumeBaseline.onLocalMove`.
@@ -1275,7 +1271,7 @@ class PlaybackService : MediaLibraryService() {
             if (playWhenReady) {
                 // Any newer Play wins over pending automatic continuity. A successful continuity Play has
                 // already consumed its one-shot target before it reaches this listener.
-                carContinuity.cancelPending()
+                carRecovery.cancelPending()
                 return
             }
             // `REMOTE` cannot occur while this listener is on the local ExoPlayer (R-76); it stays in the
@@ -1292,8 +1288,8 @@ class PlaybackService : MediaLibraryService() {
 
                 else -> {
                     // Deliberate pause, end-of-item and unknown causes invalidate transition evidence.
-                    carContinuity.cancelAll()
-                    continuityPlayAwaiting = null
+                    carRecovery.cancelAll()
+                    carRecovery.clearAwaiting()
                 }
             }
         }
@@ -1333,7 +1329,7 @@ class PlaybackService : MediaLibraryService() {
             decision.target
                 ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
                 ?.let { target -> scope.launch { recoverAndResumeCarContinuity(target) } }
-            if (!focusLoss) continuityPlayAwaiting = null
+            if (!focusLoss) carRecovery.clearAwaiting()
         }
 
         /**
@@ -1362,8 +1358,8 @@ class PlaybackService : MediaLibraryService() {
             // PRODUCT_SPEC PLAY-002 — route evidence belongs only to this loaded book generation.
             routeOwnership.onBookChanged(mediaItem != null)
             // Issue #36 — all continuity evidence is generation-bound and dies with the loaded book.
-            carContinuity.cancelAll()
-            continuityPlayAwaiting = null
+            carRecovery.cancelAll()
+            carRecovery.clearAwaiting()
             // PRODUCT_SPEC SYNC-002 — a baseline is per book and per position, and this is both changing.
             resumeBaseline.onBookClosed()
             // Record before the sync that follows it, so the row the sync uploads is this item's own.
@@ -1550,7 +1546,7 @@ class PlaybackService : MediaLibraryService() {
                     val isPlaying = player?.isPlaying == true
                     if ((player?.mediaItemCount ?: 0) == 0) {
                         routeOwnership.onQueueEmptied()
-                        carContinuity.cancelAll()
+                        carRecovery.cancelAll()
                     } else {
                         routeOwnership.onOutputsChanged(outputs, isPlaying = isPlaying)
                         if (isPlaying) observeCarContinuityHeadset(outputs)
@@ -1676,7 +1672,7 @@ class PlaybackService : MediaLibraryService() {
     private suspend fun holdHeadsetAgainstCar(): String? {
         if ((player?.mediaItemCount ?: 0) == 0) {
             routeOwnership.onQueueEmptied()
-            carContinuity.cancelAll()
+            carRecovery.cancelAll()
             return null
         }
         syncExplicitOutputIntent()
@@ -1705,17 +1701,12 @@ class PlaybackService : MediaLibraryService() {
      * preferred route to Automatic; the recovery may wait for and reassert only that same target.
      */
     private suspend fun recoverCarContinuityHeadset(target: CarArrivalResumeGate.Target): String? {
-        val held = carContinuityRouteRecovery.secure(
+        val held = carRecovery.secure(
             target = target,
             outputs = audioOutputs.outputs,
             selectedId = audioOutputs.selectedId,
-            isStillEligible = {
-                carContinuity.isCurrent(
-                    target = target,
-                    currentGeneration = routeOwnership.currentGeneration,
-                    explicitSelectionSequence = currentExplicitSelectionSequence(),
-                )
-            },
+            currentGeneration = { routeOwnership.currentGeneration },
+            selectionSequence = ::currentExplicitSelectionSequence,
             onEvent = { event -> logCarContinuityRouteEvent(target, event) },
             reassert = audioOutputs::reassert,
         )
@@ -1740,7 +1731,7 @@ class PlaybackService : MediaLibraryService() {
                 logAuto("Car lifecycle will verify original headset silently")
                 return target.outputId
             }
-            carContinuity.cancelPending()
+            carRecovery.cancelPending()
             return null
         }
         logHeldHeadset(held, target.phase)
@@ -1784,36 +1775,11 @@ class PlaybackService : MediaLibraryService() {
         // would only disturb a player that is already committed to continuing.
         if (player?.playWhenReady == true) {
             logAuto("Car lifecycle left active playback intent with Media3")
-            carContinuity.cancelPending()
+            carRecovery.cancelPending()
             return
         }
         val heldHeadset = recoverCarContinuityHeadset(target)
         resumeAfterCarContinuity(target, heldHeadset)
-    }
-
-    /** Applies the cancellation side effects of a [CarContinuityPlayPrecheck]; true only for Proceed. */
-    private fun applyContinuityPrecheck(
-        precheck: CarContinuityPlayPrecheck,
-        target: CarArrivalResumeGate.Target,
-    ): Boolean {
-        when (precheck) {
-            CarContinuityPlayPrecheck.NoPlayer -> carContinuity.cancelPending()
-
-            CarContinuityPlayPrecheck.EmptyQueue -> carContinuity.cancelAll()
-
-            CarContinuityPlayPrecheck.AlreadyPlaying -> {
-                carContinuity.cancelPending()
-                continuityPlayAwaiting = null
-                logAuto(
-                    "Car lifecycle continuity skipped Play because playback intent was already active",
-                    fields = listOf(LogField.Public("phase", target.phase.name)) + carSnapshotFields(),
-                )
-            }
-
-            CarContinuityPlayPrecheck.Proceed -> return true
-        }
-        continuityPlayAwaiting = null
-        return false
     }
 
     /**
@@ -1829,15 +1795,24 @@ class PlaybackService : MediaLibraryService() {
             mediaItemCount = current?.mediaItemCount ?: 0,
             playWhenReady = current?.playWhenReady == true,
         )
-        if (!applyContinuityPrecheck(precheck, target)) return
-        checkNotNull(current) { "Proceed implies a player" }
-
-        val result = carContinuity.consumeRecovery(
+        val assessment = carRecovery.assess(
             target = target,
+            precheck = precheck,
             currentGeneration = routeOwnership.currentGeneration,
-            headsetId = heldHeadset,
-            explicitSelectionSequence = currentExplicitSelectionSequence(),
+            selectionSequence = currentExplicitSelectionSequence(),
+            securedHeadsetId = heldHeadset,
         )
+        if (precheck != CarContinuityPlayPrecheck.Proceed) {
+            if (precheck == CarContinuityPlayPrecheck.AlreadyPlaying) {
+                logAuto(
+                    "Car lifecycle continuity skipped Play because playback intent was already active",
+                    fields = listOf(LogField.Public("phase", target.phase.name)) + carSnapshotFields(),
+                )
+            }
+            return
+        }
+        checkNotNull(current) { "Proceed implies a player" }
+        val result = checkNotNull(assessment.consumed)
         logAuto(
             "Car lifecycle continuity final eligibility checked",
             fields = listOf(
@@ -1848,7 +1823,7 @@ class PlaybackService : MediaLibraryService() {
             ) + carSnapshotFields(),
         )
         if (!result.accepted) {
-            continuityPlayAwaiting = null
+            carRecovery.clearAwaiting()
             return
         }
 
@@ -1860,11 +1835,11 @@ class PlaybackService : MediaLibraryService() {
         // An AudioManager preference is NOT proof of a physical route. Only the playing
         // AudioTrack may unmute this one-shot recovery; other routes fail closed.
         if (heldHeadset == null || !audioOutputs.beginMutedHeadsetProbe(heldHeadset)) {
-            continuityPlayAwaiting = null
+            carRecovery.clearAwaiting()
             logAuto("Car lifecycle refused unverified headset probe")
             return
         }
-        continuityPlayAwaiting = target
+        carRecovery.notePlayIssued(target)
         logAuto(
             "Car lifecycle continuity issued Play",
             fields = listOf(
@@ -1974,7 +1949,7 @@ class PlaybackService : MediaLibraryService() {
         LogField.Public("projectionOwnsLifecycle", projectionOwnsCarLifecycle),
         LogField.Public("sessionEstablished", carContinuitySessionEstablished),
         LogField.Public("carBound", carConnections.isConnected()),
-        LogField.Public("continuityPlayAwaiting", continuityPlayAwaiting != null),
+        LogField.Public("continuityPlayAwaiting", carRecovery.isPlayAwaiting),
         LogField.Public("generation", routeOwnership.currentGeneration?.toString() ?: "none"),
         LogField.Public("selectionSequence", currentExplicitSelectionSequence()),
     )

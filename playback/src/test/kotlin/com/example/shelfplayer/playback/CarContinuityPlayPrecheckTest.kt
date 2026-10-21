@@ -59,12 +59,16 @@ class CarContinuityPlayPrecheckTest {
             .substringBefore("private fun ensureAutoTrace")
 
         val precheck = resume.indexOf("CarContinuityPlayPrecheck.decide")
-        val verdict = resume.indexOf("carContinuity.consumeRecovery")
+        val verdict = resume.indexOf("carRecovery.assess")
         val rejected = resume.indexOf("if (!result.accepted)")
         val play = resume.indexOf("current.play()")
-        assertTrue(precheck in 0 until verdict, "the precheck precedes the gate")
+        assertTrue(precheck in 0 until verdict, "the precheck precedes coordinator claim consumption")
         assertTrue(rejected > verdict, "a rejected verdict must return before Play")
         assertTrue(play > rejected, "the accepted path must issue Play")
         assertEquals(1, Regex("""current\.play\(\)""").findAll(resume).count(), "exactly one Play")
+        val coordinator = File("src/main/kotlin/com/example/shelfplayer/playback/CarContinuityRecoveryCoordinator.kt")
+            .readText()
+        assertTrue(coordinator.contains("gate.consumeRecovery("), "the coordinator must consume the gate claim")
+        assertTrue(coordinator.contains("CarContinuityPlayPrecheck.Proceed ->"), "precheck must gate consumption")
     }
 }
