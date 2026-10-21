@@ -121,8 +121,7 @@ class AudioOutputRouterThreadTest {
     }
 
     @Test
-    fun `car reconnect with unmeasured AudioTrack cannot use policy prediction to authorize guarded audio`() =
-        runTest {
+    fun `unmeasured track cannot authorize guarded playback after reconnect`() = runTest {
             val fixture = fixture()
             fixture.guard("bluetooth:original")
             // Null means no playing AudioTrack was measured; a framework prediction is weaker.
