@@ -13,8 +13,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.time.Instant
 import java.io.ByteArrayOutputStream
+import java.time.Instant
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], manifest = Config.NONE)
@@ -25,8 +25,10 @@ class UnifiedDiagnosticsJsonTest {
         val bytes = ByteArrayOutputStream()
         UnifiedDiagnosticsFileExport.write(bytes, report)
         assertEquals(report, bytes.toString(Charsets.UTF_8.name()))
-        assertEquals("bookwave-diagnostics-20261021-094740.json",
-            UnifiedDiagnosticsFileExport.filename(Instant.parse("2026-10-21T09:47:40Z")))
+        assertEquals(
+            "bookwave-diagnostics-20261021-094740.json",
+            UnifiedDiagnosticsFileExport.filename(Instant.parse("2026-10-21T09:47:40Z")),
+        )
     }
 
     @Test fun `JSON combines independent source records and remains parseable`() {
