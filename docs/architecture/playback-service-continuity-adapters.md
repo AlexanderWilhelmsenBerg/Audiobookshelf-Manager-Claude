@@ -29,3 +29,28 @@ exercise the original-headset-to-car transition, headset Play versus car Play,
 same-name Bluetooth endpoints, cold start, disconnect/reconnect, focus/noisy
 ordering, and explicit Pause/new book/profile/output changes. Keep all three
 PRs separate until this physical acceptance is satisfied.
+
+## 2026-10-21 extended hardware regression and safety stabilization
+
+The initial physical PASS of build 2237 was superseded by a second Android Auto
+session: external Play after paused car reconnect played to a measured RemoteSubmix,
+not the previously heard A2DP endpoint. Virtual media-button metadata cannot prove
+which physical button issued Play. The car-Play path explicitly selects Car, whereas
+unattributed external Play does not select a headset. That asymmetry also exists on
+main and is not established as an A/B/C refactoring regression. After an explicit
+Car choice, profile/book replacement, or lost endpoint identity, no old headset
+claim may be recreated merely from a connected Bluetooth device.
+
+This C stabilization tightens the **existing guarded-headset safety path**: when
+the actual playing AudioTrack is unmeasured, a predicted AudioManager media route
+must not authorize audible playback. The router now passes only measured track
+route IDs to its guard and pauses rather than trusting framework prediction.
+It does not infer media-button origin, silently lock a headset, or implement a
+new output handoff. Headset lock is #276; verified destination handoff is #277.
+
+The Robolectric tests exercise repeated measured headset -> RemoteSubmix ->
+unmeasured route changes, explicit Car supersession, and the production wiring
+constraint that media-policy prediction cannot authenticate the playing track.
+**Hardware acceptance remains OPEN**: verify the safety pause and test an explicit
+headset output selection on repeated car reconnects, including new profile/book
+and cold start. Do not interpret a safety pause as successful headset routing.

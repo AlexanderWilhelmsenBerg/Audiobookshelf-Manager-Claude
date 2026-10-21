@@ -121,6 +121,59 @@ class AudioOutputRouterThreadTest {
     }
 
     @Test
+    fun `car reconnect with unmeasured AudioTrack cannot use policy prediction to authorize guarded audio`() =
+        runTest {
+            val fixture = fixture()
+            fixture.guard("bluetooth:original")
+            // Null means no playing AudioTrack was measured; a framework prediction is weaker.
+            fixture.measuredRoutes { null }
+            fixture.safetyListener().onIsPlayingChanged(true)
+            runCurrent()
+            assertEquals(1, fixture.pauseThreads.size, "an unmeasured guarded track must pause safely")
+
+            // Source-backed production entrypoint guard: Robolectric cannot model an OEM
+            // media-policy prediction that contradicts the real AudioTrack. This assertion
+            // ensures a future change cannot reintroduce that unsafe fallback.
+            val source = java.io.File("src/main/kotlin/com/example/shelfplayer/playback/AudioOutputRouter.kt")
+                .readText()
+            val guard = source.substringAfter("private fun pauseUnsafeGuardedPlayback() {")
+                .substringBefore("/** Framework-reported devices")
+            assertTrue(!guard.contains("routedIds()"), "route safety must require measured AudioTrack evidence")
+        }
+
+    @Test
+    fun `repeated car route transitions preserve exact guard and car selection can supersede it`() = runTest {
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+        fixture.measuredRoutes { setOf("bluetooth:original") }
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+        assertEquals(0, fixture.pauseThreads.size)
+
+        // Second projection session: actual track moves to RemoteSubmix.
+        fixture.measuredRoutes { emptySet() }
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+        assertEquals(1, fixture.pauseThreads.size)
+
+        // A subsequent unmeasured Play must also remain guarded.
+        fixture.measuredRoutes { null }
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+        assertEquals(2, fixture.pauseThreads.size)
+
+        // A real explicit Car choice is newer listener intent; never resurrect
+        // the previous headset automatically based on an unattributed media key.
+        fixture.router.selectCar()
+        runCurrent()
+        assertEquals(null, fixture.guardId())
+        assertEquals(
+            AudioOutputRouter.ExplicitDestination.Car,
+            fixture.router.explicitSelection.value?.destination,
+        )
+    }
+
+    @Test
     fun `silent probe allows only reasserted exact device when prediction is unknown`() {
         val id = "bluetooth:original"
         assertTrue(canAttemptMutedHeadsetProbe(id, id, id, true, emptySet()))
