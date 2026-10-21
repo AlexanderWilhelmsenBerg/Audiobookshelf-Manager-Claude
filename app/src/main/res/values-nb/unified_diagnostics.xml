@@ -2,14 +2,17 @@
 <resources>
     <string name="unified_diag_open">Start diagnostikk / JSON-rapport</string>
     <string name="unified_diag_title">Samlet diagnostikk</string>
-    <string name="unified_diag_description">Registrer hendelseslogg, avspillingshendelser, lydrutelogg og utgangsklassifisering samtidig. JSON-rapporten kopieres bare når du velger Kopier. Ingen enhetsnavn eller adresser samles inn. Bruk mens du står stille.</string>
+    <string name="unified_diag_description">Registrer hendelseslogg, avspillingshendelser, lydrutelogg og utgangsklassifisering samtidig. JSON-rapporten eksporteres bare når du velger Kopier eller Lagre. Ingen enhetsnavn eller adresser samles inn. Bruk mens du står stille.</string>
     <string name="unified_diag_recording">Alle diagnostikklogger er aktive</string>
     <string name="unified_diag_stopped">Registrering stoppet</string>
     <string name="unified_diag_start">Start diagnostikk</string>
     <string name="unified_diag_stop">Stopp diagnostikk</string>
     <string name="unified_diag_clear">Tøm alle</string>
     <string name="unified_diag_copy_json">Kopier samlet JSON-rapport</string>
-    <string name="unified_diag_export_help">Én strukturert JSON-rapport inneholder hendelseslogg, feilsøkingskonsoll, AudioTrack-data, lydruter, utgangsklassifisering og avspillingshendelser. Rapporten lagres lokalt til du kopierer den.</string>
+    <string name="unified_diag_save_json">Lagre JSON-fil</string>
+    <string name="unified_diag_save_success">Diagnostikkfilen er lagret</string>
+    <string name="unified_diag_save_failed">Kunne ikke lagre diagnostikkfilen</string>
+    <string name="unified_diag_export_help">Én strukturert JSON-rapport inneholder hendelseslogg, feilsøkingskonsoll, AudioTrack-data, lydruter, utgangsklassifisering og avspillingshendelser. Rapporten forblir lokal til du kopierer eller lagrer den.</string>
     <string name="unified_diag_restart_title">Starte BookWave på nytt for AudioTrack-logg?</string>
     <string name="unified_diag_restart_body">Spilleren må opprettes etter at registreringen starter for å måle den faktiske lydruten. Sett avspillingen på pause først. Omstart lukker BookWave-prosessen og åpner appen igjen. Loggene aktiveres automatisk etter omstart. Avspilling som ikke er lagret kan bli avbrutt.</string>
     <string name="unified_diag_restart_yes">Start BookWave på nytt</string>

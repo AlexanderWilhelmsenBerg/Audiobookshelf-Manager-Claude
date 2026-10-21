@@ -25,11 +25,15 @@ clipboard report. No remote uploads, raw Bluetooth identities, server URLs, or m
    before a test can claim AudioTrack coverage. `Not installed` means no route observation.
 6. Perform Bluetooth A/B and Android Auto arrival/departure tests. Mark physical headset
    key presses and human-heard destination in the separate Audio Route Lab sheet.
-7. **Stop diagnostics** then **Copy complete JSON report**. The report is versioned and
-   contains redacted Event Log entries, playback-race events, Audio Route Lab rows, Output
-   Classifier rows/snapshots, and the Debug Console text. It is a bounded local clipboard
-   export—copying it is explicitly user initiated. **Clear all** deletes the lab file and
-   clears in-memory captures/logs.
+7. **Stop diagnostics** then use **Save JSON file** to choose a location in Android's
+   system document picker (for example, Downloads), or **Copy complete JSON report**
+   if a clipboard copy is preferred. Both actions produce the same versioned report
+   with redacted Event Log entries, playback-race events, Audio Route Lab rows,
+   Output Classifier rows/snapshots, and Debug Console text. Saving is explicitly
+   user initiated, requires no storage permission, and writes the entire UTF-8 report
+   without a clipboard-size limit. Cancellation creates no file; write errors are
+   reported rather than claiming success. The app never uploads the report.
+   **Clear all** deletes the lab file and clears in-memory captures/logs.
 
 ## Provenance and privacy
 

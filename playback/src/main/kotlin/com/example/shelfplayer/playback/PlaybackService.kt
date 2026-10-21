@@ -1312,18 +1312,10 @@ class PlaybackService : MediaLibraryService() {
                 },
             )
             syncExplicitOutputIntent()
-            val observer = if (focusLoss) {
-                carContinuity::onAudioFocusLoss
-            } else {
-                carContinuity::onAudioBecomingNoisy
-            }
-            val decision = observer(
+            val decision = carRecovery.platformInterruption(
                 clock.elapsed(),
-                routeOwnership.heardRoute,
-                routeOwnership.headsetForCar(audioOutputs.outputs.value),
-                routeOwnership.currentGeneration,
-                currentExplicitSelectionSequence(),
-                carContinuitySessionEstablished,
+                continuityInputs(),
+                focusLoss,
             )
             logCarContinuityDecision(source, decision)
             decision.target
@@ -1586,13 +1578,17 @@ class PlaybackService : MediaLibraryService() {
      * its live record, while the continuity owner retains the last positively proven target until newer
      * listener/book/playback intent makes it ineligible.
      */
-    private fun observeCarContinuityHeadset(outputs: List<AudioOutput>) {
-        carContinuity.observePlayingHeadset(
+    private fun continuityInputs(outputs: List<AudioOutput> = audioOutputs.outputs.value) =
+        CarContinuityRecoveryCoordinator.Inputs(
             heardRoute = routeOwnership.heardRoute,
             headsetId = routeOwnership.headsetForCar(outputs),
-            currentGeneration = routeOwnership.currentGeneration,
-            explicitSelectionSequence = currentExplicitSelectionSequence(),
+            generation = routeOwnership.currentGeneration,
+            selectionSequence = currentExplicitSelectionSequence(),
+            carConnected = carContinuitySessionEstablished,
         )
+
+    private fun observeCarContinuityHeadset(outputs: List<AudioOutput>) {
+        carRecovery.observePlayingHeadset(continuityInputs(outputs))
     }
 
     /**
@@ -1722,7 +1718,7 @@ class PlaybackService : MediaLibraryService() {
             // A paused track cannot report its actual route. If Android Auto exposes only
             // REMOTE_SUBMIX, allow a bounded MUTED playback probe of the original exact
             // headset. The router must prove this player's sink before it unmutes.
-            if (carContinuity.isCurrent(
+            if (carRecovery.isCurrent(
                     target,
                     routeOwnership.currentGeneration,
                     currentExplicitSelectionSequence(),
@@ -1763,11 +1759,12 @@ class PlaybackService : MediaLibraryService() {
         )
     }
 
-    private fun currentContinuityInvalidation(target: CarArrivalResumeGate.Target): String = when {
-        routeOwnership.currentGeneration != target.generation -> "generation-changed"
-        currentExplicitSelectionSequence() != target.explicitSelectionSequence -> "explicit-selection-changed"
-        else -> "target-unavailable-or-candidate-invalidated"
-    }
+    private fun currentContinuityInvalidation(target: CarArrivalResumeGate.Target): String =
+        carRecovery.invalidationReason(
+            target,
+            routeOwnership.currentGeneration,
+            currentExplicitSelectionSequence(),
+        )
 
     private suspend fun recoverAndResumeCarContinuity(target: CarArrivalResumeGate.Target) {
         // Media3 can hold playWhenReady=true while temporarily suppressing audible playback.
@@ -1980,7 +1977,7 @@ class PlaybackService : MediaLibraryService() {
         // The first arrival must be registered synchronously. Routing resettle runs in a later coroutine,
         // and Media3 focus loss can arrive before that coroutine is scheduled.
         val arrivalDecision = carArrivedAt?.let { at ->
-            carContinuity.onCarArrival(at, routeOwnership.currentGeneration, currentExplicitSelectionSequence())
+            carRecovery.carArrival(at, routeOwnership.currentGeneration, currentExplicitSelectionSequence())
         }
         arrivalDecision?.let { logCarContinuityDecision("first-car-bind", it) }
         carContinuitySessionEstablished = true
@@ -2100,10 +2097,10 @@ class PlaybackService : MediaLibraryService() {
                 projectionOwnsCarLifecycle = true
                 // This stronger car-specific edge may follow focus loss before Gearhead binds. If it leads
                 // focus loss instead, the later first controller bind remains the arrival completion boundary.
-                val decision = carContinuity.onCarArrival(
-                    arrivedAt = clock.elapsed(),
-                    currentGeneration = routeOwnership.currentGeneration,
-                    explicitSelectionSequence = currentExplicitSelectionSequence(),
+                val decision = carRecovery.carArrival(
+                    at = clock.elapsed(),
+                    generation = routeOwnership.currentGeneration,
+                    sequence = currentExplicitSelectionSequence(),
                 )
                 logCarContinuityDecision("projection-connect", decision)
                 scope.launch { handleCarArrival(decision) }
@@ -2131,19 +2128,12 @@ class PlaybackService : MediaLibraryService() {
         val departedAt = clock.elapsed()
         val generation = routeOwnership.currentGeneration
         val selectionSequence = currentExplicitSelectionSequence()
-        val decision = if (physicalProjection) {
-            carContinuity.onProjectionDeparture(
-                departedAt = departedAt,
-                currentGeneration = generation,
-                explicitSelectionSequence = selectionSequence,
-            )
-        } else {
-            carContinuity.onCarDeparture(
-                departedAt = departedAt,
-                currentGeneration = generation,
-                explicitSelectionSequence = selectionSequence,
-            )
-        }
+        val decision = carRecovery.carDeparture(
+            at = departedAt,
+            generation = generation,
+            sequence = selectionSequence,
+            physicalProjection = physicalProjection,
+        )
         logCarContinuityDecision(source, decision)
         scope.launch {
             audioOutputs.resettle()

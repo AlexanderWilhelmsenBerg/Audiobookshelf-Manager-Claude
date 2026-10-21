@@ -247,6 +247,10 @@ class AudioOutputRouter @Inject constructor(
     }
 
     private suspend fun apply(id: String?) = withContext(mainDispatcher) {
+        // A queued Automatic/Car request may run after a newer headset choice or
+        // continuity reassertion. Never let stale work clear the new preferred sink.
+        // Automatic and Car both request null, so their hardware operation is identical.
+        if (_selectedId.value != id) return@withContext
         val target = player ?: return@withContext
         val device = id?.let(live::get)
         target.setPreferredAudioDevice(device)
@@ -500,8 +504,11 @@ class AudioOutputRouter @Inject constructor(
         if (_selectedId.value != guarded) return
         applicationScope.launch(mainDispatcher) {
             val current = player ?: return@launch
+            // A framework media-policy prediction is never proof of this AudioTrack's
+            // physical sink. In particular, a paused-to-Play car reconnect can report
+            // a predicted headset while the actual track is RemoteSubmix or unobservable.
+            // A guarded headset must fail closed until this playing track is measured.
             val actualRoute = currentTrackRoutes()
-            val latestRoute = actualRoute ?: routedIds()
             val probe = mutedProbe
             if (probe != null) {
                 verifyMutedHeadsetProbe(current, actualRoute, probe)
@@ -510,7 +517,7 @@ class AudioOutputRouter @Inject constructor(
             if (guarded !in collidingOutputIds && !shouldSuspendGuardedPlayback(
                     guardedHeadsetId,
                     _selectedId.value,
-                    latestRoute,
+                    actualRoute,
                     current.isPlaying,
                 )
             ) {
@@ -523,8 +530,8 @@ class AudioOutputRouter @Inject constructor(
                 LogField.Public(
                     "route",
                     when {
-                        latestRoute.isNullOrEmpty() -> "unknown"
-                        latestRoute.none { it == guardedHeadsetId } -> "other"
+                        actualRoute.isNullOrEmpty() -> "unknown"
+                        actualRoute.none { it == guardedHeadsetId } -> "other"
                         else -> "multiple"
                     },
                 ),

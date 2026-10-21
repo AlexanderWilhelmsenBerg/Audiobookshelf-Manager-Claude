@@ -63,6 +63,19 @@ class AudioOutputRouterThreadTest {
     }
 
     @Test
+    fun `delayed automatic request cannot override newer guarded headset selection`() = runTest {
+        val fixture = fixture()
+        // Both calls happen before the main-dispatcher work is drained.
+        fixture.router.selectCar()
+        fixture.guard("bluetooth:original")
+        runCurrent()
+        assertTrue(
+            fixture.preferredRequests.isEmpty(),
+            "stale Automatic/Car work must not clear a later exact headset preference",
+        )
+    }
+
+    @Test
     fun `manual headset Play stays silent until the actual track route is verified`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
@@ -118,6 +131,58 @@ class AudioOutputRouterThreadTest {
         fixture.safetyListener().onIsPlayingChanged(true)
         runCurrent()
         assertEquals(1, fixture.pauseThreads.size, "a remote submix is not the physical headset")
+    }
+
+    @Test
+    fun `unmeasured track cannot authorize guarded playback after reconnect`() = runTest {
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+        // Null means no playing AudioTrack was measured; a framework prediction is weaker.
+        fixture.measuredRoutes { null }
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+        assertEquals(1, fixture.pauseThreads.size, "an unmeasured guarded track must pause safely")
+
+        // Source-backed production entrypoint guard: Robolectric cannot model an OEM
+        // media-policy prediction that contradicts the real AudioTrack. This assertion
+        // ensures a future change cannot reintroduce that unsafe fallback.
+        val source = java.io.File("src/main/kotlin/com/example/shelfplayer/playback/AudioOutputRouter.kt")
+            .readText()
+        val guard = source.substringAfter("private fun pauseUnsafeGuardedPlayback() {")
+            .substringBefore("/** Framework-reported devices")
+        assertTrue(!guard.contains("routedIds()"), "route safety must require measured AudioTrack evidence")
+    }
+
+    @Test
+    fun `repeated car route transitions preserve exact guard and car selection can supersede it`() = runTest {
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+        fixture.measuredRoutes { setOf("bluetooth:original") }
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+        assertEquals(0, fixture.pauseThreads.size)
+
+        // Second projection session: actual track moves to RemoteSubmix.
+        fixture.measuredRoutes { emptySet() }
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+        assertEquals(1, fixture.pauseThreads.size)
+
+        // A subsequent unmeasured Play must also remain guarded.
+        fixture.measuredRoutes { null }
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+        assertEquals(2, fixture.pauseThreads.size)
+
+        // A real explicit Car choice is newer listener intent; never resurrect
+        // the previous headset automatically based on an unattributed media key.
+        fixture.router.selectCar()
+        runCurrent()
+        assertEquals(null, fixture.guardId())
+        assertEquals(
+            AudioOutputRouter.ExplicitDestination.Car,
+            fixture.router.explicitSelection.value?.destination,
+        )
     }
 
     @Test
@@ -244,6 +309,7 @@ class AudioOutputRouterThreadTest {
         val reads = mutableListOf<Thread>()
         val pauses = mutableListOf<Thread>()
         val volumes = mutableListOf<Float>()
+        val preferredRequests = mutableListOf<Any?>()
         val owningThread = Thread.currentThread()
         val player = Proxy.newProxyInstance(
             ExoPlayer::class.java.classLoader,
@@ -256,7 +322,10 @@ class AudioOutputRouterThreadTest {
                     true
                 }
 
-                "setPreferredAudioDevice" -> null
+                "setPreferredAudioDevice" -> {
+                    preferredRequests.add(args?.get(0))
+                    null
+                }
 
                 "getVolume" -> volumes.lastOrNull() ?: 1f
 
@@ -286,7 +355,7 @@ class AudioOutputRouterThreadTest {
             isAccessible = true
             set(router, player)
         }
-        return Fixture(router, reads, pauses, volumes)
+        return Fixture(router, reads, pauses, volumes, preferredRequests)
     }
 
     private data class Fixture(
@@ -294,6 +363,7 @@ class AudioOutputRouterThreadTest {
         val readThreads: List<Thread>,
         val pauseThreads: List<Thread>,
         val volumeChanges: List<Float>,
+        val preferredRequests: List<Any?>,
     ) {
         fun measuredRoutes(routes: () -> Set<String>?) {
             AudioOutputRouter::class.java.getDeclaredField("currentTrackRoutes").apply {
