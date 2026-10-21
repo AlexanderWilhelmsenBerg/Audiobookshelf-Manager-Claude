@@ -46,11 +46,7 @@ internal class PlaybackScenarioContractTest {
         HUMAN_HEARD,
     }
 
-    private data class Step(
-        val id: String,
-        val at: Duration,
-        val input: Input,
-    )
+    private data class Step(val id: String, val at: Duration, val input: Input)
 
     private data class Observation(
         val stepId: String,
@@ -60,15 +56,9 @@ internal class PlaybackScenarioContractTest {
         val evidence: Evidence = Evidence.POLICY_DECISION,
     )
 
-    private data class Expected(
-        val stepId: String,
-        val authorizedPlay: Boolean,
-    )
+    private data class Expected(val stepId: String, val authorizedPlay: Boolean)
 
-    private data class Outcome(
-        val verdict: Verdict,
-        val reason: String,
-    )
+    private data class Outcome(val verdict: Verdict, val reason: String)
 
     private fun judge(
         observations: List<Observation>,
@@ -90,10 +80,7 @@ internal class PlaybackScenarioContractTest {
         }
     }
 
-    private fun replay(
-        steps: List<Step>,
-        initiallyAudible: Boolean = true,
-    ): List<Observation> {
+    private fun replay(steps: List<Step>, initiallyAudible: Boolean = true): List<Observation> {
         require(steps.zipWithNext().all { (a, b) -> a.at <= b.at }) {
             "Nonmonotonic scenario clock"
         }
