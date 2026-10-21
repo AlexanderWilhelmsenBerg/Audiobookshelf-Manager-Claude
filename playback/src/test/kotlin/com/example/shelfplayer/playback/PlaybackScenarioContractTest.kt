@@ -178,6 +178,7 @@ internal class PlaybackScenarioContractTest {
         val fixture = Fixture(initiallyAudible)
         return steps.map(fixture::apply)
     }
+
     @Test
     fun focusBeforeCarArrivalClaimsExactlyOnePlay() {
         val observations = replay(
