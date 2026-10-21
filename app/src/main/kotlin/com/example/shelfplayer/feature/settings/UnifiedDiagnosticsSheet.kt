@@ -2,6 +2,8 @@ package com.example.shelfplayer.feature.settings
 
 import android.content.ClipData
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
@@ -39,11 +41,14 @@ import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.R
 import com.example.shelfplayer.diagnostics.DiagnosticRestartActivity
 import com.example.shelfplayer.diagnostics.DiagnosticRestartPolicy
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 
 internal const val UNIFIED_DIAGNOSTICS_START = "unified-diagnostics-start"
 internal const val UNIFIED_DIAGNOSTICS_COPY = "unified-diagnostics-json"
+internal const val UNIFIED_DIAGNOSTICS_SAVE = "unified-diagnostics-save-json"
 
 /**
  * One stationary-use diagnostic control, and one versioned, machine-readable JSON report.
@@ -72,6 +77,30 @@ fun UnifiedDiagnosticsSheet(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var confirmRestart by remember { mutableStateOf(false) }
+    // Keep the exact snapshot the listener chose before opening the system file picker.
+    var pendingExport by remember { mutableStateOf<String?>(null) }
+    val saveJson = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        val report = pendingExport
+        pendingExport = null
+        if (uri != null && report != null) {
+            scope.launch {
+                val saved = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val output = context.contentResolver.openOutputStream(uri, "wt")
+                            ?: error("Document provider returned no writable stream")
+                        UnifiedDiagnosticsFileExport.write(output, report)
+                    }.isSuccess
+                }
+                Toast.makeText(
+                    context,
+                    if (saved) R.string.unified_diag_save_success else R.string.unified_diag_save_failed,
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
     val build = state.versionLabel + " ${BuildConfig.BUILD_TYPE} ${BuildConfig.GIT_COMMIT} ${state.sourceLabel}"
     val legacy = remember(state, metrics, events, crash) {
         DiagnosticsReport.of(build, state, metrics, events, Instant.now(), crash)
@@ -134,6 +163,13 @@ fun UnifiedDiagnosticsSheet(
                     }
                 },
             ) { Text(stringResource(R.string.unified_diag_copy_json)) }
+            TextButton(
+                modifier = Modifier.testTag(UNIFIED_DIAGNOSTICS_SAVE),
+                onClick = {
+                    pendingExport = capture.jsonReport(build, legacy)
+                    saveJson.launch(UnifiedDiagnosticsFileExport.filename(Instant.now()))
+                },
+            ) { Text(stringResource(R.string.unified_diag_save_json)) }
             Text(
                 "Audio Route Lab: ${lab.entries.size} · Output Classifier: ${classifier.entries.size} · " +
                     "Race trace: ${race.lines.size} · Event Log: ${events.size}",
