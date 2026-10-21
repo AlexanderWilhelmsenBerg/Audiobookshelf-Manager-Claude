@@ -91,7 +91,15 @@ internal class PlaybackScenarioAsyncEffectsTest {
         acknowledge.complete(true)
         runCurrent()
         assertNull(pending.await(), "late acknowledgment must not resurrect a superseded output intent")
-        assertFalse(coordinator.assess(target, CarContinuityPlayPrecheck.Proceed, target.generation, 1, headset.id).mayPlay)
+        assertFalse(
+            coordinator.assess(
+                target,
+                CarContinuityPlayPrecheck.Proceed,
+                target.generation,
+                1,
+                headset.id,
+            ).mayPlay,
+        )
         assertEquals(1, requests.size)
     }
 
@@ -122,7 +130,15 @@ internal class PlaybackScenarioAsyncEffectsTest {
         acknowledge.complete(true)
         runCurrent()
         assertNull(pending.await())
-        assertFalse(coordinator.assess(target, CarContinuityPlayPrecheck.Proceed, currentGeneration, 0, headset.id).mayPlay)
+        assertFalse(
+            coordinator.assess(
+                target,
+                CarContinuityPlayPrecheck.Proceed,
+                currentGeneration,
+                0,
+                headset.id,
+            ).mayPlay,
+        )
     }
 
     @Test
@@ -217,7 +233,13 @@ internal class PlaybackScenarioAsyncEffectsTest {
         assertEquals(headset.id, second.await())
         assertEquals(0, requests, "already active route does not need a repeated preference request")
         val attempts = listOf(first, second).map {
-            coordinator.assess(target, CarContinuityPlayPrecheck.Proceed, target.generation, 0, it.getCompleted()).mayPlay
+            coordinator.assess(
+                target,
+                CarContinuityPlayPrecheck.Proceed,
+                target.generation,
+                0,
+                it.getCompleted(),
+            ).mayPlay
         }
         assertEquals(listOf(true, false), attempts)
     }
