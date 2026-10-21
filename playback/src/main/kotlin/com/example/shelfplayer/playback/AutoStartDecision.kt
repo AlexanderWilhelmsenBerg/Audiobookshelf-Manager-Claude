@@ -34,6 +34,18 @@ import java.time.Instant
  */
 internal object AutoStartDecision {
 
+    /**
+     * A name-based Bluetooth/hearing-aid/USB identity cannot safely authorize AutoPlay.
+     * Another physical endpoint may reuse the same name (also after process recreation).
+     * Category-wide wired and explicit car policies retain their documented behavior.
+     * Historical AutoPlay setting is not deleted; it cannot grant an unverified route Play.
+     */
+    fun forObservedOutput(policy: DevicePolicy, isProfileLocked: Boolean, kind: DeviceKind): AutoStartAction {
+        val verifiedCategory = kind == DeviceKind.Wired || kind == DeviceKind.Car
+        val safePolicy = if (policy == DevicePolicy.AutoPlay && !verifiedCategory) DevicePolicy.ArmOnly else policy
+        return decide(safePolicy, isProfileLocked)
+    }
+
     fun decide(policy: DevicePolicy, isProfileLocked: Boolean): AutoStartAction = when (policy) {
         DevicePolicy.Never -> AutoStartAction.None
 

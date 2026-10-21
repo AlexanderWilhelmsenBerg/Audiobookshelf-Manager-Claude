@@ -99,11 +99,14 @@ class OutputDeviceWatcher @Inject constructor(
         val observedAt = clock.now()
         val present = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
             .asSequence()
-            .filter { info -> info.isSink }
-            .mapNotNull { info -> OutputDevices.of(info.type, info.productName, observedAt) }
-            .distinctBy(KnownDevice::id)
+            .filter(AudioDeviceInfo::isSink)
+            .mapNotNull { info ->
+                OutputDevices.of(info.type, info.productName, observedAt)?.let {
+                    connections.onPresentAtStart(connectionHandleKey(info.id, info.type))
+                    it
+                }
+            }
             .toList()
-        present.forEach { device -> connections.onPresentAtStart(device.id) }
         logger.debug(
             LogCategory.Playback,
             "Playback output observation started with existing routes",
@@ -116,9 +119,9 @@ class OutputDeviceWatcher @Inject constructor(
             }
 
             override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
-                removedDevices.orEmpty()
-                    .mapNotNull { info -> OutputDevices.of(info.type, info.productName, clock.now()) }
-                    .forEach { device -> connections.onDisconnected(device.id) }
+                removedDevices.orEmpty().forEach { info ->
+                    connections.onDisconnected(connectionHandleKey(info.id, info.type))
+                }
             }
         }
         // Null handler: delivered on the main looper, which is where every `Player` read has to happen
@@ -143,7 +146,7 @@ class OutputDeviceWatcher @Inject constructor(
             // The startup-replay and duplicate checks belong inside the same lock as the action. The callback
             // itself is delivered serially, but each callback is launched into a coroutine and may suspend;
             // without one lock two callbacks can both pass the gate before either records/loads anything.
-            if (!connections.shouldAct(device.id, clock.now())) return@withLock
+            if (!connections.shouldAct(connectionHandleKey(info.id, info.type), clock.now())) return@withLock
 
             devices.remember(device)
             // Read *after* the debounce and the remember, so a first-ever connection has been stored and gets
@@ -166,7 +169,7 @@ class OutputDeviceWatcher @Inject constructor(
             // playing later when the profile is unlocked. ROUTE-002 licenses that: it calls auto-play
             // "best-effort", and a book beginning minutes after a headset was plugged in is worse than one
             // that never began.
-            when (AutoStartDecision.decide(policy, isProfileLocked = lock.isActiveProfileLocked())) {
+            when (AutoStartDecision.forObservedOutput(policy, lock.isActiveProfileLocked(), device.kind)) {
                 AutoStartAction.ArmAndPlay -> {
                     logger.log(device, "A device connected and its policy is to start playing")
                     actions.armAndPlay()
@@ -200,3 +203,6 @@ class OutputDeviceWatcher @Inject constructor(
         LogField.Public("kind", device.kind.name),
     )
 }
+
+/** A callback debounce key is temporary: never a persisted device ID or diagnostic label. */
+internal fun connectionHandleKey(platformId: Int, type: Int): String = "handle:" + platformId + ":" + type
