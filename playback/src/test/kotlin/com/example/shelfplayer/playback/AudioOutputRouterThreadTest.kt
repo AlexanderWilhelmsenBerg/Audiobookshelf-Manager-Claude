@@ -375,7 +375,9 @@ class AudioOutputRouterThreadTest {
                 }
 
                 "setPreferredAudioDevice" -> {
-                    check(Thread.currentThread() == owningThread) { "setPreferredAudioDevice on the wrong Media3 thread" }
+                    check(Thread.currentThread() == owningThread) {
+                        "setPreferredAudioDevice on the wrong Media3 thread"
+                    }
                     preferredRequests.add(args?.get(0))
                     null
                 }
