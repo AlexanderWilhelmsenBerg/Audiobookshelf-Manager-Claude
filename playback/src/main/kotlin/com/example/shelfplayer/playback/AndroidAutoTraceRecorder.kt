@@ -59,7 +59,10 @@ internal class AndroidAutoTraceRecorder(
         } else {
             listOf(
                 LogField.Public("traceSource", trace.source),
-                LogField.Millis("afterTrace", (clock.elapsed() - trace.startedAt).inWholeMilliseconds.coerceAtLeast(0L)),
+                LogField.Millis(
+                    "afterTrace",
+                    (clock.elapsed() - trace.startedAt).inWholeMilliseconds.coerceAtLeast(0L),
+                ),
             )
         }
         logger.log(

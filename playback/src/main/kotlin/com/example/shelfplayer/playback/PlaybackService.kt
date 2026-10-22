@@ -345,12 +345,6 @@ class PlaybackService : MediaLibraryService() {
      */
     internal val carLifecycle by lazy { CarLifecycleAuthority(carConnections) }
 
-    /**
-     * Issues #36/#88 — one correlation timeline across focus/projection/controller/browse Media3 events.
-     *
-     * A focus loss can precede Gearhead's first bind, so a trace may start before the controller is known.
-     * A later car bind reuses a recent pending trace rather than starting a second timeline for one ignition.
-     */
     /** One owner for correlation, bounded reuse and privacy-safe Android Auto diagnostics. */
     private val autoTraces by lazy {
         AndroidAutoTraceRecorder(logger, clock) {
@@ -2290,7 +2284,6 @@ class PlaybackService : MediaLibraryService() {
         val answer: MediaSession.MediaItemsWithStartPosition,
     )
 
-
     /**
      * A `Player.STATE_*` constant as the word Media3 calls it.
      *
@@ -2689,7 +2682,11 @@ class PlaybackService : MediaLibraryService() {
             }
         }
 
-        private fun traceChildrenResult(trace: AndroidAutoTraceRecorder.Trace?, context: ChildrenTraceContext, returned: List<MediaItem>) {
+        private fun traceChildrenResult(
+            trace: AndroidAutoTraceRecorder.Trace?,
+            context: ChildrenTraceContext,
+            returned: List<MediaItem>,
+        ) {
             if (trace == null) return
             val parentFields = listOf(
                 LogField.Public("parentKind", AutoLibrary.kindOf(context.parentId)),
@@ -3318,7 +3315,10 @@ class PlaybackService : MediaLibraryService() {
          */
         override fun onPostConnect(session: MediaSession, controller: MediaSession.ControllerInfo) {
             if (!controller.isCar()) return
-            val trace = autoTraces.forController(controller.packageName, CAR_PACKAGES) ?: autoTraces.ensure("post-connect")
+            val trace = autoTraces.forController(
+                controller.packageName,
+                CAR_PACKAGES,
+            ) ?: autoTraces.ensure("post-connect")
             val current = player
             if (current == null) {
                 autoTraces.log("Android Auto post-connect found no Player", trace)
