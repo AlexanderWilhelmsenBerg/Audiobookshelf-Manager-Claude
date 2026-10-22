@@ -4,8 +4,9 @@ import org.junit.Test
 import kotlin.test.assertEquals
 
 /**
- * Issue #128 — the pre-gate decision of the car-arrival continuity resume, plus the proof that the service
- * applies the Play outcome. [CarArrivalResumeGateTest] owns the gate's own eligibility verdicts.
+ * Issue #128 — pre-gate decisions for car-arrival continuity resumption.
+ * [CarArrivalResumeGateTest] and [CarContinuityEventAdapterTest] cover one-shot eligibility,
+ * while the service-level Robolectric scenarios verify callback ordering and denied Play.
  */
 class CarContinuityPlayPrecheckTest {
 
