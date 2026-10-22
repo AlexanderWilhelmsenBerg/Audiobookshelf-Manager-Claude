@@ -56,7 +56,7 @@ class CarContinuityPlayPrecheckTest {
         val source = File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt").readText()
         val resume = source
             .substringAfter("private fun resumeAfterCarContinuity")
-            .substringBefore("private fun ensureAutoTrace")
+            .substringBefore("private fun carSnapshotFields")
 
         val precheck = resume.indexOf("CarContinuityPlayPrecheck.decide")
         val verdict = resume.indexOf("carRecovery.assess")

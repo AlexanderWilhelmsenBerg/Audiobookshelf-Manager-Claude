@@ -338,28 +338,18 @@ class PlaybackService : MediaLibraryService() {
      */
     private val carContinuity = CarArrivalResumeGate()
     private val carRecovery = CarContinuityRecoveryCoordinator(carContinuity)
-    private var projectionState = AndroidAutoProjectionMonitor.State.Unknown
-    private var projectionOwnsCarLifecycle = false
 
     /**
-     * True only after a car media session has actually become established for continuity classification.
-     *
-     * Projection may start before the first Gearhead binding; that interval is still Arrival. Physical
-     * projection exit clears this immediately even if a legacy MediaSession controller remains bound.
+     * Owns existing controller/projection lifecycle latches, separate from Media3, route policy
+     * and the physical AudioTrack. Lazy because Android injects CarConnections before onCreate.
      */
-    private var carContinuitySessionEstablished = false
+    internal val carLifecycle by lazy { CarLifecycleAuthority(carConnections) }
 
-    /**
-     * Issues #36/#88 — one correlation timeline across focus/projection/controller/browse Media3 events.
-     *
-     * A focus loss can precede Gearhead's first bind, so a trace may start before the controller is known.
-     * A later car bind reuses a recent pending trace rather than starting a second timeline for one ignition.
-     */
-    private var autoTraceSequence = 0L
-    private var activeAutoTrace: AutoTrace? = null
-
-    private data class AutoTrace(val id: Long, val startedAt: Duration, val source: String) {
-        val correlationId: String get() = "auto-$id"
+    /** One owner for correlation, bounded reuse and privacy-safe Android Auto diagnostics. */
+    private val autoTraces by lazy {
+        AndroidAutoTraceRecorder(logger, clock) {
+            AndroidAutoDiagnostics.playerFields(player) + carSnapshotFields()
+        }
     }
 
     private data class ChildrenTraceContext(
@@ -480,7 +470,7 @@ class PlaybackService : MediaLibraryService() {
         if (!shouldSelectCarForControllerPlay(requestedPlay, isCarController, mediaPlayer.playWhenReady)) return
         audioOutputs.selectCar()
         syncExplicitOutputIntent()
-        logAuto("Android Auto Play selected the car audio route", fields = carSnapshotFields())
+        autoTraces.log("Android Auto Play selected the car audio route", fields = carSnapshotFields())
     }
 
     /**
@@ -489,7 +479,7 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun logControllerTransportRequest(requestedPlay: Boolean, mediaPlayer: ExoPlayer) {
         val requestingController = session?.controllerForCurrentRequest
-        logAuto(
+        autoTraces.log(
             "MediaSession transport request observed",
             fields = buildList {
                 add(LogField.Public("requested", if (requestedPlay) "Play" else "Pause"))
@@ -1167,7 +1157,7 @@ class PlaybackService : MediaLibraryService() {
     private inner class PlayerEvents : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             audioTrackRouteMonitor.sample()
-            logAuto(
+            autoTraces.log(
                 "Media3 audible playback changed",
                 fields = listOf(LogField.Public("isPlaying", isPlaying)) +
                     AndroidAutoDiagnostics.playerFields(player) + carSnapshotFields(),
@@ -1190,7 +1180,7 @@ class PlaybackService : MediaLibraryService() {
                     routeOwnership.currentGeneration,
                     currentExplicitSelectionSequence(),
                 )?.let { target ->
-                    logAuto(
+                    autoTraces.log(
                         "Car lifecycle continuity playback became active",
                         fields = listOf(
                             LogField.Public("phase", target.phase.name),
@@ -1220,7 +1210,7 @@ class PlaybackService : MediaLibraryService() {
          * a satnav spoke.
          */
         override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
-            logAuto(
+            autoTraces.log(
                 "Media3 playback suppression changed",
                 fields = listOf(LogField.Public("reasonCode", playbackSuppressionReason)) +
                     AndroidAutoDiagnostics.playerFields(player) + carSnapshotFields(),
@@ -1228,69 +1218,29 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-            // PRODUCT_SPEC PLAY-003 — play and pause, in the book's history. The device report asked for
-            // them: *"Play start and play pause doesn't show."*
-            //
-            // Recorded from `playWhenReady` rather than from `isPlaying`, and that is the whole trick.
-            // `isPlaying` goes false every time the player buffers, so a book on a slow connection would
-            // write a pause and a play every few seconds and bury everything else in the list. This flag
-            // is *intent*: it changes when somebody presses something, or when audio focus is taken away.
-            //
-            // Here rather than in `PlaybackController`, because the service outlives the app — a pause from
-            // a headset with the app closed is exactly the one worth having. One recorder, so no event can
-            // be written twice.
-            recordTransport(if (playWhenReady) PlaybackEvent.Play else PlaybackEvent.Pause)
-            /*
-             * PRODUCT_SPEC 14.4 — and the only line that can witness a steering wheel.
-             *
-             * A review caught §2.9 inferring the wheel from `The player changed state`, which a working
-             * wheel need not produce: play/pause keeps the player in `STATE_READY`, volume touches no
-             * playback state at all, and next/previous are no-ops on the one-item queue a car selection
-             * builds. The step would have reported a working wheel as unsupported — the mirror image of
-             * the false pass it had just been fixed for.
-             *
-             * `reason` is worth logging rather than `playWhenReady` alone because it separates a person
-             * from the system: `audioFocusLoss` and `becomingNoisy` mean nobody pressed anything. A
-             * boolean would have said neither.
-             *
-             * It does **not** say who pressed, and §2.9 briefly claimed it did (R-76). Media3 collapses
-             * that before this listener sees it: a controller's play/pause reaches `MediaSession`, which
-             * forwards it to the local player as `play()` → `setPlayWhenReady(true)`, and `ExoPlayerImpl`
-             * hard-codes that call to `PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST`. A wheel, a headset
-             * button and the app's own UI are therefore indistinguishable here. `REMOTE` belongs to a
-             * *remote* player — CastPlayer, or a controller observing a session — and this listener is on
-             * the local ExoPlayer, so it cannot appear. The device script isolates the log window and
-             * tells the tester to touch nothing else; that, not the reason, is the attribution.
-             */
+            // Record transport intent, not buffer or route changes, and never invent a physical key origin.
+            val input = PlaybackTransportInput.interpret(playWhenReady, reason)
+            recordTransport(if (input.isPlay) PlaybackEvent.Play else PlaybackEvent.Pause)
             logger.debug(
                 LogCategory.Playback,
                 "Playback was asked to change",
                 LogField.Public("playWhenReady", playWhenReady.toString()),
-                LogField.Public("reason", playWhenReadyReason(reason)),
+                LogField.Public("reason", input.reasonName),
             )
-            if (playWhenReady) {
-                // Any newer Play wins over pending automatic continuity. A successful continuity Play has
-                // already consumed its one-shot target before it reaches this listener.
+            if (input.isPlay) {
+                // New Play supersedes any pending continuity result, including a repeated system Play.
                 carRecovery.cancelPending()
                 return
             }
-            // `REMOTE` cannot occur while this listener is on the local ExoPlayer (R-76); it stays in the
-            // condition so the *intent* — a person asked, from wherever — survives if the player is ever
-            // wrapped or replaced by a remote one, which is when the reason would start appearing.
-            val userInitiated = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ||
-                reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE
-            autoRewind.onPaused(wasUserInitiated = userInitiated)
 
-            when (reason) {
-                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
-                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY,
-                -> onCarPlatformInterruption(reason)
-
-                else -> {
-                    // Deliberate pause, end-of-item and unknown causes invalidate transition evidence.
-                    carRecovery.cancelAll()
-                    carRecovery.clearAwaiting()
-                }
+            autoRewind.onPaused(wasUserInitiated = input.isUserPause)
+            val interruption = input.interruptionReason
+            if (interruption != null) {
+                onCarPlatformInterruption(interruption)
+            } else {
+                // Deliberate pause, end-of-item or unknown causes invalidate recovery evidence.
+                carRecovery.cancelAll()
+                carRecovery.clearAwaiting()
             }
         }
 
@@ -1301,8 +1251,8 @@ class PlaybackService : MediaLibraryService() {
         private fun onCarPlatformInterruption(reason: Int) {
             val focusLoss = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
             val source = if (focusLoss) "audio-focus-loss" else "becoming-noisy"
-            val trace = ensureAutoTrace(source)
-            logAuto(
+            val trace = autoTraces.ensure(source)
+            autoTraces.log(
                 "Android Auto lifecycle input",
                 trace,
                 buildList {
@@ -1331,8 +1281,8 @@ class PlaybackService : MediaLibraryService() {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             mediaItemGeneration += 1
             pendingRecoveryRetry?.cancel()
-            activeAutoTrace?.let { trace ->
-                logAuto(
+            autoTraces.activeTrace?.let { trace ->
+                autoTraces.log(
                     "Media3 current item changed during Android Auto trace",
                     trace,
                     buildList {
@@ -1584,7 +1534,7 @@ class PlaybackService : MediaLibraryService() {
             headsetId = routeOwnership.headsetForCar(outputs),
             generation = routeOwnership.currentGeneration,
             selectionSequence = currentExplicitSelectionSequence(),
-            carConnected = carContinuitySessionEstablished,
+            carConnected = carLifecycle.sessionEstablished,
         )
 
     private fun observeCarContinuityHeadset(outputs: List<AudioOutput>) {
@@ -1651,8 +1601,8 @@ class PlaybackService : MediaLibraryService() {
                 fields = fields,
             ),
         )
-        if (activeAutoTrace != null) {
-            logAuto(
+        if (autoTraces.activeTrace != null) {
+            autoTraces.log(
                 "The car output actions were recomputed",
                 fields = fields + carSnapshotFields(),
             )
@@ -1678,7 +1628,7 @@ class PlaybackService : MediaLibraryService() {
         // Retain Media3's current player/focus/route when this exact headset remains the sole active sink.
         if (player?.isPlaying == true && headsetAlreadyActive(hold, outputs)) {
             audioOutputs.protectPlayingHeadset(hold)
-            logAuto("Car lifecycle preserved active headset without route reassertion")
+            autoTraces.log("Car lifecycle preserved active headset without route reassertion")
         } else {
             val reasserted = audioOutputs.reassert(hold)
             val heldHeadsetIsConnected = reasserted && audioOutputs.outputs.value.any { output ->
@@ -1707,7 +1657,7 @@ class PlaybackService : MediaLibraryService() {
             reassert = audioOutputs::reassert,
         )
         if (held == null) {
-            logAuto(
+            autoTraces.log(
                 "Car lifecycle continuity did not secure the headset",
                 fields = listOf(
                     LogField.Public("phase", target.phase.name),
@@ -1724,7 +1674,7 @@ class PlaybackService : MediaLibraryService() {
                     currentExplicitSelectionSequence(),
                 ) && audioOutputs.canProbeHeldHeadset(target.outputId)
             ) {
-                logAuto("Car lifecycle will verify original headset silently")
+                autoTraces.log("Car lifecycle will verify original headset silently")
                 return target.outputId
             }
             carRecovery.cancelPending()
@@ -1735,7 +1685,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun logHeldHeadset(hold: String, phase: CarArrivalResumeGate.Phase? = null) {
-        logAuto(
+        autoTraces.log(
             if (phase == null) {
                 "A car connected and the book was held in the headset"
             } else {
@@ -1749,7 +1699,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun logCarContinuityRouteEvent(target: CarArrivalResumeGate.Target, event: CarArrivalRouteRecovery.Event) {
-        logAuto(
+        autoTraces.log(
             "Car lifecycle route recovery changed",
             fields = listOf(
                 LogField.Public("phase", target.phase.name),
@@ -1771,7 +1721,7 @@ class PlaybackService : MediaLibraryService() {
         // It owns focus restoration in that state; issuing another Play or reasserting the output
         // would only disturb a player that is already committed to continuing.
         if (player?.playWhenReady == true) {
-            logAuto("Car lifecycle left active playback intent with Media3")
+            autoTraces.log("Car lifecycle left active playback intent with Media3")
             carRecovery.cancelPending()
             return
         }
@@ -1801,7 +1751,7 @@ class PlaybackService : MediaLibraryService() {
         )
         if (precheck != CarContinuityPlayPrecheck.Proceed) {
             if (precheck == CarContinuityPlayPrecheck.AlreadyPlaying) {
-                logAuto(
+                autoTraces.log(
                     "Car lifecycle continuity skipped Play because playback intent was already active",
                     fields = listOf(LogField.Public("phase", target.phase.name)) + carSnapshotFields(),
                 )
@@ -1810,7 +1760,7 @@ class PlaybackService : MediaLibraryService() {
         }
         checkNotNull(current) { "Proceed implies a player" }
         val result = checkNotNull(assessment.consumed)
-        logAuto(
+        autoTraces.log(
             "Car lifecycle continuity final eligibility checked",
             fields = listOf(
                 LogField.Public("phase", target.phase.name),
@@ -1833,11 +1783,11 @@ class PlaybackService : MediaLibraryService() {
         // AudioTrack may unmute this one-shot recovery; other routes fail closed.
         if (heldHeadset == null || !audioOutputs.beginMutedHeadsetProbe(heldHeadset)) {
             carRecovery.clearAwaiting()
-            logAuto("Car lifecycle refused unverified headset probe")
+            autoTraces.log("Car lifecycle refused unverified headset probe")
             return
         }
         carRecovery.notePlayIssued(target)
-        logAuto(
+        autoTraces.log(
             "Car lifecycle continuity issued Play",
             fields = listOf(
                 LogField.Public("phase", target.phase.name),
@@ -1848,103 +1798,10 @@ class PlaybackService : MediaLibraryService() {
         current.play()
     }
 
-    private fun ensureAutoTrace(source: String): AutoTrace {
-        val now = clock.elapsed()
-        val existing = activeAutoTrace
-        if (existing != null && now - existing.startedAt <= AUTO_TRACE_REUSE_WINDOW) return existing
-
-        val trace = AutoTrace(
-            id = ++autoTraceSequence,
-            startedAt = now,
-            source = source,
-        )
-        activeAutoTrace = trace
-        logAuto(
-            "Android Auto trace started",
-            trace,
-            buildList {
-                add(LogField.Public("source", source))
-                addAll(AndroidAutoDiagnostics.playerFields(player))
-                addAll(carSnapshotFields())
-            },
-        )
-        return trace
-    }
-
-    private fun autoTraceFor(controllerPackage: String): AutoTrace? =
-        activeAutoTrace?.takeIf { controllerPackage in CAR_PACKAGES }
-
-    private fun logAuto(
-        message: String,
-        trace: AutoTrace? = activeAutoTrace,
-        fields: List<LogField> = emptyList(),
-        level: LogLevel = LogLevel.Info,
-    ) {
-        val timed = if (trace == null) {
-            emptyList()
-        } else {
-            listOf(
-                LogField.Public("traceSource", trace.source),
-                LogField.Millis(
-                    "afterTrace",
-                    (clock.elapsed() - trace.startedAt).inWholeMilliseconds.coerceAtLeast(0L),
-                ),
-            )
-        }
-        logger.log(
-            LogEvent(
-                level = level,
-                category = LogCategory.AndroidAuto,
-                message = message,
-                fields = timed + fields,
-                correlationId = trace?.correlationId,
-            ),
-        )
-    }
-
-    private fun logAutoItems(
-        trace: AutoTrace?,
-        callback: String,
-        direction: String,
-        items: List<MediaItem>,
-        extraFields: List<LogField> = emptyList(),
-    ) {
-        if (trace == null) return
-        val playable = items.filter { item ->
-            item.mediaMetadata.isPlayable == true || MediaItems.isReadyToPlay(item)
-        }
-        logAuto(
-            "Android Auto media item handoff",
-            trace,
-            buildList {
-                add(LogField.Public("callback", callback))
-                add(LogField.Public("direction", direction))
-                add(LogField.Count("items", items.size))
-                add(LogField.Count("playableItems", playable.size))
-                addAll(extraFields)
-            },
-        )
-        // Sample both playable rows and browse-only folders/holders. A browse tree can be returned
-        // successfully while the car still has no playable book to show on its startup surface.
-        items.take(AndroidAutoDiagnostics.MAX_MEDIA_HANDOFF_ITEMS).forEachIndexed { index, item ->
-            logAuto(
-                "Android Auto media row handed off",
-                trace,
-                buildList {
-                    add(LogField.Public("callback", callback))
-                    add(LogField.Public("direction", direction))
-                    add(LogField.Public("index", index))
-                    addAll(AndroidAutoDiagnostics.itemFields(item))
-                    addAll(AndroidAutoDiagnostics.metadataPresenceFields(item))
-                } + extraFields,
-            )
-        }
-    }
-
     private fun carSnapshotFields(): List<LogField> = listOf(
-        LogField.Public("projection", projectionState.name),
-        LogField.Public("projectionOwnsLifecycle", projectionOwnsCarLifecycle),
-        LogField.Public("sessionEstablished", carContinuitySessionEstablished),
+        LogField.Public("projection", carLifecycle.projectionState.name),
+        LogField.Public("projectionOwnsLifecycle", carLifecycle.projectionOwnsCarLifecycle),
+        LogField.Public("sessionEstablished", carLifecycle.sessionEstablished),
         LogField.Public("carBound", carConnections.isConnected()),
         LogField.Public("continuityPlayAwaiting", carRecovery.isPlayAwaiting),
         LogField.Public("generation", routeOwnership.currentGeneration?.toString() ?: "none"),
@@ -1952,7 +1809,7 @@ class PlaybackService : MediaLibraryService() {
     )
 
     private fun logCarContinuityDecision(source: String, decision: CarArrivalResumeGate.Decision) {
-        logAuto(
+        autoTraces.log(
             "Car lifecycle continuity decision",
             fields = buildList {
                 add(LogField.Public("source", source))
@@ -1966,10 +1823,10 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun onCarControllerConnected(controllerPackage: String) {
-        val trace = ensureAutoTrace("controller-connect")
+        val trace = autoTraces.ensure("controller-connect")
         val carWasConnected = carConnections.isConnected()
         val carArrivedAt = if (carWasConnected) null else clock.elapsed()
-        carConnections.onConnected()
+        carLifecycle.onControllerConnected()
         if (player?.isPlaying == true) {
             // Preserve the positively heard headset before the host can change routing or focus.
             observeCarContinuityHeadset(audioOutputs.outputs.value)
@@ -1980,11 +1837,10 @@ class PlaybackService : MediaLibraryService() {
             carRecovery.carArrival(at, routeOwnership.currentGeneration, currentExplicitSelectionSequence())
         }
         arrivalDecision?.let { logCarContinuityDecision("first-car-bind", it) }
-        carContinuitySessionEstablished = true
         synchronizeSleepTimerCarConnection()
         // PD-002: publish car-safe media buttons synchronously before Media3 publishes initial state.
         publishMediaButtons()
-        logAuto(
+        autoTraces.log(
             "A car connected to the media session",
             trace,
             buildList {
@@ -1995,7 +1851,7 @@ class PlaybackService : MediaLibraryService() {
             },
         )
         if (carWasConnected) {
-            logAuto(
+            autoTraces.log(
                 "A later car controller bind was ignored as a new arrival",
                 trace,
                 listOf(LogField.Public("controller", controllerPackage)) + carSnapshotFields(),
@@ -2024,13 +1880,13 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun onCarControllerDisconnected(controllerPackage: String) {
-        val trace = ensureAutoTrace("controller-disconnect")
+        val trace = autoTraces.ensure("controller-disconnect")
         val carWasConnected = carConnections.isConnected()
-        carConnections.onDisconnected()
+        carLifecycle.onControllerDisconnected()
         val carStillConnected = carConnections.isConnected()
         synchronizeSleepTimerCarConnection()
         val finalControllerDeparture = carWasConnected && !carStillConnected
-        logAuto(
+        autoTraces.log(
             "A car controller disconnected from the media session",
             trace,
             buildList {
@@ -2049,26 +1905,26 @@ class PlaybackService : MediaLibraryService() {
 
         // Once a positive projection state has been observed for this drive, projection owns the physical
         // boundary. Legacy controllers may disappear/reappear independently and cannot end that car session.
-        if (projectionOwnsCarLifecycle) {
+        if (carLifecycle.projectionOwnsCarLifecycle) {
             scope.launch { republishOutputButtons() }
             return
         }
 
-        // No usable positive projection signal was observed for this drive. Preserve the pre-#36 controller
-        // fallback for hosts/OEMs that do not expose the Android Auto projection provider.
-        carContinuitySessionEstablished = false
+        // Without a positive projection edge the last controller is the fallback physical boundary.
+        // The lifecycle authority invalidates the established-session latch before recovery assessment.
+        carLifecycle.onFinalLegacyControllerDeparture()
         completeCarDeparture("final-car-disconnect")
     }
 
     private fun onCarProjectionUpdate(update: AndroidAutoProjectionMonitor.Update) {
         val previous = update.previous
         val trace = if (update.current.carConnected || previous?.carConnected == true) {
-            ensureAutoTrace("projection-state")
+            autoTraces.ensure("projection-state")
         } else {
-            activeAutoTrace
+            autoTraces.activeTrace
         }
-        projectionState = update.current
-        logAuto(
+        carLifecycle.onProjectionReported(update.current)
+        autoTraces.log(
             "Android Auto projection state changed",
             trace,
             buildList {
@@ -2079,24 +1935,14 @@ class PlaybackService : MediaLibraryService() {
             },
         )
 
+        val edge = carLifecycle.onProjectionBoundary(update)
         if (update.initial) {
-            projectionOwnsCarLifecycle = update.current.carConnected
             synchronizeSleepTimerCarConnection()
-            if (update.current.carConnected && carConnections.isConnected()) {
-                carContinuitySessionEstablished = true
-            }
             return
         }
-
-        // An unreadable provider result cannot erase a positively observed car lifecycle. Use the existing
-        // latch so Unknown -> NotConnected still ends it, and Unknown -> Projection is not another arrival.
-        val wasConnected = projectionOwnsCarLifecycle
-        val isConnected = update.current.carConnected
-        when {
-            !wasConnected && isConnected -> {
-                projectionOwnsCarLifecycle = true
-                // This stronger car-specific edge may follow focus loss before Gearhead binds. If it leads
-                // focus loss instead, the later first controller bind remains the arrival completion boundary.
+        when (edge) {
+            CarLifecycleAuthority.ProjectionEdge.Arrival -> {
+                // Focus may precede the stronger physical arrival; the service remains the Play owner.
                 val decision = carRecovery.carArrival(
                     at = clock.elapsed(),
                     generation = routeOwnership.currentGeneration,
@@ -2106,22 +1952,19 @@ class PlaybackService : MediaLibraryService() {
                 scope.launch { handleCarArrival(decision) }
             }
 
-            wasConnected &&
-                !isConnected &&
-                update.current == AndroidAutoProjectionMonitor.State.NotConnected -> {
-                // Physical projection exit is authoritative even when the legacy controller remains stale.
-                carContinuitySessionEstablished = false
-                carConnections.onProjectionDisconnected()
+            CarLifecycleAuthority.ProjectionEdge.PhysicalDeparture -> {
+                // Controller bindings have already been retired by the lifecycle authority.
                 completeCarDeparture("projection-disconnect", physicalProjection = true)
-                projectionOwnsCarLifecycle = false
             }
+
+            CarLifecycleAuthority.ProjectionEdge.None -> Unit
         }
         synchronizeSleepTimerCarConnection()
     }
 
     /** The timer owns eligibility; this adapter supplies controller/projection connection truth. */
     private fun synchronizeSleepTimerCarConnection() {
-        sleepTimer.onCarConnectionChanged(carConnections.isConnected() || projectionOwnsCarLifecycle)
+        sleepTimer.onCarConnectionChanged(carLifecycle.connectedForSleepTimer)
     }
 
     private fun completeCarDeparture(source: String, physicalProjection: Boolean = false) {
@@ -2442,26 +2285,6 @@ class PlaybackService : MediaLibraryService() {
     )
 
     /**
-     * A `PLAY_WHEN_READY_CHANGE_REASON_*` constant as the word Media3 calls it.
-     *
-     * What this can and cannot tell §2.9: it separates a press from the system — `audioFocusLoss` and
-     * `becomingNoisy` mean nobody pressed anything — and it does not say *who* pressed. `remote` is
-     * mapped for completeness and is unreachable from this service: it describes a change reported by a
-     * *remote* player, and the listener is attached to the local ExoPlayer, which emits only
-     * `userRequest` (every `setPlayWhenReady` call), `becomingNoisy`, and the focus and end-of-item
-     * reasons. R-76 is what happened when a device script read `remote` as "the wheel asked".
-     */
-    private fun playWhenReadyReason(reason: Int): String = when (reason) {
-        Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> "userRequest"
-        Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS -> "audioFocusLoss"
-        Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY -> "becomingNoisy"
-        Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE -> "remote"
-        Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM -> "endOfItem"
-        Player.PLAY_WHEN_READY_CHANGE_REASON_SUPPRESSED_TOO_LONG -> "suppressedTooLong"
-        else -> "unknown"
-    }
-
-    /**
      * A `Player.STATE_*` constant as the word Media3 calls it.
      *
      * `Player.STATE_IDLE` is the one worth reading: a player that was handed a queue and stayed idle was
@@ -2761,8 +2584,8 @@ class PlaybackService : MediaLibraryService() {
                 return Futures.immediateFuture(deniedItem(browser, "onGetLibraryRoot"))
             }
             val root = if (params?.isRecent == true) auto.recentRoot() else auto.root()
-            autoTraceFor(browser.packageName)?.let { trace ->
-                logAuto(
+            autoTraces.forController(browser.packageName, CAR_PACKAGES)?.let { trace ->
+                autoTraces.log(
                     "Android Auto library root returned",
                     trace,
                     buildList {
@@ -2800,7 +2623,7 @@ class PlaybackService : MediaLibraryService() {
              * the same thing about the same object. This is the third place it has mattered.
              */
             val now = nowPlaying()
-            val trace = autoTraceFor(browser.packageName)
+            val trace = autoTraces.forController(browser.packageName, CAR_PACKAGES)
             val entryPlayer = if (trace == null) emptyList() else AndroidAutoDiagnostics.playerFields(player)
             val startedAt = clock.elapsed()
             return future {
@@ -2859,13 +2682,17 @@ class PlaybackService : MediaLibraryService() {
             }
         }
 
-        private fun traceChildrenResult(trace: AutoTrace?, context: ChildrenTraceContext, returned: List<MediaItem>) {
+        private fun traceChildrenResult(
+            trace: AndroidAutoTraceRecorder.Trace?,
+            context: ChildrenTraceContext,
+            returned: List<MediaItem>,
+        ) {
             if (trace == null) return
             val parentFields = listOf(
                 LogField.Public("parentKind", AutoLibrary.kindOf(context.parentId)),
                 LogField.Identifier("parentId", context.parentId),
             )
-            logAuto(
+            autoTraces.log(
                 "Android Auto children returned",
                 trace,
                 buildList {
@@ -2883,7 +2710,7 @@ class PlaybackService : MediaLibraryService() {
                     addAll(context.entryPlayer)
                 },
             )
-            logAutoItems(
+            autoTraces.logItems(
                 trace = trace,
                 callback = "onGetChildren",
                 direction = "returned",
@@ -2898,14 +2725,14 @@ class PlaybackService : MediaLibraryService() {
             mediaId: String,
         ): ListenableFuture<LibraryResult<MediaItem>> {
             val now = nowPlaying()
-            val trace = autoTraceFor(browser.packageName)
+            val trace = autoTraces.forController(browser.packageName, CAR_PACKAGES)
             val entryPlayer = if (trace == null) emptyList() else AndroidAutoDiagnostics.playerFields(player)
             val startedAt = clock.elapsed()
             return future {
                 if (!session.mayBrowse(browser)) return@future deniedItem(browser, "onGetItem")
                 val resolved = auto.item(mediaId, now)
                 if (trace != null) {
-                    logAuto(
+                    autoTraces.log(
                         "Android Auto item lookup returned",
                         trace,
                         buildList {
@@ -2955,7 +2782,7 @@ class PlaybackService : MediaLibraryService() {
             pageSize: Int,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
-            val trace = autoTraceFor(browser.packageName)
+            val trace = autoTraces.forController(browser.packageName, CAR_PACKAGES)
             val startedAt = clock.elapsed()
             return future {
                 if (!session.mayBrowse(browser)) return@future deniedList(browser, "onGetSearchResult")
@@ -2963,7 +2790,7 @@ class PlaybackService : MediaLibraryService() {
                 val from = (page * pageSize).coerceAtMost(all.size)
                 val to = (from + pageSize).coerceAtMost(all.size)
                 val returned = all.subList(from, to)
-                logAutoItems(
+                autoTraces.logItems(
                     trace = trace,
                     callback = "onGetSearchResult",
                     direction = "returned",
@@ -2994,8 +2821,8 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>,
         ): ListenableFuture<MutableList<MediaItem>> {
-            val trace = autoTraceFor(controller.packageName)
-            logAutoItems(trace, "onAddMediaItems", "asked", mediaItems)
+            val trace = autoTraces.forController(controller.packageName, CAR_PACKAGES)
+            autoTraces.logItems(trace, "onAddMediaItems", "asked", mediaItems)
             return future {
                 val trusted = controller.isThisApplication()
                 val matches = mediaItems.mapNotNull { item -> resolvePlayable(item, trusted)?.let { item to it } }
@@ -3011,7 +2838,7 @@ class PlaybackService : MediaLibraryService() {
                     ),
                     trace = trace,
                 )
-                logAutoItems(trace, "onAddMediaItems", "returned", resolved)
+                autoTraces.logItems(trace, "onAddMediaItems", "returned", resolved)
                 resolved
             }
         }
@@ -3031,8 +2858,8 @@ class PlaybackService : MediaLibraryService() {
             startIndex: Int,
             startPositionMs: Long,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-            val trace = autoTraceFor(controller.packageName)
-            logAutoItems(
+            val trace = autoTraces.forController(controller.packageName, CAR_PACKAGES)
+            autoTraces.logItems(
                 trace = trace,
                 callback = "onSetMediaItems",
                 direction = "asked",
@@ -3095,7 +2922,7 @@ class PlaybackService : MediaLibraryService() {
             mediaItems: MutableList<MediaItem>,
             startIndex: Int,
             startPositionMs: Long,
-            trace: AutoTrace?,
+            trace: AndroidAutoTraceRecorder.Trace?,
         ): MediaSession.MediaItemsWithStartPosition {
             val spokenRequest = mediaItems
                 .firstNotNullOfOrNull { item -> item.requestMetadata.searchQuery?.let { q -> item to q } }
@@ -3147,8 +2974,8 @@ class PlaybackService : MediaLibraryService() {
             return selection.answer
         }
 
-        private fun traceSetMediaItemsResult(trace: AutoTrace?, selection: Selection) {
-            logAutoItems(
+        private fun traceSetMediaItemsResult(trace: AndroidAutoTraceRecorder.Trace?, selection: Selection) {
+            autoTraces.logItems(
                 trace = trace,
                 callback = "onSetMediaItems",
                 direction = "returned",
@@ -3172,7 +2999,7 @@ class PlaybackService : MediaLibraryService() {
             callback: String,
             asked: List<MediaItem>,
             selection: Selection,
-            trace: AutoTrace? = null,
+            trace: AndroidAutoTraceRecorder.Trace? = null,
         ) {
             logger.log(
                 LogEvent(
@@ -3191,7 +3018,7 @@ class PlaybackService : MediaLibraryService() {
                 ),
             )
             if (trace != null) {
-                logAuto(
+                autoTraces.log(
                     "Android Auto controller selection resolved",
                     trace,
                     listOf(
@@ -3243,10 +3070,10 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo,
             isForPlayback: Boolean,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-            val trace = autoTraceFor(controller.packageName)
+            val trace = autoTraces.forController(controller.packageName, CAR_PACKAGES)
             val startedAt = clock.elapsed()
             if (trace != null) {
-                logAuto(
+                autoTraces.log(
                     "Android Auto playback resumption requested",
                     trace,
                     buildList {
@@ -3258,7 +3085,7 @@ class PlaybackService : MediaLibraryService() {
             return future {
                 val result = if (isForPlayback) resumeForPlayback() else describeResumable()
                 if (trace != null) {
-                    logAutoItems(
+                    autoTraces.logItems(
                         trace = trace,
                         callback = "onPlaybackResumption",
                         direction = "returned",
@@ -3392,7 +3219,7 @@ class PlaybackService : MediaLibraryService() {
                 .build()
 
             if (controller.isCar()) {
-                logAuto(
+                autoTraces.log(
                     "Android Auto initial playback surface offered",
                     fields = listOf(
                         LogField.Public("playPauseAvailable", playerCommands.contains(Player.COMMAND_PLAY_PAUSE)),
@@ -3425,7 +3252,7 @@ class PlaybackService : MediaLibraryService() {
                 inputName = inputDevice?.name,
                 outputs = audioOutputs.outputs.value,
             )
-            logAuto(
+            autoTraces.log(
                 "MediaSession hardware media button observed",
                 fields = listOf(
                     LogField.Identifier("controllerPackage", controllerInfo.packageName),
@@ -3448,11 +3275,11 @@ class PlaybackService : MediaLibraryService() {
                 inputDeviceId = keyEvent?.deviceId,
                 hasBluetooth = audioOutputs.outputs.value.any { it.id.startsWith("bluetooth:") },
                 emptyQueue = (player?.mediaItemCount ?: 0) == 0,
-                carConnected = carConnections.isConnected() || projectionState.carConnected ||
+                carConnected = carConnections.isConnected() || carLifecycle.projectionState.carConnected ||
                     controllerInfo.packageName in CAR_PACKAGES,
             )
             if (suppressed) {
-                logAuto("Cold virtual Bluetooth toggle consumed before playback resumption")
+                autoTraces.log("Cold virtual Bluetooth toggle consumed before playback resumption")
                 return true
             }
             return super.onMediaButtonEvent(session, controllerInfo, intent)
@@ -3465,7 +3292,7 @@ class PlaybackService : MediaLibraryService() {
             playerCommands: Player.Commands,
         ) {
             if (playerCommands.contains(Player.COMMAND_PLAY_PAUSE)) {
-                logAuto(
+                autoTraces.log(
                     "MediaSession controller transport batch completed",
                     fields = listOf(
                         LogField.Identifier("controllerPackage", controllerInfo.packageName),
@@ -3488,19 +3315,22 @@ class PlaybackService : MediaLibraryService() {
          */
         override fun onPostConnect(session: MediaSession, controller: MediaSession.ControllerInfo) {
             if (!controller.isCar()) return
-            val trace = autoTraceFor(controller.packageName) ?: ensureAutoTrace("post-connect")
+            val trace = autoTraces.forController(
+                controller.packageName,
+                CAR_PACKAGES,
+            ) ?: autoTraces.ensure("post-connect")
             val current = player
             if (current == null) {
-                logAuto("Android Auto post-connect found no Player", trace)
+                autoTraces.log("Android Auto post-connect found no Player", trace)
                 return
             }
-            logAuto(
+            autoTraces.log(
                 "Android Auto post-connect entered",
                 trace,
                 AndroidAutoDiagnostics.playerFields(current),
             )
             if (current.mediaItemCount > 0) {
-                logAuto(
+                autoTraces.log(
                     "Android Auto post-connect kept the existing current item",
                     trace,
                     AndroidAutoDiagnostics.playerFields(current),
@@ -3510,7 +3340,7 @@ class PlaybackService : MediaLibraryService() {
             scope.launch { runCarPostConnect(current, trace) }
         }
 
-        private suspend fun runCarPostConnect(current: ExoPlayer, trace: AutoTrace) {
+        private suspend fun runCarPostConnect(current: ExoPlayer, trace: AndroidAutoTraceRecorder.Trace) {
             val startedAt = clock.elapsed()
             val action = CarConnection.decide(devices, lock, clock.now())
             val actionName = when (action) {
@@ -3519,13 +3349,13 @@ class PlaybackService : MediaLibraryService() {
                 AutoStartAction.Suppressed -> "Suppressed"
                 AutoStartAction.None -> "None"
             }
-            logAuto(
+            autoTraces.log(
                 "Android Auto post-connect policy selected",
                 trace,
                 listOf(LogField.Public("action", actionName)) + AndroidAutoDiagnostics.playerFields(current),
             )
             carPostConnectRestorer(trace).restore(action, current)
-            logAuto(
+            autoTraces.log(
                 "Android Auto post-connect async work completed",
                 trace,
                 buildList {
@@ -3541,7 +3371,7 @@ class PlaybackService : MediaLibraryService() {
             )
         }
 
-        private fun carPostConnectRestorer(trace: AutoTrace?): CarPostConnectRestorer {
+        private fun carPostConnectRestorer(trace: AndroidAutoTraceRecorder.Trace?): CarPostConnectRestorer {
             val requestGeneration = resumeFreshness.currentRequestGeneration()
             return CarPostConnectRestorer(
                 activeProfileId = auto::activeProfileId,
@@ -3557,14 +3387,14 @@ class PlaybackService : MediaLibraryService() {
                 observer = object : CarPostConnectRestorer.Observer {
                     override fun note(message: String, player: Player?) {
                         if (player == null) {
-                            logAuto(message, trace)
+                            autoTraces.log(message, trace)
                         } else {
-                            logAuto(message, trace, AndroidAutoDiagnostics.playerFields(player))
+                            autoTraces.log(message, trace, AndroidAutoDiagnostics.playerFields(player))
                         }
                     }
 
                     override fun installing(direction: String, item: MediaItem, extraFields: List<LogField>) {
-                        logAutoItems(
+                        autoTraces.logItems(
                             trace = trace,
                             callback = "onPostConnect",
                             direction = direction,
@@ -3577,14 +3407,14 @@ class PlaybackService : MediaLibraryService() {
         }
 
         private suspend fun refreshResumeAccount() {
-            val trace = activeAutoTrace
-            logAuto(
+            val trace = autoTraces.activeTrace
+            autoTraces.log(
                 "Android Auto resume candidate cache was empty; refreshing account",
                 trace,
             )
             val startedAt = clock.elapsed()
             syncAccount()
-            logAuto(
+            autoTraces.log(
                 "Android Auto resume account refresh completed",
                 trace,
                 listOf(
@@ -3803,9 +3633,6 @@ class PlaybackService : MediaLibraryService() {
          * and far below any difference another device's listening could produce.
          */
         val ADOPT_TOLERANCE: Duration = 1.seconds
-
-        /** #36/#88 — bind/projection callbacks within this window belong to the same transition trace. */
-        val AUTO_TRACE_REUSE_WINDOW: Duration = 10.seconds
 
         /**
          * How long the seek has to report back before it is treated as lost.
