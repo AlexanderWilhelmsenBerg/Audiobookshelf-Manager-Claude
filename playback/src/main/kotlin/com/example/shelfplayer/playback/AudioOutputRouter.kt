@@ -27,7 +27,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration.Companion.milliseconds
@@ -87,6 +86,9 @@ class AudioOutputRouter @Inject constructor(
     internal val explicitSelection: StateFlow<ExplicitSelection?> = explicitSelectionState.asStateFlow()
 
     private var player: ExoPlayer? = null
+
+    /** Queued preferences share one generation and the existing Media3 application dispatcher. */
+    private val preferenceEffects = RoutePreferenceEffects(mainDispatcher)
     private var callback: AudioDeviceCallback? = null
 
     // The route-recovery owner chooses an exact device. The router must not silently release
@@ -123,6 +125,7 @@ class AudioOutputRouter @Inject constructor(
 
     fun attach(target: ExoPlayer, trackRoutes: () -> Set<String>? = { null }) {
         player?.removeListener(routeSafetyListener)
+        val epoch = preferenceEffects.supersede()
         currentTrackRoutes = trackRoutes
         player = target
         target.addListener(routeSafetyListener)
@@ -136,11 +139,12 @@ class AudioOutputRouter @Inject constructor(
             callback = registered
         }
         refresh()
-        applicationScope.launch { apply(_selectedId.value) }
+        applicationScope.launch { apply(_selectedId.value, epoch) }
     }
 
     /** Releases the player. The device callback stays registered because the connected list outlives it. */
     fun detach() {
+        preferenceEffects.supersede()
         cancelMutedProbe()
         missingHeadsetGrace?.cancel()
         missingHeadsetGrace = null
@@ -196,13 +200,14 @@ class AudioOutputRouter @Inject constructor(
             )
             return false
         }
+        val epoch = preferenceEffects.supersede()
         missingHeadsetGrace?.cancel()
         missingHeadsetGrace = null
         guardedHeadsetMissing = false
         guardedHeadsetId = id
         _selectedId.value = id
         publish()
-        apply(id)
+        apply(id, epoch)
         return true
     }
 
@@ -212,6 +217,8 @@ class AudioOutputRouter @Inject constructor(
      */
     internal fun protectPlayingHeadset(id: String) {
         if (id !in live) return
+        // A captured headset supersedes queued Automatic/Car requests, even before a direct route call.
+        preferenceEffects.supersede()
         // Capture an implicit system headset route as the exact temporary preference, without
         // touching the AudioTrack. This lets refresh detect disappearance even when the user
         // never opened BookWave's output chooser and selectedId was Automatic.
@@ -230,7 +237,8 @@ class AudioOutputRouter @Inject constructor(
             )
             return
         }
-        // A user choice always overrides a pending car-continuity preference and its expiry.
+        // Even a repeated null Car/Automatic choice is newer intent; output id equality is insufficient.
+        val epoch = preferenceEffects.supersede()
         missingHeadsetGrace?.cancel()
         missingHeadsetGrace = null
         guardedHeadsetId = null
@@ -243,15 +251,14 @@ class AudioOutputRouter @Inject constructor(
         )
         _selectedId.value = id
         publish()
-        applicationScope.launch { apply(id) }
+        applicationScope.launch { apply(id, epoch) }
     }
 
-    private suspend fun apply(id: String?) = withContext(mainDispatcher) {
-        // A queued Automatic/Car request may run after a newer headset choice or
-        // continuity reassertion. Never let stale work clear the new preferred sink.
-        // Automatic and Car both request null, so their hardware operation is identical.
-        if (_selectedId.value != id) return@withContext
-        val target = player ?: return@withContext
+    private suspend fun apply(id: String?, epoch: Long) = preferenceEffects.run(epoch) {
+        // The generation also distinguishes consecutive Car and Automatic selections (both null),
+        // player reattachments, and the recovery router silently asserting the same output ID.
+        if (_selectedId.value != id) return@run
+        val target = player ?: return@run
         val device = id?.let(live::get)
         target.setPreferredAudioDevice(device)
         publish()
@@ -271,11 +278,12 @@ class AudioOutputRouter @Inject constructor(
                 },
             ),
         )
-        settle()
+        // A request may become stale during the delay. It must not publish a superseded outcome.
+        preferenceEffects.afterSettle(epoch, ROUTE_SETTLE_DELAY) { publish() }
     }
 
-    /** Re-read once because route changes have no corresponding framework callback. */
-    private suspend fun settle() {
+    /** Observe a car-driven OS route change independently of output-preference requests. */
+    private suspend fun resettleAfterDelay() {
         delay(ROUTE_SETTLE_DELAY)
         publish()
     }
@@ -302,7 +310,7 @@ class AudioOutputRouter @Inject constructor(
      */
     fun resettle() {
         publish()
-        applicationScope.launch { settle() }
+        applicationScope.launch { resettleAfterDelay() }
     }
 
     private fun refresh() {
@@ -333,13 +341,14 @@ class AudioOutputRouter @Inject constructor(
 
     private fun onDisconnectedSelection(chosen: String, connectedIds: Set<String>) {
         if (!shouldRetainContinuityHeadset(guardedHeadsetId, chosen, connectedIds)) {
+            val epoch = preferenceEffects.supersede()
             _selectedId.value = null
             logger.info(
                 LogCategory.Playback,
                 "The chosen audio output disconnected, so routing is automatic again",
                 LogField.Public("kind", kindOf(chosen)),
             )
-            applicationScope.launch { apply(null) }
+            applicationScope.launch { apply(null, epoch) }
             return
         }
 
@@ -379,8 +388,11 @@ class AudioOutputRouter @Inject constructor(
         missingHeadsetGrace?.cancel()
         missingHeadsetGrace = null
         guardedHeadsetMissing = false
+        val epoch = preferenceEffects.supersede()
         applicationScope.launch {
-            if (_selectedId.value == chosen && guardedHeadsetId == chosen && chosen in live) apply(chosen)
+            if (_selectedId.value == chosen && guardedHeadsetId == chosen && chosen in live) {
+                apply(chosen, epoch)
+            }
         }
     }
 

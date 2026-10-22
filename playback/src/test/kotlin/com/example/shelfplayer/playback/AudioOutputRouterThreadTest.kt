@@ -101,6 +101,33 @@ class AudioOutputRouterThreadTest {
     }
 
     @Test
+    fun `repeated explicit car and automatic requests execute only latest null preference`() = runTest {
+        val fixture = fixture()
+        fixture.router.selectCar()
+        fixture.router.select(null)
+        fixture.router.selectCar()
+        val latest = fixture.router.explicitSelection.value
+        assertEquals(AudioOutputRouter.ExplicitDestination.Car, latest?.destination)
+        assertEquals(3L, latest?.sequence)
+
+        runCurrent()
+        assertEquals(1, fixture.preferredRequests.size, "equal null targets must still supersede old requests")
+        assertEquals(null, fixture.preferredRequests.single())
+    }
+
+    @Test
+    fun `detaching player invalidates queued preference before its dispatcher receives work`() = runTest {
+        val fixture = fixture()
+        fixture.router.selectCar()
+        fixture.router.detach()
+        runCurrent()
+        assertTrue(
+            fixture.preferredRequests.isEmpty(),
+            "a request from an earlier player attachment must not reach a detached ExoPlayer",
+        )
+    }
+
+    @Test
     fun `manual headset Play stays silent until the actual track route is verified`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
@@ -348,9 +375,14 @@ class AudioOutputRouterThreadTest {
                 }
 
                 "setPreferredAudioDevice" -> {
+                    check(Thread.currentThread() == owningThread) {
+                        "setPreferredAudioDevice on the wrong Media3 thread"
+                    }
                     preferredRequests.add(args?.get(0))
                     null
                 }
+
+                "removeListener" -> null
 
                 "getVolume" -> volumes.lastOrNull() ?: 1f
 
