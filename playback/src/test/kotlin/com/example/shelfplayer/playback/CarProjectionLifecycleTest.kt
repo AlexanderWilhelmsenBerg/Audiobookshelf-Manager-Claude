@@ -449,8 +449,7 @@ class CarProjectionLifecycleTest {
         fun isEstablished(): Boolean = service.field("carContinuitySessionEstablished")
 
         /** Reads the real SleepTimerController state after PlaybackService forwarded a car boundary. */
-        fun sleepTimerSeesCar(): Boolean =
-            SleepTimerController::class.java.getDeclaredField("carConnected").run {
+        fun sleepTimerSeesCar(): Boolean = SleepTimerController::class.java.getDeclaredField("carConnected").run {
                 isAccessible = true
                 getBoolean(service.sleepTimer)
             }
