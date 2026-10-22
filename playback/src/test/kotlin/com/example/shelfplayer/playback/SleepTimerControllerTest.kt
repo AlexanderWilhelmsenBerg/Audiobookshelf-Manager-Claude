@@ -155,7 +155,11 @@ class SleepTimerControllerTest {
         controller.onCarConnectionChanged(false)
         runCurrent()
         assertEquals(0, repository.restarted, "projection departure must not claim sleep-timer grace")
-        assertTrue(history.events.isEmpty(), "focus changes and timer projection are not listening-history events")
+        assertEquals(
+            listOf(PlaybackEvent.SleepTimerStarted),
+            history.events,
+            "car and focus events must not add another history entry after the legitimate timer start",
+        )
 
         playing = true
         controller.onPlaybackChanged(true)
@@ -166,7 +170,7 @@ class SleepTimerControllerTest {
         assertEquals(24.minutes, controller.state.value.remaining)
         assertEquals(1, repository.started)
         assertEquals(0, repository.restarted)
-        assertTrue(history.events.isEmpty())
+        assertEquals(listOf(PlaybackEvent.SleepTimerStarted), history.events)
     }
 
     @Test

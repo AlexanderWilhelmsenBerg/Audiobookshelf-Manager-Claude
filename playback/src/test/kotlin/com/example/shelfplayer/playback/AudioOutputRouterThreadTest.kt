@@ -84,7 +84,10 @@ class AudioOutputRouterThreadTest {
         onDeviceCallback {
             repeat(3) { fixture.router.resettle() }
         }
-        assertTrue(fixture.readThreads.isEmpty(), "worker callbacks must not read ExoPlayer")
+        assertTrue(
+            fixture.readThreads.all { it == Thread.currentThread() },
+            "the test scheduler may drain callbacks before returning, but never on the worker",
+        )
         runCurrent()
         advanceTimeBy(500)
         runCurrent()
