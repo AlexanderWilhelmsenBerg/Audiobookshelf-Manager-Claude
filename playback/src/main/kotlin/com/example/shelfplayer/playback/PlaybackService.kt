@@ -1224,69 +1224,29 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-            // PRODUCT_SPEC PLAY-003 — play and pause, in the book's history. The device report asked for
-            // them: *"Play start and play pause doesn't show."*
-            //
-            // Recorded from `playWhenReady` rather than from `isPlaying`, and that is the whole trick.
-            // `isPlaying` goes false every time the player buffers, so a book on a slow connection would
-            // write a pause and a play every few seconds and bury everything else in the list. This flag
-            // is *intent*: it changes when somebody presses something, or when audio focus is taken away.
-            //
-            // Here rather than in `PlaybackController`, because the service outlives the app — a pause from
-            // a headset with the app closed is exactly the one worth having. One recorder, so no event can
-            // be written twice.
-            recordTransport(if (playWhenReady) PlaybackEvent.Play else PlaybackEvent.Pause)
-            /*
-             * PRODUCT_SPEC 14.4 — and the only line that can witness a steering wheel.
-             *
-             * A review caught §2.9 inferring the wheel from `The player changed state`, which a working
-             * wheel need not produce: play/pause keeps the player in `STATE_READY`, volume touches no
-             * playback state at all, and next/previous are no-ops on the one-item queue a car selection
-             * builds. The step would have reported a working wheel as unsupported — the mirror image of
-             * the false pass it had just been fixed for.
-             *
-             * `reason` is worth logging rather than `playWhenReady` alone because it separates a person
-             * from the system: `audioFocusLoss` and `becomingNoisy` mean nobody pressed anything. A
-             * boolean would have said neither.
-             *
-             * It does **not** say who pressed, and §2.9 briefly claimed it did (R-76). Media3 collapses
-             * that before this listener sees it: a controller's play/pause reaches `MediaSession`, which
-             * forwards it to the local player as `play()` → `setPlayWhenReady(true)`, and `ExoPlayerImpl`
-             * hard-codes that call to `PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST`. A wheel, a headset
-             * button and the app's own UI are therefore indistinguishable here. `REMOTE` belongs to a
-             * *remote* player — CastPlayer, or a controller observing a session — and this listener is on
-             * the local ExoPlayer, so it cannot appear. The device script isolates the log window and
-             * tells the tester to touch nothing else; that, not the reason, is the attribution.
-             */
+            // Record transport intent, not buffer or route changes, and never invent a physical key origin.
+            val input = PlaybackTransportInput.interpret(playWhenReady, reason)
+            recordTransport(if (input.isPlay) PlaybackEvent.Play else PlaybackEvent.Pause)
             logger.debug(
                 LogCategory.Playback,
                 "Playback was asked to change",
                 LogField.Public("playWhenReady", playWhenReady.toString()),
-                LogField.Public("reason", playWhenReadyReason(reason)),
+                LogField.Public("reason", input.reasonName),
             )
-            if (playWhenReady) {
-                // Any newer Play wins over pending automatic continuity. A successful continuity Play has
-                // already consumed its one-shot target before it reaches this listener.
+            if (input.isPlay) {
+                // New Play supersedes any pending continuity result, including a repeated system Play.
                 carRecovery.cancelPending()
                 return
             }
-            // `REMOTE` cannot occur while this listener is on the local ExoPlayer (R-76); it stays in the
-            // condition so the *intent* — a person asked, from wherever — survives if the player is ever
-            // wrapped or replaced by a remote one, which is when the reason would start appearing.
-            val userInitiated = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ||
-                reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE
-            autoRewind.onPaused(wasUserInitiated = userInitiated)
 
-            when (reason) {
-                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
-                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY,
-                -> onCarPlatformInterruption(reason)
-
-                else -> {
-                    // Deliberate pause, end-of-item and unknown causes invalidate transition evidence.
-                    carRecovery.cancelAll()
-                    carRecovery.clearAwaiting()
-                }
+            autoRewind.onPaused(wasUserInitiated = input.isUserPause)
+            val interruption = input.interruptionReason
+            if (interruption != null) {
+                onCarPlatformInterruption(interruption)
+            } else {
+                // Deliberate pause, end-of-item or unknown causes invalidate recovery evidence.
+                carRecovery.cancelAll()
+                carRecovery.clearAwaiting()
             }
         }
 
@@ -2330,25 +2290,6 @@ class PlaybackService : MediaLibraryService() {
         val answer: MediaSession.MediaItemsWithStartPosition,
     )
 
-    /**
-     * A `PLAY_WHEN_READY_CHANGE_REASON_*` constant as the word Media3 calls it.
-     *
-     * What this can and cannot tell §2.9: it separates a press from the system — `audioFocusLoss` and
-     * `becomingNoisy` mean nobody pressed anything — and it does not say *who* pressed. `remote` is
-     * mapped for completeness and is unreachable from this service: it describes a change reported by a
-     * *remote* player, and the listener is attached to the local ExoPlayer, which emits only
-     * `userRequest` (every `setPlayWhenReady` call), `becomingNoisy`, and the focus and end-of-item
-     * reasons. R-76 is what happened when a device script read `remote` as "the wheel asked".
-     */
-    private fun playWhenReadyReason(reason: Int): String = when (reason) {
-        Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> "userRequest"
-        Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS -> "audioFocusLoss"
-        Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY -> "becomingNoisy"
-        Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE -> "remote"
-        Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM -> "endOfItem"
-        Player.PLAY_WHEN_READY_CHANGE_REASON_SUPPRESSED_TOO_LONG -> "suppressedTooLong"
-        else -> "unknown"
-    }
 
     /**
      * A `Player.STATE_*` constant as the word Media3 calls it.
