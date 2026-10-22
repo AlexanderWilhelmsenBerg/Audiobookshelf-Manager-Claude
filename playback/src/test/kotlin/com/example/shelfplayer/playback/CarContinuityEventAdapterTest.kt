@@ -111,5 +111,4 @@ class CarContinuityEventAdapterTest {
             legacy.carDeparture(12.seconds, state.generation, 0, physicalProjection = false).status,
         )
     }
-
 }
