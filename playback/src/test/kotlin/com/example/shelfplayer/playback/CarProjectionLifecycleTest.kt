@@ -450,9 +450,9 @@ class CarProjectionLifecycleTest {
 
         /** Reads the real SleepTimerController state after PlaybackService forwarded a car boundary. */
         fun sleepTimerSeesCar(): Boolean = SleepTimerController::class.java.getDeclaredField("carConnected").run {
-                isAccessible = true
-                getBoolean(service.sleepTimer)
-            }
+            isAccessible = true
+            getBoolean(service.sleepTimer)
+        }
 
         fun departureDecisions(): List<LogEvent> = decisions("projection-disconnect")
 
