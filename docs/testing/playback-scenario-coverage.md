@@ -29,9 +29,9 @@ production `RouteEvidence.confirms` and the guarded output policy, not inferred 
 | Scenario | Automated source / status | Acceptance still required |
 | --- | --- | --- |
 | S01 — active headset, car connects without focus loss | `CarLifecycleContinuityIntegrationTest`, `AudioOutputRouterThreadTest` (service/policy partial) | Hardware preservation of the measured headset, with no needless reassert |
-| S02 — focus loss then first bind | `PlaybackScenarioContractTest`, `PlaybackContinuityInvariantMatrixTest` (policy) | Verify original physical endpoint |
-| S03 — first bind then focus loss | Same tests (policy) | Verify physical route, no duplicate Play |
-| S04 — noisy/focus duplicate | `PlaybackScenarioContractTest`, `PlaybackContinuityInvariantMatrixTest` (policy) | Service event-order replay with both callbacks |
+| S02 — focus loss then first bind | `PlaybackScenarioContractTest`, `PlaybackContinuityInvariantMatrixTest` (policy), `CarProjectionLifecycleTest` focus-first service callback (Robolectric) | Verify original physical endpoint |
+| S03 — first bind then focus loss | Same tests (policy), `CarProjectionLifecycleTest` controller-first service callback (Robolectric) | Verify physical route, no duplicate Play |
+| S04 — noisy/focus duplicate | `PlaybackScenarioContractTest`, `PlaybackContinuityInvariantMatrixTest` (policy), `CarProjectionLifecycleTest` duplicate controller boundary (service partial) | Service event-order replay with both callbacks |
 | S05 — paused car connection | `PlaybackScenarioContractTest`, `CarLifecycleContinuityIntegrationTest` (policy/service) | Real paused-on-connect acceptance |
 | S06 — explicit Gearhead Play | `PlaybackScenarioEvidenceTest`, `CarArrivalRouteRecoveryTest` (policy) | Measured car output, service-controller propagation |
 | S07 — virtual/system Play after car | `PlaybackScenarioEvidenceTest`, `MediaButtonInputEvidenceTest` (transport/unknown-origin policy) | **Open product failure:** no reliable physical headset attribution or automatic handoff; #276/#277 |
@@ -41,7 +41,7 @@ production `RouteEvidence.confirms` and the guarded output policy, not inferred 
 | S11 — same-named Bluetooth devices | `LiveOutputEndpointRegistryTest`, `MediaButtonInputEvidenceTest` (identity policy) | Two-device physical ambiguity and unknown media key source |
 | S12 — newer output intent during queued reassert | `PlaybackScenarioContractTest`, `PlaybackScenarioAsyncEffectsTest`, `DeferredPlaybackWorkTest` (policy/async) | Full service effect ordering under connected car |
 | S13 — book/profile replacement | `PlaybackScenarioContractTest`, `PlaybackScenarioAsyncEffectsTest`, `CarPostConnectRestorerTest` (policy/async) | Full session/credential/artwork isolation with in-flight effects |
-| S14 — physical departure/controller order | `PlaybackScenarioContractTest`, `CarProjectionLifecycleTest` (policy/service) | OEM projection behavior with stale controller |
+| S14 — physical departure/controller order | `PlaybackScenarioContractTest`, `CarProjectionLifecycleTest` including focus-then-physical-projection and unknown recovery (policy/service) | OEM projection behavior with stale controller |
 | S15 — deliberate Pause at departure | `PlaybackScenarioContractTest`, `CarArrivalResumeGateTest` (policy) | Service-level no-resume assertion |
 | S16 — Media3 focus suppression | `CarContinuityPlayPrecheckTest`, `CarContinuityRecoveryCoordinatorTest` (policy partial) | Real Media3 focus state and no duplicate Play |
 | S17 — cold key/autoplay policy | `ColdStartToggleGateTest`, `ColdPlaybackResumptionFreshnessTest` (policy) | Controller/notification/cold-service entry paths |
@@ -50,6 +50,23 @@ production `RouteEvidence.confirms` and the guarded output policy, not inferred 
 | S20 — resume/progress/sleep/history | `ResumeFreshnessCoordinatorRaceTest`, `SessionSyncCoordinatorTest`, `SleepTimerControllerTest` (component partial) | End-to-end paused-to-Play freshness/profile/queue effect replay |
 | S21 — progress 401/profile rotation | `SessionSyncCoordinatorTest` and network contract tests (component partial) | **Separate defect #288**: exact 401 failure and final-position recovery |
 | S22 — missing evidence/diagnostics | `PlaybackScenarioContractTest`, `PlaybackScenarioEvidenceTest`, `AudioRouteLabEvidenceTest`, `AudioRouteTestCorrelatorTest` (policy/diagnostics partial) | Incomplete route observer/human mark must remain INCONCLUSIVE/BLOCKED; privacy and export integration |
+
+## Service-adapter checkpoint (2026-10-22)
+
+`CarProjectionLifecycleTest` now drives actual `PlaybackService` platform-focus and
+car-controller/projection adapters through an existing Robolectric service fixture. Tests cover
+focus-before-car, car-before-focus, focus-before-positive-projection, duplicate boundaries,
+and deliberately cancelled continuity. Their assertions read **runtime decisions**.
+The previous `CarContinuityEventAdapterTest.serviceAdapterCallsCoordinatorWithoutSecondGateImplementation`
+source-substring assertion was retired after these adapter tests passed Standard CI:
+renaming or extracting callbacks should no longer fail merely because service source text changed.
+
+This is **not** a full MediaSession playback pipeline: the fixture does not initialize a
+real ExoPlayer, receive OEM audio focus, or prove AudioTrack output. The listener callback is
+invoked through the existing test fixture's reflective seam; Phase 3 should replace that
+seam with a stable service-facing event contract during extraction. The stronger
+`AudioOutputRouterThreadTest` source-backed fail-closed guard is intentionally retained
+until equivalent runtime evidence tests cover an adversarial framework-policy fallback.
 
 ## Refactor safety gates
 
@@ -60,9 +77,9 @@ production `RouteEvidence.confirms` and the guarded output policy, not inferred 
    completion boundary**, not only when the coroutine starts.
 3. Preserve production output safety: muted guard may become audible only for one positively
    measured playing AudioTrack on the exact live endpoint. Weak prediction remains distinct.
-4. Retain source-substring checks such as `CarContinuityEventAdapterTest.serviceAdapterCallsCoordinatorWithoutSecondGateImplementation`
-   until a service-level behavioral substitute proves equivalent caller reachability. Then retire
-   those checks without reimplementing policy.
+4. Use service-adapter behavioral tests rather than the retired continuity-source substring check.
+   Keep any other source-sensitive routing guard only until its replacement proves the same
+   safety invariant with runtime evidence.
 5. Do not turn the known headset-button destination failure into a green test by redefining its
    expected physical outcome. Keep #276/#277 separate from the structural refactor and #288
    separate from audio routing.

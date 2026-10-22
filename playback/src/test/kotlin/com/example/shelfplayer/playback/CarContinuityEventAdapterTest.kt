@@ -4,7 +4,6 @@ import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.AudioOutputRole
 import com.example.shelfplayer.core.model.playback.DeviceKind
 import org.junit.Test
-import java.io.File
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -113,15 +112,4 @@ class CarContinuityEventAdapterTest {
         )
     }
 
-    @Test
-    fun serviceAdapterCallsCoordinatorWithoutSecondGateImplementation() {
-        val source = File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt").readText()
-        assertTrue(source.contains("carRecovery.platformInterruption("))
-        assertTrue(source.contains("carRecovery.carArrival("))
-        assertTrue(source.contains("carRecovery.carDeparture("))
-        assertTrue(source.contains("carRecovery.observePlayingHeadset("))
-        assertFalse(source.contains("carContinuity.onCarArrival("))
-        assertFalse(source.contains("carContinuity.onAudioFocusLoss("))
-        assertFalse(source.contains("carContinuity.onProjectionDeparture("))
-    }
 }
