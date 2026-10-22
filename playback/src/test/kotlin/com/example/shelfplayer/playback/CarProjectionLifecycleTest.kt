@@ -444,9 +444,9 @@ class CarProjectionLifecycleTest {
         fun disconnectController() =
             service.invoke("onCarControllerDisconnected", "com.google.android.projection.gearhead")
 
-        fun ownsLifecycle(): Boolean = service.field("projectionOwnsCarLifecycle")
+        fun ownsLifecycle(): Boolean = service.carLifecycle.projectionOwnsCarLifecycle
 
-        fun isEstablished(): Boolean = service.field("carContinuitySessionEstablished")
+        fun isEstablished(): Boolean = service.carLifecycle.sessionEstablished
 
         /** Reads the real SleepTimerController state after PlaybackService forwarded a car boundary. */
         fun sleepTimerSeesCar(): Boolean = SleepTimerController::class.java.getDeclaredField("carConnected").run {
