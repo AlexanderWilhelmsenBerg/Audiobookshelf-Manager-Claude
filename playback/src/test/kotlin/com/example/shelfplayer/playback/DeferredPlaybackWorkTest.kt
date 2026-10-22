@@ -219,6 +219,59 @@ class DeferredPlaybackWorkTest {
     }
 
     @Test
+    fun `profile switch during durable acceptance cannot install old playback on Media3`() = runTest {
+        player.setMediaItem(item("profile-a-book"))
+        val claim = requireNotNull(work.capture())
+        val entered = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        beforeAccept = {
+            entered.complete(Unit)
+            resume.await()
+        }
+        val oldRequest = launch(start = CoroutineStart.UNDISPATCHED) {
+            work.installIfCurrent(claim, prepared(), startPlaying = true, condition = { true })
+        }
+        entered.await()
+        profile += 1
+        command += 1
+        player.setMediaItem(item("profile-b-book"))
+        resume.complete(Unit)
+        oldRequest.join()
+
+        assertEquals("profile-b-book", player.currentMediaItem?.mediaId)
+        assertFalse(player.playWhenReady, "a stale profile must never issue the trailing Play")
+        assertEquals(0, commits, "durable outbox acceptance must recheck the profile after suspension")
+    }
+
+    @Test
+    fun `profile switch while authorization awaits rejects old request even when queue is unchanged`() = runTest {
+        val claim = requireNotNull(work.capture())
+        val entered = CompletableDeferred<Unit>()
+        val resume = CompletableDeferred<Unit>()
+        val oldRequest = launch(start = CoroutineStart.UNDISPATCHED) {
+            work.installIfCurrent(
+                claim,
+                prepared(),
+                startPlaying = true,
+                condition = { it.mediaItemCount == 0 },
+                allowed = {
+                    entered.complete(Unit)
+                    resume.await()
+                    true
+                },
+            )
+        }
+        entered.await()
+        profile += 1
+        resume.complete(Unit)
+        oldRequest.join()
+
+        assertEquals(0, player.mediaItemCount)
+        assertFalse(player.playWhenReady)
+        assertEquals(0, commits)
+    }
+
+    @Test
     fun `an authorized empty-player arm installs but does not start playback`() = runTest {
         val claim = requireNotNull(work.capture())
 
