@@ -225,9 +225,12 @@ class CarProjectionLifecycleTest {
             assertEquals(listOf("Armed"), car.focusDecisions().map { it.public("status") })
 
             car.read(2)
+            runCurrent()
             assertEquals(listOf("Ready"), car.arrivalDecisions().map { it.public("status") })
             car.read(null)
+            runCurrent()
             car.read(2)
+            runCurrent()
             assertEquals(1, car.arrivalDecisions().size, "unknown/reconnect is not a new projection")
 
             car.connectController()
