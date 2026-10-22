@@ -41,6 +41,7 @@ internal class AndroidAutoTraceRecorderTest {
         val next = recorder.ensure("new-ignition")
         assertEquals("auto-2", next.correlationId)
         assertEquals(2, events.count { it.message == "Android Auto trace started" })
+        clock.advanceBy(1.milliseconds)
         recorder.log("Car lifecycle continuity decision", fields = listOf(LogField.Public("status", "Armed")))
         assertEquals(next.correlationId, events.last().correlationId)
         assertEquals(LogCategory.AndroidAuto, events.last().category)
