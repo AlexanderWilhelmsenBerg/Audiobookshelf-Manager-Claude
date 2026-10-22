@@ -12,6 +12,7 @@ import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SyncOutcome
@@ -91,7 +92,7 @@ class SessionSyncCoordinator @Inject constructor(
             )
             if (opened is AppResult.Success) {
                 withContext(mainDispatcher) {
-                    current = Active(sessionId = opened.value, bookId = session.bookId)
+                    current = Active(sessionId = opened.value, bookId = session.bookId, profileId = session.profileId)
                     listened.reset(clock.elapsed())
                 }
             } else if (opened is AppResult.Failure) {
@@ -129,7 +130,7 @@ class SessionSyncCoordinator @Inject constructor(
                 closeCurrent(SyncTrigger.BookChanged)
                 withContext(mainDispatcher) {
                     if (stillAuthorized()) {
-                        current = Active(opened.value, session.bookId)
+                        current = Active(opened.value, session.bookId, session.profileId)
                         listened.reset(clock.elapsed())
                         accepted()
                         true
@@ -188,7 +189,7 @@ class SessionSyncCoordinator @Inject constructor(
         val prepared = withContext(mainDispatcher) {
             val active = current ?: return@withContext null
             val snapshot = snapshot() ?: return@withContext null
-            if (snapshot.bookId != active.bookId) {
+            if (!belongsToActiveSession(snapshot, active)) {
                 logger.debug(
                     LogCategory.Playback,
                     "Skipped a stale player snapshot during session sync",
@@ -268,7 +269,7 @@ class SessionSyncCoordinator @Inject constructor(
             listened.reset(clock.elapsed())
             return null
         }
-        if (snapshot.bookId != active.bookId) {
+        if (!belongsToActiveSession(snapshot, active)) {
             listened.reset(clock.elapsed())
             logger.debug(
                 LogCategory.Playback,
@@ -332,6 +333,7 @@ class SessionSyncCoordinator @Inject constructor(
         if (positionMs <= 0L || MediaItems.isSingleFileFallback(item)) return null
         return Snapshot(
             bookId = MediaItems.bookIdOf(item),
+            owner = MediaItems.ownerOf(item),
             position = media.bookPosition(),
             duration = media.bookDuration(),
         )
@@ -376,9 +378,17 @@ class SessionSyncCoordinator @Inject constructor(
         )
     }
 
-    private data class Active(val sessionId: String, val bookId: LibraryItemId)
+    private fun belongsToActiveSession(snapshot: Snapshot, active: Active): Boolean =
+        snapshot.bookId == active.bookId && (snapshot.owner == null || snapshot.owner == active.profileId)
 
-    private data class Snapshot(val bookId: LibraryItemId, val position: Duration, val duration: Duration)
+    private data class Active(val sessionId: String, val bookId: LibraryItemId, val profileId: ProfileId)
+
+    private data class Snapshot(
+        val bookId: LibraryItemId,
+        val owner: ProfileId?,
+        val position: Duration,
+        val duration: Duration,
+    )
 
     private data class PreparedSync(val active: Active, val snapshot: Snapshot, val timeListened: Duration)
 
