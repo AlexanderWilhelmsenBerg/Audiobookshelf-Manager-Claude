@@ -48,5 +48,4 @@ class CarContinuityPlayPrecheckTest {
             CarContinuityPlayPrecheck.decide(hasPlayer = true, mediaItemCount = 0, playWhenReady = true),
         )
     }
-
 }
