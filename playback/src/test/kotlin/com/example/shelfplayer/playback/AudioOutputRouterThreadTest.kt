@@ -76,6 +76,31 @@ class AudioOutputRouterThreadTest {
     }
 
     @Test
+    fun `rapid worker resettles never read guarded Media3 player off its dispatcher`() = runTest {
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+        fixture.measuredRoutes { setOf("bluetooth:car") }
+
+        onDeviceCallback {
+            repeat(3) { fixture.router.resettle() }
+        }
+        assertTrue(
+            fixture.readThreads.all { it == Thread.currentThread() },
+            "the test scheduler may drain callbacks before returning, but never on the worker",
+        )
+        runCurrent()
+        advanceTimeBy(500)
+        runCurrent()
+
+        assertTrue(fixture.readThreads.isNotEmpty())
+        assertTrue(
+            fixture.readThreads.all { it == Thread.currentThread() },
+            "even after route-settle delays, player reads belong on the Media3 dispatcher",
+        )
+        assertTrue(fixture.pauseThreads.all { it == Thread.currentThread() })
+    }
+
+    @Test
     fun `manual headset Play stays silent until the actual track route is verified`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")

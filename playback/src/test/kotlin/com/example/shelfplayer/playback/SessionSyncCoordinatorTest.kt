@@ -173,6 +173,39 @@ class SessionSyncCoordinatorTest {
     }
 
     @Test
+    fun `new book during a queued sync cannot move the old session position`() = runTest {
+        val repository = RecordingSessionSyncRepository()
+        val coordinator = coordinator(repository)
+        val old = LibraryItemId("book-a")
+        val incoming = LibraryItemId("book-b")
+        coordinator.onSessionOpened(session(old))
+        coordinator.attach(playerFor(incoming, position = 17.seconds))
+
+        assertFalse(coordinator.sync(SyncTrigger.Paused))
+        assertEquals(0, repository.syncCalls)
+        coordinator.onShutdown()
+        runCurrent()
+        assertEquals(0, repository.closeCalls, "teardown must not close old session with new book position")
+        coordinator.attach(null)
+    }
+
+    @Test
+    fun `same book from a different profile cannot sync or close the departing session`() = runTest {
+        val repository = RecordingSessionSyncRepository()
+        val coordinator = coordinator(repository)
+        val book = LibraryItemId("book-a")
+        coordinator.onSessionOpened(session(book))
+        coordinator.attach(playerFor(book, position = 47.seconds, owner = "profile-b"))
+
+        assertFalse(coordinator.sync(SyncTrigger.Paused))
+        assertEquals(0, repository.syncCalls)
+        coordinator.onShutdown()
+        coordinator.attach(null)
+        runCurrent()
+        assertEquals(0, repository.closeCalls, "profile-b progress must not close profile-a's session")
+    }
+
+    @Test
     fun `zero player snapshot is never synced into the active session`() = runTest {
         val repository = RecordingSessionSyncRepository()
         val coordinator = coordinator(repository)
@@ -247,9 +280,10 @@ class SessionSyncCoordinatorTest {
         bookId: LibraryItemId,
         position: Duration = 10.seconds,
         resumePlaceholder: Boolean = false,
+        owner: String = "profile-a",
     ): Player {
         val extras = Bundle().apply {
-            putString(MediaItems.KEY_OWNER_PROFILE_ID, "profile-a")
+            putString(MediaItems.KEY_OWNER_PROFILE_ID, owner)
             putBoolean(MediaItems.KEY_RESUME_PLACEHOLDER, resumePlaceholder)
         }
         val item = MediaItem.Builder()

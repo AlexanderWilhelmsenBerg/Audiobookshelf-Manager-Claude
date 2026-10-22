@@ -129,6 +129,51 @@ class SleepTimerControllerTest {
     }
 
     @Test
+    fun `manual sleep timer and history survive car focus pause without fabricated resume`() = runTest {
+        val clock = TestAppClock()
+        val repository = FakeSleepTimerRepository()
+        val history = FakePlaybackHistoryRepository()
+        val controller = controller(repository, FakeShakeSource(), clock, history)
+        var playing = true
+        controller.attach(player(playing = { playing }))
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(30.minutes)))
+
+        controller.onCarConnectionChanged(true)
+        runCurrent()
+        clock.advanceBy(5.minutes)
+        playing = false
+        controller.onPlaybackChanged(false)
+        runCurrent()
+        assertEquals(25.minutes, controller.state.value.remaining)
+
+        clock.advanceBy(40.minutes)
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertEquals(25.minutes, controller.state.value.remaining)
+        assertTrue(controller.state.value.isActive, "a manual timer survives focus-related pause in the car")
+
+        controller.onCarConnectionChanged(false)
+        runCurrent()
+        assertEquals(0, repository.restarted, "projection departure must not claim sleep-timer grace")
+        assertEquals(
+            listOf(PlaybackEvent.SleepTimerStarted),
+            history.events,
+            "car and focus events must not add another history entry after the legitimate timer start",
+        )
+
+        playing = true
+        controller.onPlaybackChanged(true)
+        runCurrent()
+        clock.advanceBy(1.minutes)
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertEquals(24.minutes, controller.state.value.remaining)
+        assertEquals(1, repository.started)
+        assertEquals(0, repository.restarted)
+        assertEquals(listOf(PlaybackEvent.SleepTimerStarted), history.events)
+    }
+
+    @Test
     fun `new timer is refused for a paused book without writing a session`() = runTest {
         val repository = FakeSleepTimerRepository()
         val controller = controller(repository, FakeShakeSource(), TestAppClock())
