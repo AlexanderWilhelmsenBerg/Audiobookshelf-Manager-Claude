@@ -254,6 +254,32 @@ class CarProjectionLifecycleTest {
         }
     }
 
+    @Test
+    fun `physical projection owns service sleep timer car state after stale controller departure`() = runTest {
+        fixture(initialState = null, controllerBindings = 0).use { car ->
+            runCurrent()
+            assertFalse(car.sleepTimerSeesCar())
+
+            car.connectController()
+            runCurrent()
+            assertTrue(car.sleepTimerSeesCar())
+
+            car.read(2)
+            runCurrent()
+            car.disconnectController()
+            runCurrent()
+            assertTrue(car.sleepTimerSeesCar(), "legacy controller loss cannot end the physical car interval")
+
+            car.read(null)
+            runCurrent()
+            assertTrue(car.sleepTimerSeesCar(), "unknown projection must preserve the last positive state")
+
+            car.read(0)
+            runCurrent()
+            assertFalse(car.sleepTimerSeesCar(), "confirmed physical departure must release the timer's car block")
+        }
+    }
+
     private fun TestScope.fixture(initialState: Int? = 2, controllerBindings: Int = 2): Fixture =
         Fixture(backgroundScope, StandardTestDispatcher(testScheduler), initialState, controllerBindings)
 
@@ -421,6 +447,13 @@ class CarProjectionLifecycleTest {
         fun ownsLifecycle(): Boolean = service.field("projectionOwnsCarLifecycle")
 
         fun isEstablished(): Boolean = service.field("carContinuitySessionEstablished")
+
+        /** Reads the real SleepTimerController state after PlaybackService forwarded a car boundary. */
+        fun sleepTimerSeesCar(): Boolean =
+            SleepTimerController::class.java.getDeclaredField("carConnected").run {
+                isAccessible = true
+                getBoolean(service.sleepTimer)
+            }
 
         fun departureDecisions(): List<LogEvent> = decisions("projection-disconnect")
 

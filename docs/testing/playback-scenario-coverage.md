@@ -40,14 +40,14 @@ production `RouteEvidence.confirms` and the guarded output policy, not inferred 
 | S10 — reconnect/endpoint churn | `PlaybackScenarioAsyncEffectsTest`, `LiveOutputEndpointRegistryTest` (policy) | Real alias churn with no stale endpoint reuse |
 | S11 — same-named Bluetooth devices | `LiveOutputEndpointRegistryTest`, `MediaButtonInputEvidenceTest` (identity policy) | Two-device physical ambiguity and unknown media key source |
 | S12 — newer output intent during queued reassert | `PlaybackScenarioContractTest`, `PlaybackScenarioAsyncEffectsTest`, `DeferredPlaybackWorkTest` (policy/async) | Full service effect ordering under connected car |
-| S13 — book/profile replacement | `PlaybackScenarioContractTest`, `PlaybackScenarioAsyncEffectsTest`, `CarPostConnectRestorerTest` (policy/async) | Full session/credential/artwork isolation with in-flight effects |
+| S13 — book/profile replacement | `PlaybackScenarioContractTest`, `PlaybackScenarioAsyncEffectsTest`, `DeferredPlaybackWorkTest` profile-generation suspensions, `SessionSyncCoordinatorTest` same-book cross-profile guard, `ExistingSessionAttachmentTest` actual MediaSession replacement (policy/Media3) | Full session/credential/artwork isolation with in-flight effects |
 | S14 — physical departure/controller order | `PlaybackScenarioContractTest`, `CarProjectionLifecycleTest` including focus-then-physical-projection and unknown recovery (policy/service) | OEM projection behavior with stale controller |
 | S15 — deliberate Pause at departure | `PlaybackScenarioContractTest`, `CarArrivalResumeGateTest` (policy) | Service-level no-resume assertion |
 | S16 — Media3 focus suppression | `CarContinuityPlayPrecheckTest`, `CarContinuityRecoveryCoordinatorTest` (policy partial) | Real Media3 focus state and no duplicate Play |
 | S17 — cold key/autoplay policy | `ColdStartToggleGateTest`, `ColdPlaybackResumptionFreshnessTest` (policy) | Controller/notification/cold-service entry paths |
 | S18 — muted route verification | `PlaybackScenarioEvidenceTest`, `AudioOutputRouterThreadTest`, `LiveOutputEndpointRegistryTest` (route guard/looper) | Real AudioTrack exact/unknown/wrong/multiple and restored volume |
-| S19 — callback dispatcher | `AudioOutputRouterThreadTest` (Robolectric/player-thread) | Device callback/ExoPlayer thread acceptance |
-| S20 — resume/progress/sleep/history | `ResumeFreshnessCoordinatorRaceTest`, `SessionSyncCoordinatorTest`, `SleepTimerControllerTest` (component partial) | End-to-end paused-to-Play freshness/profile/queue effect replay |
+| S19 — callback dispatcher | `AudioOutputRouterThreadTest` including repeated background resettle callbacks and Media3 application-thread assertions (Robolectric/player-thread) | Device callback/ExoPlayer thread acceptance |
+| S20 — resume/progress/sleep/history | `ResumeFreshnessCoordinatorRaceTest`, `SessionSyncCoordinatorTest` stale-snapshot sync/close rejection, `SleepTimerControllerTest` car pause/countdown/history, `CarProjectionLifecycleTest` service car-state forwarding to sleep timer, `ExistingSessionAttachmentTest` Media3 sleep title/profile replacement (component/service/Media3) | End-to-end paused-to-Play freshness/profile/queue effect replay |
 | S21 — progress 401/profile rotation | `SessionSyncCoordinatorTest` and network contract tests (component partial) | **Separate defect #288**: exact 401 failure and final-position recovery |
 | S22 — missing evidence/diagnostics | `PlaybackScenarioContractTest`, `PlaybackScenarioEvidenceTest`, `AudioRouteLabEvidenceTest`, `AudioRouteTestCorrelatorTest` (policy/diagnostics partial) | Incomplete route observer/human mark must remain INCONCLUSIVE/BLOCKED; privacy and export integration |
 
@@ -67,6 +67,25 @@ invoked through the existing test fixture's reflective seam; Phase 3 should repl
 seam with a stable service-facing event contract during extraction. The stronger
 `AudioOutputRouterThreadTest` source-backed fail-closed guard is intentionally retained
 until equivalent runtime evidence tests cover an adversarial framework-policy fallback.
+
+## Final Phase 2 integration boundary (2026-10-22)
+
+The additional Android/Robolectric regression suites now exercise production event paths for:
+Media3 player-thread confinement during repeated background output callbacks; profile and
+command generations changing while durable work or authorization suspends; the same-book,
+different-profile progress/sync/close guard; a real Media3 controller observing a profile
+replacement without inheriting the old sleep countdown; and car controller/projection
+callbacks reaching the production sleep-timer car-state owner.
+
+These tests preserve the established division between **transport**, **playback state**,
+**progress/session ownership** and **actual playing AudioTrack**. The ProfileId check in
+`SessionSyncCoordinator` rejects explicit foreign-owner snapshots but preserves ownerless
+legacy metadata fallback. No physical headset route is simulated or certified.
+
+Remaining system-level acceptance involves genuine OEM media-button attribution, actual
+AudioTrack output, hardware focus/projection behavior and complete Hilt service lifecycle on
+a device. Those cannot honestly be declared passing based on Robolectric alone. The
+headset-button handoff remains open under #276/#277; 401 sync transport is #288.
 
 ## Refactor safety gates
 
