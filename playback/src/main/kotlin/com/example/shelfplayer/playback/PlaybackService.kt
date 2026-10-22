@@ -3399,7 +3399,7 @@ class PlaybackService : MediaLibraryService() {
             scope.launch { runCarPostConnect(current, trace) }
         }
 
-        private suspend fun runCarPostConnect(current: ExoPlayer, trace: AutoTrace) {
+        private suspend fun runCarPostConnect(current: ExoPlayer, trace: AndroidAutoTraceRecorder.Trace) {
             val startedAt = clock.elapsed()
             val action = CarConnection.decide(devices, lock, clock.now())
             val actionName = when (action) {
