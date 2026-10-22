@@ -338,6 +338,7 @@ class PlaybackService : MediaLibraryService() {
      */
     private val carContinuity = CarArrivalResumeGate()
     private val carRecovery = CarContinuityRecoveryCoordinator(carContinuity)
+
     /**
      * Owns existing controller/projection lifecycle latches, separate from Media3, route policy
      * and the physical AudioTrack. Lazy because Android injects CarConnections before onCreate.
