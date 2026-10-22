@@ -1270,7 +1270,7 @@ class PlaybackService : MediaLibraryService() {
             logCarContinuityDecision(source, decision)
             decision.target
                 ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
-                ?.let { target -> scope.launch { recoverAndResumeCarContinuity(target) } }
+                ?.let { target -> scope.launch { carResumeEffects.recoverAndResume(target) } }
             if (!focusLoss) carRecovery.clearAwaiting()
         }
 
@@ -1635,167 +1635,27 @@ class PlaybackService : MediaLibraryService() {
                 output.id == hold && output.isHeadsetCandidate
             }
             if (!heldHeadsetIsConnected) return null
-            logHeldHeadset(hold)
+            carResumeEffects.logHeldHeadset(hold)
         }
         return hold
     }
 
     /**
-     * #36 — route recovery never rediscovers a destination from Android's live list.
-     *
-     * The lifecycle gate has already captured one exact headset. Android may temporarily omit it or clear the
-     * preferred route to Automatic; the recovery may wait for and reassert only that same target.
+     * Car recovery's route verification and one-shot Play transaction are owned here, not by
+     * service callbacks. This is not a second player or recovery state machine: the existing
+     * coordinator, output router and sleep timer remain the only authorities.
      */
-    private suspend fun recoverCarContinuityHeadset(target: CarArrivalResumeGate.Target): String? {
-        val held = carRecovery.secure(
-            target = target,
-            outputs = audioOutputs.outputs,
-            selectedId = audioOutputs.selectedId,
-            currentGeneration = { routeOwnership.currentGeneration },
+    private val carResumeEffects by lazy {
+        CarContinuityResumeEffects(
+            recovery = carRecovery,
+            audioOutputs = audioOutputs,
+            ownership = routeOwnership,
+            sleepTimer = sleepTimer,
+            currentPlayer = { player },
             selectionSequence = ::currentExplicitSelectionSequence,
-            onEvent = { event -> logCarContinuityRouteEvent(target, event) },
-            reassert = audioOutputs::reassert,
+            trace = { message, fields -> autoTraces.log(message, fields = fields) },
+            snapshotFields = ::carSnapshotFields,
         )
-        if (held == null) {
-            autoTraces.log(
-                "Car lifecycle continuity did not secure the headset",
-                fields = listOf(
-                    LogField.Public("phase", target.phase.name),
-                    LogField.Public("kind", target.outputId.substringBefore(':')),
-                    LogField.Public("reason", currentContinuityInvalidation(target)),
-                ) + carSnapshotFields(),
-            )
-            // A paused track cannot report its actual route. If Android Auto exposes only
-            // REMOTE_SUBMIX, allow a bounded MUTED playback probe of the original exact
-            // headset. The router must prove this player's sink before it unmutes.
-            if (carRecovery.isCurrent(
-                    target,
-                    routeOwnership.currentGeneration,
-                    currentExplicitSelectionSequence(),
-                ) && audioOutputs.canProbeHeldHeadset(target.outputId)
-            ) {
-                autoTraces.log("Car lifecycle will verify original headset silently")
-                return target.outputId
-            }
-            carRecovery.cancelPending()
-            return null
-        }
-        logHeldHeadset(held, target.phase)
-        return held
-    }
-
-    private fun logHeldHeadset(hold: String, phase: CarArrivalResumeGate.Phase? = null) {
-        autoTraces.log(
-            if (phase == null) {
-                "A car connected and the book was held in the headset"
-            } else {
-                "Car lifecycle continuity secured the headset"
-            },
-            fields = listOf(
-                LogField.Public("phase", phase?.name ?: "route-hold"),
-                LogField.Public("kind", hold.substringBefore(':')),
-            ) + carSnapshotFields(),
-        )
-    }
-
-    private fun logCarContinuityRouteEvent(target: CarArrivalResumeGate.Target, event: CarArrivalRouteRecovery.Event) {
-        autoTraces.log(
-            "Car lifecycle route recovery changed",
-            fields = listOf(
-                LogField.Public("phase", target.phase.name),
-                LogField.Public("event", event.name),
-                LogField.Public("kind", target.outputId.substringBefore(':')),
-            ) + carSnapshotFields(),
-        )
-    }
-
-    private fun currentContinuityInvalidation(target: CarArrivalResumeGate.Target): String =
-        carRecovery.invalidationReason(
-            target,
-            routeOwnership.currentGeneration,
-            currentExplicitSelectionSequence(),
-        )
-
-    private suspend fun recoverAndResumeCarContinuity(target: CarArrivalResumeGate.Target) {
-        // Media3 can hold playWhenReady=true while temporarily suppressing audible playback.
-        // It owns focus restoration in that state; issuing another Play or reasserting the output
-        // would only disturb a player that is already committed to continuing.
-        if (player?.playWhenReady == true) {
-            autoTraces.log("Car lifecycle left active playback intent with Media3")
-            carRecovery.cancelPending()
-            return
-        }
-        val heldHeadset = recoverCarContinuityHeadset(target)
-        resumeAfterCarContinuity(target, heldHeadset)
-    }
-
-    /**
-     * Issues one Play only after the exact target is secured and the final generation/intent guard passes.
-     *
-     * The log says Play was issued rather than claiming playback resumed. Actual audio movement is logged from
-     * onIsPlayingChanged, which is the first service callback that can truthfully make that claim.
-     */
-    private fun resumeAfterCarContinuity(target: CarArrivalResumeGate.Target, heldHeadset: String?) {
-        val current = player
-        val precheck = CarContinuityPlayPrecheck.decide(
-            hasPlayer = current != null,
-            mediaItemCount = current?.mediaItemCount ?: 0,
-            playWhenReady = current?.playWhenReady == true,
-        )
-        val assessment = carRecovery.assess(
-            target = target,
-            precheck = precheck,
-            currentGeneration = routeOwnership.currentGeneration,
-            selectionSequence = currentExplicitSelectionSequence(),
-            securedHeadsetId = heldHeadset,
-        )
-        if (precheck != CarContinuityPlayPrecheck.Proceed) {
-            if (precheck == CarContinuityPlayPrecheck.AlreadyPlaying) {
-                autoTraces.log(
-                    "Car lifecycle continuity skipped Play because playback intent was already active",
-                    fields = listOf(LogField.Public("phase", target.phase.name)) + carSnapshotFields(),
-                )
-            }
-            return
-        }
-        checkNotNull(current) { "Proceed implies a player" }
-        val result = checkNotNull(assessment.consumed)
-        autoTraces.log(
-            "Car lifecycle continuity final eligibility checked",
-            fields = listOf(
-                LogField.Public("phase", target.phase.name),
-                LogField.Public("eligible", result.accepted),
-                LogField.Public("reason", result.reason.name),
-                LogField.Public("kind", target.outputId.substringBefore(':')),
-            ) + carSnapshotFields(),
-        )
-        if (!result.accepted) {
-            carRecovery.clearAwaiting()
-            return
-        }
-
-        // A headset that stayed uniquely active can satisfy route recovery without reassertion.
-        // Preserve that exact original target as the safety guard before the muted probe.
-        if (heldHeadset != null && headsetAlreadyActive(heldHeadset, audioOutputs.outputs.value)) {
-            audioOutputs.protectPlayingHeadset(heldHeadset)
-        }
-        // An AudioManager preference is NOT proof of a physical route. Only the playing
-        // AudioTrack may unmute this one-shot recovery; other routes fail closed.
-        if (heldHeadset == null || !audioOutputs.beginMutedHeadsetProbe(heldHeadset)) {
-            carRecovery.clearAwaiting()
-            autoTraces.log("Car lifecycle refused unverified headset probe")
-            return
-        }
-        carRecovery.notePlayIssued(target)
-        autoTraces.log(
-            "Car lifecycle continuity issued Play",
-            fields = listOf(
-                LogField.Public("phase", target.phase.name),
-                LogField.Public("kind", target.outputId.substringBefore(':')),
-            ) + carSnapshotFields(),
-        )
-        sleepTimer.onServiceResumeIntent()
-        current.play()
     }
 
     private fun carSnapshotFields(): List<LogField> = listOf(
@@ -1874,7 +1734,7 @@ class PlaybackService : MediaLibraryService() {
         if (target == null) {
             holdHeadsetAgainstCar()
         } else {
-            recoverAndResumeCarContinuity(target)
+            carResumeEffects.recoverAndResume(target)
         }
         republishOutputButtons()
     }
@@ -1982,7 +1842,7 @@ class PlaybackService : MediaLibraryService() {
             audioOutputs.resettle()
             decision.target
                 ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
-                ?.let { target -> recoverAndResumeCarContinuity(target) }
+                ?.let { target -> carResumeEffects.recoverAndResume(target) }
             republishOutputButtons()
         }
     }
