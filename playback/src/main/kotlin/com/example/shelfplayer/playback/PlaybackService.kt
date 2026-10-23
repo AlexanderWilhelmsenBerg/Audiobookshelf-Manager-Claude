@@ -1640,12 +1640,6 @@ class PlaybackService : MediaLibraryService() {
         return hold
     }
 
-    /**
-     * #36 — route recovery never rediscovers a destination from Android's live list.
-     *
-     * The lifecycle gate has already captured one exact headset. Android may temporarily omit it or clear the
-     * preferred route to Automatic; the recovery may wait for and reassert only that same target.
-     */
     /** Recovery-to-Play effects share one coordinator claim; no second lifecycle or player. */
     private val carResumeEffects by lazy {
         CarContinuityResumeEffects(
