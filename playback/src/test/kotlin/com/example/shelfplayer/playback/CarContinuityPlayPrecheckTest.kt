@@ -59,7 +59,7 @@ class CarContinuityPlayPrecheckTest {
             .substringBefore("\n}")
 
         val precheck = resume.indexOf("CarContinuityPlayPrecheck.decide")
-        val verdict = resume.indexOf("carRecovery.assess")
+        val verdict = resume.indexOf("recovery.assess")
         val rejected = resume.indexOf("if (!result.accepted)")
         val play = resume.indexOf("current.play()")
         assertTrue(precheck in 0 until verdict, "the precheck precedes coordinator claim consumption")
