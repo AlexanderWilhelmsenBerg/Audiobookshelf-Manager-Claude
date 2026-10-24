@@ -102,7 +102,8 @@ internal class CarContinuityResumeEffects(
 
     /** Car binding alone preserves the heard headset; it never authorizes Play. */
     private suspend fun holdHeadsetAgainstCar() {
-        if ((currentPlayer()?.mediaItemCount ?: 0) == 0) {
+        val current = currentPlayer()?.takeIf { it.mediaItemCount > 0 }
+        if (current == null) {
             owner.onQueueEmptied()
             recovery.cancelAll()
             return
@@ -111,9 +112,8 @@ internal class CarContinuityResumeEffects(
         currentCoroutineContext().ensureActive()
         val available = outputs.outputs.value
         val hold = owner.headsetForCar(available) ?: return
-        val current = currentPlayer()
-        val healthyHeadset = current?.isPlaying == true && headsetAlreadyActive(hold, available)
-        if (current?.playWhenReady == true || healthyHeadset) {
+        val healthyHeadset = current.isPlaying && headsetAlreadyActive(hold, available)
+        if (current.playWhenReady || healthyHeadset) {
             outputs.protectPlayingHeadset(hold)
             log(
                 if (healthyHeadset) {

@@ -131,21 +131,7 @@ internal class CarContinuityResumeEffectsTest {
             }
             val gate = CarArrivalResumeGate()
             val recovery = CarContinuityRecoveryCoordinator(gate, CarArrivalRouteRecovery(250.milliseconds))
-            gate.observePlayingHeadset(owner.heardRoute, headset.id, owner.currentGeneration, 0)
-            assertEquals(
-                CarArrivalResumeGate.Status.Armed,
-                gate.onAudioFocusLoss(
-                    at = 10.seconds,
-                    heardRoute = owner.heardRoute,
-                    headsetId = headset.id,
-                    currentGeneration = owner.currentGeneration,
-                    explicitSelectionSequence = 0,
-                    carConnected = false,
-                ).status,
-            )
-            val arrival = gate.onCarArrival(11.seconds, owner.currentGeneration, 0)
-            assertEquals(CarArrivalResumeGate.Status.Ready, arrival.status)
-            val target = requireNotNull(arrival.target)
+            val target = readyTarget(gate, owner, headset.id)
 
             var selection = 0L
             val events = mutableListOf<LogEvent>()
@@ -155,16 +141,7 @@ internal class CarContinuityResumeEffectsTest {
                 }
             }
             val recorder = AndroidAutoTraceRecorder(logger, TestAppClock()) { emptyList() }
-            val player = Proxy.newProxyInstance(
-                ExoPlayer::class.java.classLoader,
-                arrayOf(ExoPlayer::class.java),
-            ) { _, method, _ ->
-                when (method.name) {
-                    "getPlayWhenReady" -> false
-                    "getMediaItemCount" -> 1
-                    else -> error("Stale recovery must not call Media3 ${method.name}")
-                }
-            } as ExoPlayer
+            val player = pausedPlayer()
             val effects = CarContinuityResumeEffects(
                 recovery = recovery,
                 outputs = AudioOutputRouter(
@@ -201,4 +178,30 @@ internal class CarContinuityResumeEffectsTest {
             assertFalse(recovery.isPlayAwaiting)
         }
     }
+
+    private fun readyTarget(
+        gate: CarArrivalResumeGate,
+        owner: RouteHeardOwnership,
+        headsetId: String,
+    ): CarArrivalResumeGate.Target {
+        gate.observePlayingHeadset(owner.heardRoute, headsetId, owner.currentGeneration, 0)
+        assertEquals(
+            CarArrivalResumeGate.Status.Armed,
+            gate.onAudioFocusLoss(10.seconds, owner.heardRoute, headsetId, owner.currentGeneration, 0, false).status,
+        )
+        val arrival = gate.onCarArrival(11.seconds, owner.currentGeneration, 0)
+        assertEquals(CarArrivalResumeGate.Status.Ready, arrival.status)
+        return requireNotNull(arrival.target)
+    }
+
+    private fun pausedPlayer(): ExoPlayer = Proxy.newProxyInstance(
+        ExoPlayer::class.java.classLoader,
+        arrayOf(ExoPlayer::class.java),
+    ) { _, method, _ ->
+        when (method.name) {
+            "getPlayWhenReady" -> false
+            "getMediaItemCount" -> 1
+            else -> error("Stale recovery must not call Media3 ${method.name}")
+        }
+    } as ExoPlayer
 }

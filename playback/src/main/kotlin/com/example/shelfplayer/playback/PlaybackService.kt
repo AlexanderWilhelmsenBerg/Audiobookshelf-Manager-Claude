@@ -402,21 +402,7 @@ class PlaybackService : MediaLibraryService() {
                 sleepTimer.onResumeInvalidation(origin)
             },
             onPlayWhenReadyRequest = { requestedPlay ->
-                controllerCommandGeneration += 1
-                logControllerTransportRequest(requestedPlay, exoPlayer)
-                routeExplicitCarPlay(requestedPlay, exoPlayer)
-                // A duplicate Pause still matters, even if the raw player emits no state transition.
-                sleepTimer.onControllerTransportIntent()
-                // A controller's Play/Pause is newer listener intent even when ExoPlayer is already in that
-                // state and therefore emits no onPlayWhenReadyChanged callback. Automatic continuity uses the
-                // raw ExoPlayer and bypasses this forwarding boundary, so it cannot cancel itself here.
-                carResumeEffects.cancelPending()
-                if (requestedPlay) {
-                    carRecovery.cancelPending()
-                } else {
-                    carRecovery.cancelAll()
-                }
-                carRecovery.clearAwaiting()
+                onControllerTransportRequest(requestedPlay, exoPlayer)
             },
             // #197 — headset Previous/Back become the configured relative skip.
             skipIntervals = { skips },
@@ -640,6 +626,18 @@ class PlaybackService : MediaLibraryService() {
             flushProgress()
         }
         super.onTaskRemoved(rootIntent)
+    }
+
+    /** External transport is newer listener intent even when Media3 emits no raw state transition. */
+    private fun onControllerTransportRequest(requestedPlay: Boolean, current: ExoPlayer) {
+        controllerCommandGeneration += 1
+        logControllerTransportRequest(requestedPlay, current)
+        routeExplicitCarPlay(requestedPlay, current)
+        // Duplicate Pause still matters. Automatic continuity uses the raw player and bypasses this boundary.
+        sleepTimer.onControllerTransportIntent()
+        carResumeEffects.cancelPending()
+        if (requestedPlay) carRecovery.cancelPending() else carRecovery.cancelAll()
+        carRecovery.clearAwaiting()
     }
 
     override fun onDestroy() {
