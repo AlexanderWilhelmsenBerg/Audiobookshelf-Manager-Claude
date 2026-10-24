@@ -72,8 +72,8 @@ class IdleResumeWiringTest {
     @Test
     fun `session player maps headset Previous to the configured skip`() {
         val construction = serviceSource()
-            .substringAfter("val sessionPlayer = ResumeFreshnessPlayer(")
-            .substringBefore("val mediaSession")
+            .substringAfter("internal fun createSessionPlayer(")
+            .substringBefore("private fun onControllerCommand(")
 
         assertTrue("skipIntervals = { skips }" in construction)
     }

@@ -356,101 +356,195 @@ class AudioOutputRouterThreadTest {
             withContext(dispatcher) { block() }
         }
     }
+}
 
-    private fun TestScope.fixture(): Fixture {
-        val reads = mutableListOf<Thread>()
-        val pauses = mutableListOf<Thread>()
-        val volumes = mutableListOf<Float>()
-        val preferredRequests = mutableListOf<Any?>()
-        val owningThread = Thread.currentThread()
-        val player = Proxy.newProxyInstance(
-            ExoPlayer::class.java.classLoader,
-            arrayOf(ExoPlayer::class.java),
-        ) { _, method, args ->
-            when (method.name) {
-                "isPlaying" -> {
-                    check(Thread.currentThread() == owningThread) { "ExoPlayer isPlaying on the wrong thread" }
-                    reads.add(Thread.currentThread())
-                    true
-                }
-
-                "setPreferredAudioDevice" -> {
-                    check(Thread.currentThread() == owningThread) {
-                        "setPreferredAudioDevice on the wrong Media3 thread"
-                    }
-                    preferredRequests.add(args?.get(0))
-                    null
-                }
-
-                "removeListener" -> null
-
-                "getVolume" -> volumes.lastOrNull() ?: 1f
-
-                "setVolume" -> {
-                    volumes.add(args?.get(0) as Float)
-                    null
-                }
-
-                "pause" -> {
-                    check(Thread.currentThread() == owningThread) { "ExoPlayer pause on the wrong thread" }
-                    pauses.add(Thread.currentThread())
-                    null
-                }
-
-                else -> error("Unexpected ExoPlayer call: ${method.name}")
+private fun TestScope.fixture(): Fixture {
+    val reads = mutableListOf<Thread>()
+    val pauses = mutableListOf<Thread>()
+    val volumes = mutableListOf<Float>()
+    val preferredRequests = mutableListOf<Any?>()
+    val owningThread = Thread.currentThread()
+    val player = Proxy.newProxyInstance(
+        ExoPlayer::class.java.classLoader,
+        arrayOf(ExoPlayer::class.java),
+    ) { _, method, args ->
+        when (method.name) {
+            "isPlaying" -> {
+                check(Thread.currentThread() == owningThread) { "ExoPlayer isPlaying on the wrong thread" }
+                reads.add(Thread.currentThread())
+                true
             }
-        } as ExoPlayer
-        val router = AudioOutputRouter(
-            context = RuntimeEnvironment.getApplication(),
-            logger = object : Logger {
-                override fun log(event: LogEvent) = Unit
-            },
-            applicationScope = this,
-            mainDispatcher = StandardTestDispatcher(testScheduler),
-        )
-        AudioOutputRouter::class.java.getDeclaredField("player").apply {
-            isAccessible = true
-            set(router, player)
+
+            "setPreferredAudioDevice" -> {
+                check(Thread.currentThread() == owningThread) {
+                    "setPreferredAudioDevice on the wrong Media3 thread"
+                }
+                preferredRequests.add(args?.get(0))
+                null
+            }
+
+            "removeListener" -> null
+
+            "getVolume" -> volumes.lastOrNull() ?: 1f
+
+            "setVolume" -> {
+                volumes.add(args?.get(0) as Float)
+                null
+            }
+
+            "pause" -> {
+                check(Thread.currentThread() == owningThread) { "ExoPlayer pause on the wrong thread" }
+                pauses.add(Thread.currentThread())
+                null
+            }
+
+            else -> error("Unexpected ExoPlayer call: ${method.name}")
         }
-        return Fixture(router, reads, pauses, volumes, preferredRequests)
+    } as ExoPlayer
+    val router = AudioOutputRouter(
+        context = RuntimeEnvironment.getApplication(),
+        logger = object : Logger {
+            override fun log(event: LogEvent) = Unit
+        },
+        applicationScope = this,
+        mainDispatcher = StandardTestDispatcher(testScheduler),
+    )
+    AudioOutputRouter::class.java.getDeclaredField("player").apply {
+        isAccessible = true
+        set(router, player)
+    }
+    return Fixture(router, reads, pauses, volumes, preferredRequests)
+}
+
+private data class Fixture(
+    val router: AudioOutputRouter,
+    val readThreads: List<Thread>,
+    val pauseThreads: List<Thread>,
+    val volumeChanges: List<Float>,
+    val preferredRequests: List<Any?>,
+) {
+    fun measuredRoutes(routes: () -> Set<String>?) {
+        AudioOutputRouter::class.java.getDeclaredField("currentTrackRoutes").apply {
+            isAccessible = true
+            set(router, routes)
+        }
     }
 
-    private data class Fixture(
-        val router: AudioOutputRouter,
-        val readThreads: List<Thread>,
-        val pauseThreads: List<Thread>,
-        val volumeChanges: List<Float>,
-        val preferredRequests: List<Any?>,
-    ) {
-        fun measuredRoutes(routes: () -> Set<String>?) {
-            AudioOutputRouter::class.java.getDeclaredField("currentTrackRoutes").apply {
-                isAccessible = true
-                set(router, routes)
-            }
-        }
+    fun safetyListener(): Player.Listener = AudioOutputRouter::class.java.getDeclaredField("routeSafetyListener").run {
+        isAccessible = true
+        get(router) as Player.Listener
+    }
 
-        fun safetyListener(): Player.Listener =
-            AudioOutputRouter::class.java.getDeclaredField("routeSafetyListener").run {
-                isAccessible = true
-                get(router) as Player.Listener
-            }
+    fun guardId(): String? = AudioOutputRouter::class.java.getDeclaredField("guardedHeadsetId").run {
+        isAccessible = true
+        get(router) as? String
+    }
 
-        fun guardId(): String? = AudioOutputRouter::class.java.getDeclaredField("guardedHeadsetId").run {
+    fun colliding(outputId: String) {
+        AudioOutputRouter::class.java.getDeclaredField("collidingOutputIds").apply {
             isAccessible = true
-            get(router) as? String
+            set(router, setOf(outputId))
+        }
+    }
+
+    fun replacePlayerFrom(other: Fixture) {
+        val field = AudioOutputRouter::class.java.getDeclaredField("player").apply { isAccessible = true }
+        field.set(router, field.get(other.router))
+    }
+
+    fun guard(outputId: String) {
+        AudioOutputRouter::class.java.getDeclaredField("guardedHeadsetId").apply {
+            isAccessible = true
+            set(router, outputId)
+        }
+        @Suppress("UNCHECKED_CAST")
+        val selection = AudioOutputRouter::class.java.getDeclaredField("_selectedId").run {
+            isAccessible = true
+            get(router) as MutableStateFlow<String?>
+        }
+        selection.value = outputId
+    }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class AudioOutputRouterQueuedSafetyTest {
+    @Test
+    fun `queued safety cannot act on a replacement player`() = runTest {
+        val fixture = fixture()
+        val replacement = fixture()
+        fixture.guard("bluetooth:original")
+        fixture.colliding("bluetooth:original")
+        fixture.safetyListener().onIsPlayingChanged(true)
+        fixture.replacePlayerFrom(replacement)
+
+        runCurrent()
+
+        assertTrue(fixture.pauseThreads.isEmpty())
+        assertTrue(replacement.pauseThreads.isEmpty(), "old routing work cannot pause a replacement player")
+        assertTrue(replacement.readThreads.isEmpty())
+    }
+
+    @Test
+    fun `queued collision safety cannot pause after the listener releases the old guard`() = runTest {
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+        fixture.colliding("bluetooth:original")
+        fixture.router.resettle()
+
+        fixture.router.selectCar()
+        runCurrent()
+
+        assertTrue(fixture.pauseThreads.isEmpty(), "old collision work must not override the newer Car choice")
+        assertTrue(fixture.readThreads.isEmpty(), "the released request cannot read the current player")
+    }
+
+    @Test
+    fun `queued safety cannot cross a newer same endpoint ownership epoch`() = runTest {
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+        fixture.colliding("bluetooth:original")
+        fixture.router.resettle()
+        fixture.router.selectCar()
+        // The new owner can choose the same endpoint again before the old main-dispatcher callback runs.
+        fixture.guard("bluetooth:original")
+
+        runCurrent()
+
+        assertTrue(fixture.pauseThreads.isEmpty(), "an old callback cannot act on the new same-id ownership")
+    }
+
+    @Test
+    fun `current collision still fails closed even when the measured id matches`() = runTest {
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+        fixture.colliding("bluetooth:original")
+        fixture.measuredRoutes { setOf("bluetooth:original") }
+
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+
+        assertEquals(1, fixture.pauseThreads.size, "colliding endpoints are never exact physical proof")
+    }
+
+    @Test
+    fun `selection invalidation inside route measurement prevents the old pause`() = runTest {
+        val fixture = fixture()
+        fixture.guard("bluetooth:original")
+        fixture.colliding("bluetooth:original")
+        var invalidate = true
+        fixture.measuredRoutes {
+            if (invalidate) {
+                invalidate = false
+                fixture.router.selectCar()
+            }
+            null
         }
 
-        fun guard(outputId: String) {
-            AudioOutputRouter::class.java.getDeclaredField("guardedHeadsetId").apply {
-                isAccessible = true
-                set(router, outputId)
-            }
-            @Suppress("UNCHECKED_CAST")
-            val selection = AudioOutputRouter::class.java.getDeclaredField("_selectedId").run {
-                isAccessible = true
-                get(router) as MutableStateFlow<String?>
-            }
-            selection.value = outputId
-        }
+        fixture.safetyListener().onIsPlayingChanged(true)
+        runCurrent()
+
+        assertTrue(fixture.pauseThreads.isEmpty(), "a route read cannot revive invalidated headset work")
     }
 }

@@ -42,12 +42,13 @@ class CarProfileSelectionWiringTest {
 
     @Test
     fun `re-selecting the active profile is decided inside the serialised switch`() {
-        val switch = serviceSource()
-            .substringAfter("private suspend fun switchProfileFromCar(")
+        val service = serviceSource()
+        assertTrue("profileSwitcher.select(profileId)" in service)
+        val switch = File("src/main/kotlin/com/example/shelfplayer/playback/CarProfileSwitcher.kt").readText()
+            .substringAfter("suspend fun select(")
             .substringBefore("private suspend fun switchTo(")
-
-        val locked = switch.indexOf("carProfileSwitch.withLock")
-        val active = switch.indexOf("auto.isActiveProfile(profileId)")
+        val locked = switch.indexOf("gate.withLock")
+        val active = switch.indexOf("isActive(profileId)")
         val switched = switch.indexOf("switchTo(profileId)")
         assertTrue(locked >= 0, "car profile switches must be serialised")
         assertTrue(active > locked, "the active-profile check must run inside the lock")

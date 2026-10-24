@@ -18,6 +18,7 @@ import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -491,13 +492,25 @@ class AudioOutputRouter @Inject constructor(
     }
 
     private fun publish() {
-        val routed = currentTrackRoutes() ?: routedIds()
+        // One publication must not mix a measured sink with a later policy/preference observation.
+        // This snapshot describes presentation; the guard below still reads fresh actual-track proof
+        // on Media3's dispatcher before deciding whether playback may become audible.
+        val actual = currentTrackRoutes()
+        val predicted = if (actual == null) routedIds() else null
+        val routed = actual ?: predicted
         val chosen = _selectedId.value
+        val source = when {
+            actual != null -> AudioOutputActivitySource.PlayingAudioTrack
+            predicted != null -> AudioOutputActivitySource.FrameworkMediaPolicy
+            chosen != null -> AudioOutputActivitySource.SelectedPreference
+            else -> AudioOutputActivitySource.Unmeasured
+        }
         pauseUnsafeGuardedPlayback()
         _outputs.value = live.mapNotNull { (id, info) ->
             endpointRegistry.find(info.id, info.type, info.productName?.toString())?.output?.copy(
                 id = id,
                 isActive = routed?.contains(id) ?: (id == chosen),
+                activitySource = source,
             )
         }
     }
@@ -512,15 +525,19 @@ class AudioOutputRouter @Inject constructor(
         // ExoPlayer application looper. Even reading isPlaying there crashes Media3.
         // Check only our own routing state before dispatching; every Player access,
         // including the initial isPlaying read, belongs on MainImmediate.
+        val epoch = preferenceEffects.snapshot()
         val guarded = guardedHeadsetId ?: return
         if (_selectedId.value != guarded) return
+        val target = player ?: return
         applicationScope.launch(mainDispatcher) {
-            val current = player ?: return@launch
+            if (!isCurrentGuard(epoch, target, guarded)) return@launch
+            val current = target
             // A framework media-policy prediction is never proof of this AudioTrack's
             // physical sink. In particular, a paused-to-Play car reconnect can report
             // a predicted headset while the actual track is RemoteSubmix or unobservable.
             // A guarded headset must fail closed until this playing track is measured.
             val actualRoute = currentTrackRoutes()
+            if (!isCurrentGuard(epoch, target, guarded)) return@launch
             val probe = mutedProbe
             if (probe != null) {
                 verifyMutedHeadsetProbe(current, actualRoute, probe)
@@ -550,6 +567,11 @@ class AudioOutputRouter @Inject constructor(
             )
         }
     }
+
+    /** A queued safety observation belongs to one preference epoch, endpoint and attached player. */
+    private fun isCurrentGuard(epoch: Long, target: ExoPlayer, guarded: String): Boolean =
+        preferenceEffects.isCurrent(epoch) && player === target && guardedHeadsetId == guarded &&
+            _selectedId.value == guarded
 
     /** Framework-reported devices for BookWave's media attributes, or `null` before API 33. */
     private fun routedIds(): Set<String>? {

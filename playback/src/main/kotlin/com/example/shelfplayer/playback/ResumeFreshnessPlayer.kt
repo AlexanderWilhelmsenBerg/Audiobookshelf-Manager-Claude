@@ -6,6 +6,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import com.example.shelfplayer.core.model.playback.SkipIntervals
+import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 
 /**
@@ -37,9 +38,11 @@ internal class ResumeFreshnessPlayer(
     private val invalidate: (ResumeInvalidation) -> Unit,
     private val onPlayWhenReadyRequest: (Boolean) -> Unit,
     private val skipIntervals: () -> SkipIntervals,
+    private val allowEffects: () -> Boolean = { true },
 ) : ForwardingSimpleBasePlayer(delegate) {
 
     public override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+        if (!allowEffects()) return Futures.immediateVoidFuture()
         // This is the controller intent boundary, not an observed ExoPlayer state transition. In particular,
         // a second Pause while focus has already made playWhenReady=false still reaches here, which lets #36
         // invalidate stale car-continuity evidence even though the delegate may emit no listener callback.
@@ -54,11 +57,11 @@ internal class ResumeFreshnessPlayer(
         if (delegate.mediaItemCount == 0 || delegate.playWhenReady) {
             return super.handleSetPlayWhenReady(true)
         }
-        if (consumeFreshStart()) return super.handleSetPlayWhenReady(true)
-        return preparePlay()
+        return if (consumeFreshStart()) super.handleSetPlayWhenReady(true) else preparePlay()
     }
 
     public override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
+        if (!allowEffects()) return Futures.immediateVoidFuture()
         invalidate(ResumeInvalidation.Seek)
         val target = relativeTarget(seekCommand)
             ?: return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
@@ -77,16 +80,19 @@ internal class ResumeFreshnessPlayer(
         startIndex: Int,
         startPositionMs: Long,
     ): ListenableFuture<*> {
+        if (!allowEffects()) return Futures.immediateVoidFuture()
         invalidate(ResumeInvalidation.MediaChanged)
         return super.handleSetMediaItems(mediaItems, startIndex, startPositionMs)
     }
 
     public override fun handleAddMediaItems(index: Int, mediaItems: List<MediaItem>): ListenableFuture<*> {
+        if (!allowEffects()) return Futures.immediateVoidFuture()
         invalidate(ResumeInvalidation.MediaChanged)
         return super.handleAddMediaItems(index, mediaItems)
     }
 
     public override fun handleRemoveMediaItems(fromIndex: Int, toIndex: Int): ListenableFuture<*> {
+        if (!allowEffects()) return Futures.immediateVoidFuture()
         invalidate(ResumeInvalidation.MediaChanged)
         return super.handleRemoveMediaItems(fromIndex, toIndex)
     }
@@ -96,12 +102,20 @@ internal class ResumeFreshnessPlayer(
         toIndex: Int,
         mediaItems: List<MediaItem>,
     ): ListenableFuture<*> {
+        if (!allowEffects()) return Futures.immediateVoidFuture()
         invalidate(ResumeInvalidation.MediaChanged)
         return super.handleReplaceMediaItems(fromIndex, toIndex, mediaItems)
     }
 
     public override fun handleStop(): ListenableFuture<*> {
+        if (!allowEffects()) return Futures.immediateVoidFuture()
         invalidate(ResumeInvalidation.Stop)
         return super.handleStop()
+    }
+
+    /** Media3 also prepares/seeks before its fallback Play on a failed cold-resumption future. */
+    public override fun handlePrepare(): ListenableFuture<*> {
+        if (!allowEffects()) return Futures.immediateVoidFuture()
+        return super.handlePrepare()
     }
 }

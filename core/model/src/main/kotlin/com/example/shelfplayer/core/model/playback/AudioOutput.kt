@@ -13,6 +13,8 @@ data class AudioOutput(
     val kind: DeviceKind,
     val isActive: Boolean = false,
     val role: AudioOutputRole = kind.defaultOutputRole,
+    /** The evidence behind [isActive]; activity alone is never physical-route proof. */
+    val activitySource: AudioOutputActivitySource = AudioOutputActivitySource.Unmeasured,
 ) {
     /** The built-in/known speaker class. Observed for safety, never offered as a BookWave destination. */
     val isSpeaker: Boolean get() = role == AudioOutputRole.Speaker
@@ -29,6 +31,21 @@ data class AudioOutput(
      */
     val isHeadsetCandidate: Boolean
         get() = role == AudioOutputRole.Headset || role == AudioOutputRole.Ambiguous
+}
+
+/** Where activity came from; a source alone does not confirm one safe physical sink. */
+enum class AudioOutputActivitySource {
+    /** The current playing AudioTrack reported its sinks. Multiple sinks remain ambiguous. */
+    PlayingAudioTrack,
+
+    /** Android predicted destinations for media attributes; it did not measure this track. */
+    FrameworkMediaPolicy,
+
+    /** Android cannot report a route on this platform; only BookWave's preference is available. */
+    SelectedPreference,
+
+    /** Legacy/external observations without a stated origin. Never treated as track proof. */
+    Unmeasured,
 }
 
 /**

@@ -63,8 +63,11 @@ renaming or extracting callbacks should no longer fail merely because service so
 
 This is **not** a full MediaSession playback pipeline: the fixture does not initialize a
 real ExoPlayer, receive OEM audio focus, or prove AudioTrack output. The listener callback is
-invoked through the existing test fixture's reflective seam; Phase 3 should replace that
-seam with a stable service-facing event contract during extraction. The stronger
+invoked through the existing test fixture's reflective seam. The Phase 3 completion adds
+`createSessionPlayer`, the actual service forwarding-player factory, and drives its
+Seek/Stop/media replacement paths with a real ExoPlayer in
+`PlaybackServiceCommandContinuityTest`. This supplements the lifecycle fixture without
+claiming a complete Hilt-created service. The stronger
 `AudioOutputRouterThreadTest` source-backed fail-closed guard is intentionally retained
 until equivalent runtime evidence tests cover an adversarial framework-policy fallback.
 
@@ -106,6 +109,43 @@ assertions. Its class-scoped shadow adapts only the rename primitive to Android'
 overwrite semantics: host Java `File.renameTo` on Windows otherwise leaves the first
 snapshot in place. An added assertion requires all 28 accepted commands in the committed
 file before restoration; no recorder test is skipped or relaxed.
+
+## Phase 3 completion coverage
+
+`PlaybackServiceCommandContinuityTest` drives the service's actual forwarding-player
+wiring and notification skip while production continuity recovery is suspended. A
+positive control reaches one muted raw Play; Seek, Stop, media replacement and skip
+revoke that transaction even when the already-paused player emits no raw Pause
+transition. Notification skip also revokes the existing deferred-media claim.
+
+`ControllerQueueResolutionTest` covers authoritative start preservation, newer
+commands during preparation and durable acceptance, profile A/B/A, player replacement,
+teardown, foreign-owner sessions, locking and stale failed requests. The helper uses
+the existing guarded `BookChanges` seam; existing durable-session tests remain required.
+`SessionCallbackFuturesTest` checks completion on the application dispatcher, both
+cancellation directions and privacy-safe failure mapping. `CarProfileSwitcherTest` and
+`PlaybackResumptionCallbacksTest` protect serialized/no-op profile switching, refusal,
+metadata-only no-open behavior and passive cold-play intent after successful acceptance.
+`ControllerQueueMedia3ReplayTest` connects real MediaControllers to a MediaLibrarySession:
+a newer controller Stop cancels a suspended production queue-resolution future without
+clearing the existing item, while ordinary Set-then-Play still completes. Its callback
+composition uses the production request/future owners; it is not a full Hilt service test.
+Its cold-resumption cases also exercise Media3's actual failure fallback: a cancelled
+old request cannot prepare/Play newer media, valid cold completion still installs and
+plays once as passive intent, and a later explicit Play remains allowed. Future tests
+also cover already-completed results and queued listener execution.
+
+`AudioOutputActivityEvidenceTest` exercises the production router with conflicting
+measured, predicted and selected outputs. The source of presentation activity is
+explicit, including unknown/legacy evidence. `AudioOutputRouterQueuedSafetyTest`
+checks that released guards and superseded effect generations cannot pause a newer
+choice, while a current ambiguous/colliding endpoint still fails closed. Existing
+actual-track-only safety assertions remain intact.
+
+See [the Phase 3 completion checklist](../architecture/playback-phase3-completion.md)
+and ADR-0031. These software tests strengthen S01, S04, S08, S12–S20 and S22; the physical
+acceptance column above remains authoritative. #276/#277 and #288 are not certified by
+these tests.
 
 1. Expand service-level adapter replay with actual `PlaybackService`/MediaSession callbacks where
    practical before moving command or lifecycle ownership. The Phase 1 policy-only runner does not

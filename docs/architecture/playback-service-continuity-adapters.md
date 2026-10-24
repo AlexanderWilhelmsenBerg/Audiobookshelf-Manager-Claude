@@ -42,6 +42,14 @@ cancels pending work; stale completion discards only its own gate-issued episode
 See [the effect boundary](playback-recovery-play-effects.md) and
 [ADR-0030](../adr/0030-continuity-effects-have-one-service-scoped-lifetime.md).
 
+Phase 3 completion also separates browse, profile switching, cold resumption and
+asynchronous queue acceptance from the service's connection/event adapters. New
+controller movement and notification skips use the shared invalidation boundary;
+slow queue callbacks cannot publish a stale live book after newer intent. Typed
+activity provenance retains the distinction between track proof, policy and
+preference. See [the completion checklist](playback-phase3-completion.md) and
+[ADR-0031](../adr/0031-controller-requests-have-scoped-acceptance.md).
+
 ## 2026-10-21 extended hardware regression and safety stabilization
 
 The initial physical PASS of build 2237 was superseded by a second Android Auto

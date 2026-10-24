@@ -25,6 +25,12 @@ focus/noisy interruptions to the existing recovery coordinator. Ready decisions 
 the service's current player; lifecycle and eligibility policy do not move into that Job.
 The extraction does not change accepted policy or infer output identity.
 
+`PlaybackService.onControllerCommand` also handles forwarding-player Seek/Stop/media
+replacement and custom notification skips. It invalidates the existing command,
+freshness, sleep and continuity work even when an already-paused player emits no raw
+transport callback. Raw automatic Play retains its separate recovery/diagnostic
+semantics. See ADR-0031 and `PlaybackServiceCommandContinuityTest`.
+
 `PlaybackTransportInputTest` covers Play for all reasons, system focus/noisy
 pause, user/remote pause, end-of-item, unknown reasons, stable diagnostic labels,
 and the lack of fabricated platform interruption events.
