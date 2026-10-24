@@ -112,7 +112,7 @@ internal class CarContinuityResumeEffectsTest {
     }
 
     @Test
-    fun \`suspended route recovery refuses a replaced book or newer destination before Play\`() = runTest {
+    fun `suspended route recovery refuses a replaced book or newer destination before Play`() = runTest {
         // The same production gate and effect entrypoint are used in both permutations.
         // An unavailable endpoint keeps secure() suspended; virtual time advances the bounded wait.
         for (replaceBook in listOf(true, false)) {
@@ -160,7 +160,7 @@ internal class CarContinuityResumeEffectsTest {
                 when (method.name) {
                     "getPlayWhenReady" -> false
                     "getMediaItemCount" -> 1
-                    else -> error("Stale recovery must not call Media3 \${method.name}")
+                    else -> error("Stale recovery must not call Media3 ${method.name}")
                 }
             } as ExoPlayer
             val effects = CarContinuityResumeEffects(

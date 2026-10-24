@@ -172,6 +172,7 @@ internal class CarContinuityResumeEffects(
         onServiceResumeIntent()
         current.play()
     }
+
     /**
      * The service owns Android Auto correlation and redaction. Recovery effects emit only
      * allow-listed fields through this callback, never owning a second diagnostic timeline.
