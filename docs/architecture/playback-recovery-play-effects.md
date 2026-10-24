@@ -53,3 +53,16 @@ and one-shot consumption.
 The hardware headset button handoff remains separately unresolved (#276/#277).
 No new hardware destination attribution is introduced; progress HTTP 401
 belongs to #288.
+
+## Phase 3 continuation — diagnostic boundary and stale-effect rejection
+
+The effect transaction now accepts a privacy-safe diagnostic emitter supplied by
+`PlaybackService` instead of depending directly on `AndroidAutoTraceRecorder`.
+The existing recorder still owns event correlation, elapsed timing and log privacy;
+no second trace clock or emitter state was created.
+
+The direct Robolectric/coroutine test covers a suspended route-availability wait
+interrupted by either a replacement book generation or a newer explicit output
+selection. Both must reject the old claim without Play or sleep-timer resume,
+and diagnostics name only the invalidation reason. The existing active-intent,
+no-duplicate-Play, route evidence, scenario and Media3 tests remain required.

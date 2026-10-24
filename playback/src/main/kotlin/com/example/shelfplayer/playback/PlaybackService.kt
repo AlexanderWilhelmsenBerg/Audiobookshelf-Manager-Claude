@@ -1646,7 +1646,7 @@ class PlaybackService : MediaLibraryService() {
             recovery = carRecovery,
             outputs = audioOutputs,
             owner = routeOwnership,
-            trace = autoTraces,
+            trace = { message, fields -> autoTraces.log(message, fields = fields) },
             currentPlayer = { player },
             selectionSequence = ::currentExplicitSelectionSequence,
             snapshot = ::carSnapshotFields,

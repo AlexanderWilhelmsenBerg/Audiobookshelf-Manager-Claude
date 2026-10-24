@@ -15,7 +15,7 @@ internal class CarContinuityResumeEffects(
     private val recovery: CarContinuityRecoveryCoordinator,
     private val outputs: AudioOutputRouter,
     private val owner: RouteHeardOwnership,
-    private val trace: AndroidAutoTraceRecorder,
+    private val trace: (String, List<LogField>) -> Unit,
     private val currentPlayer: () -> ExoPlayer?,
     private val selectionSequence: () -> Long,
     private val snapshot: () -> List<LogField>,
@@ -32,7 +32,7 @@ internal class CarContinuityResumeEffects(
             reassert = outputs::reassert,
         )
         if (held == null) {
-            trace.log(
+            log(
                 "Car lifecycle continuity did not secure the headset",
                 fields = listOf(
                     LogField.Public("phase", target.phase.name),
@@ -49,7 +49,7 @@ internal class CarContinuityResumeEffects(
                     selectionSequence(),
                 ) && outputs.canProbeHeldHeadset(target.outputId)
             ) {
-                trace.log("Car lifecycle will verify original headset silently")
+                log("Car lifecycle will verify original headset silently")
                 return target.outputId
             }
             recovery.cancelPending()
@@ -60,7 +60,7 @@ internal class CarContinuityResumeEffects(
     }
 
     fun logHeldHeadset(hold: String, phase: CarArrivalResumeGate.Phase? = null) {
-        trace.log(
+        log(
             if (phase == null) {
                 "A car connected and the book was held in the headset"
             } else {
@@ -74,7 +74,7 @@ internal class CarContinuityResumeEffects(
     }
 
     private fun logCarContinuityRouteEvent(target: CarArrivalResumeGate.Target, event: CarArrivalRouteRecovery.Event) {
-        trace.log(
+        log(
             "Car lifecycle route recovery changed",
             fields = listOf(
                 LogField.Public("phase", target.phase.name),
@@ -96,7 +96,7 @@ internal class CarContinuityResumeEffects(
         // It owns focus restoration in that state; issuing another Play or reasserting the output
         // would only disturb a player that is already committed to continuing.
         if (currentPlayer()?.playWhenReady == true) {
-            trace.log("Car lifecycle left active playback intent with Media3")
+            log("Car lifecycle left active playback intent with Media3")
             recovery.cancelPending()
             return
         }
@@ -126,7 +126,7 @@ internal class CarContinuityResumeEffects(
         )
         if (precheck != CarContinuityPlayPrecheck.Proceed) {
             if (precheck == CarContinuityPlayPrecheck.AlreadyPlaying) {
-                trace.log(
+                log(
                     "Car lifecycle continuity skipped Play because playback intent was already active",
                     fields = listOf(LogField.Public("phase", target.phase.name)) + snapshot(),
                 )
@@ -135,7 +135,7 @@ internal class CarContinuityResumeEffects(
         }
         checkNotNull(current) { "Proceed implies a player" }
         val result = checkNotNull(assessment.consumed)
-        trace.log(
+        log(
             "Car lifecycle continuity final eligibility checked",
             fields = listOf(
                 LogField.Public("phase", target.phase.name),
@@ -158,11 +158,11 @@ internal class CarContinuityResumeEffects(
         // AudioTrack may unmute this one-shot recovery; other routes fail closed.
         if (heldHeadset == null || !outputs.beginMutedHeadsetProbe(heldHeadset)) {
             recovery.clearAwaiting()
-            trace.log("Car lifecycle refused unverified headset probe")
+            log("Car lifecycle refused unverified headset probe")
             return
         }
         recovery.notePlayIssued(target)
-        trace.log(
+        log(
             "Car lifecycle continuity issued Play",
             fields = listOf(
                 LogField.Public("phase", target.phase.name),
@@ -172,4 +172,9 @@ internal class CarContinuityResumeEffects(
         onServiceResumeIntent()
         current.play()
     }
+    /**
+     * The service owns Android Auto correlation and redaction. Recovery effects emit only
+     * allow-listed fields through this callback, never owning a second diagnostic timeline.
+     */
+    private fun log(message: String, fields: List<LogField> = emptyList()) = trace(message, fields)
 }
