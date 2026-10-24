@@ -11,7 +11,7 @@ generation/explicit-selection/precheck assessment, obtaining a muted headset
 probe, and issuing **at most one** Media3 Play after the recovery coordinator
 consumes its one-shot claim.
 
-It introduces **no mutable recovery state** and no additional player,
+It introduces **no mutable recovery policy state** and no additional player,
 MediaLibrarySession, car lifecycle authority or output-route policy.
 `CarContinuityRecoveryCoordinator` still owns episode eligibility, invalidation,
 route recovery and consumption. `AudioOutputRouter` still owns preferred-output
@@ -25,6 +25,30 @@ existing service/Media3 dispatcher, never from the audio-device callback.
 The same current route generation and explicit-selection sequence are read
 before and after suspended route securing; pending work may not resurrect
 Play for an old book, old output intent or detached session.
+
+## One service-scoped work lifetime
+
+The component now owns the pending coroutine for both route holding and recovery,
+replacing three independently launched service recovery paths and the service-local
+hold/arrival effect helpers. Lifecycle decisions remain synchronous in the existing
+service/`CarLifecycleAuthority`/coordinator boundaries. `onArrival`, `onDeparture`
+and `onRecoveryReady` then schedule effects using the supplied service scope.
+
+A repeated Ready callback retains the current transaction. A newer episode cancels
+the old wait; a later ordinary controller bind cannot supersede a current Ready
+transaction. Controller transport, raw player transitions, accepted output choices,
+book/queue replacement and service destruction cancel work immediately. The existing
+route owner reports accepted selection sequences; the service stores no duplicate
+selection counter. Cancellation is checked after synchronizing listener intent and
+before touching route protection. A still-active Media3 Play intent may retain the
+exact headset guard but cannot trigger another preferred-device write or Play.
+
+The pending Job/target handle is installed before immediate dispatch. Cancellation
+from the transaction's own synchronous Play callback therefore reaches that Job,
+while the coordinator preserves its awaiting-audible diagnostic confirmation.
+The gate-issued Target instance identifies its episode: stale/equal-value target
+completion cannot consume or clear a successor. No second episode generation is added.
+See [ADR-0030](../adr/0030-continuity-effects-have-one-service-scoped-lifetime.md).
 
 ## Fail-closed behavior
 
@@ -49,6 +73,15 @@ intent, and that emitted diagnostics do not leak endpoint IDs.
 reachability invariant using the extracted source, while the Phase 2 S01–S22
 and service-level Robolectric scenarios guard recovery ordering, cancellation
 and one-shot consumption.
+
+`CarContinuityResumeTransactionTest` executes the production coordinator, router and
+effect owner with a thread-checking Media3 proxy. It checks accepted single Play and
+timer intent, muted exact-track confirmation, unknown/wrong/multiple sinks pausing
+before volume restoration, refused probes, current-player lookup after suspension,
+overlapping episodes, duplicate callbacks, cancelled waits, service-scope disposal,
+synchronous self-Play callbacks and newer selection discovered during hold setup.
+`AudioTrackRouteQueryTest` rejects replaced/released track observations and platform
+query failures through the production monitor. Physical routing remains unverified.
 
 The hardware headset button handoff remains separately unresolved (#276/#277).
 No new hardware destination attribution is introduced; progress HTTP 401

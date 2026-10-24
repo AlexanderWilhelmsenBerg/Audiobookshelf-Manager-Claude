@@ -86,8 +86,8 @@ internal class RouteHeardOwnership {
         outputs: List<AudioOutput>,
         isPlaying: Boolean,
         selectionSequence: Long? = null,
-    ) {
-        if (selectionSequence != null && selectionSequence <= lastExplicitSelectionSequence) return
+    ): Boolean {
+        if (selectionSequence != null && selectionSequence <= lastExplicitSelectionSequence) return false
         if (selectionSequence != null) lastExplicitSelectionSequence = selectionSequence
 
         val generation = activeGeneration
@@ -97,7 +97,7 @@ internal class RouteHeardOwnership {
             listenerIntent = ListenerIntent.Automatic(previous?.outputId)
             heardRoute = null
             if (isPlaying) observeFrameworkWhilePlaying(outputs)
-            return
+            return true
         }
 
         listenerIntent = ListenerIntent.Device(outputId)
@@ -107,6 +107,7 @@ internal class RouteHeardOwnership {
         if (isPlaying && generation != null && chosen != null) {
             heardRoute = chosen.asHeard(generation, RouteHeardEvidence.ListenerSelectionWhilePlaying)
         }
+        return true
     }
 
     /** The service has just observed real playback; capture the strongest route evidence available now. */

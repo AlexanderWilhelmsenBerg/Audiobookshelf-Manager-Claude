@@ -151,4 +151,56 @@ class CarContinuityRecoveryCoordinatorTest {
         assertFalse(coordinator.isPlayAwaiting)
         assertNull(coordinator.playbackBecameActive(target.generation, 0))
     }
+
+    @Test
+    fun staleCompletionCannotConsumeOrClearANewerEpisode() {
+        for (precheck in CarContinuityPlayPrecheck.entries) {
+            val (coordinator, old) = ready()
+            val newer = nextDeparture(coordinator, old)
+            coordinator.notePlayIssued(newer)
+
+            assertFalse(coordinator.assess(old, precheck, old.generation, 0, headset.id).mayPlay)
+
+            assertTrue(coordinator.isCurrent(newer, newer.generation, 0), "old $precheck must leave the new claim")
+            assertTrue(coordinator.isPlayAwaiting, "old $precheck must leave the new diagnostic record")
+            assertTrue(
+                coordinator.assess(newer, CarContinuityPlayPrecheck.Proceed, newer.generation, 0, headset.id).mayPlay,
+            )
+            assertEquals(newer, coordinator.playbackBecameActive(newer.generation, 0))
+        }
+    }
+
+    @Test
+    fun equalDestinationAndGenerationDoNotReviveAnEarlierEpisode() {
+        val (coordinator, old) = ready()
+        nextDeparture(coordinator, old)
+        coordinator.carArrival(14.seconds, old.generation, 0)
+        val newer = requireNotNull(
+            coordinator.platformInterruption(15.seconds, inputs(old), focusLoss = true).target,
+        )
+        assertEquals(old, newer, "route identity is unchanged; the owner-issued claim is new")
+        assertFalse(coordinator.isCurrent(old, old.generation, 0), "an old callback cannot borrow the new claim")
+        assertFalse(coordinator.assess(old, CarContinuityPlayPrecheck.Proceed, old.generation, 0, headset.id).mayPlay)
+        assertTrue(
+            coordinator.assess(newer, CarContinuityPlayPrecheck.Proceed, newer.generation, 0, headset.id).mayPlay,
+        )
+    }
+
+    private fun nextDeparture(
+        coordinator: CarContinuityRecoveryCoordinator,
+        previous: CarArrivalResumeGate.Target,
+    ): CarArrivalResumeGate.Target {
+        coordinator.carDeparture(12.seconds, previous.generation, 0, physicalProjection = true)
+        val decision = coordinator.platformInterruption(13.seconds, inputs(previous), focusLoss = true)
+        assertEquals(CarArrivalResumeGate.Status.Ready, decision.status)
+        return requireNotNull(decision.target)
+    }
+
+    private fun inputs(target: CarArrivalResumeGate.Target) = CarContinuityRecoveryCoordinator.Inputs(
+        heardRoute = null,
+        headsetId = null,
+        generation = target.generation,
+        selectionSequence = 0,
+        carConnected = false,
+    )
 }

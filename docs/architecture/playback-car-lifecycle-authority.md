@@ -16,8 +16,10 @@ session persistence.
 
 `PlaybackService` remains the **sole** ExoPlayer + MediaLibrarySession owner.
 It interprets lifecycle edges from this authority and owns the decision to
-call `CarContinuityRecoveryCoordinator`, queue route resettles, log
-privacy-safe diagnostics, and (when authorized) issue Play. The authority
+call `CarContinuityRecoveryCoordinator`, log privacy-safe diagnostics and forward
+effect decisions to `CarContinuityResumeEffects`. That component owns pending
+route-hold/recovery work on the service scope; the service retains its player/session.
+The authority
 cannot send Play or change preferred audio outputs.
 
 ## Ordering contract

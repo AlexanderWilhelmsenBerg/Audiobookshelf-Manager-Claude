@@ -410,6 +410,7 @@ class PlaybackService : MediaLibraryService() {
                 // A controller's Play/Pause is newer listener intent even when ExoPlayer is already in that
                 // state and therefore emits no onPlayWhenReadyChanged callback. Automatic continuity uses the
                 // raw ExoPlayer and bypasses this forwarding boundary, so it cannot cancel itself here.
+                carResumeEffects.cancelPending()
                 if (requestedPlay) {
                     carRecovery.cancelPending()
                 } else {
@@ -655,6 +656,7 @@ class PlaybackService : MediaLibraryService() {
         sleepTimer.attach(null)
         unregisterReceiver(wallClockChanges)
         carProjection.stop()
+        carResumeEffects.cancelPending()
         audioOutputs.detach()
         journal?.cancel()
         sleepTimerWatch?.cancel()
@@ -1220,6 +1222,7 @@ class PlaybackService : MediaLibraryService() {
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
             // Record transport intent, not buffer or route changes, and never invent a physical key origin.
             val input = PlaybackTransportInput.interpret(playWhenReady, reason)
+            carResumeEffects.cancelPending()
             recordTransport(if (input.isPlay) PlaybackEvent.Play else PlaybackEvent.Pause)
             logger.debug(
                 LogCategory.Playback,
@@ -1270,7 +1273,7 @@ class PlaybackService : MediaLibraryService() {
             logCarContinuityDecision(source, decision)
             decision.target
                 ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
-                ?.let { target -> scope.launch { carResumeEffects.recoverAndResume(target) } }
+                ?.let(carResumeEffects::onRecoveryReady)
             if (!focusLoss) carRecovery.clearAwaiting()
         }
 
@@ -1299,6 +1302,7 @@ class PlaybackService : MediaLibraryService() {
             if (mediaItem != null && !MediaItems.isResumePlaceholder(mediaItem)) metrics.onItemPrepared()
             // PRODUCT_SPEC PLAY-002 — route evidence belongs only to this loaded book generation.
             routeOwnership.onBookChanged(mediaItem != null)
+            carResumeEffects.cancelPending()
             // Issue #36 — all continuity evidence is generation-bound and dies with the loaded book.
             carRecovery.cancelAll()
             carRecovery.clearAwaiting()
@@ -1488,6 +1492,7 @@ class PlaybackService : MediaLibraryService() {
                     val isPlaying = player?.isPlaying == true
                     if ((player?.mediaItemCount ?: 0) == 0) {
                         routeOwnership.onQueueEmptied()
+                        carResumeEffects.cancelPending()
                         carRecovery.cancelAll()
                     } else {
                         routeOwnership.onOutputsChanged(outputs, isPlaying = isPlaying)
@@ -1511,12 +1516,13 @@ class PlaybackService : MediaLibraryService() {
 
     private fun syncExplicitOutputIntent() {
         val selection = audioOutputs.explicitSelection.value ?: return
-        routeOwnership.onExplicitSelection(
+        val changed = routeOwnership.onExplicitSelection(
             outputId = selection.outputId,
             outputs = audioOutputs.outputs.value,
             isPlaying = player?.isPlaying == true,
             selectionSequence = selection.sequence,
         )
+        if (changed) carResumeEffects.cancelPending()
     }
 
     private fun currentExplicitSelectionSequence(): Long = audioOutputs.explicitSelection.value?.sequence ?: 0L
@@ -1609,37 +1615,6 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
-    /**
-     * PRODUCT_SPEC PLAY-002 — reassert only generation-bound headset evidence when a car controller arrives.
-     *
-     * A merely connected headset has no [RouteHeardOwnership.HeardRoute], and an emptied queue invalidates
-     * the generation before any routing preference can be reasserted.
-     */
-    private suspend fun holdHeadsetAgainstCar(): String? {
-        if ((player?.mediaItemCount ?: 0) == 0) {
-            routeOwnership.onQueueEmptied()
-            carRecovery.cancelAll()
-            return null
-        }
-        syncExplicitOutputIntent()
-        val outputs = audioOutputs.outputs.value
-        val hold = routeOwnership.headsetForCar(outputs) ?: return null
-        // Car controller binding alone must not restart or reconfigure an already-audible headset.
-        // Retain Media3's current player/focus/route when this exact headset remains the sole active sink.
-        if (player?.isPlaying == true && headsetAlreadyActive(hold, outputs)) {
-            audioOutputs.protectPlayingHeadset(hold)
-            autoTraces.log("Car lifecycle preserved active headset without route reassertion")
-        } else {
-            val reasserted = audioOutputs.reassert(hold)
-            val heldHeadsetIsConnected = reasserted && audioOutputs.outputs.value.any { output ->
-                output.id == hold && output.isHeadsetCandidate
-            }
-            if (!heldHeadsetIsConnected) return null
-            carResumeEffects.logHeldHeadset(hold)
-        }
-        return hold
-    }
-
     /** Recovery-to-Play effects share one coordinator claim; no second lifecycle or player. */
     private val carResumeEffects by lazy {
         CarContinuityResumeEffects(
@@ -1651,6 +1626,9 @@ class PlaybackService : MediaLibraryService() {
             selectionSequence = ::currentExplicitSelectionSequence,
             snapshot = ::carSnapshotFields,
             onServiceResumeIntent = sleepTimer::onServiceResumeIntent,
+            scope = scope,
+            synchronizeOutputIntent = ::syncExplicitOutputIntent,
+            onOutputsChanged = ::republishOutputButtons,
         )
     }
 
@@ -1713,26 +1691,7 @@ class PlaybackService : MediaLibraryService() {
                 listOf(LogField.Public("controller", controllerPackage)) + carSnapshotFields(),
             )
         }
-        scope.launch { handleCarArrival(arrivalDecision) }
-    }
-
-    private suspend fun handleCarArrival(decision: CarArrivalResumeGate.Decision?) {
-        audioOutputs.resettle()
-        if (decision == null) {
-            holdHeadsetAgainstCar()
-            republishOutputButtons()
-            return
-        }
-
-        val target = decision.target?.takeIf {
-            decision.status == CarArrivalResumeGate.Status.Ready
-        }
-        if (target == null) {
-            holdHeadsetAgainstCar()
-        } else {
-            carResumeEffects.recoverAndResume(target)
-        }
-        republishOutputButtons()
+        carResumeEffects.onArrival(arrivalDecision)
     }
 
     private fun onCarControllerDisconnected(controllerPackage: String) {
@@ -1805,7 +1764,7 @@ class PlaybackService : MediaLibraryService() {
                     sequence = currentExplicitSelectionSequence(),
                 )
                 logCarContinuityDecision("projection-connect", decision)
-                scope.launch { handleCarArrival(decision) }
+                carResumeEffects.onArrival(decision)
             }
 
             CarLifecycleAuthority.ProjectionEdge.PhysicalDeparture -> {
@@ -1834,13 +1793,7 @@ class PlaybackService : MediaLibraryService() {
             physicalProjection = physicalProjection,
         )
         logCarContinuityDecision(source, decision)
-        scope.launch {
-            audioOutputs.resettle()
-            decision.target
-                ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
-                ?.let { target -> carResumeEffects.recoverAndResume(target) }
-            republishOutputButtons()
-        }
+        carResumeEffects.onDeparture(decision)
     }
 
     /**

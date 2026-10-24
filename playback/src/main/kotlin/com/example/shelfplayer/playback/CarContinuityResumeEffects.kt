@@ -2,6 +2,13 @@ package com.example.shelfplayer.playback
 
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.common.log.LogField
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
  * One recovery-to-Play transaction, using the existing CarContinuityRecoveryCoordinator's claim.
@@ -9,7 +16,8 @@ import com.example.shelfplayer.core.common.log.LogField
  * Not another recovery authority or player: all generation and one-shot decisions still live in
  * the coordinator; AudioOutputRouter owns output requests and measured AudioTrack safety.
  * PlaybackService provides its one ExoPlayer and owns the MediaLibrarySession/lifecycle.
- * Invoked exclusively on the existing service/Media3 application dispatcher.
+ * Owns the service-scoped lifetime of route-hold/recovery effects, exclusively on the existing
+ * service/Media3 application dispatcher. The pending Job is work, not another recovery claim.
  */
 internal class CarContinuityResumeEffects(
     private val recovery: CarContinuityRecoveryCoordinator,
@@ -20,7 +28,112 @@ internal class CarContinuityResumeEffects(
     private val selectionSequence: () -> Long,
     private val snapshot: () -> List<LogField>,
     private val onServiceResumeIntent: () -> Unit,
+    private val scope: CoroutineScope,
+    private val synchronizeOutputIntent: () -> Unit = {},
+    private val onOutputsChanged: () -> Unit = {},
 ) {
+    private var pending: Job? = null
+    private var pendingTarget: CarArrivalResumeGate.Target? = null
+
+    fun onArrival(decision: CarArrivalResumeGate.Decision?) = scheduleBoundary(decision, preserveHeadset = true)
+
+    fun onDeparture(decision: CarArrivalResumeGate.Decision) = scheduleBoundary(decision, preserveHeadset = false)
+
+    fun onRecoveryReady(target: CarArrivalResumeGate.Target) {
+        if (!recovery.isCurrent(target, owner.currentGeneration, selectionSequence())) return
+        if (!scope.isActive) {
+            recovery.discard(target)
+            return
+        }
+        if (pending?.isActive == true && pendingTarget === target) return
+        launchWork(target) { recoverAndResume(target) }
+    }
+
+    /** New listener/book/session intent stops suspended work immediately, without clearing a successor's claim. */
+    fun cancelPending() {
+        val target = pendingTarget
+        pending?.cancel()
+        pending = null
+        pendingTarget = null
+        if (target != null) recovery.discard(target)
+    }
+
+    private fun scheduleBoundary(decision: CarArrivalResumeGate.Decision?, preserveHeadset: Boolean) {
+        // Route observation stays independent of listener intent, even for duplicate controller callbacks.
+        outputs.resettle()
+        val target = decision?.target?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
+        if (target != null) {
+            onRecoveryReady(target)
+            return
+        }
+        // A later controller bind is not permission to replace a Ready focus/projection transaction.
+        if (pending?.isActive == true && pendingTarget?.let {
+                recovery.isCurrent(it, owner.currentGeneration, selectionSequence())
+            } == true
+        ) {
+            return
+        }
+        launchWork(null) {
+            if (preserveHeadset) holdHeadsetAgainstCar()
+        }
+    }
+
+    private fun launchWork(target: CarArrivalResumeGate.Target?, action: suspend () -> Unit) {
+        cancelPending()
+        // LAZY installs the handle before MainImmediate can run, or Play callbacks could cancel the old Job.
+        lateinit var work: Job
+        work = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                currentCoroutineContext().ensureActive()
+                action()
+                onOutputsChanged()
+            } finally {
+                if (target != null) recovery.discard(target)
+                if (pending === work) {
+                    pending = null
+                    pendingTarget = null
+                }
+            }
+        }
+        pending = work
+        pendingTarget = target
+        work.start()
+    }
+
+    /** Car binding alone preserves the heard headset; it never authorizes Play. */
+    private suspend fun holdHeadsetAgainstCar() {
+        if ((currentPlayer()?.mediaItemCount ?: 0) == 0) {
+            owner.onQueueEmptied()
+            recovery.cancelAll()
+            return
+        }
+        synchronizeOutputIntent()
+        currentCoroutineContext().ensureActive()
+        val available = outputs.outputs.value
+        val hold = owner.headsetForCar(available) ?: return
+        val current = currentPlayer()
+        val healthyHeadset = current?.isPlaying == true && headsetAlreadyActive(hold, available)
+        if (current?.playWhenReady == true || healthyHeadset) {
+            outputs.protectPlayingHeadset(hold)
+            log(
+                if (healthyHeadset) {
+                    "Car lifecycle preserved active headset without route reassertion"
+                } else {
+                    "Car lifecycle left active playback intent with Media3"
+                },
+            )
+        } else {
+            val generation = owner.currentGeneration
+            val sequence = selectionSequence()
+            val reasserted = outputs.reassert(hold)
+            currentCoroutineContext().ensureActive()
+            if (generation != owner.currentGeneration || sequence != selectionSequence()) return
+            if (reasserted && outputs.outputs.value.any { it.id == hold && it.isHeadsetCandidate }) {
+                logHeldHeadset(hold)
+            }
+        }
+    }
+
     private suspend fun recoverCarContinuityHeadset(target: CarArrivalResumeGate.Target): String? {
         val held = recovery.secure(
             target = target,
@@ -52,7 +165,7 @@ internal class CarContinuityResumeEffects(
                 log("Car lifecycle will verify original headset silently")
                 return target.outputId
             }
-            recovery.cancelPending()
+            recovery.discard(target)
             return null
         }
         logHeldHeadset(held, target.phase)
@@ -95,13 +208,18 @@ internal class CarContinuityResumeEffects(
         // Media3 can hold playWhenReady=true while temporarily suppressing audible playback.
         // It owns focus restoration in that state; issuing another Play or reasserting the output
         // would only disturb a player that is already committed to continuing.
-        if (currentPlayer()?.playWhenReady == true) {
-            log("Car lifecycle left active playback intent with Media3")
-            recovery.cancelPending()
-            return
+        try {
+            currentCoroutineContext().ensureActive()
+            if (currentPlayer()?.playWhenReady == true) {
+                log("Car lifecycle left active playback intent with Media3")
+                return
+            }
+            val heldHeadset = recoverCarContinuityHeadset(target)
+            currentCoroutineContext().ensureActive()
+            resumeAfterCarContinuity(target, heldHeadset)
+        } finally {
+            recovery.discard(target)
         }
-        val heldHeadset = recoverCarContinuityHeadset(target)
-        resumeAfterCarContinuity(target, heldHeadset)
     }
 
     /**
@@ -145,7 +263,7 @@ internal class CarContinuityResumeEffects(
             ) + snapshot(),
         )
         if (!result.accepted) {
-            recovery.clearAwaiting()
+            recovery.clearAwaiting(target)
             return
         }
 
@@ -157,7 +275,7 @@ internal class CarContinuityResumeEffects(
         // An AudioManager preference is NOT proof of a physical route. Only the playing
         // AudioTrack may unmute this one-shot recovery; other routes fail closed.
         if (heldHeadset == null || !outputs.beginMutedHeadsetProbe(heldHeadset)) {
-            recovery.clearAwaiting()
+            recovery.clearAwaiting(target)
             log("Car lifecycle refused unverified headset probe")
             return
         }

@@ -1,12 +1,12 @@
 package com.example.shelfplayer.playback
 
 import androidx.media3.exoplayer.ExoPlayer
-import com.example.shelfplayer.core.model.playback.AudioOutput
-import com.example.shelfplayer.core.model.playback.AudioOutputRole
-import com.example.shelfplayer.core.model.playback.DeviceKind
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.AudioOutputRole
+import com.example.shelfplayer.core.model.playback.DeviceKind
 import com.example.shelfplayer.core.testing.TestAppClock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -67,6 +67,7 @@ internal class CarContinuityResumeEffectsTest {
             selectionSequence = { 0 },
             snapshot = { emptyList() },
             onServiceResumeIntent = { error("Active playback must not ask the sleep timer to resume") },
+            scope = this,
         )
         effects.recoverAndResume(
             CarArrivalResumeGate.Target(
@@ -103,6 +104,7 @@ internal class CarContinuityResumeEffectsTest {
             selectionSequence = { 0 },
             snapshot = { emptyList() },
             onServiceResumeIntent = {},
+            scope = this,
         )
         effects.logHeldHeadset("bluetooth:private-fixture-id")
         val values = events.last().fields.filterIsInstance<LogField.Public>().associate { it.key to it.value }
@@ -177,6 +179,7 @@ internal class CarContinuityResumeEffectsTest {
                 selectionSequence = { selection },
                 snapshot = { emptyList() },
                 onServiceResumeIntent = { error("Stale recovery must not resume the timer") },
+                scope = this,
             )
 
             val pending = launch { effects.recoverAndResume(target) }
