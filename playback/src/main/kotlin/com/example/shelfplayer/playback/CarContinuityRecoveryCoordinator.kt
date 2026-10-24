@@ -100,6 +100,15 @@ internal class CarContinuityRecoveryCoordinator(
         awaiting = null
     }
 
+    fun clearAwaiting(target: CarArrivalResumeGate.Target) {
+        if (awaiting === target) awaiting = null
+    }
+
+    /** Effect completion/cancellation may retire its own episode, never a newer one. */
+    fun discard(target: CarArrivalResumeGate.Target) {
+        gate.cancelRecovery(target)
+    }
+
     fun notePlayIssued(target: CarArrivalResumeGate.Target) {
         awaiting = target
     }
@@ -132,19 +141,20 @@ internal class CarContinuityRecoveryCoordinator(
         CarContinuityPlayPrecheck.NoPlayer,
         CarContinuityPlayPrecheck.AlreadyPlaying,
         -> {
-            cancelPending()
-            clearAwaiting()
+            discard(target)
+            clearAwaiting(target)
             Assessment(precheck)
         }
 
         CarContinuityPlayPrecheck.EmptyQueue -> {
-            cancelAll()
+            if (gate.cancelRecovery(target)) gate.cancelAll()
+            clearAwaiting(target)
             Assessment(precheck)
         }
 
         CarContinuityPlayPrecheck.Proceed -> {
             val consumed = gate.consumeRecovery(target, currentGeneration, securedHeadsetId, selectionSequence)
-            if (!consumed.accepted) awaiting = null
+            if (!consumed.accepted) clearAwaiting(target)
             Assessment(precheck, consumed)
         }
     }

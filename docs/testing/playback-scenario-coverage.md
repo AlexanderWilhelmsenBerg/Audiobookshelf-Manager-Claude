@@ -89,6 +89,24 @@ headset-button handoff remains open under #276/#277; 401 sync transport is #288.
 
 ## Refactor safety gates
 
+The 24 October Phase 3 continuation adds direct production-effect coverage in
+`CarContinuityResumeTransactionTest` for accepted one Play/timer intent, suspended
+player replacement, episode supersession, duplicate callbacks, cancellation and
+service-scope disposal, synchronous self-Play callbacks and cancellation during
+listener-intent synchronization. These strengthen S02–S04, S12–S16, S18–S20 and S22.
+`CarContinuityRecoveryCoordinatorTest` rejects old completions and same-value
+episode reuse without consuming a successor. `AudioTrackRouteQueryTest` calls the
+actual monitor and rejects replacement/release/new observer epoch during a query,
+including identical endpoints, and state/play-state/route exceptions. Unknown,
+wrong and multiple measured sinks still pause while silent before restoring volume.
+Tests use platform shadows and production policy; they do not certify physical sound.
+
+`AudioRouteLabRecorderTest` retains real AtomicFile transactions and all persistence/privacy
+assertions. Its class-scoped shadow adapts only the rename primitive to Android's atomic
+overwrite semantics: host Java `File.renameTo` on Windows otherwise leaves the first
+snapshot in place. An added assertion requires all 28 accepted commands in the committed
+file before restoration; no recorder test is skipped or relaxed.
+
 1. Expand service-level adapter replay with actual `PlaybackService`/MediaSession callbacks where
    practical before moving command or lifecycle ownership. The Phase 1 policy-only runner does not
    demonstrate every caller reaches the policies it invokes.

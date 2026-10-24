@@ -84,11 +84,12 @@ internal class AudioTrackRouteMonitor @Inject constructor(
 
     /** This AudioTrack's physical sinks, or null if there is no measurable playing track. */
     fun currentRouteIds(): Set<String>? {
+        val token = epoch.nextSnapshot()
         val track = active ?: return null
-        if (track.state != AudioTrack.STATE_INITIALIZED || track.playState != AudioTrack.PLAYSTATE_PLAYING) {
-            return null
-        }
-        return runCatching {
+        val measured = runCatching {
+            if (track.state != AudioTrack.STATE_INITIALIZED || track.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                return@runCatching null
+            }
             val routed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
                 track.routedDevices
             } else {
@@ -103,6 +104,9 @@ internal class AudioTrackRouteMonitor @Inject constructor(
                 if (matched == null) emptySet() else setOf(matched.id)
             }
         }.getOrNull()
+        // Media3 may replace/release the output while the platform route query is in progress.
+        // Even an identical endpoint cannot authenticate the successor's playing AudioTrack.
+        return measured.takeIf { epoch.isCurrent(token) && active === track }
     }
 
     fun providerForPlayer(): AudioOutputProvider? {
