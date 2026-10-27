@@ -1,147 +1,36 @@
 package com.example.shelfplayer.data.library
 
-import android.content.Context
-import androidx.datastore.core.DataStoreFactory
-import androidx.room.Room
-import androidx.test.core.app.ApplicationProvider
-import com.example.shelfplayer.core.common.log.DefaultRedactor
-import com.example.shelfplayer.core.common.log.RedactingLogger
-import com.example.shelfplayer.core.common.log.RedactionPolicy
-import com.example.shelfplayer.core.common.time.ServerClock
-import com.example.shelfplayer.core.database.ShelfPlayerDatabase
-import com.example.shelfplayer.core.database.entity.BookEntity
-import com.example.shelfplayer.core.database.entity.EntityKey
-import com.example.shelfplayer.core.database.entity.LibraryEntity
-import com.example.shelfplayer.core.database.entity.MediaProgressEntity
-import com.example.shelfplayer.core.database.entity.ProfileEntity
-import com.example.shelfplayer.core.database.entity.ServerEntity
 import com.example.shelfplayer.core.database.entity.SessionOutboxState
-import com.example.shelfplayer.core.datastore.AppSettingsDataSource
-import com.example.shelfplayer.core.datastore.AppSettingsSerializer
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
-import com.example.shelfplayer.core.model.LibraryId
-import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
-import com.example.shelfplayer.core.model.ServerCapabilities
-import com.example.shelfplayer.core.model.ServerId
-import com.example.shelfplayer.core.model.ServerProbe
-import com.example.shelfplayer.core.model.auth.AccountState
-import com.example.shelfplayer.core.model.auth.AuthSession
-import com.example.shelfplayer.core.model.auth.AuthToken
-import com.example.shelfplayer.core.model.library.Author
-import com.example.shelfplayer.core.model.library.BookSnapshot
-import com.example.shelfplayer.core.model.library.Bookmark
-import com.example.shelfplayer.core.model.library.Library
-import com.example.shelfplayer.core.model.library.LibrarySnapshot
-import com.example.shelfplayer.core.model.library.PlaybackSession
-import com.example.shelfplayer.core.model.playback.ListeningSession
-import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
-import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SyncTrigger
-import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
-import com.example.shelfplayer.core.network.gateway.AuthApi
-import com.example.shelfplayer.core.network.gateway.BookmarkApi
-import com.example.shelfplayer.core.network.gateway.CachedLibrary
-import com.example.shelfplayer.core.network.gateway.CapabilityResolver
-import com.example.shelfplayer.core.network.gateway.DownloadApi
-import com.example.shelfplayer.core.network.gateway.FileTransfer
-import com.example.shelfplayer.core.network.gateway.LibraryApi
-import com.example.shelfplayer.core.network.gateway.ManagementApi
-import com.example.shelfplayer.core.network.gateway.PlaybackApi
-import com.example.shelfplayer.core.testing.RecordingLogSink
-import com.example.shelfplayer.core.testing.TestAppClock
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
-import org.junit.After
-import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.io.File
-import java.io.OutputStream
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
-/**
- * PRODUCT_SPEC PLAY-004 / PLAY-005 — the outbox, against a real database and a gateway the test controls.
- *
- * The properties asserted here are the ones product priority 2 rests on and none of them is visible by
- * reading the class: a failed sync leaves a durable row, an offline session is uploadable at all, a retry
- * carries the same id, and a server that declines a position is not treated as a server that refused one.
- */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
-class DefaultSessionSyncRepositoryTest {
-
-    private lateinit var database: ShelfPlayerDatabase
-    private lateinit var repository: DefaultSessionSyncRepository
-    private lateinit var settings: AppSettingsDataSource
-    private lateinit var storeScope: CoroutineScope
-    private lateinit var storeFile: File
-    private val sink = RecordingLogSink()
-    private val clock = TestAppClock()
-    private val gateway = RecordingPlaybackGateway()
-    private val profileId = ProfileId("profile-1")
-
-    @Before
-    fun setUp() = runTest {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        database = Room.inMemoryDatabaseBuilder(context, ShelfPlayerDatabase::class.java)
-            .allowMainThreadQueries()
-            .build()
-        storeFile = File(context.cacheDir, "session-sync-test.pb").also(File::delete)
-        val logger = RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default))
-        storeScope = CoroutineScope(UnconfinedTestDispatcher() + Job())
-        settings = AppSettingsDataSource(
-            dataStore = DataStoreFactory.create(
-                serializer = AppSettingsSerializer(),
-                scope = storeScope,
-                produceFile = { storeFile },
-            ),
-            logger = logger,
-        )
-        repository = DefaultSessionSyncRepository(
-            settings = settings,
-            profileDao = database.profileDao(),
-            outbox = database.sessionOutboxDao(),
-            progressDao = database.progressDao(),
-            gateway = gateway,
-            serverClock = ServerClock(logger),
-            clock = clock,
-            logger = logger,
-            ioDispatcher = UnconfinedTestDispatcher(),
-        )
-        seedProfile()
-        settings.setActiveProfile(profileId)
-    }
-
-    @After
-    fun tearDown() {
-        database.close()
-        storeScope.cancel()
-        storeFile.delete()
-    }
-
+internal class DefaultSessionSyncRepositoryTest : SessionSyncRepositoryFixture() {
     /** PRODUCT_SPEC PLAY-005 — "every offline listening session has a UUIDv4 identifier". */
     @Test
     fun `durable open uses the captured profile instead of the current selection`() = runTest {
@@ -203,6 +92,7 @@ class DefaultSessionSyncRepositoryTest {
         assertEquals(1, stored.attempts)
         assertEquals("network", stored.lastErrorCode)
         assertNull(stored.syncedAt)
+        assertNull(auth.renewedProfile, "network failures must not trigger credential renewal")
     }
 
     /**
@@ -447,8 +337,8 @@ class DefaultSessionSyncRepositoryTest {
         repository.drainOutbox()
 
         assertTrue(sink.text.isNotEmpty())
-        assertTrue(!sink.text.contains(BOOK_TITLE), sink.text)
-        assertTrue(!sink.text.contains(BOOK_AUTHOR), sink.text)
+        assertTrue(!sink.text.contains(fixtureBookTitle), sink.text)
+        assertTrue(!sink.text.contains(fixtureBookAuthor), sink.text)
     }
 
     /** A sync against a session this device does not have is a conflict, not a silent no-op. */
@@ -740,341 +630,5 @@ class DefaultSessionSyncRepositoryTest {
         )
 
         assertEquals(true, storedProgress().hasUnsyncedChanges)
-    }
-
-    /** The row `recordPosition` would have written: a local position nothing has uploaded yet. */
-    private suspend fun seedUnsyncedProgress(recordedAt: Long, position: Duration = 40.minutes) {
-        seedBook()
-        database.progressDao().upsertProgress(
-            listOf(
-                MediaProgressEntity(
-                    progressKey = EntityKey.scoped(profileId.value, BOOK_KEY),
-                    profileId = profileId.value,
-                    bookKey = BOOK_KEY,
-                    serverId = SERVER,
-                    positionMillis = position.inWholeMilliseconds,
-                    durationMillis = 6.hours.inWholeMilliseconds,
-                    isFinished = false,
-                    updatedAt = recordedAt,
-                    hasUnsyncedChanges = true,
-                ),
-            ),
-        )
-    }
-
-    /**
-     * The library and book the progress row hangs off.
-     *
-     * `media_progress` is keyed through both, so a position for a book this device has never heard of is
-     * not a state the app can reach — and not one a test should be able to fabricate either.
-     */
-    private suspend fun seedBook() {
-        database.libraryWriteDao().upsertLibraries(
-            listOf(
-                LibraryEntity(
-                    libraryKey = LIBRARY_KEY,
-                    serverId = SERVER,
-                    remoteId = "lib-1",
-                    name = "Fiction",
-                    kind = "Book",
-                    displayOrder = 0,
-                    remoteUpdatedAt = null,
-                    lastFetchedAt = 0,
-                    isDeleted = false,
-                    finishedTimeRemainingSeconds = null,
-                ),
-            ),
-        )
-        database.libraryWriteDao().upsertBooks(
-            listOf(
-                BookEntity(
-                    bookKey = BOOK_KEY,
-                    serverId = SERVER,
-                    remoteId = "book-1",
-                    libraryKey = LIBRARY_KEY,
-                    title = BOOK_TITLE,
-                    subtitle = null,
-                    narratorsJson = "[]",
-                    genresJson = "[]",
-                    tagsJson = "[]",
-                    durationMillis = 6.hours.inWholeMilliseconds,
-                    description = null,
-                    publishedYear = null,
-                    publisher = null,
-                    language = null,
-                    isbn = null,
-                    asin = null,
-                    isExplicit = false,
-                    isAbridged = false,
-                    coverPath = null,
-                    trackCount = 1,
-                    sizeBytes = 0,
-                    remoteUpdatedAt = null,
-                    addedAt = null,
-                    lastFetchedAt = 0,
-                    isDeleted = false,
-                    localAvailability = "NotDownloaded",
-                ),
-            ),
-        )
-    }
-
-    private suspend fun storedProgress(): MediaProgressEntity =
-        requireNotNull(database.progressDao().findProgress(profileId.value, BOOK_KEY)) {
-            "no progress row was written"
-        }
-
-    private suspend fun open(remoteSessionId: String? = "remote-1") = repository.openSession(
-        session = PlaybackSession(
-            id = remoteSessionId.orEmpty(),
-            profileId = profileId,
-            bookId = LibraryItemId("book-1"),
-            title = BOOK_TITLE,
-            author = BOOK_AUTHOR,
-            coverUrl = null,
-            startAt = 0.seconds,
-            duration = 6.hours,
-            tracks = emptyList(),
-            chapters = emptyList(),
-        ),
-        startedAt = clock.now(),
-    )
-
-    private suspend fun openId(remoteSessionId: String? = "remote-1") =
-        assertIs<AppResult.Success<String>>(open(remoteSessionId)).value
-
-    private suspend fun seedProfile() {
-        database.profileDao().upsertServer(
-            ServerEntity(
-                serverId = SERVER,
-                displayName = "Demo",
-                baseUrl = "https://books.example",
-                detectedVersion = "2.36.0",
-                isFixture = false,
-                lastFetchedAt = 0,
-                authMethodsJson = "[]",
-                capabilitiesJson = "[]",
-                capabilitiesDetectedAt = null,
-            ),
-        )
-        database.profileDao().upsertProfile(
-            ProfileEntity(
-                profileId = profileId.value,
-                serverId = SERVER,
-                remoteUserId = null,
-                username = "kari",
-                displayName = "Kari",
-                role = "Listener",
-                requiresReauthentication = false,
-                lastUsedAt = null,
-                isFixture = false,
-                accessibleLibrariesJson = "[]",
-                hasAllLibraryAccess = true,
-                hasAllTagAccess = true,
-                canDownload = false,
-            ),
-        )
-    }
-
-    /**
-     * A gateway that records what it was asked to send.
-     *
-     * A hand-written fake rather than a mock (PRODUCT_SPEC 17.1), and it records *arguments* because most of
-     * what these tests assert is about what went on the wire: that a rewind arrived as a rewind, and that a
-     * retry carried the same id.
-     */
-    private class RecordingPlaybackGateway :
-        AudiobookshelfGateway,
-        PlaybackApi {
-        /**
-         * PRODUCT_SPEC PLAY-003 — not part of this test, and refusing rather than pretending.
-         *
-         * The session *history* read is `ServerSessionHistoryTest`'s subject. A fake that answered with an
-         * empty list here would let a future change to this file's subject silently depend on it.
-         */
-        override suspend fun listeningSessions(
-            profileId: ProfileId,
-            page: Int,
-            itemsPerPage: Int,
-        ): AppResult<List<ListeningSession>> = error("the session history read is not exercised here")
-
-        var syncResult: AppResult<Unit> = AppResult.Success(Unit)
-        var offlineUpload: AppResult<List<OfflineSessionResult>>? = null
-        var offlineResults: (List<OfflineSession>) -> List<OfflineSessionResult> = { emptyList() }
-
-        val syncedProgress = mutableListOf<SessionProgress>()
-        val uploaded = mutableListOf<List<OfflineSession>>()
-
-        /**
-         * How many times the *request* was made, whether or not it succeeded.
-         *
-         * `syncedProgress` counts accepted writes; these count attempts, which is the question SYNC-002's
-         * redundant-sync rule turns on. A sync that was skipped never reaches the gateway at all, and a
-         * fake that only recorded successes could not tell that apart from one that failed.
-         */
-        var syncCount: Int = 0
-            private set
-
-        var closeCount: Int = 0
-            private set
-
-        override val playback: PlaybackApi get() = this
-
-        /* PRODUCT_SPEC 11.1 — not part of these tests; every method reports so rather than pretending. */
-
-        /**
-         * PRODUCT_SPEC DL-001 — not exercised by this test, and refusing rather than pretending.
-         *
-         * A fake that produced bytes would let a test believe a download had happened, which is precisely the
-         * belief the download layer exists to make impossible.
-         */
-        override val downloads: DownloadApi = object : DownloadApi {
-            override suspend fun fetchFile(
-                profileId: ProfileId,
-                bookId: LibraryItemId,
-                fileId: String,
-                sink: (Boolean) -> OutputStream,
-                resumeFrom: Long,
-                validator: String?,
-                onProgress: (Long) -> Unit,
-            ): AppResult<FileTransfer> = AppResult.Failure(
-                AppError.ApiCompatibility(summary = "This fake serves no audio files."),
-            )
-
-            override suspend fun fetchCover(
-                profileId: ProfileId,
-                bookId: LibraryItemId,
-                sink: () -> OutputStream,
-            ): AppResult<String?> = AppResult.Failure(
-                AppError.ApiCompatibility(summary = "This fake serves no cover art."),
-            )
-        }
-
-        override val bookmarks: BookmarkApi = object : BookmarkApi {
-            override suspend fun create(
-                profileId: ProfileId,
-                bookId: LibraryItemId,
-                at: Duration,
-                title: String,
-            ): AppResult<Bookmark> = unsupported()
-
-            override suspend fun rename(
-                profileId: ProfileId,
-                bookId: LibraryItemId,
-                at: Duration,
-                title: String,
-            ): AppResult<Bookmark> = unsupported()
-
-            override suspend fun remove(profileId: ProfileId, bookId: LibraryItemId, at: Duration): AppResult<Unit> =
-                unsupported()
-        }
-
-        override suspend fun openSession(profileId: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession> =
-            unsupported()
-
-        override suspend fun serverProgress(profileId: ProfileId, bookId: LibraryItemId): AppResult<ServerProgress> =
-            unsupported()
-
-        override suspend fun syncSession(
-            profileId: ProfileId,
-            sessionId: String,
-            progress: SessionProgress,
-        ): AppResult<Unit> {
-            syncCount += 1
-            if (syncResult is AppResult.Success) syncedProgress += progress
-            return syncResult
-        }
-
-        override suspend fun closeSession(
-            profileId: ProfileId,
-            sessionId: String,
-            progress: SessionProgress,
-        ): AppResult<Unit> {
-            closeCount += 1
-            if (syncResult is AppResult.Success) syncedProgress += progress
-            return syncResult
-        }
-
-        override suspend fun syncOfflineSessions(
-            profileId: ProfileId,
-            sessions: List<OfflineSession>,
-        ): AppResult<List<OfflineSessionResult>> {
-            uploaded += sessions
-            return offlineUpload ?: AppResult.Success(offlineResults(sessions))
-        }
-
-        override suspend fun setFinished(
-            profileId: ProfileId,
-            bookId: LibraryItemId,
-            isFinished: Boolean,
-            position: kotlin.time.Duration,
-        ): AppResult<Unit> = unsupported()
-
-        override val auth: AuthApi = object : AuthApi {
-            override suspend fun probe(serverUrl: String): AppResult<ServerProbe> = unsupported()
-
-            override suspend fun signIn(
-                serverUrl: String,
-                username: String,
-                password: String,
-            ): AppResult<AuthSession> = unsupported()
-
-            override suspend fun refresh(serverUrl: String, refreshToken: AuthToken): AppResult<AuthSession> =
-                unsupported()
-
-            override suspend fun currentAccount(serverUrl: String, accessToken: AuthToken): AppResult<AccountState> =
-                unsupported()
-
-            override suspend fun signOut(serverUrl: String, accessToken: AuthToken): AppResult<Unit> = unsupported()
-        }
-
-        override val capabilities: CapabilityResolver = object : CapabilityResolver {
-            override suspend fun resolve(
-                serverId: ServerId,
-                serverUrl: String,
-                accessToken: AuthToken?,
-            ): AppResult<ServerCapabilities> = unsupported()
-        }
-
-        /** PRODUCT_SPEC EPIC MGR — not exercised here. A throwing property cannot fall behind the interface. */
-        override val management: ManagementApi get() = error("management is not exercised here")
-
-        override val library: LibraryApi = object : LibraryApi {
-            override suspend fun listLibraries(profileId: ProfileId): AppResult<List<Library>> = unsupported()
-
-            override suspend fun listAuthors(profileId: ProfileId, libraryId: LibraryId): AppResult<List<Author>> =
-                unsupported()
-
-            override suspend fun listBooks(
-                profileId: ProfileId,
-                libraryId: LibraryId,
-                onBatch: suspend (List<BookSnapshot>) -> Unit,
-                cached: CachedLibrary,
-                onCatalogueBatch: suspend (List<BookSnapshot>) -> Unit,
-            ): AppResult<LibrarySnapshot> = unsupported()
-
-            override suspend fun searchBooks(
-                profileId: ProfileId,
-                libraryId: LibraryId,
-                query: String,
-            ): AppResult<List<BookSnapshot>> = unsupported()
-            override suspend fun fetchBook(profileId: ProfileId, bookId: LibraryItemId): AppResult<BookSnapshot> =
-                unsupported()
-        }
-
-        private companion object {
-            fun <T> unsupported(): AppResult<T> =
-                AppResult.Failure(AppError.ApiCompatibility(summary = "not part of this fake"))
-        }
-    }
-
-    private companion object {
-        const val SERVER = "server-1"
-        const val BOOK_TITLE = "The Salt Harbour"
-
-        /** The key `openSession` derives for `book-1`, which the progress row has to share. */
-        val BOOK_KEY: String = EntityKey.of(SERVER, "book-1")
-        val LIBRARY_KEY: String = EntityKey.of(SERVER, "lib-1")
-        const val BOOK_AUTHOR = "Marisol Holt"
     }
 }
