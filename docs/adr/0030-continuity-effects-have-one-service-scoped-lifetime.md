@@ -42,12 +42,16 @@ An old playing AudioTrack cannot authenticate unmuting its successor.
 There is no new player, session, focus owner, playback state machine, route policy, device identity,
 book generation or effect queue. `DeferredPlaybackWork` retains durable media installation ownership;
 `RoutePreferenceEffects` retains preferred-device write ordering. The new Job owns only the lifetime of
-the existing continuity effect transaction. `AudioOutputRouter` retains muted-probe and measured-route
-verification, and Media3 retains audio focus.
+the existing continuity effect transaction. `HeadsetRouteGuard`, attached through `AudioOutputRouter`, owns
+the transient guarded endpoint, disappearance grace, attachment-scoped player listener, measured-route probe
+decision, timeout jobs, and volume lifecycle. The router supplies measured route evidence and its existing
+route-preference epoch/player/endpoint/selection predicate. Media3 retains audio focus.
 
 Production-path tests reproduce stale claim completion, equal-value episode reuse, cancelled holds,
 immediate self-Play callbacks, accepted one-Play/timer effects, replaced player access after suspension,
-and exact/unknown/wrong/multiple AudioTrack evidence. Route-query tests use the actual monitor with
+and exact/unknown/wrong/multiple AudioTrack evidence. Probe cleanup restores the volume on the player that
+was muted, even when cancellation races with attachment of a replacement player; retired probe callbacks
+cannot restore volume or log a second completion. Route-query tests use the actual monitor with
 platform shadows. Reverting the relevant claim/query guards reproduces their failing tests.
 
 PR #294 is the selected recovery implementation; sibling #293 is an alternative, not its parent.

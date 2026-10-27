@@ -10,8 +10,10 @@ CarArrivalRouteRecovery for bounded reassertion of exactly the captured output.
 
 The Media3 service still owns ExoPlayer, audio focus, callbacks, and logging.
 `CarContinuityResumeEffects` executes actual Play against that service-owned player
-and owns its cancellable effect lifetime. The AudioOutputRouter still owns the physical route request and muted
-AudioTrack verification. No additional playback state machine or session is created.
+and owns its cancellable effect lifetime. The AudioOutputRouter owns endpoint discovery, selection, and the
+physical route request. Its attached `HeadsetRouteGuard` owns transient headset protection, muted-probe
+verification, timeout jobs, and volume restoration. The router supplies measured `AudioTrack` evidence and
+the existing freshness predicate to that owner. No additional playback state machine or session is created.
 
 The tests reject repeated consume, deliberate Pause, empty queue, already-playing
 intent, changed profile/book generation, newer explicit output-selection sequence,

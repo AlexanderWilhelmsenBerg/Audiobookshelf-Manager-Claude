@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.playback.AudioOutput
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -72,6 +73,54 @@ class CarContinuityResumeTransactionTest {
             assertEquals(1f, fixture.current.volume)
             assertFalse(fixture.current.playing)
         }
+    }
+
+    @Test
+    fun `same-target reassertion cannot unmute a stale probe on an unknown track route`() = runTest {
+        val fixture = Fixture(this)
+        fixture.effects.recoverAndResume(fixture.target)
+        fixture.current.playing = true
+        fixture.actualRoutes = null
+
+        val reassertion = async { fixture.router.reassert(fixture.headset.id) }
+        runCurrent()
+        assertTrue(reassertion.await())
+        runCurrent()
+
+        assertEquals(1, fixture.current.plays)
+        assertTrue(
+            fixture.current.operations.indexOf("pause") in 0 until fixture.current.operations.indexOf("volume:1.0"),
+        )
+        assertEquals(1f, fixture.current.volume)
+        assertFalse(fixture.current.playing)
+    }
+
+    @Test
+    fun `car choice during stale probe measurement prevents old pause and leaves cleanup to new intent`() = runTest {
+        val fixture = Fixture(this)
+        fixture.effects.recoverAndResume(fixture.target)
+        fixture.current.playing = true
+        fixture.router.field<RoutePreferenceEffects>("preferenceEffects").supersede()
+        var routeReads = 0
+        var measuredDuringInvalidation = false
+        fixture.router.setField("currentTrackRoutes") {
+            routeReads++
+            // Publication reads once, then the queued safety check reads the track and the
+            // retired probe rechecks it. Invalidate only that third observation; selectCar
+            // republishes synchronously and must not recursively trigger this hook again.
+            if (routeReads == 3) {
+                measuredDuringInvalidation = true
+                fixture.router.selectCar()
+            }
+            null
+        }
+
+        fixture.router.onActualTrackRouteChanged()
+        runCurrent()
+
+        assertTrue(measuredDuringInvalidation, "the stale-probe route must be measured before intent changes")
+        assertFalse(fixture.current.operations.contains("pause"), "the superseded callback must not pause")
+        assertEquals(1f, fixture.current.volume, "the newer explicit choice owns final probe cleanup")
     }
 
     @Test
@@ -346,6 +395,8 @@ class CarContinuityResumeTransactionTest {
             ->
             check(Thread.currentThread() == thread) { "Media3 call off its application dispatcher" }
             when (method.name) {
+                "addListener", "removeListener" -> null
+
                 "getPlayWhenReady" -> playWhenReady
 
                 "getMediaItemCount" -> 1
@@ -387,12 +438,40 @@ class CarContinuityResumeTransactionTest {
 
     private companion object {
         @Suppress("UNCHECKED_CAST")
-        fun <T> AudioOutputRouter.field(name: String): T = AudioOutputRouter::class.java.getDeclaredField(name).run {
-            isAccessible = true
-            get(this@field) as T
+        fun <T> AudioOutputRouter.field(name: String): T {
+            if (name == "guardedHeadsetId") {
+                val owner = AudioOutputRouter::class.java.getDeclaredField("headsetGuard").run {
+                    isAccessible = true
+                    get(this@field)
+                }
+                return HeadsetRouteGuard::class.java.getDeclaredField("endpointId").run {
+                    isAccessible = true
+                    get(owner) as T
+                }
+            }
+            return AudioOutputRouter::class.java.getDeclaredField(name).run {
+                isAccessible = true
+                get(this@field) as T
+            }
         }
 
         fun AudioOutputRouter.setField(name: String, value: Any?) {
+            if (name == "player") {
+                val guard = AudioOutputRouter::class.java.getDeclaredField("headsetGuard").run {
+                    isAccessible = true
+                    get(this@setField) as HeadsetRouteGuard
+                }
+                guard.detachPlayer()
+                if (value is ExoPlayer) guard.attachPlayer(value)
+            }
+            if (name == "guardedHeadsetId") {
+                val owner = AudioOutputRouter::class.java.getDeclaredField("headsetGuard").run {
+                    isAccessible = true
+                    get(this@setField) as HeadsetRouteGuard
+                }
+                if (value == null) owner.release() else owner.protect(value as String)
+                return
+            }
             AudioOutputRouter::class.java.getDeclaredField(name).apply { isAccessible = true }.set(this, value)
         }
     }

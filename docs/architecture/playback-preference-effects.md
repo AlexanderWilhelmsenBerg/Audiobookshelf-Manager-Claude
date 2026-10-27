@@ -29,6 +29,14 @@ route *observations* (`resettle`) are not listener preference commands and remai
 independent. No queue/actor is added, and we do not infer a successful physical
 route from an AudioManager preference result.
 
+`HeadsetRouteGuard` owns the transient continuity endpoint, disappearance-grace
+job, player listener, muted verification decision, and timeout jobs. A probe
+captures the exact player whose volume it changes. Detach, replacement, and
+explicit selection cancel through that owner, so stale cleanup cannot write
+volume to a successor player. The router supplies measured route evidence and
+the existing preference-epoch/player/guard/selection predicate. The guard adds
+no second preference generation.
+
 Why **output ID equality** was insufficient: two successive Car/Automatic choices
 both request `null`; a policy-protected headset and an earlier queued request can
 also race before Media3's dispatcher runs. The router now also guards effect

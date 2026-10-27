@@ -162,3 +162,18 @@ these tests.
    separate from audio routing.
 6. Physical acceptance is required before claiming a verified headset handoff even if all JVM,
    Robolectric and GitHub CI tests pass.
+
+## Guard lifetime follow-up — 27 October 2026
+
+The production router now creates one `HeadsetRouteGuard` for transient safety, attached-player
+callbacks, muted proof and volume cleanup. `AudioOutputRouterQueuedSafetyTest` covers retired
+listeners after replacement and same-player reattachment, old probe completion after Car intent,
+and restoration to the original volume owner. `CarContinuityResumeTransactionTest` additionally
+checks that a same-target policy reassertion stays fail-closed on an unknown track and that a
+Car choice during retirement measurement prevents an old pause. The latter enters through the
+router's actual track-change callback with a one-shot measurement hook.
+
+These checks extend S01/S04/S08/S12–S20 software evidence. The physical/inconclusive columns
+above remain authoritative; no hardware identity, headset handoff or human-heard continuity
+claim follows from these tests. The #295 cold receiver fix and separate #296/#288 progress auth
+recovery also require their documented stationary device/server retests.

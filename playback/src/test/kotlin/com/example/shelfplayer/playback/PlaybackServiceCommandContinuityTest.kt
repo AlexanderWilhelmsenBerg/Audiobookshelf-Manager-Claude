@@ -294,6 +294,22 @@ class PlaybackServiceCommandContinuityTest {
         }
 
         fun Any.setField(name: String, value: Any?) {
+            if (this is AudioOutputRouter && name == "player") {
+                val guard = AudioOutputRouter::class.java.getDeclaredField("headsetGuard").run {
+                    isAccessible = true
+                    get(this@setField) as HeadsetRouteGuard
+                }
+                guard.detachPlayer()
+                if (value is ExoPlayer) guard.attachPlayer(value)
+            }
+            if (this is AudioOutputRouter && name == "guardedHeadsetId") {
+                val owner = AudioOutputRouter::class.java.getDeclaredField("headsetGuard").run {
+                    isAccessible = true
+                    get(this@setField) as HeadsetRouteGuard
+                }
+                if (value == null) owner.release() else owner.protect(value as String)
+                return
+            }
             javaClass.getDeclaredField(name).apply { isAccessible = true }.set(this, value)
         }
 

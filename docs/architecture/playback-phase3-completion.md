@@ -20,7 +20,8 @@ these PRs and from Phase 4 device/head-unit acceptance.
 | One-shot episode eligibility | `CarContinuityRecoveryCoordinator` and its existing `CarArrivalResumeGate` |
 | Suspended route hold/recovery lifetime | One service-scoped Job in `CarContinuityResumeEffects` |
 | Preferred-device effect ordering | `RoutePreferenceEffects`, existing generation and Media3 dispatcher |
-| Output identity, guard/mute state and actual-track verification | `AudioOutputRouter`, `LiveOutputEndpointRegistry`, `AudioTrackRouteMonitor` |
+| Endpoint identity, discovery and listener output preference | `AudioOutputRouter`, `LiveOutputEndpointRegistry` |
+| Attached-player guard, probe proof, grace and volume lifetime | `HeadsetRouteGuard`, with router epoch authorization and `AudioTrackRouteMonitor` evidence |
 | Loaded-book candidate evidence | `RouteHeardOwnership`, preserving the router's typed provenance |
 | Progress, history, sleep, rewind and profiles | Existing domain/repository collaborators; accepted atomically by `BookChanges` |
 
@@ -53,6 +54,29 @@ are deliberately not collapsed into a single generation.
    must fail with their relevant guards removed. Full local verification and normal
    PR-triggered CI must pass on the final recorded SHA.
 
+## Follow-up safety and ownership slices — 27 October 2026
+
+The suppressed cold `MediaButtonReceiver` request now reaches Media3's safe rejected-session
+shutdown through `PlaybackService.onGetSession`. Its process-scoped one-shot gate prevents
+service recreation from suppressing every later deliberate toggle. This addresses the observed
+#295 sequence; physical Android 16 startup deadlines and other empty/locked/failed/cancelled
+explicit resumption paths remain unverified. The merge hold is retained for acceptance.
+
+`HeadsetRouteGuard` owns the temporary endpoint guard, disappearance grace, attachment-specific
+listeners, probe jobs, actual-track verification and restoration of the volume it muted.
+`AudioOutputRouter` retains live endpoints, listener selection and preferred-device ordering.
+The existing preference epoch authorizes the guard's effects; no new generation or player is added.
+
+Retired callbacks cannot affect a replacement or reattached player. A policy reassertion cannot
+make an unknown playing track audible by retiring an old probe: current-route safety is checked
+before volume restoration. New listener intent during that measurement wins. Deterministic
+router/continuity tests exercise these paths and preserve exact-route-only unmute, one accepted
+Play, cancellation and duplicate-callback contracts.
+
+HTTP 401 progress recovery is implemented separately in [draft #296](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/pull/296).
+Its captured-profile network request owner preserves durable progress/outbox acknowledgement;
+physical/server retesting remains separate from this playback refactor. #276/#277 identity and
+headset handoff remain deferred.
 ## Review and remaining acceptance
 
 The current-implementation review found and corrected four concrete ordering defects:
@@ -81,7 +105,7 @@ tests provide the exact-revision evidence. See ADR-0030 and ADR-0031 for the dec
 S01–S22 retain their physical/inconclusive outcomes in the scenario ledger. Full
 Hilt service lifecycle, OEM focus/projection timing, human-heard output and physical
 headset-button attribution require a device/head unit. #276/#277 retain the known
-headset lock/handoff product work; #288 retains HTTP 401 investigation. These are
+headset lock/handoff product work; #288 has a separate implementation in draft #296, with device/server acceptance pending. These are
 Phase 4/separate-defect acceptance, not unimplemented Phase 3 extraction work.
 
 Existing source-sensitive safety assertions remain unless equivalent production
