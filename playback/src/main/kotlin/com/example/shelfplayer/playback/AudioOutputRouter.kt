@@ -419,7 +419,7 @@ class AudioOutputRouter @Inject constructor(
         // Pause on the player looper before OS default routing can become audible.
         applicationScope.launch(mainDispatcher) {
             if (_selectedId.value == chosen && headsetGuard.endpointId == chosen && chosen !in live) {
-                player?.takeIf { it.isPlaying }?.pause()
+                player?.takeIf { it.isPlaying }?.let(headsetGuard::pauseForSafety)
             }
         }
         val alreadyMissing = headsetGuard.markMissing()
@@ -477,6 +477,8 @@ class AudioOutputRouter @Inject constructor(
         if (_selectedId.value != id || id in collidingOutputIds) return false
         return startMutedProbe(id)
     }
+
+    internal fun isRouteSafetyPause(target: ExoPlayer?): Boolean = headsetGuard.isPausingForSafety(target)
 
     private fun startMutedProbe(id: String): Boolean {
         val current = player ?: return false
@@ -551,7 +553,7 @@ class AudioOutputRouter @Inject constructor(
             ) {
                 return@launch
             }
-            current.pause()
+            headsetGuard.pauseForSafety(current)
             logUnverifiedRoute(actualRoute, guarded)
         }
     }
@@ -571,7 +573,7 @@ class AudioOutputRouter @Inject constructor(
         if (!isCurrentGuard(epoch, probePlayer, currentGuard)) return false
         val currentGuardIsMeasured = actualRoute == setOf(currentGuard) && currentGuard !in collidingOutputIds
         if (!currentGuardIsMeasured && probePlayer.isPlaying) {
-            probePlayer.pause()
+            headsetGuard.pauseForSafety(probePlayer)
             logUnverifiedRoute(actualRoute, currentGuard)
         }
         return true

@@ -1254,7 +1254,11 @@ class PlaybackService : MediaLibraryService() {
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
             // Record transport intent, not buffer or route changes, and never invent a physical key origin.
-            val input = PlaybackTransportInput.interpret(playWhenReady, reason)
+            val input = PlaybackTransportInput.interpret(
+                playWhenReady,
+                reason,
+                routeSafetyPause = audioOutputs.isRouteSafetyPause(player),
+            )
             carResumeEffects.cancelPending()
             recordTransport(if (input.isPlay) PlaybackEvent.Play else PlaybackEvent.Pause)
             logger.debug(

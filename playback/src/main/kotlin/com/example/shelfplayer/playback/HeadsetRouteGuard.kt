@@ -29,6 +29,21 @@ internal class HeadsetRouteGuard(
 ) {
     private var attachedPlayer: ExoPlayer? = null
     private var attachedListener: Player.Listener? = null
+    private var safetyPausePlayer: ExoPlayer? = null
+
+    /** Local effect provenance, never a claim about the physical controller that sent a command. */
+    fun isPausingForSafety(target: ExoPlayer?): Boolean = target != null && safetyPausePlayer === target
+
+    fun pauseForSafety(target: ExoPlayer) {
+        if (attachedPlayer !== target) return
+        val previous = safetyPausePlayer
+        safetyPausePlayer = target
+        try {
+            target.pause()
+        } finally {
+            safetyPausePlayer = previous
+        }
+    }
 
     fun attachPlayer(target: ExoPlayer) {
         detachPlayer()
@@ -175,7 +190,7 @@ internal class HeadsetRouteGuard(
         }
         probe = null
         cancelProbeJobs(active)
-        if (!verified && attachedPlayer === active.player) active.player.pause()
+        if (!verified && attachedPlayer === active.player) pauseForSafety(active.player)
         active.player.volume = active.previousVolume
         onProbeFinished(verified)
         return true

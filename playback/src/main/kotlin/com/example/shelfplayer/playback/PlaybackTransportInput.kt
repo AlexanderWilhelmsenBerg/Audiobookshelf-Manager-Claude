@@ -17,18 +17,19 @@ internal object PlaybackTransportInput {
         val reasonName: String,
     )
 
-    fun interpret(playWhenReady: Boolean, reason: Int): Interpretation {
+    fun interpret(playWhenReady: Boolean, reason: Int, routeSafetyPause: Boolean = false): Interpretation {
         val userReason = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ||
             reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE
         val focusOrNoisy = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS ||
             reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY
-        val isUserPause = !playWhenReady && userReason
+        val safetyPause = !playWhenReady && userReason && routeSafetyPause
+        val isUserPause = !playWhenReady && userReason && !safetyPause
         val platformInterruption = if (!playWhenReady && focusOrNoisy) reason else null
         return Interpretation(
             isPlay = playWhenReady,
             isUserPause = isUserPause,
             interruptionReason = platformInterruption,
-            reasonName = reasonName(reason),
+            reasonName = if (safetyPause) "routeSafety" else reasonName(reason),
         )
     }
 

@@ -84,6 +84,14 @@ pauses, flushes, stops and clears the queue before changing account context; tha
 the book claim even when the incoming account selects the same book. This slice does not add another
 profile authority or support continuing playback across an account switch.
 
+Guard-issued pauses also carry local effect provenance. Media3 reports an ordinary `pause()` as
+`USER_REQUEST`, but that does not make a route-safety interruption a listener pause. The existing guard
+wraps its attached player's pause in a call scope, cleared in `finally`; the service uses that scope to
+exclude automatic safety pauses from auto-rewind eligibility. It does not synthesize focus/noisy events
+or identify a physical controller. A regression using real pinned Media3 callbacks and the service's
+actual `PlayerEvents` verifies scope delivery, cleanup and a later ordinary listener pause. That test
+must remain part of any Media3 upgrade; this is not an unbounded pending-origin flag.
+
 ## Investigation and physical acceptance still required
 
 | Case | Current evidence | Required check |

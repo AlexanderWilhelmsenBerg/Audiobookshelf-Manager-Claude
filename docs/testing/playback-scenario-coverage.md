@@ -24,6 +24,7 @@ The guard retains its existing API 33+ boundary and candidate eligibility.
 | Intent, book or collision changes during measurement | Router tests invalidate the old arm at the post-query boundary |
 | Book end after policy reassertion and a muted probe | Cleanup retires only the transient effect claim, restores its volume and clears a policy-requested preference |
 | New attachment or newer explicit same-output choice | Old implicit work cannot cross attachment or erase the newer listener choice |
+| Route-safety pause vs later ordinary Pause | Real Media3 plus service `PlayerEvents` clears auto-rewind eligibility for the guard effect; the later listener pause still primes rewind, and genuine focus/noisy provenance is preserved |
 
 The existing book generation, explicit selection sequence and queued-preference epoch scope these
 effects; no new listener-intent counter is introduced. Profile handover already pauses/flushes and

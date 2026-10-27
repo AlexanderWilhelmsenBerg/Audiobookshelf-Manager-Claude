@@ -9,12 +9,14 @@ import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
+import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.testing.TestAppClock
 import com.example.shelfplayer.domain.playback.ResumeBaseline
 import com.example.shelfplayer.domain.realtime.RealtimeProgressEvidenceStore
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
+import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
@@ -35,6 +37,7 @@ import java.lang.reflect.Proxy
 import java.time.ZoneId
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
@@ -51,6 +54,11 @@ import kotlin.time.Duration.Companion.seconds
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class PlaybackServiceCommandContinuityTest {
+    @Test
+    fun `route safety pause cannot become listener auto-rewind intent`() = runTest {
+        Fixture(this).use { fixture -> fixture.checkRouteSafetyPauseReason() }
+    }
+
     @Test
     fun `service protects an exact Automatic route before car arrival`() = runTest {
         Fixture(this).use { fixture ->
@@ -277,6 +285,49 @@ class PlaybackServiceCommandContinuityTest {
             owner.onBookChanged(hasBook = true)
             owner.onPlaybackObserved(listOf(measured))
             service.call("observeCarContinuityHeadset", List::class.java, listOf(measured))
+        }
+
+        fun checkRouteSafetyPauseReason() {
+            service.autoRewind = AutoRewindController(
+                proxy<PlaybackSettingsRepository> { method ->
+                    when (method) {
+                        "observeSettings" -> flowOf(PlaybackSettings())
+                        else -> error("Unexpected playback settings call: $method")
+                    }
+                },
+                clock,
+                unused<PlaybackHistoryRepository>(),
+                logger,
+                scope.backgroundScope,
+            )
+            val type = PlaybackService::class.java.declaredClasses.single { it.simpleName == "PlayerEvents" }
+            val listener = type.getDeclaredConstructor(PlaybackService::class.java)
+                .apply { isAccessible = true }.newInstance(service) as Player.Listener
+            var callbackWasSafetyPause = false
+            val originListener = object : Player.Listener {
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    if (!playWhenReady) callbackWasSafetyPause = router.isRouteSafetyPause(player)
+                }
+            }
+            player.addListener(listener)
+            player.addListener(originListener)
+            player.playWhenReady = true
+            service.autoRewind.onPaused(wasUserInitiated = true)
+
+            router.field<HeadsetRouteGuard>("headsetGuard").pauseForSafety(player)
+
+            assertTrue(callbackWasSafetyPause, "pinned Media3 must deliver the pause callback in its effect scope")
+            assertNull(service.autoRewind.field<Any?>("pausedAt"), "a safety pause must not prime auto-rewind")
+            assertFalse(router.isRouteSafetyPause(player), "effect provenance must not outlive the pause call")
+            player.playWhenReady = true
+            player.pause()
+            assertNotNull(
+                service.autoRewind.field<Any?>("pausedAt"),
+                "a later listener pause still primes auto-rewind",
+            )
+            assertFalse(callbackWasSafetyPause, "the later listener pause must have no safety-effect provenance")
+            player.removeListener(originListener)
+            player.removeListener(listener)
         }
 
         fun routerGuardId(): String? = router.field<HeadsetRouteGuard>("headsetGuard")
