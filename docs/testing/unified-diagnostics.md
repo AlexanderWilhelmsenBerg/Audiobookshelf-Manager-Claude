@@ -57,12 +57,16 @@ service was created after headset power-on, followed by an external Play request
 Media3 cold-book resumption. Neither the event nor the input name proved whether a
 person pressed the button.
 
-`ColdStartToggleGate` consumes **only** virtual/unattributed MEDIA_PLAY_PAUSE
+`ColdStartToggleGate` consumes **only the first** virtual/unattributed MEDIA_PLAY_PAUSE
 DOWN/UP in the first 3 seconds of an empty Media3 queue with an enumerated Bluetooth
-output and no detected car session. Explicit MEDIA_PLAY (126), physical-attributed
-keys, established queues, warm service controls, and car requests are not gated.
-An intentional PLAY_PAUSE press during that three-second window may require a
-second press. This safety trade-off must be tested and reviewed before merging.
+output and no detected car session. It is process-scoped so a rejected cold
+`MediaButtonReceiver` start cannot recreate the three-second window on every service
+restart. Media3 identifies receiver starts in `onGetSession`; BookWave returns no
+session only for the same gated event, allowing Media3's `stopSelfSafely()` path to
+complete the foreground-service start without playback. Explicit MEDIA_PLAY (126),
+physical-attributed keys, established queues, warm service controls, and detected car
+requests are not gated. The one-shot safety trade-off must be tested and reviewed
+before merging.
 
 ## CI/hardware gates
 

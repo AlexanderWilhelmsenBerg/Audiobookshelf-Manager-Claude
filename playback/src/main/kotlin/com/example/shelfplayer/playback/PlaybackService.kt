@@ -243,7 +243,8 @@ class PlaybackService : MediaLibraryService() {
     @Dispatcher(ShelfDispatcher.MainImmediate)
     internal lateinit var mainDispatcher: CoroutineDispatcher
 
-    private val coldStartToggleGate = ColdStartToggleGate()
+    @Inject
+    internal lateinit var coldStartToggleGate: ColdStartToggleGate
     private var serviceStartedAt: Duration = Duration.ZERO
     private var player: ExoPlayer? = null
     private var session: MediaLibrarySession? = null
@@ -569,7 +570,53 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
+        // MediaButtonReceiver starts this service in the foreground before Media3 asks for a session.
+        // If the cold-start safety gate consumes that receiver event later in onMediaButtonEvent, no
+        // playback starts and Android tears the service down for missing its foreground promotion.
+        // Reject only this exact Media3 fallback request when the same gate says to consume its event.
+        // Media3's onStartCommand handles a null session through stopSelfSafely(), completing the
+        // foreground-service start without manufacturing a playback notification or opening media.
+        if (isSuppressedReceiverStart(controllerInfo)) {
+            logger.info(LogCategory.Playback, "Cold virtual Bluetooth toggle consumed before service resume")
+            return null
+        }
+        return session
+    }
+
+    private fun isSuppressedReceiverStart(controllerInfo: MediaSession.ControllerInfo): Boolean {
+        if (!isMediaButtonReceiver(controllerInfo)) return false
+        val hints = controllerInfo.connectionHints
+        val extras = hints.getBundle(MediaLibraryService.CONNECTION_HINT_KEY_INTENT_EXTRAS) ?: return false
+        val intent = Intent(Intent.ACTION_MEDIA_BUTTON).putExtras(extras)
+        val keyEvent = mediaButtonKeyEvent(intent) ?: return false
+        return shouldConsumeColdStartToggle(keyEvent, controllerInfo.packageName)
+    }
+
+    private fun isMediaButtonReceiver(controllerInfo: MediaSession.ControllerInfo): Boolean =
+        controllerInfo.connectionHints.getString(MediaLibraryService.CONNECTION_HINT_KEY_CONTROLLER_INFO_TYPE) ==
+            Intent.ACTION_MEDIA_BUTTON
+
+    private fun mediaButtonKeyEvent(intent: Intent): KeyEvent? {
+        @Suppress("DEPRECATION")
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+        } else {
+            intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT)
+        }
+    }
+
+    private fun shouldConsumeColdStartToggle(keyEvent: KeyEvent, controllerPackage: String): Boolean =
+        coldStartToggleGate.consume(
+            sinceServiceStart = clock.elapsed() - serviceStartedAt,
+            keyCode = keyEvent.keyCode,
+            keyAction = keyEvent.action,
+            inputDeviceId = keyEvent.deviceId,
+            hasBluetooth = audioOutputs.outputs.value.any { it.id.startsWith("bluetooth:") },
+            emptyQueue = (player?.mediaItemCount ?: 0) == 0,
+            carConnected = carConnections.isConnected() || carLifecycle.projectionState.carConnected ||
+                controllerPackage in CAR_PACKAGES,
+        )
 
     /**
      * PRODUCT_SPEC product priority 1 — swiping the app away does not stop a book that is actively playing.
@@ -2751,12 +2798,7 @@ class PlaybackService : MediaLibraryService() {
             controllerInfo: MediaSession.ControllerInfo,
             intent: Intent,
         ): Boolean {
-            @Suppress("DEPRECATION")
-            val keyEvent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
-            } else {
-                intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
-            }
+            val keyEvent = mediaButtonKeyEvent(intent)
             val inputDevice = keyEvent?.device
             val inputEvidence = MediaButtonInputEvidence.classify(
                 deviceId = keyEvent?.deviceId,
@@ -2780,16 +2822,7 @@ class PlaybackService : MediaLibraryService() {
             // Only cold, empty-player toggles are suspect; genuine PLAY, car intent and warm
             // headset buttons still flow to Media3. This can intentionally require a second
             // PLAY_PAUSE press during the three-second cold-start window.
-            val suppressed = coldStartToggleGate.consume(
-                sinceServiceStart = clock.elapsed() - serviceStartedAt,
-                keyCode = keyEvent?.keyCode ?: -1,
-                keyAction = keyEvent?.action ?: -1,
-                inputDeviceId = keyEvent?.deviceId,
-                hasBluetooth = audioOutputs.outputs.value.any { it.id.startsWith("bluetooth:") },
-                emptyQueue = (player?.mediaItemCount ?: 0) == 0,
-                carConnected = carConnections.isConnected() || carLifecycle.projectionState.carConnected ||
-                    controllerInfo.packageName in CAR_PACKAGES,
-            )
+            val suppressed = keyEvent?.let { shouldConsumeColdStartToggle(it, controllerInfo.packageName) } == true
             if (suppressed) {
                 autoTraces.log("Cold virtual Bluetooth toggle consumed before playback resumption")
                 return true

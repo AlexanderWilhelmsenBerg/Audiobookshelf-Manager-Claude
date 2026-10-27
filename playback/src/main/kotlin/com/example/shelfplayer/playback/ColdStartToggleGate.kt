@@ -1,6 +1,8 @@
 package com.example.shelfplayer.playback
 
 import android.view.KeyEvent
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -10,12 +12,17 @@ import kotlin.time.Duration.Companion.seconds
  * virtual media keys have no trustworthy A/B attribution.
  *
  * During the first three seconds of a newly constructed, empty player, the first virtual
- * toggle is consumed only when Bluetooth is already enumerated and no car is connected.
- * A later intentional button press is not suppressed. Explicit PLAY (126), app controls,
- * and Android Auto remain untouched. The short cold-start trade-off is documented in #273.
+ * toggle in the app process is consumed only when Bluetooth is already enumerated and no car
+ * is connected. Keeping this one-shot gate process-scoped means stopping a suppressed cold
+ * MediaButtonReceiver start cannot reset the window forever. A later intentional button press
+ * is not suppressed. Explicit PLAY (126), app controls, and Android Auto remain untouched.
+ * The short cold-start trade-off is documented in #273.
  */
-internal class ColdStartToggleGate(private val window: Duration = 3.seconds) {
+@Singleton
+internal class ColdStartToggleGate @Inject constructor() {
+    private val window: Duration = 3.seconds
     private var awaitingUp = false
+    private var consumedFirstToggle = false
 
     fun consume(
         sinceServiceStart: Duration,
@@ -31,11 +38,14 @@ internal class ColdStartToggleGate(private val window: Duration = 3.seconds) {
             awaitingUp = false
             return true
         }
-        if (keyAction != KeyEvent.ACTION_DOWN) return false
+        if (keyAction != KeyEvent.ACTION_DOWN || consumedFirstToggle) return false
         val cold = sinceServiceStart >= Duration.ZERO && sinceServiceStart <= window
         val suspect = cold && inputDeviceId != null && inputDeviceId <= 0 &&
             hasBluetooth && emptyQueue && !carConnected
-        if (suspect) awaitingUp = true
+        if (suspect) {
+            awaitingUp = true
+            consumedFirstToggle = true
+        }
         return suspect
     }
 }

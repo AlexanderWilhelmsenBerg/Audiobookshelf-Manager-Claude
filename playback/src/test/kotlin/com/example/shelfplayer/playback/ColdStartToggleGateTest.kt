@@ -17,6 +17,14 @@ class ColdStartToggleGateTest {
         assertFalse(g.consume(4.seconds, 85, KeyEvent.ACTION_DOWN, -1, true, true, false))
     }
 
+    @Test fun `only the first suspect toggle is consumed during a process cold start`() {
+        val g = gate()
+        assertTrue(g.consume(900.milliseconds, 85, KeyEvent.ACTION_DOWN, -1, true, true, false))
+        assertTrue(g.consume(950.milliseconds, 85, KeyEvent.ACTION_UP, -1, true, true, false))
+
+        assertFalse(g.consume(1.seconds, 85, KeyEvent.ACTION_DOWN, -1, true, true, false))
+    }
+
     @Test fun `explicit headset PLAY stays valid from a cold service`() {
         assertFalse(gate().consume(800.milliseconds, 126, KeyEvent.ACTION_DOWN, -1, true, true, false))
     }
