@@ -1,5 +1,43 @@
 # Playback scenario verification ledger (issue #289)
 
+## Build 2241 route-loss safety continuation (27 October 2026)
+
+The owner reports headset hold and headset Pause/Play return failed on combined build 2241.
+The retained capture shows a playing Automatic Bluetooth endpoint disappearing, fresh appearance IDs,
+a playing speaker observation before noisy pause, rejected continuity and subsequent external Play
+on `RemoteSubmix`. The full sanitized assessment and ordered implementation plan are in issue #289;
+raw diagnostics are not repository fixtures. This adds a regression spanning S02/S04/S07/S10/S18,
+rather than changing the existing physical outcomes to PASS.
+
+The first implementation slice establishes transient protection from a current-generation, sole
+measured AudioTrack endpoint before car bind. `PlaybackService` uses `RouteHeardOwnership` eligibility;
+the router rechecks actual route, endpoint/collision state, attached player, preference epoch and newer
+selection at the effect boundary. It does not classify a virtual media key as a physical headset.
+The guard retains its existing API 33+ boundary and candidate eligibility.
+
+| Regression | Production path / assertion |
+| --- | --- |
+| Automatic playback with no preinstalled guard | `PlaybackServiceCommandContinuityTest` invokes the actual service observer; removing its router call must fail the guard assertion |
+| Endpoint loss and replacement appearance | `AudioOutputRouterThreadTest` drives the actual route callback; old target stays protected and a new appearance is not silently adopted |
+| Multiple/current competing measured outputs | `HeadsetHoldTest` and router tests reject ambiguous proof; an inactive listed speaker alone is not conflicting AudioTrack evidence |
+| Explicit Car before any prior headset observation | Router test rejects an Automatic continuity claim even when the actual headset route still lags the requested Car destination |
+| Intent, book or collision changes during measurement | Router tests invalidate the old arm at the post-query boundary |
+| Book end after policy reassertion and a muted probe | Cleanup retires only the transient effect claim, restores its volume and clears a policy-requested preference |
+| New attachment or newer explicit same-output choice | Old implicit work cannot cross attachment or erase the newer listener choice |
+
+The existing book generation, explicit selection sequence and queued-preference epoch scope these
+effects; no new listener-intent counter is introduced. Profile handover already pauses/flushes and
+clears the queue before changing account context, reaching the book/queue retirement boundary.
+
+This slice is **not** #276's user-facing persistent lock or #277's controlled verified handoff.
+A disappearing endpoint may require safe pause and a fresh explicit output choice. No automatic
+association between old and new appearance IDs, continuous audio through a missing route, physical
+button attribution, or real head-unit acceptance is certified by these tests.
+
+Capability provenance and pending physical checks are in
+[`../architecture/playback-output-capabilities.md`](../architecture/playback-output-capabilities.md).
+The rest of this ledger remains the baseline scenario inventory.
+
 <!-- Updated against merged GitHub main acce406c8ffe and scenario PR #290; 2026-10-21. -->
 
 This ledger connects the 22 product scenarios to **executable production-policy tests**, existing

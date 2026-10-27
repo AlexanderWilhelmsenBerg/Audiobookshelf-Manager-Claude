@@ -1335,8 +1335,14 @@ class PlaybackService : MediaLibraryService() {
             if (mediaItem != null && !MediaItems.isResumePlaceholder(mediaItem)) metrics.onItemPrepared()
             // PRODUCT_SPEC PLAY-002 — route evidence belongs only to this loaded book generation.
             routeOwnership.onBookChanged(mediaItem != null)
-            // Issue #36 — all continuity evidence is generation-bound and dies with the loaded book.
+            audioOutputs.clearMeasuredPlayingHeadsetProtection()
+            // Retire the old recovery before observing playback into the incoming book's generation.
             clearCarContinuity()
+            if (mediaItem != null && player?.isPlaying == true) {
+                val outputs = audioOutputs.outputs.value
+                routeOwnership.onPlaybackObserved(outputs)
+                observeCarContinuityHeadset(outputs)
+            }
             // PRODUCT_SPEC SYNC-002 — a baseline is per book and per position, and this is both changing.
             resumeBaseline.onBookClosed()
             // Record before the sync that follows it, so the row the sync uploads is this item's own.
@@ -1523,6 +1529,7 @@ class PlaybackService : MediaLibraryService() {
                     val isPlaying = player?.isPlaying == true
                     if ((player?.mediaItemCount ?: 0) == 0) {
                         routeOwnership.onQueueEmptied()
+                        audioOutputs.clearMeasuredPlayingHeadsetProtection()
                         clearCarContinuity()
                     } else {
                         routeOwnership.onOutputsChanged(outputs, isPlaying = isPlaying)
@@ -1574,6 +1581,18 @@ class PlaybackService : MediaLibraryService() {
         )
 
     private fun observeCarContinuityHeadset(outputs: List<AudioOutput>) {
+        val generation = routeOwnership.currentGeneration
+        val headset = routeOwnership.measuredPlayingHeadsetForContinuity(outputs)
+        if (generation != null && headset != null) {
+            audioOutputs.protectMeasuredPlayingHeadset(
+                headset,
+                generation,
+                currentExplicitSelectionSequence(),
+            ) {
+                routeOwnership.currentGeneration == generation &&
+                    routeOwnership.measuredPlayingHeadsetForContinuity(audioOutputs.outputs.value) == headset
+            }
+        }
         carRecovery.observePlayingHeadset(continuityInputs(outputs))
     }
 

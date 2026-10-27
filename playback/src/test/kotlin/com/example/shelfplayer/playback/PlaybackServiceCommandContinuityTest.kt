@@ -8,6 +8,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.testing.TestAppClock
 import com.example.shelfplayer.domain.playback.ResumeBaseline
@@ -50,6 +51,18 @@ import kotlin.time.Duration.Companion.seconds
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class PlaybackServiceCommandContinuityTest {
+    @Test
+    fun `service protects an exact Automatic route before car arrival`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.observeMeasuredAutomaticRoute()
+            assertEquals(
+                fixture.endpointId,
+                fixture.routerGuardId(),
+                "the production service observer must reach router protection before car bind",
+            )
+        }
+    }
+
     @Test
     fun `route return without a newer command reaches the production one-shot Play`() = runTest {
         Fixture(this).use { fixture ->
@@ -152,6 +165,7 @@ class PlaybackServiceCommandContinuityTest {
             listOf(LiveOutputEndpointRegistry.Observation(device.id, device.type, device.productName?.toString())),
         ).single()
         private val headset = endpoint.output.copy(id = endpoint.id, isActive = true)
+        val endpointId: String get() = endpoint.id
         private val service = PlaybackService()
         val player = ExoPlayer.Builder(context).build()
         private val router = AudioOutputRouter(context, logger, scope.backgroundScope, dispatcher, registry)
@@ -251,6 +265,23 @@ class PlaybackServiceCommandContinuityTest {
             router.field<MutableStateFlow<String?>>("_selectedId").value = headset.id
         }
 
+        fun observeMeasuredAutomaticRoute() {
+            val measured = headset.copy(
+                activitySource = AudioOutputActivitySource.PlayingAudioTrack,
+            )
+            router.setField("live", mapOf(endpoint.id to device))
+            router.setField("currentTrackRoutes", { setOf(endpoint.id) })
+            router.setField("guardedHeadsetId", null)
+            router.field<MutableStateFlow<String?>>("_selectedId").value = null
+            router.field<MutableStateFlow<List<AudioOutput>>>("_outputs").value = listOf(measured)
+            owner.onBookChanged(hasBook = true)
+            owner.onPlaybackObserved(listOf(measured))
+            service.call("observeCarContinuityHeadset", List::class.java, listOf(measured))
+        }
+
+        fun routerGuardId(): String? = router.field<HeadsetRouteGuard>("headsetGuard")
+            .field<String?>("endpointId")
+
         fun beginRecovery() = effects.onRecoveryReady(target)
 
         fun isRecoveryCurrent(): Boolean = recovery.isCurrent(target, owner.currentGeneration, 0)
@@ -317,5 +348,11 @@ class PlaybackServiceCommandContinuityTest {
             isAccessible = true
             invoke(this@call)
         }
+
+        fun Any.call(name: String, parameterType: Class<*>, argument: Any?): Any? =
+            javaClass.getDeclaredMethod(name, parameterType).run {
+                isAccessible = true
+                invoke(this@call, argument)
+            }
     }
 }

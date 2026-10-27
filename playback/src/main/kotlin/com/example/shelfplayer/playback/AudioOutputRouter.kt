@@ -106,11 +106,23 @@ class AudioOutputRouter @Inject constructor(
     )
     private var currentTrackRoutes: () -> Set<String>? = { null }
     private var collidingOutputIds: Set<String> = emptySet()
+    private data class AutomaticProtection(
+        val outputId: String,
+        val generation: Long,
+        val selectionSequence: Long,
+        val preferenceEpoch: Long,
+        val preferredDeviceRequested: Boolean = false,
+    ) {
+        fun matchesClaim(id: String, bookGeneration: Long, sequence: Long): Boolean =
+            outputId == id && generation == bookGeneration && selectionSequence == sequence
+    }
+    private var automaticProtection: AutomaticProtection? = null
 
     /** Process-scoped live endpoints; never key physical routing by persistent name-based policy ID. */
     private var live: Map<String, AudioDeviceInfo> = emptyMap()
 
     fun attach(target: ExoPlayer, trackRoutes: () -> Set<String>? = { null }) {
+        clearMeasuredPlayingHeadsetProtection()
         // A probe owns the volume it muted. Restore it while its player is still attached,
         // before a replacement can become the router's current player.
         headsetGuard.cancelProbe()
@@ -135,6 +147,7 @@ class AudioOutputRouter @Inject constructor(
     /** Releases the player. The device callback stays registered because the connected list outlives it. */
     fun detach() {
         preferenceEffects.supersede()
+        automaticProtection = null
         headsetGuard.release()
         currentTrackRoutes = { null }
         collidingOutputIds = emptySet()
@@ -188,6 +201,10 @@ class AudioOutputRouter @Inject constructor(
         }
         val epoch = preferenceEffects.supersede()
         headsetGuard.protect(id)
+        automaticProtection = automaticProtection?.takeIf { it.outputId == id }?.copy(
+            preferenceEpoch = epoch,
+            preferredDeviceRequested = true,
+        )
         _selectedId.value = id
         publish()
         apply(id, epoch)
@@ -200,6 +217,7 @@ class AudioOutputRouter @Inject constructor(
      */
     internal fun protectPlayingHeadset(id: String) {
         if (id !in live) return
+        if (_selectedId.value == id && headsetGuard.endpointId == id) return
         // A captured headset supersedes queued Automatic/Car requests, even before a direct route call.
         preferenceEffects.supersede()
         // Capture an implicit system headset route as the exact temporary preference, without
@@ -207,6 +225,68 @@ class AudioOutputRouter @Inject constructor(
         // never opened BookWave's output chooser and selectedId was Automatic.
         if (_selectedId.value == null) _selectedId.value = id
         headsetGuard.protect(id)
+        publish()
+    }
+
+    /** Protects the exact current playing route accepted by the service's generation-bound route owner. */
+    internal fun protectMeasuredPlayingHeadset(
+        id: String,
+        generation: Long,
+        selectionSequence: Long,
+        isCurrentClaim: () -> Boolean,
+    ): Boolean {
+        if (!canProtectMeasuredHeadset(id, selectionSequence)) return false
+        if (automaticProtection?.matchesClaim(id, generation, selectionSequence) == true &&
+            _selectedId.value == id && headsetGuard.endpointId == id
+        ) {
+            return true
+        }
+        val attached = player ?: return false
+        val epoch = preferenceEffects.snapshot()
+        if (currentTrackRoutes() != setOf(id)) return false
+        if (!preferenceEffects.isCurrent(epoch) || player !== attached ||
+            !canProtectMeasuredHeadset(id, selectionSequence) || !isCurrentClaim()
+        ) {
+            return false
+        }
+        val protectionEpoch = preferenceEffects.supersede()
+        if (_selectedId.value == null) _selectedId.value = id
+        headsetGuard.protect(id)
+        automaticProtection = AutomaticProtection(id, generation, selectionSequence, protectionEpoch)
+        publish()
+        return true
+    }
+
+    /** Route queries may synchronously retire an endpoint or deliver newer selection; check both sides. */
+    private fun canProtectMeasuredHeadset(id: String, selectionSequence: Long): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || id !in live ||
+            id in collidingOutputIds
+        ) {
+            return false
+        }
+        val selection = explicitSelectionState.value
+        if (selection?.destination == ExplicitDestination.Car || (selection?.sequence ?: 0L) != selectionSequence) {
+            return false
+        }
+        return (_selectedId.value == null || _selectedId.value == id) &&
+            (headsetGuard.endpointId == null || headsetGuard.endpointId == id)
+    }
+
+    /** Drops only the transient Automatic-route claim when its owning book/queue generation ends. */
+    internal fun clearMeasuredPlayingHeadsetProtection() {
+        val active = automaticProtection ?: return
+        val epoch = preferenceEffects.supersede()
+        automaticProtection = null
+        if (headsetGuard.endpointId == active.outputId) headsetGuard.clearOwnership()
+        if (_selectedId.value == active.outputId && explicitSelectionState.value?.outputId == null) {
+            _selectedId.value = null
+        }
+        applicationScope.launch(mainDispatcher) {
+            headsetGuard.cancelProbeForEndpoint(active.outputId, active.preferenceEpoch)
+        }
+        if (active.preferredDeviceRequested && explicitSelectionState.value?.outputId == null) {
+            applicationScope.launch { apply(null, epoch) }
+        }
         publish()
     }
 
@@ -221,6 +301,7 @@ class AudioOutputRouter @Inject constructor(
         }
         // Even a repeated null Car/Automatic choice is newer intent; output id equality is insufficient.
         val epoch = preferenceEffects.supersede()
+        automaticProtection = null
         headsetGuard.clearOwnership()
         applicationScope.launch(mainDispatcher) { headsetGuard.cancelProbe() }
         explicitSelectionState.value = ExplicitSelection(

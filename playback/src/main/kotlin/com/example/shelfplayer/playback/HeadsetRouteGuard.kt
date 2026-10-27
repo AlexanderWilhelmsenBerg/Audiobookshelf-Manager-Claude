@@ -190,6 +190,10 @@ internal class HeadsetRouteGuard(
         active.player.volume = active.previousVolume
     }
 
+    fun cancelProbeForEndpoint(id: String, preferenceEpoch: Long) {
+        probe?.takeIf { it.endpointId == id && it.preferenceEpoch == preferenceEpoch }?.let(::cancelProbe)
+    }
+
     private fun cancelGrace() {
         disappearanceGrace?.cancel()
         disappearanceGrace = null

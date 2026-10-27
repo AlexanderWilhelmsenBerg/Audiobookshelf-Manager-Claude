@@ -136,6 +136,49 @@ class HeadsetHoldTest {
     }
 
     @Test
+    fun `only one current generation measured playing endpoint can arm transient continuity`() {
+        val owner = RouteHeardOwnership().apply { onBookChanged(hasBook = true) }
+        val exact = budsA.copy(isActive = true, activitySource = AudioOutputActivitySource.PlayingAudioTrack)
+        owner.onPlaybackObserved(listOf(exact))
+
+        assertEquals(budsA.id, owner.measuredPlayingHeadsetForContinuity(listOf(exact)))
+        assertEquals(budsA.id, owner.measuredPlayingHeadsetForContinuity(listOf(exact, speaker)))
+        assertNull(
+            owner.measuredPlayingHeadsetForContinuity(
+                listOf(
+                    exact,
+                    speaker.copy(isActive = true, activitySource = AudioOutputActivitySource.PlayingAudioTrack),
+                ),
+            ),
+        )
+        assertNull(
+            owner.measuredPlayingHeadsetForContinuity(
+                listOf(
+                    exact,
+                    budsB.copy(isActive = true, activitySource = AudioOutputActivitySource.PlayingAudioTrack),
+                ),
+            ),
+        )
+
+        owner.onBookChanged(hasBook = true)
+        assertNull(owner.measuredPlayingHeadsetForContinuity(listOf(exact)))
+    }
+
+    @Test
+    fun `explicit Automatic release excludes its old route from transient protection`() {
+        val owner = RouteHeardOwnership().apply { onBookChanged(hasBook = true) }
+        val exact = budsA.copy(isActive = true, activitySource = AudioOutputActivitySource.PlayingAudioTrack)
+        owner.onPlaybackObserved(listOf(exact))
+        owner.onExplicitSelection(outputId = null, outputs = listOf(exact), isPlaying = true)
+
+        assertNull(owner.measuredPlayingHeadsetForContinuity(listOf(exact)))
+
+        owner.onBookChanged(hasBook = true)
+        owner.onPlaybackObserved(listOf(exact))
+        assertEquals(budsA.id, owner.measuredPlayingHeadsetForContinuity(listOf(exact)))
+    }
+
+    @Test
     fun `a measured competing route cannot rewrite an explicit headset choice as physical proof`() {
         val owner = RouteHeardOwnership().apply { onBookChanged(hasBook = true) }
         val outputs = listOf(
