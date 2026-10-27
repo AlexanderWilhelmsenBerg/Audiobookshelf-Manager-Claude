@@ -61,7 +61,7 @@ internal class CarContinuityResumeEffectsTest {
                 applicationScope = this,
                 mainDispatcher = StandardTestDispatcher(testScheduler),
             ),
-            owner = RouteHeardOwnership(),
+            owner = RouteHeardOwnership(OutputIntentOwner()),
             trace = { message, fields -> recorder.log(message, fields = fields) },
             currentPlayer = { player },
             selectionSequence = { 0 },
@@ -98,7 +98,7 @@ internal class CarContinuityResumeEffectsTest {
                 applicationScope = this,
                 mainDispatcher = StandardTestDispatcher(testScheduler),
             ),
-            owner = RouteHeardOwnership(),
+            owner = RouteHeardOwnership(OutputIntentOwner()),
             trace = { message, fields -> recorder.log(message, fields = fields) },
             currentPlayer = { null },
             selectionSequence = { 0 },
@@ -125,7 +125,7 @@ internal class CarContinuityResumeEffectsTest {
                 role = AudioOutputRole.Ambiguous,
                 isActive = true,
             )
-            val owner = RouteHeardOwnership().apply {
+            val owner = RouteHeardOwnership(OutputIntentOwner()).apply {
                 onBookChanged(hasBook = true)
                 onPlaybackObserved(listOf(headset))
             }

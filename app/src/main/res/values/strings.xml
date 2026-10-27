@@ -311,6 +311,12 @@
     <!-- PLAY-002 — where the platform says the audio actually went, which is not always what was
          asked for. %1$s is the device name. -->
     <string name="player_output_playing_here">%1$s — playing here</string>
+    <string name="player_output_keep_here">Keep audio here</string>
+    <string name="player_output_lock_refused">The current audio output could not be verified. Try again while audio is playing.</string>
+    <string name="player_output_kept_here">Keeping audio here</string>
+    <string name="player_output_waiting_here">Waiting for this output</string>
+    <string name="player_output_unverified_here">Output needs verification</string>
+    <string name="player_output_release_lock">Release output lock</string>
     <!-- %1$s is a remaining time such as "1:04:12". -->
     <string name="player_remaining">−%1$s</string>
     <string name="player_book_position">Book · %1$s</string>

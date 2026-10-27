@@ -256,6 +256,8 @@ private fun ShelfPlayerContent(
     // PRODUCT_SPEC PLAY-002 — the outputs the book can be sent to, for the chooser in the player's top bar.
     val audioOutputs by playerViewModel.outputs.collectAsStateWithLifecycle()
     val selectedOutput by playerViewModel.selectedOutput.collectAsStateWithLifecycle()
+    val outputLock by playerViewModel.outputLock.collectAsStateWithLifecycle()
+    val canKeepAudioHere by playerViewModel.canKeepAudioHere.collectAsStateWithLifecycle()
     val history by playerViewModel.history.collectAsStateWithLifecycle()
     val bookmarks by playerViewModel.bookmarkList.collectAsStateWithLifecycle()
     val bookmarkAdded by playerViewModel.bookmarkAdded.collectAsStateWithLifecycle()
@@ -394,6 +396,10 @@ private fun ShelfPlayerContent(
                 outputs = audioOutputs,
                 selectedId = selectedOutput,
                 onSelect = playerViewModel::onOutputSelected,
+                lockStatus = outputLock,
+                canKeepAudioHere = canKeepAudioHere,
+                onKeepAudioHere = playerViewModel::onKeepAudioHere,
+                onReleaseLock = playerViewModel::onReleaseOutputLock,
             ),
             actions = PlayerActions(
                 onTogglePlayPause = playerViewModel::onTogglePlayPause,

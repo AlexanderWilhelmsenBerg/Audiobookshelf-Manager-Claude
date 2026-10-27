@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.AudioOutputLockStatus
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
@@ -115,6 +116,8 @@ class PlayerViewModel @Inject constructor(
      * when a request is declined.
      */
     val selectedOutput: StateFlow<String?> = controller.selectedOutput
+    val outputLock: StateFlow<AudioOutputLockStatus?> = controller.outputLock
+    val canKeepAudioHere: StateFlow<Boolean> = controller.canKeepAudioHere
 
     /** PRODUCT_SPEC PLAY-009 — "applied rewind is visible briefly and can be undone". */
     val rewind: StateFlow<AutoRewindController.Applied?> = autoRewind.lastApplied
@@ -254,6 +257,8 @@ class PlayerViewModel @Inject constructor(
      * Not remembered across restarts, deliberately: see ADR-0027.
      */
     fun onOutputSelected(id: String?) = controller.selectOutput(id)
+    fun onKeepAudioHere(): Boolean = controller.keepAudioHere()
+    fun onReleaseOutputLock() = controller.releaseOutputLock()
 
     /** PRODUCT_SPEC PLAY-003 — jumps to a chapter chosen from the list. */
     fun onChapterSelected(chapter: Chapter) = controller.seekToChapter(chapter)

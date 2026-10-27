@@ -19,6 +19,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.AudioOutputLockStatus
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.domain.playback.GlobalTimeline
@@ -100,8 +101,17 @@ class PlaybackController @Inject constructor(
      */
     val selectedOutput: StateFlow<String?> = audioOutputs.selectedId
 
+    /** Read-only projection for the output chooser's Keep audio here / Release affordance. */
+    val outputLock: StateFlow<AudioOutputLockStatus?> = audioOutputs.outputLockStatus
+    val canKeepAudioHere: StateFlow<Boolean> = audioOutputs.canKeepAudioHere
+
     /** PRODUCT_SPEC PLAY-002 — chooses an output, or `null` for *Automatic*. Not remembered (ADR-0027). */
     fun selectOutput(id: String?) = audioOutputs.select(id)
+
+    fun keepAudioHere(): Boolean = audioOutputs.keepAudioHere()
+
+    /** Release is the existing explicit Automatic command, with the same ordering and cancellation. */
+    fun releaseOutputLock() = audioOutputs.select(null)
 
     private val connectionMutex = Mutex()
     private var connectionGeneration = 0L

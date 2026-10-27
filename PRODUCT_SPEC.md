@@ -391,6 +391,12 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Disconnecting headphones while playing pauses immediately.
 - Playback never unexpectedly moves from headphones to the phone speaker.
 - Reconnecting a route follows the configured per-device policy.
+- The player output chooser can explicitly keep audio on the current output only while a loaded book is
+  playing through one fresh, exact mapped AudioTrack route; predicted, missing, conflicting and duplicate
+  endpoint evidence cannot arm this choice.
+- An explicit output lock retains its logical target across ordinary pause/resume and nonempty book changes,
+  while invalidating old physical proof at book/player boundaries. Route loss or uncertainty fails closed;
+  a new appearance never rebinds by name or starts playback automatically. The listener can release the lock.
 
 ### PLAY-003 Playback queue and tracks
 

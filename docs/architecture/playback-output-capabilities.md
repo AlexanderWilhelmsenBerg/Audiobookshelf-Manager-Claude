@@ -66,12 +66,18 @@ platforms keep their existing Media3 focus/noisy behavior and remain in the broa
 Existing components retain their responsibilities:
 
 - The registry owns live appearances; the monitor owns actual-track measurement.
-- Router/preference effects and `HeadsetRouteGuard` own serialized physical requests, pause and probe
-  effects. Healthy repeated callbacks must not recreate listener intent or continually reassert a route.
-- `RouteHeardOwnership` retains evidence provenance and book-generation scope. The car coordinator owns
+- The singleton router owns `OutputIntentOwner`, the single explicit destination sequence, Automatic-release
+  constraint, and transient lock. Phone, Auto custom actions, generic transport and service observations read
+  the same owner; explicit Automatic captures the evidence owner's current route through a read-only provider.
+- Router/preference effects and `HeadsetRouteGuard` own serialized physical requests and safety-pause
+  provenance. Healthy repeated callbacks must not recreate listener intent or continually reassert a route.
+- `RouteHeardOwnership` retains evidence provenance and book-generation scope, consuming the shared selection
+  with a consumer watermark rather than storing another listener-intent mirror. The car coordinator owns
   recovery eligibility and one-shot episodes, rather than another route-selection authority.
-- #276 adds a user-facing verified lock; #277 adds explicit verified transfer and rollback. The safety
-  slice alone is neither a persistent lock nor headset-button destination handoff.
+- #276 adds a transient user-facing logical lock, armed only by fresh unique exact current-track mapping and
+  explicit phone-chooser confirmation. Pause and nonempty book/player changes invalidate proof while retaining
+  the target; empty queue, service death and explicit release clear it. No opaque endpoint identity persists.
+  #277 adds explicit verified transfer and rollback. The lock does not attribute headset buttons.
 
 An explicit Car/Automatic/other-output choice must supersede older continuity work. A fresh appearance
 cannot silently inherit the old target; safe pause is preferable to an unsupported rebind. Retain one

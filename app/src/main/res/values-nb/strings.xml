@@ -251,6 +251,12 @@
     <string name="player_collapse">Lukk spilleren</string>
     <string name="player_output_current">Lydutgang: %1$s</string>
     <string name="player_output_automatic">Automatisk</string>
+    <string name="player_output_keep_here">Behold lyden her</string>
+    <string name="player_output_lock_refused">Kan ikke bekrefte gjeldende lydutgang. Prøv igjen mens lyden spilles av.</string>
+    <string name="player_output_kept_here">Lyden beholdes her</string>
+    <string name="player_output_waiting_here">Venter på denne lydutgangen</string>
+    <string name="player_output_unverified_here">Lydutgangen må bekreftes</string>
+    <string name="player_output_release_lock">Opphev lås på lydutgang</string>
     <string name="player_output_selected">Valgt</string>
     <string name="player_output_playing_here">%1$s — spilles her</string>
     <string name="player_remaining">−%1$s</string>

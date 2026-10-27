@@ -38,7 +38,7 @@ internal class PlaybackScenarioAsyncEffectsTest {
     )
 
     private fun ready(): Ready {
-        val owner = RouteHeardOwnership().apply {
+        val owner = RouteHeardOwnership(OutputIntentOwner()).apply {
             onBookChanged(hasBook = true)
             onPlaybackObserved(listOf(headset.copy(isActive = true)))
         }

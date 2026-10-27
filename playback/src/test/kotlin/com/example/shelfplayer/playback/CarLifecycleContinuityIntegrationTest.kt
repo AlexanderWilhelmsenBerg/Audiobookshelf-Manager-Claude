@@ -341,7 +341,14 @@ class CarLifecycleContinuityIntegrationTest {
         val gate = CarArrivalResumeGate()
 
         // The owner had explicitly selected the headset while the book was genuinely playing.
-        owner.onExplicitSelection(buds.id, listOf(buds), isPlaying = true, selectionSequence = 1)
+        val selection = owner.intentOwner.select(buds.id, OutputIntentOwner.Destination.Output)
+        owner.onExplicitSelection(
+            buds.id,
+            listOf(buds),
+            isPlaying = true,
+            selectionSequence = selection.sequence,
+            destination = selection.destination,
+        )
         gate.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 1)
         assertEquals(buds.id, owner.heardRoute?.outputId)
 
@@ -437,7 +444,7 @@ class CarLifecycleContinuityIntegrationTest {
         )
     }
 
-    private fun playingOwner(): RouteHeardOwnership = RouteHeardOwnership().apply {
+    private fun playingOwner(): RouteHeardOwnership = RouteHeardOwnership(OutputIntentOwner()).apply {
         onBookChanged(hasBook = true)
         onPlaybackObserved(listOf(buds.copy(isActive = true)))
     }
