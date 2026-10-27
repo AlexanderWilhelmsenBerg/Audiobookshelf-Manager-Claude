@@ -1,7 +1,9 @@
-# PlaybackService continuity event simplification — stacked PR C
+# PlaybackService continuity event boundaries
 
-This PR is based on PR B, which is based on PR A; all three must remain unmerged
-until combined physical hardware acceptance.
+The A/B/C foundation merged into `main` on 21 October 2026 after explicit owner
+authorization to proceed with architecture-first refactoring. Hardware headset-button
+handoff remains open under #276/#277. The older requirement to hold those three
+foundation PRs unmerged was superseded; the hardware observations below remain valid.
 
 PlaybackService continues to own the single ExoPlayer and MediaLibrarySession,
 lifecycle/source callbacks, focused UI/notification exposure, media-button
@@ -23,12 +25,30 @@ service's actual delegated entrypoint references. Existing Robolectric
 CarProjectionLifecycleTest and all Phase 1C continuity and service tests
 remain required by verifyDebug.
 
-A CI-green PR C is the gate for producing the single **combined A+B+C debug APK**.
-CI cannot establish audible car/headset routing. Hardware acceptance must
+CI cannot establish audible car/headset routing. Any APK requires separate owner
+authorization. Hardware acceptance must
 exercise the original-headset-to-car transition, headset Play versus car Play,
 same-name Bluetooth endpoints, cold start, disconnect/reconnect, focus/noisy
-ordering, and explicit Pause/new book/profile/output changes. Keep all three
-PRs separate until this physical acceptance is satisfied.
+ordering, and explicit Pause/new book/profile/output changes.
+
+## Unmerged Phase 3 continuation
+
+The service retains synchronous lifecycle/input reconciliation, the single player
+and session, progress/profile/sleep ownership and read-only diagnostic snapshots.
+`CarContinuityResumeEffects` owns route-hold/recovery coroutine lifetime on the
+service dispatcher. The three former independent launch sites now forward their
+decisions to that same owner. Actual listener/book/queue/service invalidation
+cancels pending work; stale completion discards only its own gate-issued episode.
+See [the effect boundary](playback-recovery-play-effects.md) and
+[ADR-0030](../adr/0030-continuity-effects-have-one-service-scoped-lifetime.md).
+
+Phase 3 completion also separates browse, profile switching, cold resumption and
+asynchronous queue acceptance from the service's connection/event adapters. New
+controller movement and notification skips use the shared invalidation boundary;
+slow queue callbacks cannot publish a stale live book after newer intent. Typed
+activity provenance retains the distinction between track proof, policy and
+preference. See [the completion checklist](playback-phase3-completion.md) and
+[ADR-0031](../adr/0031-controller-requests-have-scoped-acceptance.md).
 
 ## 2026-10-21 extended hardware regression and safety stabilization
 

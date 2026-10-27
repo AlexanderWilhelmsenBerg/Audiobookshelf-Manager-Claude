@@ -1,6 +1,7 @@
 package com.example.shelfplayer.playback
 
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import com.example.shelfplayer.core.model.playback.AudioOutputRole
 import com.example.shelfplayer.core.model.playback.DeviceKind
 import org.junit.Test
@@ -113,6 +114,40 @@ class HeadsetHoldTest {
             RouteHeardEvidence.ListenerSelectionWhilePlaying,
             owner.heardRoute?.evidence,
         )
+    }
+
+    @Test
+    fun `route ownership preserves each activity source without changing the headset candidate`() {
+        val cases = mapOf(
+            AudioOutputActivitySource.PlayingAudioTrack to RouteHeardEvidence.ActualAudioTrackWhilePlaying,
+            AudioOutputActivitySource.FrameworkMediaPolicy to RouteHeardEvidence.FrameworkPolicyWhilePlaying,
+            AudioOutputActivitySource.SelectedPreference to RouteHeardEvidence.SelectedPreferenceWhilePlaying,
+            AudioOutputActivitySource.Unmeasured to RouteHeardEvidence.UnmeasuredActivityWhilePlaying,
+        )
+        for ((source, evidence) in cases) {
+            val owner = RouteHeardOwnership().apply { onBookChanged(hasBook = true) }
+            val outputs = listOf(budsA.copy(isActive = true, activitySource = source))
+
+            owner.onPlaybackObserved(outputs)
+
+            assertEquals(evidence, owner.heardRoute?.evidence)
+            assertEquals(budsA.id, owner.headsetForCar(outputs))
+        }
+    }
+
+    @Test
+    fun `a measured competing route cannot rewrite an explicit headset choice as physical proof`() {
+        val owner = RouteHeardOwnership().apply { onBookChanged(hasBook = true) }
+        val outputs = listOf(
+            budsA,
+            budsB.copy(isActive = true, activitySource = AudioOutputActivitySource.PlayingAudioTrack),
+        )
+        owner.onExplicitSelection(budsA.id, outputs, isPlaying = true)
+
+        owner.onOutputsChanged(outputs, isPlaying = true)
+
+        assertEquals(budsA.id, owner.heardRoute?.outputId)
+        assertEquals(RouteHeardEvidence.ListenerSelectionWhilePlaying, owner.heardRoute?.evidence)
     }
 
     @Test
@@ -264,7 +299,13 @@ class HeadsetHoldTest {
         name: String,
         kind: DeviceKind = DeviceKind.Bluetooth,
         role: AudioOutputRole = AudioOutputRole.Ambiguous,
-    ) = AudioOutput(id = id, displayName = name, kind = kind, role = role)
+    ) = AudioOutput(
+        id = id,
+        displayName = name,
+        kind = kind,
+        role = role,
+        activitySource = AudioOutputActivitySource.FrameworkMediaPolicy,
+    )
 }
 
 class RouteHeardOwnershipGenerationTest {

@@ -53,13 +53,13 @@ class CarContinuityPlayPrecheckTest {
 
     @Test
     fun `the service issues Play only after an accepted verdict and a Proceed precheck`() {
-        val source = File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt").readText()
+        val source = File("src/main/kotlin/com/example/shelfplayer/playback/CarContinuityResumeEffects.kt").readText()
         val resume = source
             .substringAfter("private fun resumeAfterCarContinuity")
-            .substringBefore("private fun carSnapshotFields")
+            .substringBefore("\n}")
 
         val precheck = resume.indexOf("CarContinuityPlayPrecheck.decide")
-        val verdict = resume.indexOf("carRecovery.assess")
+        val verdict = resume.indexOf("recovery.assess")
         val rejected = resume.indexOf("if (!result.accepted)")
         val play = resume.indexOf("current.play()")
         assertTrue(precheck in 0 until verdict, "the precheck precedes coordinator claim consumption")

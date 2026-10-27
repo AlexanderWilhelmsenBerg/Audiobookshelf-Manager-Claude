@@ -18,10 +18,18 @@ a **classification**, not proof of a headset, steering wheel, car audio output,
 or that any AudioTrack actually routed to a given sink. Media3 local-player
 `USER_REQUEST` intentionally does not distinguish those physical sources.
 
-`PlaybackService.PlayerEvents` remains the sole executor of transport
-consequences: history, rewind intent, cancellation of stale recovery, passing
-focus/noisy interruptions to the existing recovery coordinator and final Play.
+`PlaybackService.PlayerEvents` remains the adapter for transport
+consequences: history, rewind intent, cancellation of stale recovery work, and passing
+focus/noisy interruptions to the existing recovery coordinator. Ready decisions enter
+`CarContinuityResumeEffects`, which owns the service-scoped Job and final Play against
+the service's current player; lifecycle and eligibility policy do not move into that Job.
 The extraction does not change accepted policy or infer output identity.
+
+`PlaybackService.onControllerCommand` also handles forwarding-player Seek/Stop/media
+replacement and custom notification skips. It invalidates the existing command,
+freshness, sleep and continuity work even when an already-paused player emits no raw
+transport callback. Raw automatic Play retains its separate recovery/diagnostic
+semantics. See ADR-0031 and `PlaybackServiceCommandContinuityTest`.
 
 `PlaybackTransportInputTest` covers Play for all reasons, system focus/noisy
 pause, user/remote pause, end-of-item, unknown reasons, stable diagnostic labels,
@@ -36,8 +44,6 @@ the single ExoPlayer, MediaLibrarySession and effect initiation. The existing
 `CarContinuityRecoveryCoordinator` and `AudioOutputRouter` retain their
 recovery claim and actual-output verification responsibilities.
 
-A future generation-aware effect executor should only be introduced if it
-reduces real overlapping asynchronous ownership, and must use the existing
-Media3 application dispatcher. Moving `play()` into a parallel state machine
-would be a regression, not a refactor. Headset-button handoff #276/#277
-remains intentionally open.
+The shared effect lifetime now cancels/supersedes overlapping suspended work using
+the existing Media3 dispatcher and gate-issued episode identity. It introduces no
+parallel playback state machine. Headset-button handoff #276/#277 remains open.

@@ -1,15 +1,16 @@
 package com.example.shelfplayer.playback
 
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import com.example.shelfplayer.core.model.playback.AudioOutputRole
 
 /**
  * PRODUCT_SPEC PLAY-002 / ROUTE-002 — one owner for the strongest route evidence of the loaded book.
  *
- * Android does not expose the AudioTrack's exact sink here. API 33+
- * `getAudioDevicesForAttributes` is system-policy evidence for BookWave's media attributes, not proof of
- * the device carrying this exact track. This owner therefore records where each fact came from and keeps an
- * explicit listener choice stronger than that framework observation.
+ * The router labels measured AudioTrack sinks separately from API 33+ media-policy predictions and
+ * older-platform preference fallbacks. This owner keeps that provenance while preserving an explicit
+ * listener choice as the strongest product intent. A heard route authorizes a continuity candidate;
+ * only the router's current playing-track check can authorize audible guarded playback.
  *
  * The record is generation-bound. Loading another book or emptying the queue invalidates the old evidence,
  * while the router's current explicit preference may legitimately remain in force for the next book.
@@ -20,6 +21,15 @@ internal enum class RouteHeardEvidence {
 
     /** Android reported this route while BookWave playback was observed as running. */
     FrameworkPolicyWhilePlaying,
+
+    /** The router measured this current playing AudioTrack's route. */
+    ActualAudioTrackWhilePlaying,
+
+    /** Only a selected preference was available; Android did not report this track's sink. */
+    SelectedPreferenceWhilePlaying,
+
+    /** A caller supplied activity without provenance; retain policy behavior without inventing proof. */
+    UnmeasuredActivityWhilePlaying,
 }
 
 internal class RouteHeardOwnership {
@@ -86,8 +96,8 @@ internal class RouteHeardOwnership {
         outputs: List<AudioOutput>,
         isPlaying: Boolean,
         selectionSequence: Long? = null,
-    ) {
-        if (selectionSequence != null && selectionSequence <= lastExplicitSelectionSequence) return
+    ): Boolean {
+        if (selectionSequence != null && selectionSequence <= lastExplicitSelectionSequence) return false
         if (selectionSequence != null) lastExplicitSelectionSequence = selectionSequence
 
         val generation = activeGeneration
@@ -96,8 +106,8 @@ internal class RouteHeardOwnership {
         if (outputId == null) {
             listenerIntent = ListenerIntent.Automatic(previous?.outputId)
             heardRoute = null
-            if (isPlaying) observeFrameworkWhilePlaying(outputs)
-            return
+            if (isPlaying) observeRouteWhilePlaying(outputs)
+            return true
         }
 
         listenerIntent = ListenerIntent.Device(outputId)
@@ -107,11 +117,12 @@ internal class RouteHeardOwnership {
         if (isPlaying && generation != null && chosen != null) {
             heardRoute = chosen.asHeard(generation, RouteHeardEvidence.ListenerSelectionWhilePlaying)
         }
+        return true
     }
 
     /** The service has just observed real playback; capture the strongest route evidence available now. */
     fun onPlaybackObserved(outputs: List<AudioOutput>) {
-        observeFrameworkWhilePlaying(outputs)
+        observeRouteWhilePlaying(outputs)
     }
 
     /**
@@ -120,7 +131,7 @@ internal class RouteHeardOwnership {
      */
     fun onOutputsChanged(outputs: List<AudioOutput>, isPlaying: Boolean) {
         retireDisconnectedState(outputs)
-        if (isPlaying) observeFrameworkWhilePlaying(outputs)
+        if (isPlaying) observeRouteWhilePlaying(outputs)
     }
 
     /** The generation-bound headset a car arrival may reassert, if that same candidate is still connected. */
@@ -132,13 +143,13 @@ internal class RouteHeardOwnership {
         }
     }
 
-    private fun observeFrameworkWhilePlaying(outputs: List<AudioOutput>) {
+    private fun observeRouteWhilePlaying(outputs: List<AudioOutput>) {
         val generation = activeGeneration ?: return
         retireDisconnectedState(outputs)
 
         explicitOutput(outputs)?.let { chosen ->
             heardRoute = chosen.asHeard(generation, RouteHeardEvidence.ListenerSelectionWhilePlaying)
-        } ?: observePolicyRoute(generation, outputs)
+        } ?: observeActivityRoute(generation, outputs)
     }
 
     private fun explicitOutput(outputs: List<AudioOutput>): AudioOutput? {
@@ -146,14 +157,21 @@ internal class RouteHeardOwnership {
         return outputs.firstOrNull { it.id == explicit.outputId }
     }
 
-    private fun observePolicyRoute(generation: Long, outputs: List<AudioOutput>) {
-        val candidate = frameworkCandidate(outputs) ?: return
+    private fun observeActivityRoute(generation: Long, outputs: List<AudioOutput>) {
+        val candidate = activityCandidate(outputs) ?: return
         if (isJustReleased(candidate)) return
 
         clearReleaseAfterMove(candidate)
         if (!shouldKeepPreviousAgainst(candidate, outputs)) {
-            heardRoute = candidate.asHeard(generation, RouteHeardEvidence.FrameworkPolicyWhilePlaying)
+            heardRoute = candidate.asHeard(generation, candidate.heardEvidence())
         }
+    }
+
+    private fun AudioOutput.heardEvidence(): RouteHeardEvidence = when (activitySource) {
+        AudioOutputActivitySource.PlayingAudioTrack -> RouteHeardEvidence.ActualAudioTrackWhilePlaying
+        AudioOutputActivitySource.FrameworkMediaPolicy -> RouteHeardEvidence.FrameworkPolicyWhilePlaying
+        AudioOutputActivitySource.SelectedPreference -> RouteHeardEvidence.SelectedPreferenceWhilePlaying
+        AudioOutputActivitySource.Unmeasured -> RouteHeardEvidence.UnmeasuredActivityWhilePlaying
     }
 
     private fun isJustReleased(candidate: AudioOutput): Boolean =
@@ -185,7 +203,7 @@ internal class RouteHeardOwnership {
      * A speaker is demoted when exactly one non-speaker is active, matching the existing presentation rule.
      * Multiple ambiguous A2DP endpoints remain ambiguous as a set: their ordering is never ownership.
      */
-    private fun frameworkCandidate(outputs: List<AudioOutput>): AudioOutput? {
+    private fun activityCandidate(outputs: List<AudioOutput>): AudioOutput? {
         val active = outputs.filter(AudioOutput::isActive)
         val nonSpeakers = active.filterNot(AudioOutput::isSpeaker)
         if (nonSpeakers.size == 1) return nonSpeakers.single()

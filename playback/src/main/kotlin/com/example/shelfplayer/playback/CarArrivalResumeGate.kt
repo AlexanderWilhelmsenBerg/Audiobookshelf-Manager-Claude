@@ -50,6 +50,10 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         Eligible,
     }
 
+    /**
+     * The gate-issued instance is also the one-shot episode identity. Equal route fields from
+     * another lifecycle interval do not authorize an older suspended effect.
+     */
     internal data class Target(
         val outputId: String,
         val generation: Long,
@@ -395,13 +399,13 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
 
     /** True only while the resolved target remains the single active lifecycle recovery. */
     fun isCurrent(target: Target, currentGeneration: Long?, explicitSelectionSequence: Long): Boolean =
-        activeRecovery == target &&
+        activeRecovery === target &&
             eligibilityReason(target, currentGeneration, explicitSelectionSequence) == null
 
     /**
      * Final one-shot check after routing has secured the exact captured headset.
      *
-     * A refusal also consumes the active recovery. One lifecycle transition gets at most one Play attempt.
+     * A refusal consumes only this episode. An obsolete callback cannot consume its successor.
      */
     fun consumeRecovery(
         target: Target,
@@ -409,15 +413,19 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         headsetId: String?,
         explicitSelectionSequence: Long,
     ): ConsumeResult {
-        val reason = when {
-            activeRecovery != target -> Reason.CandidateInvalidated
-
-            else -> eligibilityReason(target, currentGeneration, explicitSelectionSequence)
-                ?: if (headsetId != target.outputId) Reason.WrongHeadset else null
-        }
+        if (activeRecovery !== target) return ConsumeResult(false, Reason.CandidateInvalidated)
+        val reason = eligibilityReason(target, currentGeneration, explicitSelectionSequence)
+            ?: if (headsetId != target.outputId) Reason.WrongHeadset else null
         activeRecovery = null
         if (reason != null) return ConsumeResult(accepted = false, reason = reason)
         return ConsumeResult(accepted = true, reason = Reason.Eligible)
+    }
+
+    /** Cancel only work holding this gate-issued claim, leaving any newer episode intact. */
+    fun cancelRecovery(target: Target): Boolean {
+        if (activeRecovery !== target) return false
+        cancelPending()
+        return true
     }
 
     /** A newer Play supersedes pending automatic recovery but does not rewrite route-heard ownership. */

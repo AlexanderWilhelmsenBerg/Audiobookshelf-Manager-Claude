@@ -19,6 +19,8 @@ internal class RoutePreferenceEffects(private val playerDispatcher: CoroutineDis
 
     fun supersede(): Long = generation.incrementAndGet()
 
+    fun snapshot(): Long = generation.get()
+
     fun isCurrent(epoch: Long): Boolean = generation.get() == epoch
 
     suspend fun run(epoch: Long, action: suspend () -> Unit) {
