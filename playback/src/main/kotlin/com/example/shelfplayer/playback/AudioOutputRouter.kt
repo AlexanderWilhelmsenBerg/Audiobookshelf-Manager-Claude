@@ -18,13 +18,17 @@ import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
+import com.example.shelfplayer.core.model.playback.AudioOutputLockStatus
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -67,23 +71,31 @@ class AudioOutputRouter @Inject constructor(
      * This is deliberately separate from [selectedId]: a repeated Car/Automatic press is still newer intent
      * even when the value stays `null`, while a policy reassertion must not masquerade as listener intent.
      */
-    internal enum class ExplicitDestination {
-        Automatic,
-        Car,
-        Output,
+    internal val outputIntentOwner = OutputIntentOwner()
+    internal val explicitSelection: StateFlow<OutputIntentOwner.Selection?> = outputIntentOwner.selection
+    internal val outputLock: StateFlow<OutputIntentOwner.Lock?> = outputIntentOwner.lock
+    private val _canKeepAudioHere = MutableStateFlow(false)
+
+    /** Advisory presentation state. Arming always performs its own fresh validation. */
+    val canKeepAudioHere: StateFlow<Boolean> = _canKeepAudioHere.asStateFlow()
+
+    @kotlin.OptIn(ExperimentalForInheritanceCoroutinesApi::class)
+    val outputLockStatus: StateFlow<AudioOutputLockStatus?> = object : StateFlow<AudioOutputLockStatus?> {
+        override val value: AudioOutputLockStatus?
+            get() = statusFor(outputIntentOwner.state.value.lock)
+        override val replayCache: List<AudioOutputLockStatus?> get() = listOf(value)
+        override suspend fun collect(
+            collector: kotlinx.coroutines.flow.FlowCollector<AudioOutputLockStatus?>,
+        ): Nothing {
+            outputIntentOwner.state.map { statusFor(it.lock) }.distinctUntilChanged().collect(collector)
+            kotlinx.coroutines.awaitCancellation()
+        }
     }
 
-    internal data class ExplicitSelection(
-        val sequence: Long,
-        val outputId: String?,
-        val destination: ExplicitDestination,
-    )
-
-    private var nextExplicitSelectionSequence = 0L
-    private val explicitSelectionState = MutableStateFlow<ExplicitSelection?>(null)
-    internal val explicitSelection: StateFlow<ExplicitSelection?> = explicitSelectionState.asStateFlow()
-
     private var player: ExoPlayer? = null
+
+    /** The service supplies evidence, never another mutable intent or heard-route copy. Clear on teardown. */
+    internal var lastHeardRouteId: () -> String? = { null }
 
     /** Queued preferences share one generation and the existing Media3 application dispatcher. */
     private val preferenceEffects = RoutePreferenceEffects(mainDispatcher)
@@ -130,6 +142,7 @@ class AudioOutputRouter @Inject constructor(
         val epoch = preferenceEffects.supersede()
         currentTrackRoutes = trackRoutes
         player = target
+        outputIntentOwner.state.value.lock?.let(outputIntentOwner::invalidateProof)
         headsetGuard.attachPlayer(target)
         val manager = context.getSystemService(AudioManager::class.java) ?: return
         if (callback == null) {
@@ -146,6 +159,8 @@ class AudioOutputRouter @Inject constructor(
 
     /** Releases the player. The device callback stays registered because the connected list outlives it. */
     fun detach() {
+        _canKeepAudioHere.value = false
+        outputIntentOwner.state.value.lock?.let(outputIntentOwner::invalidateProof)
         preferenceEffects.supersede()
         automaticProtection = null
         headsetGuard.release()
@@ -169,7 +184,13 @@ class AudioOutputRouter @Inject constructor(
     fun select(id: String?) {
         choose(
             id = id,
-            destination = if (id == null) ExplicitDestination.Automatic else ExplicitDestination.Output,
+            destination = if (id ==
+                null
+            ) {
+                OutputIntentOwner.Destination.Automatic
+            } else {
+                OutputIntentOwner.Destination.Output
+            },
         )
     }
 
@@ -181,7 +202,70 @@ class AudioOutputRouter @Inject constructor(
      * intent separate from [selectedId] instead of collapsing both choices to null.
      */
     fun selectCar() {
-        choose(id = null, destination = ExplicitDestination.Car)
+        choose(id = null, destination = OutputIntentOwner.Destination.Car)
+    }
+
+    /** Generic controller Play carries no physical dashboard gesture evidence and cannot supersede a lock. */
+    internal fun selectCarFromGenericController(): Boolean {
+        if (outputIntentOwner.state.value.lock != null) return false
+        selectCar()
+        return true
+    }
+
+    /** Arm the listener's logical target only after fresh, unique proof from the current playing AudioTrack. */
+    internal fun keepAudioHere(): Boolean {
+        val proof = currentLockTarget() ?: return false
+        val effectEpoch = preferenceEffects.supersede()
+        outputIntentOwner.keepHere(proof.outputId, proof.generation, effectEpoch)
+        _selectedId.value = proof.outputId
+        headsetGuard.protect(proof.outputId)
+        automaticProtection = null
+        publish()
+        return true
+    }
+
+    private data class LockTarget(val outputId: String, val generation: Long)
+
+    /** Existing ownership boundaries captured together; this adds no generation or intent counter. */
+    private data class LockContext(
+        val player: ExoPlayer,
+        val generation: Long,
+        val selectionSequence: Long?,
+        val effectEpoch: Long,
+    )
+
+    private fun currentLockContext(): LockContext? {
+        val intent = outputIntentOwner.state.value
+        val generation = intent.activeBookGeneration ?: return null
+        val attached = player ?: return null
+        if (!attached.isPlaying || attached.mediaItemCount == 0) return null
+        return LockContext(attached, generation, intent.selection?.sequence, preferenceEffects.snapshot())
+    }
+
+    private fun isCurrentLockContext(context: LockContext): Boolean {
+        val intent = outputIntentOwner.state.value
+        return player === context.player && preferenceEffects.isCurrent(context.effectEpoch) &&
+            intent.activeBookGeneration == context.generation &&
+            intent.selection?.sequence == context.selectionSequence &&
+            context.player.isPlaying && context.player.mediaItemCount > 0
+    }
+
+    private fun isEligibleLockOutput(id: String): Boolean {
+        val output = _outputs.value.singleOrNull { it.id == id } ?: return false
+        return output.isHeadsetCandidate && id in live && id !in collidingOutputIds
+    }
+
+    /** Shared by advisory presentation and the final command; never writes intent or starts playback. */
+    private fun currentLockTarget(): LockTarget? {
+        val context = currentLockContext() ?: return null
+        val id = currentTrackRoutes()?.singleOrNull() ?: return null
+        if (!isEligibleLockOutput(id)) return null
+        val after = currentTrackRoutes()
+        return if (after == setOf(id) && isCurrentLockContext(context) && isEligibleLockOutput(id)) {
+            LockTarget(id, context.generation)
+        } else {
+            null
+        }
     }
 
     /**
@@ -268,8 +352,10 @@ class AudioOutputRouter @Inject constructor(
         ) {
             return false
         }
-        val selection = explicitSelectionState.value
-        if (selection?.destination == ExplicitDestination.Car || (selection?.sequence ?: 0L) != selectionSequence) {
+        val selection = explicitSelection.value
+        if (selection?.destination == OutputIntentOwner.Destination.Car ||
+            (selection?.sequence ?: 0L) != selectionSequence
+        ) {
             return false
         }
         return (_selectedId.value == null || _selectedId.value == id) &&
@@ -282,19 +368,19 @@ class AudioOutputRouter @Inject constructor(
         val epoch = preferenceEffects.supersede()
         automaticProtection = null
         if (headsetGuard.endpointId == active.outputId) headsetGuard.clearOwnership()
-        if (_selectedId.value == active.outputId && explicitSelectionState.value?.outputId == null) {
+        if (_selectedId.value == active.outputId && explicitSelection.value?.outputId == null) {
             _selectedId.value = null
         }
         applicationScope.launch(mainDispatcher) {
             headsetGuard.cancelProbeForEndpoint(active.outputId, active.preferenceEpoch)
         }
-        if (active.preferredDeviceRequested && explicitSelectionState.value?.outputId == null) {
+        if (active.preferredDeviceRequested && explicitSelection.value?.outputId == null) {
             applicationScope.launch { apply(null, epoch) }
         }
         publish()
     }
 
-    private fun choose(id: String?, destination: ExplicitDestination) {
+    private fun choose(id: String?, destination: OutputIntentOwner.Destination) {
         if (id != null && id !in live) {
             logger.info(
                 LogCategory.Playback,
@@ -308,10 +394,10 @@ class AudioOutputRouter @Inject constructor(
         automaticProtection = null
         headsetGuard.clearOwnership()
         applicationScope.launch(mainDispatcher) { headsetGuard.cancelProbe() }
-        explicitSelectionState.value = ExplicitSelection(
-            sequence = ++nextExplicitSelectionSequence,
-            outputId = id,
-            destination = destination,
+        outputIntentOwner.select(
+            id,
+            destination,
+            releasedRouteId = if (destination == OutputIntentOwner.Destination.Automatic) lastHeardRouteId() else null,
         )
         _selectedId.value = id
         publish()
@@ -404,6 +490,7 @@ class AudioOutputRouter @Inject constructor(
     }
 
     private fun onDisconnectedSelection(chosen: String, connectedIds: Set<String>) {
+        outputIntentOwner.state.value.lock?.takeIf { it.outputId == chosen }?.let(outputIntentOwner::markWaiting)
         if (!shouldRetainContinuityHeadset(headsetGuard.endpointId, chosen, connectedIds)) {
             val epoch = preferenceEffects.supersede()
             _selectedId.value = null
@@ -491,8 +578,47 @@ class AudioOutputRouter @Inject constructor(
 
     /** AudioTrack can change sinks without an AudioManager device-list callback. */
     internal fun onActualTrackRouteChanged() {
+        verifyOutputLock()
         pauseUnsafeGuardedPlayback()
         publish()
+    }
+
+    /** Observation-only; a lock can be revalidated but this path never issues Play. */
+    internal fun verifyOutputLock() {
+        _canKeepAudioHere.value = currentLockTarget() != null
+        val lock = outputIntentOwner.state.value.lock ?: return
+        val context = currentLockContext()
+        if (context == null) {
+            if (lock.phase == OutputIntentOwner.LockPhase.Active) outputIntentOwner.markWaiting(lock)
+            return
+        }
+        val first = currentTrackRoutes()
+        val second = currentTrackRoutes()
+        if (!isCurrentOutputLock(lock, context)) return
+        if (first == setOf(lock.outputId) && second == first && isEligibleLockOutput(lock.outputId)) {
+            outputIntentOwner.activateProof(lock, context.generation, context.effectEpoch)
+            headsetGuard.protect(lock.outputId)
+        } else {
+            outputIntentOwner.markUnverified(lock)
+            if (headsetGuard.endpointId != lock.outputId) headsetGuard.protect(lock.outputId)
+            pauseUnverifiedOutputLock(lock.copy(phase = OutputIntentOwner.LockPhase.Unverified), context)
+        }
+    }
+
+    private fun isCurrentOutputLock(lock: OutputIntentOwner.Lock, context: LockContext): Boolean =
+        outputIntentOwner.state.value.lock == lock && lock.selectionSequence == context.selectionSequence &&
+            isCurrentLockContext(context)
+
+    /** A retired observation may neither query nor pause its replacement's player. */
+    private fun pauseUnverifiedOutputLock(lock: OutputIntentOwner.Lock, context: LockContext) {
+        applicationScope.launch(mainDispatcher) {
+            if (!isCurrentOutputLock(lock, context)) return@launch
+            val finalRoute = currentTrackRoutes()
+            if (!isCurrentOutputLock(lock, context)) return@launch
+            if (finalRoute != setOf(lock.outputId) || !isEligibleLockOutput(lock.outputId)) {
+                headsetGuard.pauseForSafety(context.player)
+            }
+        }
     }
 
     private fun publish() {
@@ -516,6 +642,9 @@ class AudioOutputRouter @Inject constructor(
                 isActive = routed?.contains(id) ?: (id == chosen),
                 activitySource = source,
             )
+        }
+        applicationScope.launch(mainDispatcher) {
+            _canKeepAudioHere.value = currentLockTarget() != null
         }
     }
 
@@ -631,6 +760,13 @@ class AudioOutputRouter @Inject constructor(
  * The caller prefers a measured AudioTrack sink over AudioManager's predicted output.
  * Unknown, multiple and other sinks fail closed even when a preference was accepted.
  */
+private fun statusFor(lock: OutputIntentOwner.Lock?): AudioOutputLockStatus? = when (lock?.phase) {
+    OutputIntentOwner.LockPhase.Active -> AudioOutputLockStatus.Active
+    OutputIntentOwner.LockPhase.Waiting -> AudioOutputLockStatus.Waiting
+    OutputIntentOwner.LockPhase.Unverified -> AudioOutputLockStatus.Unverified
+    null -> null
+}
+
 internal fun shouldSuspendGuardedPlayback(
     guardedHeadsetId: String?,
     selectedId: String?,

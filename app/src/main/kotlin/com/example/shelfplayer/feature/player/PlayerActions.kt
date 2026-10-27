@@ -2,6 +2,7 @@ package com.example.shelfplayer.feature.player
 
 import androidx.compose.runtime.Immutable
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.AudioOutputLockStatus
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import kotlin.time.Duration
 
@@ -40,6 +41,10 @@ data class OutputControls(
      */
     val selectedId: String?,
     val onSelect: (String?) -> Unit,
+    val lockStatus: AudioOutputLockStatus? = null,
+    val canKeepAudioHere: Boolean = false,
+    val onKeepAudioHere: () -> Boolean = { false },
+    val onReleaseLock: () -> Unit = {},
 ) {
     companion object {
         /** For a preview, or a test not exercising the chooser. */

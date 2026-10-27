@@ -21,7 +21,7 @@ class CarContinuityEventAdapterTest {
     )
 
     private fun inputs(): CarContinuityRecoveryCoordinator.Inputs {
-        val owner = RouteHeardOwnership().apply {
+        val owner = RouteHeardOwnership(OutputIntentOwner()).apply {
             onBookChanged(hasBook = true)
             onPlaybackObserved(listOf(headset))
         }

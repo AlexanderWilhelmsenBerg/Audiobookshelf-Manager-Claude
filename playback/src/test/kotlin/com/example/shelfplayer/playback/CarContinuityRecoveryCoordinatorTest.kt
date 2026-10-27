@@ -24,7 +24,7 @@ class CarContinuityRecoveryCoordinatorTest {
     )
 
     private fun ready(): Pair<CarContinuityRecoveryCoordinator, CarArrivalResumeGate.Target> {
-        val owner = RouteHeardOwnership().apply {
+        val owner = RouteHeardOwnership(OutputIntentOwner()).apply {
             onBookChanged(hasBook = true)
             onPlaybackObserved(listOf(headset))
         }

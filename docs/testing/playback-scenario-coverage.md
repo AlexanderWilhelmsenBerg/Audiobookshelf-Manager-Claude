@@ -216,3 +216,40 @@ These checks extend S01/S04/S08/S12–S20 software evidence. The physical/inconc
 above remain authoritative; no hardware identity, headset handoff or human-heard continuity
 claim follows from these tests. The #295 cold receiver fix and separate #296/#288 progress auth
 recovery also require their documented stationary device/server retests.
+
+## #276 verified output lock candidate
+
+Strict local `verifyDebug` with warnings as errors passes 2,639 tests / 314 suites, including 823 playback
+tests, with no failures/errors/skips. Formatter, lint, Detekt and coverage gates pass. The first complete
+rebuild reran every task; affected targets were rerun after corrections. Local APK assembly was excluded.
+The exact committed source and normal PR-triggered CI result are recorded in issue #289 and the draft PR.
+
+Removing the production service's generic-Car lock guard makes its Media3 request-context regression
+fail; removing the Stop hook makes the real forwarding-Stop regression fail even while the loaded queue
+is retained. Both mutations were restored before the passing gate. The route-eligibility mutation also
+fails its intended assertion. Real Compose cases cover advisory refusal and release with no outputs.
+
+A further production-effects regression exposed the former headset being re-protected during a car
+rebind after explicit Car selection. Both the actual continuity-effect and evidence-owner cases failed
+before the fix. Explicit Car now excludes headset recovery eligibility while keeping actual route
+observations truthful; a newer explicit output choice restores eligibility. The full gate above includes
+these cases. The older 2,637-test CI result does not verify this follow-up commit.
+
+`AudioOutputRouter` owns one singleton `OutputIntentOwner` shared with the service's
+`RouteHeardOwnership` evidence tracker. The phone output chooser exposes **Keep audio here** and
+**Release** through read-only lock status. The lock requires a loaded, actively playing book and two
+matching fresh reads of one exact live AudioTrack route; it accepts an ambiguous A2DP endpoint only
+as the user-confirmed current destination and makes no wearable or button-origin claim.
+
+Focused tests cover a measured lock, unknown/multiple/colliding route denial, generic controller Car
+selection refusal while locked, stale status callbacks after a newer lock/release, and Automatic
+release surviving unknown route evidence. A waiting lock retains the logical target across pause and
+nonempty book/player changes, while physical proof is invalidated. Empty queue, explicit Automatic/
+release, profile handover through its queue boundary, and service death clear the runtime claim.
+Reconnection never selects a new endpoint or calls Play.
+
+This is JVM/Robolectric production-path evidence only. Physical route stability, Android Auto host
+behavior, and audible outcomes remain pending under the separate device acceptance guide; this slice
+does not implement #277's explicit verified destination transfer/rollback. Physical headset-key attribution
+remains unsupported when Android supplies only a virtual key. Use the
+[device acceptance guide](output-ownership-device-acceptance.md) for audible routing and lifecycle results.

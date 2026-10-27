@@ -299,7 +299,7 @@ class CarContinuityResumeTransactionTest {
             listOf(LiveOutputEndpointRegistry.Observation(device.id, device.type, device.productName?.toString())),
         ).single()
         val headset = endpoint.output.copy(id = endpoint.id, isActive = true)
-        val owner = RouteHeardOwnership().apply {
+        val owner = RouteHeardOwnership(OutputIntentOwner()).apply {
             onBookChanged(hasBook = true)
             onPlaybackObserved(listOf(headset))
         }

@@ -44,7 +44,7 @@ class PlaybackContinuityInvariantMatrixTest {
     )
 
     private fun readyRecovery(order: Order, interruption: Interruption): Recovery {
-        val owner = RouteHeardOwnership().apply {
+        val owner = RouteHeardOwnership(OutputIntentOwner()).apply {
             onBookChanged(hasBook = true)
             onPlaybackObserved(listOf(headset.copy(isActive = true)))
         }

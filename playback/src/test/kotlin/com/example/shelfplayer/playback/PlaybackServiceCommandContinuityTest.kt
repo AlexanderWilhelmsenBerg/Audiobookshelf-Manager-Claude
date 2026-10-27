@@ -1,10 +1,13 @@
 package com.example.shelfplayer.playback
 
 import android.media.AudioDeviceInfo
+import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaSession
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.playback.AudioOutput
@@ -54,6 +57,26 @@ import kotlin.time.Duration.Companion.seconds
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class PlaybackServiceCommandContinuityTest {
+    @Test
+    fun `forwarding Stop releases the lock even when Media3 retains the loaded queue`() = runTest {
+        Fixture(this).use { fixture ->
+            val generation = fixture.armLogicalLock()
+            assertEquals(1, fixture.player.mediaItemCount)
+
+            assertNull(fixture.forwarding.handleStop().get())
+
+            assertNull(fixture.currentLock())
+            assertEquals(1, fixture.player.mediaItemCount, "Stop does not depend on a queue-clear callback")
+            assertEquals(generation, fixture.currentIntentGeneration(), "retained queue still owns its context")
+            assertFalse(fixture.player.playWhenReady)
+        }
+    }
+
+    @Test
+    fun `actual service car-controller Play preserves a lock and uses the shared intent owner`() = runTest {
+        Fixture(this).use { it.checkLockedCarControllerPlay() }
+    }
+
     @Test
     fun `route safety pause cannot become listener auto-rewind intent`() = runTest {
         Fixture(this).use { fixture -> fixture.checkRouteSafetyPauseReason() }
@@ -177,7 +200,7 @@ class PlaybackServiceCommandContinuityTest {
         private val service = PlaybackService()
         val player = ExoPlayer.Builder(context).build()
         private val router = AudioOutputRouter(context, logger, scope.backgroundScope, dispatcher, registry)
-        private val owner: RouteHeardOwnership get() = service.field("routeOwnership")
+        private val owner: RouteHeardOwnership get() = service.routeOwnership
         private val recovery: CarContinuityRecoveryCoordinator get() = service.field("carRecovery")
         private val effects: CarContinuityResumeEffects get() = service.call(
             "getCarResumeEffects",
@@ -332,6 +355,65 @@ class PlaybackServiceCommandContinuityTest {
 
         fun routerGuardId(): String? = router.field<HeadsetRouteGuard>("headsetGuard")
             .field<String?>("endpointId")
+
+        fun armLogicalLock(): Long {
+            val generation = requireNotNull(owner.currentGeneration)
+            owner.intentOwner.keepHere(endpointId, generation, 0)
+            return generation
+        }
+
+        fun currentLock(): OutputIntentOwner.Lock? = router.outputLock.value
+
+        fun currentIntentGeneration(): Long? = router.outputIntentOwner.state.value.activeBookGeneration
+
+        fun checkLockedCarControllerPlay() {
+            assertTrue(owner.intentOwner === router.outputIntentOwner, "service and router must share intent")
+            val lock = owner.intentOwner.keepHere(endpointId, requireNotNull(owner.currentGeneration), 0)
+            val session = MediaLibraryService.MediaLibrarySession.Builder(
+                context,
+                player,
+                object : MediaLibraryService.MediaLibrarySession.Callback {},
+            ).build()
+            service.setField("session", session)
+            try {
+                val info = MediaSession.ControllerInfo.createTestOnlyControllerInfo(
+                    "com.google.android.projection.gearhead",
+                    0,
+                    0,
+                    1,
+                    1,
+                    false,
+                    Bundle.EMPTY,
+                    false,
+                )
+                // Exercise the pinned Media3 request-context seam, rather than bypassing service routing.
+                val impl = MediaSession::class.java.getDeclaredField("impl").run {
+                    isAccessible = true
+                    get(session)
+                }
+                Class.forName("androidx.media3.session.MediaSessionImpl")
+                    .getDeclaredField("controllerForCurrentRequest").apply { isAccessible = true }.set(impl, info)
+                assertEquals(info, session.controllerForCurrentRequest)
+                val routePlay = PlaybackService::class.java.getDeclaredMethod(
+                    "routeExplicitCarPlay",
+                    Boolean::class.javaPrimitiveType,
+                    ExoPlayer::class.java,
+                ).apply { isAccessible = true }
+
+                routePlay.invoke(service, true, player)
+
+                assertEquals(lock, router.outputLock.value, "generic Auto Play must retain the lock")
+                assertEquals(lock.selectionSequence, router.explicitSelection.value?.sequence)
+                router.select(null)
+                routePlay.invoke(service, true, player)
+                assertEquals(OutputIntentOwner.Destination.Car, router.explicitSelection.value?.destination)
+                assertNull(router.outputLock.value)
+                assertFalse(player.playWhenReady, "adapting route intent must not manufacture Play")
+            } finally {
+                service.setField("session", null)
+                session.release()
+            }
+        }
 
         fun beginRecovery() = effects.onRecoveryReady(target)
 

@@ -92,7 +92,7 @@ internal class PlaybackScenarioContractTest {
             role = AudioOutputRole.Ambiguous,
             isActive = true,
         )
-        private val owner = RouteHeardOwnership().apply {
+        private val owner = RouteHeardOwnership(OutputIntentOwner()).apply {
             onBookChanged(hasBook = true)
             if (initiallyAudible) onPlaybackObserved(listOf(headset))
         }

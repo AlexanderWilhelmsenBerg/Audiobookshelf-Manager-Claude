@@ -354,7 +354,7 @@ class CarProjectionLifecycleTest {
         }
 
         fun armDeparture() {
-            val owner: RouteHeardOwnership = service.field("routeOwnership")
+            val owner: RouteHeardOwnership = service.routeOwnership
             val buds = AudioOutput(
                 id = "bluetooth:fixture",
                 displayName = "Fixture headset",
@@ -377,7 +377,7 @@ class CarProjectionLifecycleTest {
         }
 
         fun seedArrivalHeadset() {
-            val owner: RouteHeardOwnership = service.field("routeOwnership")
+            val owner: RouteHeardOwnership = service.routeOwnership
             val buds = AudioOutput(
                 id = "bluetooth:fixture",
                 displayName = "Fixture headset",
@@ -391,7 +391,7 @@ class CarProjectionLifecycleTest {
 
         /** Uses the service's actual continuity adapter, not a direct call to the gate. */
         fun seedHeadsetViaService() {
-            val owner: RouteHeardOwnership = service.field("routeOwnership")
+            val owner: RouteHeardOwnership = service.routeOwnership
             val original = AudioOutput(
                 id = "bluetooth:fixture",
                 displayName = "Fixture headset",
@@ -423,7 +423,7 @@ class CarProjectionLifecycleTest {
         fun connectController() = service.invoke("onCarControllerConnected", "com.google.android.projection.gearhead")
 
         fun focusAfterControllerBind(): CarArrivalResumeGate.Decision {
-            val owner: RouteHeardOwnership = service.field("routeOwnership")
+            val owner: RouteHeardOwnership = service.routeOwnership
             return continuity.onAudioFocusLoss(
                 at = clock.elapsed(),
                 heardRoute = null,
@@ -435,7 +435,7 @@ class CarProjectionLifecycleTest {
         }
 
         fun isCurrentRecovery(target: CarArrivalResumeGate.Target): Boolean {
-            val owner: RouteHeardOwnership = service.field("routeOwnership")
+            val owner: RouteHeardOwnership = service.routeOwnership
             return continuity.isCurrent(target, owner.currentGeneration, 0)
         }
 

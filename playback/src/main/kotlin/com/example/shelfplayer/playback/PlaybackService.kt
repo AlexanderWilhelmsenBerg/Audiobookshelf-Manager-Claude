@@ -314,7 +314,9 @@ class PlaybackService : MediaLibraryService() {
      * Explicit listener output intent is fed through [AudioOutputRouter.explicitSelection]; Android route
      * policy is observed only while this player is actually playing. See [RouteHeardOwnership].
      */
-    private val routeOwnership = RouteHeardOwnership()
+    internal val routeOwnership: RouteHeardOwnership by lazy(LazyThreadSafetyMode.NONE) {
+        RouteHeardOwnership(audioOutputs.outputIntentOwner)
+    }
 
     /**
      * Issue #36 — one owner correlates measured audio-focus loss with car arrival or final departure.
@@ -351,6 +353,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        audioOutputs.lastHeardRouteId = { routeOwnership.heardRoute?.outputId }
         serviceStartedAt = clock.elapsed()
         audioRouteLab.serviceStarted()
         scope = CoroutineScope(SupervisorJob() + mainDispatcher)
@@ -415,7 +418,7 @@ class PlaybackService : MediaLibraryService() {
         val requestingController = session?.controllerForCurrentRequest
         val isCarController = requestingController != null && requestingController.packageName in CAR_PACKAGES
         if (!shouldSelectCarForControllerPlay(requestedPlay, isCarController, mediaPlayer.playWhenReady)) return
-        audioOutputs.selectCar()
+        if (!audioOutputs.selectCarFromGenericController()) return
         syncExplicitOutputIntent()
         autoTraces.log("Android Auto Play selected the car audio route", fields = carSnapshotFields())
     }
@@ -656,6 +659,7 @@ class PlaybackService : MediaLibraryService() {
     /** New controller movement supersedes all suspended work, even without a raw player callback. */
     private fun onControllerCommand(origin: ResumeInvalidation) {
         controllerCommandGeneration += 1
+        if (origin == ResumeInvalidation.Stop) audioOutputs.outputIntentOwner.onPlaybackStopped()
         resumeFreshness.invalidate(origin)
         sleepTimer.onResumeInvalidation(origin)
         clearCarContinuity()
@@ -681,6 +685,8 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        audioOutputs.outputIntentOwner.releaseRuntime()
+        audioOutputs.lastHeardRouteId = { null }
         audioRouteLab.serviceStopped()
         flushProgress()
         outputDevices.stop()
@@ -1192,6 +1198,7 @@ class PlaybackService : MediaLibraryService() {
     private inner class PlayerEvents : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             audioTrackRouteMonitor.sample()
+            audioOutputs.verifyOutputLock()
             autoTraces.log(
                 "Media3 audible playback changed",
                 fields = listOf(LogField.Public("isPlaying", isPlaying)) +
@@ -1537,6 +1544,7 @@ class PlaybackService : MediaLibraryService() {
                         clearCarContinuity()
                     } else {
                         routeOwnership.onOutputsChanged(outputs, isPlaying = isPlaying)
+                        audioOutputs.verifyOutputLock()
                         if (isPlaying) observeCarContinuityHeadset(outputs)
                     }
                     republishOutputButtons()
@@ -1562,6 +1570,7 @@ class PlaybackService : MediaLibraryService() {
             outputs = audioOutputs.outputs.value,
             isPlaying = player?.isPlaying == true,
             selectionSequence = selection.sequence,
+            destination = selection.destination,
         )
         if (changed) clearCarContinuity()
     }
@@ -1614,7 +1623,7 @@ class PlaybackService : MediaLibraryService() {
             selectedId = audioOutputs.selectedId.value,
             carConnected = carBound,
             carRequested = audioOutputs.explicitSelection.value?.destination ==
-                AudioOutputRouter.ExplicitDestination.Car,
+                OutputIntentOwner.Destination.Car,
         )
         if (!mediaButtonPublishing.needsPublish(next, carBound)) {
             outputButtons = next

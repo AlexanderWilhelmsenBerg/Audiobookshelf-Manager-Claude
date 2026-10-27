@@ -15,11 +15,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.AudioOutputLockStatus
 import com.example.shelfplayer.core.model.playback.DeviceKind
 
 /**
@@ -49,7 +57,9 @@ internal fun AudioOutputAction(
     onExpandedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (controls.outputs.isEmpty()) return
+    if (controls.outputs.isEmpty() && controls.lockStatus == null) return
+    var lockRefused by remember(expanded) { mutableStateOf(false) }
+    val lockStatus = controls.lockStatus
     val active = controls.outputs.firstOrNull(AudioOutput::isActive)
     Box(modifier = modifier) {
         IconButton(
@@ -89,6 +99,44 @@ internal fun AudioOutputAction(
                         controls.onSelect(output.id)
                         onExpandedChange(false)
                     },
+                )
+            }
+            if (lockStatus == null && controls.canKeepAudioHere) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.player_output_keep_here)) },
+                    onClick = {
+                        if (controls.onKeepAudioHere()) onExpandedChange(false) else lockRefused = true
+                    },
+                )
+            } else if (lockStatus != null) {
+                val statusLabel = when (lockStatus) {
+                    AudioOutputLockStatus.Active -> stringResource(R.string.player_output_kept_here)
+                    AudioOutputLockStatus.Waiting -> stringResource(R.string.player_output_waiting_here)
+                    AudioOutputLockStatus.Unverified -> stringResource(R.string.player_output_unverified_here)
+                }
+                DropdownMenuItem(
+                    text = { Text(statusLabel) },
+                    onClick = {},
+                    enabled = false,
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.player_output_release_lock)) },
+                    onClick = {
+                        controls.onReleaseLock()
+                        onExpandedChange(false)
+                    },
+                )
+            }
+            if (lockRefused) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            stringResource(R.string.player_output_lock_refused),
+                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                        )
+                    },
+                    onClick = {},
+                    enabled = false,
                 )
             }
         }
