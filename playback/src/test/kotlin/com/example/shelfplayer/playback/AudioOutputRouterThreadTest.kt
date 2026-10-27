@@ -1,9 +1,11 @@
 package com.example.shelfplayer.playback
 
+import android.media.AudioDeviceInfo
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +20,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.AudioDeviceInfoBuilder
 import java.lang.reflect.Proxy
 import java.util.concurrent.Executors
 import kotlin.test.assertEquals
@@ -36,6 +39,198 @@ import kotlin.test.assertTrue
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class AudioOutputRouterThreadTest {
+    @Test
+    fun `automatic playing exact ambiguous endpoint is guarded before route loss`() = runTest {
+        val fixture = fixture()
+        val endpoint = fixture.observeEndpoint(41, "Car or earbuds")
+        val routeOwner = RouteHeardOwnership().apply { onBookChanged(hasBook = true) }
+        val measuredOutput = endpoint.output.copy(
+            id = endpoint.id,
+            isActive = true,
+            activitySource = AudioOutputActivitySource.PlayingAudioTrack,
+        )
+        routeOwner.onPlaybackObserved(listOf(measuredOutput))
+        fixture.measuredRoutes { setOf(endpoint.id) }
+        val generation = requireNotNull(routeOwner.currentGeneration)
+        val headset = requireNotNull(routeOwner.measuredPlayingHeadsetForContinuity(listOf(measuredOutput)))
+        assertTrue(
+            fixture.router.protectMeasuredPlayingHeadset(headset, generation, 0L) {
+                routeOwner.currentGeneration == generation &&
+                    routeOwner.measuredPlayingHeadsetForContinuity(listOf(measuredOutput)) == headset
+            },
+        )
+        fixture.router.onActualTrackRouteChanged()
+        runCurrent()
+
+        assertEquals(endpoint.id, fixture.guardId(), "exact measured endpoint should be protected while Automatic")
+        assertEquals(endpoint.id, fixture.router.selectedId.value)
+
+        fixture.measuredRoutes { emptySet() }
+        fixture.router.onActualTrackRouteChanged()
+        runCurrent()
+        assertTrue(fixture.pauseThreads.isNotEmpty(), "route loss must pause at the measured callback boundary")
+
+        AudioOutputRouter::class.java.getDeclaredMethod(
+            "onDisconnectedSelection",
+            String::class.java,
+            Set::class.java,
+        ).apply { isAccessible = true }.invoke(fixture.router, endpoint.id, emptySet<String>())
+        val replacement = fixture.observeEndpoint(45, "Car or earbuds")
+        fixture.measuredRoutes { setOf(replacement.id) }
+        fixture.router.onActualTrackRouteChanged()
+        runCurrent()
+        assertEquals(endpoint.id, fixture.guardId(), "a new process-local appearance is not the old destination")
+        assertEquals(endpoint.id, fixture.router.selectedId.value, "a new appearance must not be adopted automatically")
+        assertTrue(fixture.pauseThreads.isNotEmpty(), "a replacement measured sink remains outside the old guard")
+    }
+
+    @Test
+    fun `explicit destination and nonexact measurements do not arm automatic route guard`() = runTest {
+        val fixture = fixture()
+        val info = device(42, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "Ambiguous output")
+        val registry = fixture.registry
+        val endpoint = registry.reconcile(
+            listOf(LiveOutputEndpointRegistry.Observation(42, info.type, info.productName?.toString())),
+        ).single()
+        AudioOutputRouter::class.java.getDeclaredField("live").apply {
+            isAccessible = true
+            set(fixture.router, mapOf(endpoint.id to info))
+        }
+        fixture.measuredRoutes { setOf(endpoint.id, "bluetooth:other") }
+        assertTrue(!fixture.router.protectMeasuredPlayingHeadset(endpoint.id, 1L, 0L) { true })
+        fixture.router.onActualTrackRouteChanged()
+        runCurrent()
+        assertEquals(null, fixture.guardId(), "multiple measured sinks cannot establish endpoint ownership")
+
+        fixture.measuredRoutes { setOf(endpoint.id) }
+        fixture.router.selectCar()
+        runCurrent()
+        assertTrue(
+            !fixture.router.protectMeasuredPlayingHeadset(endpoint.id, 1L, 1L) { true },
+            "explicit Car intent is not permission to capture an Automatic continuity guard",
+        )
+        fixture.router.onActualTrackRouteChanged()
+        runCurrent()
+        assertEquals(null, fixture.guardId(), "explicit Car intent must not be overwritten by measured route")
+    }
+
+    @Test
+    fun `reentrant destination change during route proof prevents stale protection`() = runTest {
+        val fixture = fixture()
+        val info = device(43, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "Ambiguous output")
+        val endpoint = fixture.registry.reconcile(
+            listOf(LiveOutputEndpointRegistry.Observation(43, info.type, info.productName?.toString())),
+        ).single()
+        AudioOutputRouter::class.java.getDeclaredField("live").apply {
+            isAccessible = true
+            set(fixture.router, mapOf(endpoint.id to info))
+        }
+        var changeDestination = true
+        fixture.measuredRoutes {
+            if (changeDestination) {
+                changeDestination = false
+                fixture.router.selectCar()
+            }
+            setOf(endpoint.id)
+        }
+
+        val armed = fixture.router.protectMeasuredPlayingHeadset(endpoint.id, 1L, 0L) { true }
+        assertTrue(!armed, "newer explicit destination during measurement must invalidate the claim")
+        runCurrent()
+        assertEquals(null, fixture.guardId())
+    }
+
+    @Test
+    fun `book boundary clears only the transient automatic protection`() = runTest {
+        val fixture = fixture()
+        val info = device(44, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "Ambiguous output")
+        val endpoint = fixture.registry.reconcile(
+            listOf(LiveOutputEndpointRegistry.Observation(44, info.type, info.productName?.toString())),
+        ).single()
+        AudioOutputRouter::class.java.getDeclaredField("live").apply {
+            isAccessible = true
+            set(fixture.router, mapOf(endpoint.id to info))
+        }
+        fixture.measuredRoutes { setOf(endpoint.id) }
+        assertTrue(fixture.router.protectMeasuredPlayingHeadset(endpoint.id, 7L, 0L) { true })
+        assertTrue(fixture.router.reassert(endpoint.id), "same-endpoint policy reassertion remains safe")
+        runCurrent()
+        assertTrue(fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(listOf(0f), fixture.volumeChanges)
+        fixture.router.clearMeasuredPlayingHeadsetProtection()
+        runCurrent()
+
+        assertEquals(null, fixture.guardId())
+        assertEquals(null, fixture.router.selectedId.value)
+        assertEquals(listOf(0f, 1f), fixture.volumeChanges, "book cleanup restores only the probe-owned volume")
+        assertTrue(fixture.pauseThreads.isEmpty(), "clearing a transient claim must not pause playback")
+    }
+
+    @Test
+    fun `collision introduced by route query cannot establish protection`() = runTest {
+        val fixture = fixture()
+        val endpoint = fixture.observeEndpoint(46)
+        fixture.measuredRoutes {
+            fixture.colliding(endpoint.id)
+            setOf(endpoint.id)
+        }
+
+        assertTrue(!fixture.router.protectMeasuredPlayingHeadset(endpoint.id, 1L, 0L) { true })
+        assertEquals(null, fixture.guardId())
+    }
+
+    @Test
+    fun `book replaced during route query cannot establish the old claim`() = runTest {
+        val fixture = fixture()
+        val endpoint = fixture.observeEndpoint(47)
+        val owner = RouteHeardOwnership().apply { onBookChanged(true) }
+        val generation = requireNotNull(owner.currentGeneration)
+        fixture.measuredRoutes {
+            owner.onBookChanged(true)
+            setOf(endpoint.id)
+        }
+
+        assertTrue(
+            !fixture.router.protectMeasuredPlayingHeadset(endpoint.id, generation, 0L) {
+                owner.currentGeneration == generation
+            },
+        )
+        assertEquals(null, fixture.guardId())
+    }
+
+    @Test
+    fun `new attachment releases implicit protection and restores the old probe volume`() = runTest {
+        val fixture = fixture()
+        val replacement = fixture()
+        val endpoint = fixture.observeEndpoint(48)
+        fixture.measuredRoutes { setOf(endpoint.id) }
+        assertTrue(fixture.router.protectMeasuredPlayingHeadset(endpoint.id, 1L, 0L) { true })
+        assertTrue(fixture.router.protectManualPlayOnGuardedHeadset())
+
+        fixture.router.attach(replacement.player)
+        runCurrent()
+
+        assertEquals(null, fixture.guardId())
+        assertEquals(null, fixture.router.selectedId.value)
+        assertEquals(listOf(0f, 1f), fixture.volumeChanges)
+        assertTrue(replacement.pauseThreads.isEmpty())
+    }
+
+    @Test
+    fun `book cleanup preserves a newer explicit choice of the same endpoint`() = runTest {
+        val fixture = fixture()
+        val endpoint = fixture.observeEndpoint(49)
+        fixture.measuredRoutes { setOf(endpoint.id) }
+        assertTrue(fixture.router.protectMeasuredPlayingHeadset(endpoint.id, 1L, 0L) { true })
+
+        fixture.router.select(endpoint.id)
+        fixture.router.clearMeasuredPlayingHeadsetProtection()
+        runCurrent()
+
+        assertEquals(endpoint.id, fixture.router.selectedId.value)
+        assertEquals(1L, fixture.router.explicitSelection.value?.sequence)
+    }
+
     @Test
     fun `ordinary background resettle does not read an unguarded ExoPlayer`() = runTest {
         val fixture = fixture()
@@ -370,6 +565,15 @@ class AudioOutputRouterThreadTest {
     }
 }
 
+private fun device(id: Int, type: Int, name: String): AudioDeviceInfo {
+    val device = AudioDeviceInfoBuilder.newBuilder().setType(type).build()
+    val port = org.robolectric.util.ReflectionHelpers.getField<Any>(device, "mPort")
+    org.robolectric.util.ReflectionHelpers.setField(port, "mName", name)
+    val handle = org.robolectric.util.ReflectionHelpers.getField<Any>(port, "mHandle")
+    org.robolectric.util.ReflectionHelpers.setField(handle, "mId", id)
+    return device
+}
+
 private fun TestScope.fixture(): Fixture {
     val reads = mutableListOf<Thread>()
     val pauses = mutableListOf<Thread>()
@@ -413,6 +617,7 @@ private fun TestScope.fixture(): Fixture {
             else -> error("Unexpected ExoPlayer call: ${method.name}")
         }
     } as ExoPlayer
+    val registry = LiveOutputEndpointRegistry()
     val router = AudioOutputRouter(
         context = RuntimeEnvironment.getApplication(),
         logger = object : Logger {
@@ -420,6 +625,7 @@ private fun TestScope.fixture(): Fixture {
         },
         applicationScope = this,
         mainDispatcher = StandardTestDispatcher(testScheduler),
+        endpointRegistry = registry,
     )
     AudioOutputRouter::class.java.getDeclaredField("player").apply {
         isAccessible = true
@@ -430,11 +636,12 @@ private fun TestScope.fixture(): Fixture {
         get(router) as HeadsetRouteGuard
     }
     guardOwner.attachPlayer(player)
-    return Fixture(router, reads, pauses, volumes, preferredRequests, player)
+    return Fixture(router, registry, reads, pauses, volumes, preferredRequests, player)
 }
 
 private data class Fixture(
     val router: AudioOutputRouter,
+    val registry: LiveOutputEndpointRegistry,
     val readThreads: List<Thread>,
     val pauseThreads: List<Thread>,
     val volumeChanges: List<Float>,
@@ -450,11 +657,18 @@ private data class Fixture(
 
     fun safetyListener(): Player.Listener = requireNotNull(guardOwner().currentPlayerListener())
 
-    fun guardId(): String? = guardOwner().let { owner ->
-        HeadsetRouteGuard::class.java.getDeclaredField("endpointId").run {
+    fun guardId(): String? = guardOwner().endpointId
+
+    fun observeEndpoint(platformId: Int, name: String = "Synthetic output"): LiveOutputEndpointRegistry.Endpoint {
+        val info = device(platformId, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, name)
+        val endpoint = registry.reconcile(
+            listOf(LiveOutputEndpointRegistry.Observation(platformId, info.type, info.productName?.toString())),
+        ).single()
+        AudioOutputRouter::class.java.getDeclaredField("live").apply {
             isAccessible = true
-            get(owner) as? String
+            set(router, mapOf(endpoint.id to info))
         }
+        return endpoint
     }
 
     fun guardOwner(): HeadsetRouteGuard = AudioOutputRouter::class.java.getDeclaredField("headsetGuard").run {

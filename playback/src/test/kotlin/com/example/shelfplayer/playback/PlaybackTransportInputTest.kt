@@ -10,6 +10,30 @@ import kotlin.test.assertTrue
 /** Exact Media3 raw event interpretation shared by every service-side transport path. */
 internal class PlaybackTransportInputTest {
     @Test
+    fun `local safety pause excludes rewind but does not invent a focus interruption`() {
+        val safety = PlaybackTransportInput.interpret(
+            false,
+            Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST,
+            routeSafetyPause = true,
+        )
+        assertFalse(safety.isUserPause)
+        assertNull(safety.interruptionReason)
+        assertEquals("routeSafety", safety.reasonName)
+
+        val focus = PlaybackTransportInput.interpret(
+            false,
+            Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
+            routeSafetyPause = true,
+        )
+        assertEquals(Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS, focus.interruptionReason)
+        assertEquals("audioFocusLoss", focus.reasonName)
+        assertEquals(
+            "userRequest",
+            PlaybackTransportInput.interpret(true, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST, true).reasonName,
+        )
+    }
+
+    @Test
     fun `every Play supersedes pending continuity regardless of reason`() {
         val reasons = listOf(
             Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST,

@@ -143,6 +143,19 @@ internal class RouteHeardOwnership {
         }
     }
 
+    /** The only transient pre-arrival claim: one current-generation, measured, uniquely active headset candidate. */
+    fun measuredPlayingHeadsetForContinuity(outputs: List<AudioOutput>): String? {
+        val generation = activeGeneration ?: return null
+        val heard = heardRoute?.takeIf {
+            it.generation == generation && it.evidence == RouteHeardEvidence.ActualAudioTrackWhilePlaying
+        } ?: return null
+        val activeTracks = outputs.filter {
+            it.isActive && it.activitySource == AudioOutputActivitySource.PlayingAudioTrack
+        }
+        if (activeTracks.size != 1 || activeTracks.single().id != heard.outputId) return null
+        return headsetForCar(outputs)?.takeIf { it == heard.outputId }
+    }
+
     private fun observeRouteWhilePlaying(outputs: List<AudioOutput>) {
         val generation = activeGeneration ?: return
         retireDisconnectedState(outputs)

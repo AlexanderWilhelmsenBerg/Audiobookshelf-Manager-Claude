@@ -60,7 +60,7 @@ internal object AudioTrackRouteTypes {
 }
 
 /**
- * Passive, opt-in route observations. The ordinary non-recording ExoPlayer builder remains unchanged.
+ * Passive route observations run for normal playback; diagnostic logging remains opt-in.
  * Media3's standard provider creates every output; this class never creates an extra AudioTrack,
  * chooses a route, requests focus or invokes playback transport.
  */
