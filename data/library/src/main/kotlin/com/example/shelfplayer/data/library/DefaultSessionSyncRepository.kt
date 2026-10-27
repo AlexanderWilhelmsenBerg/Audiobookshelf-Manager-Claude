@@ -26,7 +26,6 @@ import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
 import com.example.shelfplayer.core.model.playback.SyncOutcome
 import com.example.shelfplayer.core.model.playback.SyncTrigger
-import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -75,7 +74,7 @@ class DefaultSessionSyncRepository @Inject constructor(
     // PRODUCT_SPEC PLAY-004 — the outbox is where a *session* lives; this is where the book's position
     // lives, and it is the table that has to stop claiming the position is unsent once it has been sent.
     private val progressDao: ProgressDao,
-    private val gateway: AudiobookshelfGateway,
+    private val requests: SessionSyncRequests,
     private val serverClock: ServerClock,
     private val clock: AppClock,
     private val logger: Logger,
@@ -196,9 +195,9 @@ class DefaultSessionSyncRepository @Inject constructor(
         val remoteId = stored.remoteSessionId ?: return@withContext AppResult.Success(SyncOutcome.Queued)
         val profileId = ProfileId(stored.profileId)
         val result = if (closing) {
-            gateway.playback.closeSession(profileId, remoteId, progress)
+            requests.close(profileId, remoteId, progress)
         } else {
-            gateway.playback.syncSession(profileId, remoteId, progress)
+            requests.sync(profileId, remoteId, progress)
         }
         when (result) {
             is AppResult.Failure -> {
@@ -238,10 +237,9 @@ class DefaultSessionSyncRepository @Inject constructor(
             compact()
             return@withContext AppResult.Success(0)
         }
-        val uploaded = gateway.playback.syncOfflineSessions(
-            profileId = ProfileId(profile.profileId),
-            sessions = queued.map { row -> row.toOfflineSession() },
-        )
+        val profileId = ProfileId(profile.profileId)
+        val sessions = queued.map { row -> row.toOfflineSession() }
+        val uploaded = requests.upload(profileId, sessions)
         when (uploaded) {
             is AppResult.Failure -> {
                 outbox.markAttempted(queued.map(PlaybackSessionEntity::sessionId), uploaded.error.code)

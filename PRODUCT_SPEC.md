@@ -295,6 +295,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - A `401` from an authenticated Audiobookshelf request first uses one shared, generation-aware renewal
   coordinator. A renewable session is renewed once and the failed operation is retried once; a missing or
   refused refresh token marks the profile as requiring reauthentication.
+- Background playback session sync, close, and offline outbox upload use the same bounded renewal path.
+  They remain bound to the profile captured by the durable session row or drain, including across a profile
+  switch; failed requests keep their outbox rows and unsynced progress until the server accepts the position.
 - Existing downloaded playback continues.
 - An active Audiobookshelf stream that receives `401` renews once, creates a fresh authenticated media data
   source, and retries that range request once. A second `401` is surfaced without another renewal.

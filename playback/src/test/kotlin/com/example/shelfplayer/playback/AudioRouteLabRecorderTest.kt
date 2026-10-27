@@ -1,6 +1,7 @@
 package com.example.shelfplayer.playback
 
 import android.content.Context
+import android.util.AtomicFile
 import androidx.core.content.edit
 import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.LogEvent
@@ -17,7 +18,11 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -26,7 +31,7 @@ import kotlin.time.Duration
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], shadows = [AudioRouteLabRecorderTest.AtomicFileRenameShadow::class])
 class AudioRouteLabRecorderTest {
     private val context: Context get() = RuntimeEnvironment.getApplication()
 
@@ -74,6 +79,11 @@ class AudioRouteLabRecorderTest {
         log.write(LogLevel.Info, "AndroidAuto", "MediaSession transport request observed requested=Pause")
         runCurrent()
         assertEquals(28, recorder.state.value.entries.count { it.contains("transport-intent") })
+        assertEquals(
+            28,
+            File(context.noBackupFilesDir, "audio-route-lab.txt").readLines().count { it.contains("transport-intent") },
+            "the committed incident file must contain every accepted command before restoration",
+        )
         val restored = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
         assertFalse(restored.state.value.recording)
         assertEquals(28, restored.state.value.entries.count { it.contains("transport-intent") })
@@ -217,5 +227,28 @@ class AudioRouteLabRecorderTest {
         assertTrue(report.contains("test-armed step=ButtonA"))
         assertFalse(report.contains("private-headset-name"))
         assertFalse(report.contains("private-test-step"))
+    }
+
+    /**
+     * Android/Linux rename replaces an existing file; host Java File.renameTo does not on Windows.
+     * Only that private platform primitive is adapted for this test class. AtomicFile's real
+     * startWrite/finishWrite/openRead transactions and every recorder assertion remain in use.
+     */
+    @Implements(AtomicFile::class)
+    // Robolectric requires a public empty constructor even for a shadow of static methods only.
+    @Suppress("UtilityClassWithPublicConstructor")
+    class AtomicFileRenameShadow {
+        companion object {
+            @JvmStatic
+            @Implementation
+            fun rename(source: File, destination: File) {
+                Files.move(
+                    source.toPath(),
+                    destination.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            }
+        }
     }
 }
