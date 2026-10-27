@@ -62,6 +62,26 @@ class PlaybackServiceMediaButtonReceiverTest {
     }
 
     @Test
+    fun `a new Bluetooth appearance is protected after a suppressed service was recreated`() {
+        val gate = ColdStartToggleGate()
+        val first = Fixture(gate)
+        try {
+            assertNull(first.service.onGetSession(first.receiverInfo(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)))
+        } finally {
+            first.close()
+        }
+        val reconnected = Fixture(gate, outputId = "bluetooth:new-appearance")
+        try {
+            assertNull(
+                reconnected.service.onGetSession(reconnected.receiverInfo(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)),
+                "a later connection must retain cold-start autoplay protection in the same process",
+            )
+        } finally {
+            reconnected.close()
+        }
+    }
+
+    @Test
     fun `explicit Play from receiver keeps cold playback resumption reachable`() {
         val fixture = Fixture()
         try {
@@ -145,7 +165,8 @@ class PlaybackServiceMediaButtonReceiverTest {
         }
     }
 
-    private class Fixture(gate: ColdStartToggleGate = ColdStartToggleGate()) : AutoCloseable {
+    private class Fixture(gate: ColdStartToggleGate = ColdStartToggleGate(), outputId: String = "bluetooth:test") :
+        AutoCloseable {
         private val context = RuntimeEnvironment.getApplication()
         private val logger = object : Logger {
             override fun log(event: LogEvent) = Unit
@@ -173,7 +194,7 @@ class PlaybackServiceMediaButtonReceiverTest {
                 router.javaClass.getDeclaredField("_outputs").apply { isAccessible = true }
                     .get(router) as MutableStateFlow<List<AudioOutput>>
                 ).value =
-                listOf(AudioOutput("bluetooth:test", "test", DeviceKind.Bluetooth))
+                listOf(AudioOutput(outputId, "test", DeviceKind.Bluetooth))
             service.audioOutputs = router
             service.clock = clock
             service.carConnections = carConnections

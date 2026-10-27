@@ -57,8 +57,8 @@ are deliberately not collapsed into a single generation.
 ## Follow-up safety and ownership slices — 27 October 2026
 
 The suppressed cold `MediaButtonReceiver` request now reaches Media3's safe rejected-session
-shutdown through `PlaybackService.onGetSession`. Its process-scoped one-shot gate prevents
-service recreation from suppressing every later deliberate toggle. This addresses the observed
+shutdown through `PlaybackService.onGetSession`. Its process-scoped gate remembers the current live Bluetooth appearance tokens and prevents
+service recreation from suppressing every later deliberate toggle. Newly enumerated appearances rearm cold protection without assigning a physical key origin. This addresses the observed
 #295 sequence; physical Android 16 startup deadlines and other empty/locked/failed/cancelled
 explicit resumption paths remain unverified. The merge hold is retained for acceptance.
 

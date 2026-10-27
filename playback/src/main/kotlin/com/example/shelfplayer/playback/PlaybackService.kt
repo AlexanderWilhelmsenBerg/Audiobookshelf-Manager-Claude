@@ -612,7 +612,10 @@ class PlaybackService : MediaLibraryService() {
             keyCode = keyEvent.keyCode,
             keyAction = keyEvent.action,
             inputDeviceId = keyEvent.deviceId,
-            hasBluetooth = audioOutputs.outputs.value.any { it.id.startsWith("bluetooth:") },
+            bluetoothEndpoints = audioOutputs.outputs.value
+                .filter { it.id.startsWith("bluetooth:") }
+                .map { it.id }
+                .toSet(),
             emptyQueue = (player?.mediaItemCount ?: 0) == 0,
             carConnected = carConnections.isConnected() || carLifecycle.projectionState.carConnected ||
                 controllerPackage in CAR_PACKAGES,

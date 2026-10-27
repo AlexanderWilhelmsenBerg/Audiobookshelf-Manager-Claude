@@ -58,10 +58,10 @@ Media3 cold-book resumption. Neither the event nor the input name proved whether
 person pressed the button.
 
 `ColdStartToggleGate` consumes **only the first** virtual/unattributed MEDIA_PLAY_PAUSE
-DOWN/UP in the first 3 seconds of an empty Media3 queue with an enumerated Bluetooth
+DOWN/UP per current set of live Bluetooth appearances in the first 3 seconds of an empty Media3 queue with an enumerated Bluetooth
 output and no detected car session. It is process-scoped so a rejected cold
 `MediaButtonReceiver` start cannot recreate the three-second window on every service
-restart. Media3 identifies receiver starts in `onGetSession`; BookWave returns no
+restart. New appearances rearm the gate using the existing live endpoint tokens, without attributing a physical button. Media3 identifies receiver starts in `onGetSession`; BookWave returns no
 session only for the same gated event, allowing Media3's `stopSelfSafely()` path to
 complete the foreground-service start without playback. Explicit MEDIA_PLAY (126),
 physical-attributed keys, established queues, warm service controls, and detected car

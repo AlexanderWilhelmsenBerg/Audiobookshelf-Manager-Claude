@@ -467,18 +467,7 @@ class AudioOutputRouter @Inject constructor(
                 return@launch
             }
             current.pause()
-            logger.info(
-                LogCategory.Playback,
-                "Car continuity paused because the headset route is not verified",
-                LogField.Public(
-                    "route",
-                    when {
-                        actualRoute.isNullOrEmpty() -> "unknown"
-                        actualRoute.none { it == headsetGuard.endpointId } -> "other"
-                        else -> "multiple"
-                    },
-                ),
-            )
+            logUnverifiedRoute(actualRoute, guarded)
         }
     }
 
@@ -498,20 +487,25 @@ class AudioOutputRouter @Inject constructor(
         val currentGuardIsMeasured = actualRoute == setOf(currentGuard) && currentGuard !in collidingOutputIds
         if (!currentGuardIsMeasured && probePlayer.isPlaying) {
             probePlayer.pause()
-            logger.info(
-                LogCategory.Playback,
-                "Car continuity paused because the headset route is not verified",
-                LogField.Public(
-                    "route",
-                    when {
-                        actualRoute.isNullOrEmpty() -> "unknown"
-                        actualRoute.none { it == currentGuard } -> "other"
-                        else -> "multiple"
-                    },
-                ),
-            )
+            logUnverifiedRoute(actualRoute, currentGuard)
         }
         return true
+    }
+
+    /** Reports route categories from the decision snapshot without exposing endpoint identity. */
+    private fun logUnverifiedRoute(actualRoute: Set<String>?, guarded: String) {
+        logger.info(
+            LogCategory.Playback,
+            "Car continuity paused because the headset route is not verified",
+            LogField.Public(
+                "route",
+                when {
+                    actualRoute.isNullOrEmpty() -> "unknown"
+                    guarded !in actualRoute -> "other"
+                    else -> "multiple"
+                },
+            ),
+        )
     }
 
     /** Framework-reported devices for BookWave's media attributes, or `null` before API 33. */
