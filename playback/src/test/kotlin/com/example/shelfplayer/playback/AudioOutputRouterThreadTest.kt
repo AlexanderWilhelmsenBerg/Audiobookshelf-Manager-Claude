@@ -42,11 +42,7 @@ class AudioOutputRouterThreadTest {
     @Test
     fun `automatic playing exact ambiguous endpoint is guarded before route loss`() = runTest {
         val fixture = fixture()
-        val registry = fixture.registry
-        val info = device(41, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "Car or earbuds")
-        val endpoint = registry.reconcile(
-            listOf(LiveOutputEndpointRegistry.Observation(41, info.type, info.productName?.toString())),
-        ).single()
+        val endpoint = fixture.observeEndpoint(41, "Car or earbuds")
         val routeOwner = RouteHeardOwnership().apply { onBookChanged(hasBook = true) }
         val measuredOutput = endpoint.output.copy(
             id = endpoint.id,
@@ -54,10 +50,6 @@ class AudioOutputRouterThreadTest {
             activitySource = AudioOutputActivitySource.PlayingAudioTrack,
         )
         routeOwner.onPlaybackObserved(listOf(measuredOutput))
-        AudioOutputRouter::class.java.getDeclaredField("live").apply {
-            isAccessible = true
-            set(fixture.router, mapOf(endpoint.id to info))
-        }
         fixture.measuredRoutes { setOf(endpoint.id) }
         val generation = requireNotNull(routeOwner.currentGeneration)
         val headset = requireNotNull(routeOwner.measuredPlayingHeadsetForContinuity(listOf(measuredOutput)))
@@ -83,20 +75,7 @@ class AudioOutputRouterThreadTest {
             String::class.java,
             Set::class.java,
         ).apply { isAccessible = true }.invoke(fixture.router, endpoint.id, emptySet<String>())
-        val replacementInfo = device(45, info.type, "Car or earbuds")
-        val replacement = registry.reconcile(
-            listOf(
-                LiveOutputEndpointRegistry.Observation(
-                    45,
-                    replacementInfo.type,
-                    replacementInfo.productName?.toString(),
-                ),
-            ),
-        ).single()
-        AudioOutputRouter::class.java.getDeclaredField("live").apply {
-            isAccessible = true
-            set(fixture.router, mapOf(replacement.id to replacementInfo))
-        }
+        val replacement = fixture.observeEndpoint(45, "Car or earbuds")
         fixture.measuredRoutes { setOf(replacement.id) }
         fixture.router.onActualTrackRouteChanged()
         runCurrent()
@@ -680,8 +659,8 @@ private data class Fixture(
 
     fun guardId(): String? = guardOwner().endpointId
 
-    fun observeEndpoint(platformId: Int): LiveOutputEndpointRegistry.Endpoint {
-        val info = device(platformId, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "Synthetic output")
+    fun observeEndpoint(platformId: Int, name: String = "Synthetic output"): LiveOutputEndpointRegistry.Endpoint {
+        val info = device(platformId, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, name)
         val endpoint = registry.reconcile(
             listOf(LiveOutputEndpointRegistry.Observation(platformId, info.type, info.productName?.toString())),
         ).single()

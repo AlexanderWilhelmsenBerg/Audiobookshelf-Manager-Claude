@@ -243,18 +243,22 @@ class AudioOutputRouter @Inject constructor(
         }
         val attached = player ?: return false
         val epoch = preferenceEffects.snapshot()
-        if (currentTrackRoutes() != setOf(id)) return false
-        if (!preferenceEffects.isCurrent(epoch) || player !== attached ||
-            !canProtectMeasuredHeadset(id, selectionSequence) || !isCurrentClaim()
-        ) {
-            return false
+        val measuredRoute = currentTrackRoutes()
+        val sameAttachment = preferenceEffects.isCurrent(epoch) && player === attached
+        return when {
+            measuredRoute != setOf(id) || !sameAttachment -> false
+
+            !canProtectMeasuredHeadset(id, selectionSequence) || !isCurrentClaim() -> false
+
+            else -> {
+                val protectionEpoch = preferenceEffects.supersede()
+                if (_selectedId.value == null) _selectedId.value = id
+                headsetGuard.protect(id)
+                automaticProtection = AutomaticProtection(id, generation, selectionSequence, protectionEpoch)
+                publish()
+                true
+            }
         }
-        val protectionEpoch = preferenceEffects.supersede()
-        if (_selectedId.value == null) _selectedId.value = id
-        headsetGuard.protect(id)
-        automaticProtection = AutomaticProtection(id, generation, selectionSequence, protectionEpoch)
-        publish()
-        return true
     }
 
     /** Route queries may synchronously retire an endpoint or deliver newer selection; check both sides. */
