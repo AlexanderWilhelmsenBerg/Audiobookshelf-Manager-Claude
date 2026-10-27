@@ -41,6 +41,11 @@ mismatch fails closed and retains the logical target; a new endpoint appearance 
 sole-A2DP status. Reverification does not call Play. If playback is already active it may verify that current
 playback; otherwise the lock waits for the listener's next Play.
 
+An explicit Car destination also excludes headset preservation/recovery during a later host rebind.
+The former headset may still be the measured output while Android settles or declines the request;
+that truthful observation is not authorization to override the newer Car choice. A newer explicit
+output selection can make that endpoint eligible again.
+
 One Media3 player/session/focus owner remains. Existing `RoutePreferenceEffects` and `HeadsetRouteGuard` own
 serialized platform effects and call-scoped safety-pause provenance; route evidence and car recovery retain
 their current scopes. This decision does not add automatic headset-key destination handoff; #277 owns the

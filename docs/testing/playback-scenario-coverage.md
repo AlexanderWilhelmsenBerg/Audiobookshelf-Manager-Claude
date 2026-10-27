@@ -219,7 +219,7 @@ recovery also require their documented stationary device/server retests.
 
 ## #276 verified output lock candidate
 
-Strict local `verifyDebug` with warnings as errors passes 2,637 tests / 314 suites, including 821 playback
+Strict local `verifyDebug` with warnings as errors passes 2,639 tests / 314 suites, including 823 playback
 tests, with no failures/errors/skips. Formatter, lint, Detekt and coverage gates pass. The first complete
 rebuild reran every task; affected targets were rerun after corrections. Local APK assembly was excluded.
 The exact committed source and normal PR-triggered CI result are recorded in issue #289 and the draft PR.
@@ -228,6 +228,12 @@ Removing the production service's generic-Car lock guard makes its Media3 reques
 fail; removing the Stop hook makes the real forwarding-Stop regression fail even while the loaded queue
 is retained. Both mutations were restored before the passing gate. The route-eligibility mutation also
 fails its intended assertion. Real Compose cases cover advisory refusal and release with no outputs.
+
+A further production-effects regression exposed the former headset being re-protected during a car
+rebind after explicit Car selection. Both the actual continuity-effect and evidence-owner cases failed
+before the fix. Explicit Car now excludes headset recovery eligibility while keeping actual route
+observations truthful; a newer explicit output choice restores eligibility. The full gate above includes
+these cases. The older 2,637-test CI result does not verify this follow-up commit.
 
 `AudioOutputRouter` owns one singleton `OutputIntentOwner` shared with the service's
 `RouteHeardOwnership` evidence tracker. The phone output chooser exposes **Keep audio here** and

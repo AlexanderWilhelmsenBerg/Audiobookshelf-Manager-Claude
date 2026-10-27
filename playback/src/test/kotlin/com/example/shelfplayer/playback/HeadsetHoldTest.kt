@@ -15,6 +15,25 @@ import kotlin.test.assertNull
  * The historical filename predates issue #11; this class exercises [RouteHeardOwnership], not a HeadsetHold.
  */
 class HeadsetHoldTest {
+    @Test
+    fun `explicit Car intent excludes headset recovery until a newer output choice`() {
+        val intent = OutputIntentOwner()
+        val owner = RouteHeardOwnership(intent).apply { onBookChanged(true) }
+        val active = listOf(budsA.copy(isActive = true, activitySource = AudioOutputActivitySource.PlayingAudioTrack))
+        owner.onPlaybackObserved(active)
+        val car = intent.select(null, OutputIntentOwner.Destination.Car)
+        owner.onExplicitSelection(null, active, true, car.sequence, car.destination)
+        owner.onOutputsChanged(active, isPlaying = true)
+
+        assertEquals(budsA.id, owner.heardRoute?.outputId, "actual evidence remains truthful")
+        assertNull(owner.headsetForCar(active), "actual output is not permission to override explicit Car intent")
+        assertNull(owner.measuredPlayingHeadsetForContinuity(active))
+
+        val headset = intent.select(budsA.id, OutputIntentOwner.Destination.Output)
+        owner.onExplicitSelection(budsA.id, active, true, headset.sequence, headset.destination)
+        assertEquals(budsA.id, owner.headsetForCar(active))
+    }
+
     private val budsA = output("bluetooth:buds-a", "Buds A")
     private val budsB = output("bluetooth:buds-b", "Buds B")
     private val dashboard = output("bluetooth:dashboard", "Dashboard")

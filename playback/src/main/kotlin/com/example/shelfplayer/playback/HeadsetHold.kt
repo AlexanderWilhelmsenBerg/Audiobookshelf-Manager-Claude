@@ -123,6 +123,7 @@ internal class RouteHeardOwnership(internal val intentOwner: OutputIntentOwner) 
 
     /** The generation-bound headset a car arrival may reassert, if that same candidate is still connected. */
     fun headsetForCar(outputs: List<AudioOutput>): String? {
+        if (intentOwner.state.value.selection?.destination == OutputIntentOwner.Destination.Car) return null
         val generation = activeGeneration ?: return null
         val heard = heardRoute?.takeIf { it.generation == generation } ?: return null
         return heard.outputId.takeIf { id ->

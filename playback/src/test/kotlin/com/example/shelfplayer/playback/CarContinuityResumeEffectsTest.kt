@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import android.media.AudioDeviceInfo
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.LogField
@@ -19,9 +20,11 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.AudioDeviceInfoBuilder
 import java.lang.reflect.Proxy
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -34,6 +37,63 @@ import kotlin.time.Duration.Companion.seconds
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 internal class CarContinuityResumeEffectsTest {
+    @Test
+    fun `car rebind cannot restore the former headset after explicit Car selection`() = runTest {
+        val registry = LiveOutputEndpointRegistry()
+        val device = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP).build()
+        val endpoint = registry.reconcile(
+            listOf(LiveOutputEndpointRegistry.Observation(device.id, device.type, device.productName?.toString())),
+        ).single()
+        val logger = object : Logger {
+            override fun log(event: LogEvent) = Unit
+        }
+        val router = AudioOutputRouter(
+            RuntimeEnvironment.getApplication(),
+            logger,
+            backgroundScope,
+            StandardTestDispatcher(testScheduler),
+            registry,
+        )
+        AudioOutputRouter::class.java.getDeclaredField("live").apply { isAccessible = true }
+            .set(router, mapOf(endpoint.id to device))
+        AudioOutputRouter::class.java.getDeclaredField("currentTrackRoutes").apply { isAccessible = true }
+            .set(router, { setOf(endpoint.id) })
+        val owner = RouteHeardOwnership(router.outputIntentOwner).apply { onBookChanged(true) }
+        router.selectCar()
+        owner.onPlaybackObserved(router.outputs.value)
+        val player = activePlayer()
+        val effects = CarContinuityResumeEffects(
+            recovery = CarContinuityRecoveryCoordinator(CarArrivalResumeGate()),
+            outputs = router,
+            owner = owner,
+            trace = { _, _ -> },
+            currentPlayer = { player },
+            selectionSequence = { requireNotNull(router.explicitSelection.value).sequence },
+            snapshot = { emptyList() },
+            onServiceResumeIntent = { error("Rebind must not create Play intent") },
+            scope = backgroundScope,
+            synchronizeOutputIntent = {
+                val selection = requireNotNull(router.explicitSelection.value)
+                owner.onExplicitSelection(
+                    selection.outputId,
+                    router.outputs.value,
+                    true,
+                    selection.sequence,
+                    selection.destination,
+                )
+            },
+        )
+
+        effects.onArrival(null)
+        runCurrent()
+
+        assertEquals(OutputIntentOwner.Destination.Car, router.explicitSelection.value?.destination)
+        assertNull(router.selectedId.value, "car binding must not re-protect the former headset")
+        assertNull(owner.headsetForCar(router.outputs.value))
+        effects.cancelPending()
+        router.detach()
+    }
+
     @Test
     fun `active Media3 intent never secures a route or issues another Play`() = runTest {
         val events = mutableListOf<LogEvent>()
@@ -202,6 +262,17 @@ internal class CarContinuityResumeEffectsTest {
             "getPlayWhenReady" -> false
             "getMediaItemCount" -> 1
             else -> error("Stale recovery must not call Media3 ${method.name}")
+        }
+    } as ExoPlayer
+
+    private fun activePlayer(): ExoPlayer = Proxy.newProxyInstance(
+        ExoPlayer::class.java.classLoader,
+        arrayOf(ExoPlayer::class.java),
+    ) { _, method, _ ->
+        when (method.name) {
+            "getPlayWhenReady", "isPlaying" -> true
+            "getMediaItemCount" -> 1
+            else -> error("Car binding must not call Media3 ${method.name}")
         }
     } as ExoPlayer
 }
