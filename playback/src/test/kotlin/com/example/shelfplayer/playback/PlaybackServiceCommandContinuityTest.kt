@@ -11,6 +11,7 @@ import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
@@ -223,6 +224,105 @@ class PlaybackServiceCommandContinuityTest {
             assertEquals(1, fixture.rawPlayTransitions, "repeated Play must not add a transport transition")
             assertEquals(2, fixture.rawPlayCalls, "the second accepted request also issues only one raw Play")
             assertEquals(0f, fixture.player.volume)
+        }
+    }
+
+    @Test
+    fun `service journal snapshot holds the position captured before muted route verification`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = false)
+            val heldPosition = fixture.positionSnapshotPosition()
+            assertTrue(fixture.resumeLoadedCurrent())
+            assertTrue(fixture.isRouteMuted())
+
+            fixture.reportPositionWithoutSeek(25_000L)
+            runCurrent()
+
+            assertTrue(fixture.player.currentPosition >= 25_000L, "the raw player position should have advanced")
+            assertEquals(
+                heldPosition,
+                fixture.positionSnapshotPosition(),
+                "journal and pause sync must use held position",
+            )
+        }
+    }
+
+    @Test
+    fun `forwarded Pause restores silent advancement before the real pause and retires its probe`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = false)
+            assertTrue(fixture.resumeLoadedCurrent())
+            fixture.reportPositionWithoutSeek(25_000L)
+
+            fixture.forwarding.handleSetPlayWhenReady(false)
+            runCurrent()
+
+            assertFalse(fixture.player.playWhenReady)
+            assertEquals(12_000L, fixture.player.currentPosition)
+            assertFalse(fixture.isRouteMuted())
+            assertFalse(fixture.hasPositionCheckpoint())
+        }
+    }
+
+    @Test
+    fun `forwarded Stop retires a muted probe despite retained Play intent`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = false)
+            assertTrue(fixture.resumeLoadedCurrent())
+            fixture.reportPositionWithoutSeek(25_000L)
+
+            fixture.forwarding.handleStop()
+            runCurrent()
+
+            assertEquals(Player.STATE_IDLE, fixture.player.playbackState)
+            assertEquals(12_000L, fixture.player.currentPosition)
+            assertFalse(fixture.isRouteMuted())
+            assertFalse(fixture.hasPositionCheckpoint())
+        }
+    }
+
+    @Test
+    fun `real service seek callbacks exclude compensation but retain a later user seek`() = runTest {
+        Fixture(this).use { fixture -> fixture.checkCompensationSeekProvenance() }
+    }
+
+    @Test
+    fun `a synchronous user seek inside compensation retains its own provenance and position`() = runTest {
+        Fixture(this).use { fixture -> fixture.checkCompensationSeekProvenance(inlineUserSeek = true) }
+    }
+
+    @Test
+    fun `reentrant mute listener sees the checkpoint before the mute acquisition returns`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = false)
+            val expectedPosition = fixture.positionSnapshotPosition()
+            var observedPosition: Long? = null
+            fixture.observeMuteEdgePosition {
+                fixture.reportPositionWithoutSeek(25_000L)
+                observedPosition = fixture.positionSnapshotPosition()
+            }
+
+            assertTrue(fixture.resumeLoadedCurrent())
+
+            assertEquals(expectedPosition, observedPosition)
+            assertTrue(fixture.isRouteMuted())
+        }
+    }
+
+    @Test
+    fun `guarded playback can acquire a zero position checkpoint`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = false)
+            fixture.reportPositionWithoutSeek(0L)
+
+            assertTrue(fixture.resumeLoadedCurrent())
+            assertTrue(fixture.isRouteMuted())
+            assertTrue(fixture.player.playWhenReady)
+            fixture.reportPositionWithoutSeek(25_000L)
+            assertNull(
+                fixture.positionSnapshotPosition(),
+                "silent advancement cannot make an unstarted point persistable",
+            )
         }
     }
 
@@ -527,7 +627,9 @@ class PlaybackServiceCommandContinuityTest {
             private set
         var rawPrepareCalls = 0
             private set
+        private var rawPauseRequests = 0
         private val realPlayer = ExoPlayer.Builder(context).build()
+        private var reportedPositionMs: Long? = null
 
         // Observe commands while retaining one real pinned Media3 player and all its normal callbacks.
         val player = Proxy.newProxyInstance(
@@ -536,6 +638,15 @@ class PlaybackServiceCommandContinuityTest {
         ) { _, method, args ->
             if (method.name == "play") rawPlayCalls += 1
             if (method.name == "prepare") rawPrepareCalls += 1
+            if (method.name == "setPlayWhenReady" && args?.firstOrNull() == false) rawPauseRequests++
+            if (method.name == "seekTo" && reportedPositionMs != null) {
+                reportedPositionMs = args?.lastOrNull() as? Long
+            }
+            if (method.name == "getCurrentPosition" &&
+                reportedPositionMs != null
+            ) {
+                return@newProxyInstance reportedPositionMs
+            }
             method.invoke(realPlayer, *args.orEmpty())
         } as ExoPlayer
         private val volumeEffects = volumeEffectsForTest(dispatcher, clock)
@@ -572,6 +683,7 @@ class PlaybackServiceCommandContinuityTest {
             })
             configureService()
             configureRouter()
+            service.installPositionCheckpointHandlers()
             owner.onBookChanged(hasBook = true)
             owner.onPlaybackObserved(listOf(headset))
             val inputs = CarContinuityRecoveryCoordinator.Inputs(
@@ -603,6 +715,8 @@ class PlaybackServiceCommandContinuityTest {
             service.applicationScope = scope.backgroundScope
             service.mainDispatcher = dispatcher
             service.audioOutputs = router
+            service.volumeEffects = volumeEffects
+            service.setField("activeProfileGeneration", { 0L })
             service.carConnections = CarConnections(clock)
             service.resumeFreshness = ResumeFreshnessCoordinator(
                 unused<PlaybackRepository>(),
@@ -614,6 +728,8 @@ class PlaybackServiceCommandContinuityTest {
                 dispatcher,
             )
             service.sleepTimer = sleepTimer(sync)
+            service.sessionSync = sync
+            service.resumeBaseline = baseline
             service.setField("scope", scope.backgroundScope)
             service.setField("player", player)
         }
@@ -728,6 +844,65 @@ class PlaybackServiceCommandContinuityTest {
             player.removeListener(listener)
         }
 
+        suspend fun checkCompensationSeekProvenance(inlineUserSeek: Boolean = false) {
+            var positionWrites = 0
+            service.playbackRepository = proxy<PlaybackRepository> { method ->
+                check(method.substringBefore('-') == "recordPosition")
+                positionWrites++
+                AppResult.Success(Unit)
+            }
+            service.autoRewind = AutoRewindController(
+                proxy<PlaybackSettingsRepository> { flowOf(PlaybackSettings()) },
+                clock,
+                unused<PlaybackHistoryRepository>(),
+                logger,
+                scope.backgroundScope,
+            )
+            val type = PlaybackService::class.java.declaredClasses.single { it.simpleName == "PlayerEvents" }
+            val events = type.getDeclaredConstructor(PlaybackService::class.java)
+                .apply { isAccessible = true }.newInstance(service) as Player.Listener
+            var inlineDelivered = false
+            val seeks = object : Player.Listener {
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int,
+                ) {
+                    events.onPositionDiscontinuity(oldPosition, newPosition, reason)
+                    if (inlineUserSeek && !inlineDelivered && volumeEffects.isRouteMuted(player)) {
+                        inlineDelivered = true
+                        forwarding.handleSeek(0, 14_000L, Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+                    }
+                }
+            }
+            player.addListener(seeks)
+            try {
+                configureManualGuard(selected = true, colliding = false)
+                assertTrue(resumeLoadedCurrent())
+                reportPositionWithoutSeek(25_000L)
+                forwarding.handleSetPlayWhenReady(false)
+                scope.runCurrent()
+                if (inlineUserSeek) {
+                    assertTrue(inlineDelivered, "the actual Media3 callback must issue the newer command")
+                    assertEquals(14_000L, player.currentPosition)
+                    assertEquals(1, positionWrites, "the newer user seek cannot inherit compensation provenance")
+                    assertEquals(0, rawPauseRequests, "the superseded outer Pause must not reach raw transport")
+                    return
+                }
+                assertEquals(0, positionWrites, "compensation must not create SeekCompleted persistence")
+                assertEquals(12_000L, player.currentPosition)
+
+                forwarding.handleSeek(0, 12_500L, Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+                scope.runCurrent()
+                assertEquals(1, positionWrites, "the next actual user seek must remain visible")
+                forwarding.handleSeek(0, 12_000L, Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+                scope.runCurrent()
+                assertEquals(2, positionWrites, "the former held position must not retain compensation provenance")
+            } finally {
+                player.removeListener(seeks)
+            }
+        }
+
         fun configureManualGuard(selected: Boolean, colliding: Boolean, connected: Boolean = true) {
             if (connected) returnHeadset() else router.setField("live", emptyMap<String, AudioDeviceInfo>())
             router.setField("guardedHeadsetId", endpointId)
@@ -761,6 +936,16 @@ class PlaybackServiceCommandContinuityTest {
         fun explicitDestination(): OutputIntentOwner.Destination? = router.explicitSelection.value?.destination
 
         fun isRouteMuted(): Boolean = volumeEffects.isRouteMuted(player)
+        fun hasPositionCheckpoint(): Boolean = router.positions.guard.positionCheckpoint != null
+        fun observeMuteEdgePosition(onMuted: () -> Unit) {
+            volumeEffects.addMuteListener { change ->
+                if (change.player === player && change.muted) onMuted()
+            }
+        }
+        fun reportPositionWithoutSeek(positionMs: Long) {
+            reportedPositionMs = positionMs
+        }
+        fun positionSnapshotPosition(): Long? = service.call("positionSnapshot")?.field("position")
         fun retainPlayIntentWhileIdle() {
             assertEquals(Player.STATE_IDLE, player.playbackState)
             player.playWhenReady = true

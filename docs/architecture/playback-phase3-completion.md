@@ -5,6 +5,23 @@ This is the software completion checklist for the selected unmerged stack
 The authoritative repository is GitHub. Phase 3 completion is distinct from merging
 these PRs and from Phase 4 device/head-unit acceptance.
 
+## Output-ownership continuation — 28 October 2026
+
+The owner subsequently authorized the dependent #276/#277 implementation plan after the 2241 route-loss
+report. Those features are active work, rather than deferred work in the earlier refactor review below.
+Draft #297 adds measured route-loss safety; #298 consolidates output intent and verified logical lock;
+#299 shares volume effects and audible-time accounting; #300 adds the common guarded activation boundary.
+All remain unmerged. The selected sibling is #294; closed #293 is not stacked into this work.
+
+The #300 position checkpoint adds one probe-owned heard-position projection, compensation before Pause/Stop,
+and existing-authority checks around synchronous and suspended effects. Strict local verification passes
+2,692 tests /319 suites, including 876 playback tests, with no failures, errors or skips. Normal exact-head
+CI and the remaining software slices are tracked in
+[the current checkpoint](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/289#issuecomment-6448375926).
+Current-item replacement guarding, verified transfer/rollback and typed selection/UI consolidation remain
+required. The full execution plan is not complete. A final combined candidate must also include
+separate auth #296; physical output, startup and real-token acceptance remain distinct.
+
 ## Ownership after refactoring
 
 | Responsibility | Owner and boundary |
@@ -20,8 +37,12 @@ these PRs and from Phase 4 device/head-unit acceptance.
 | One-shot episode eligibility | `CarContinuityRecoveryCoordinator` and its existing `CarArrivalResumeGate` |
 | Suspended route hold/recovery lifetime | One service-scoped Job in `CarContinuityResumeEffects` |
 | Preferred-device effect ordering | `RoutePreferenceEffects`, existing generation and Media3 dispatcher |
-| Endpoint identity, discovery and listener output preference | `AudioOutputRouter`, `LiveOutputEndpointRegistry` |
-| Attached-player guard, probe proof, grace and volume lifetime | `HeadsetRouteGuard`, with router epoch authorization and `AudioTrackRouteMonitor` evidence |
+| Endpoint identity, discovery and platform preference | `AudioOutputRouter`, `LiveOutputEndpointRegistry`, `RoutePreferenceEffects` |
+| Explicit destination/selection/release and runtime lock | One `OutputIntentOwner`, shared by router and route evidence |
+| Raw activation on all service-owned paths | One `PlaybackCommandEffects`; controller/fresh-start/retry/install/restore/continuity adapters supply existing authorization |
+| Attached-player guard, probe proof and grace | `HeadsetRouteGuard`, with router epoch authorization and `AudioTrackRouteMonitor` evidence |
+| Route mute and latest sleep gain | One `PlaybackVolumeEffects` writer; synchronous mute boundaries freeze timer/listened accounting |
+| Held position and compensation during muted verification | `MutedPositionEffects`, using the sole checkpoint on the existing probe and existing authorization scopes |
 | Loaded-book candidate evidence | `RouteHeardOwnership`, preserving the router's typed provenance |
 | Progress, history, sleep, rewind and profiles | Existing domain/repository collaborators; accepted atomically by `BookChanges` |
 
@@ -54,7 +75,7 @@ are deliberately not collapsed into a single generation.
    must fail with their relevant guards removed. Full local verification and normal
    PR-triggered CI must pass on the final recorded SHA.
 
-## Follow-up safety and ownership slices — 27 October 2026
+## Earlier refactor checkpoint — 27 October 2026
 
 The suppressed cold `MediaButtonReceiver` request now reaches Media3's safe rejected-session
 shutdown through `PlaybackService.onGetSession`. Its process-scoped gate remembers the current live Bluetooth appearance tokens and prevents

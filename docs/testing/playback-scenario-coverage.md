@@ -46,6 +46,18 @@ the test observes Stop's idle state and controller generation, because Media3 ma
 Post-connect tests cover Arm with inherited Play intent and same-item installation without an assumed item
 generation increment. These supplement S08/S12/S13/S15/S18/S19; their physical acceptance columns are unchanged.
 
+The subsequent position candidate supplements S08/S12/S13/S15/S18/S20. `MutedPositionEffectsTest` controls
+Media3 PlayerMessage delivery around the production position component to test compensation, fresh proof,
+wrong/unknown/multiple sinks, repeated callbacks, timeout cleanup, newer Play and a genuine seek during a
+suspended barrier. `PlaybackServiceCommandContinuityTest` uses a real ExoPlayer and the service's actual
+seek callback to exclude compensation persistence while preserving nested and later user seeks. A newer seek
+inside the compensation callback keeps its own position/write and refuses the superseded outer Pause. It also holds zero
+and nonzero journal points, including a reentrant mute-listener read, and exercises real forwarded Pause/Stop.
+`SessionSyncCoordinatorTest` queues an old pause behind a new session's mutex-held durable open; the old
+command must not snapshot or upload the successor. `AutoRewindOwnershipTest` retains source profile and
+event time through a replacement book before asynchronous history persistence. These remain software
+assertions; the physical acceptance columns are unchanged.
+
 <!-- Updated against merged GitHub main acce406c8ffe and scenario PR #290; 2026-10-21. -->
 
 This ledger connects the 22 product scenarios to **executable production-policy tests**, existing

@@ -55,6 +55,12 @@ schema. Fresh-session exemptions retain their existing server policy. No additio
 real-token/physical-route acceptance is claimed; the final combined candidate still requires the separate
 #296 auth fix and the [output acceptance procedure](testing/output-ownership-device-acceptance.md).
 
+The subsequent ADR-0035 candidate changes local progress capture during muted route verification. It shares
+the transient held position, captures history owner/time before dispatch, and checks old pause authorization
+inside the existing session mutex. Existing progress/session endpoints, response fields, outbox and Room
+schema remain unchanged. Synthetic Media3/session tests do not add a tested server version or establish
+real expired-token, car/headset or narration-continuity acceptance.
+
 The 2026-10-03 series/history/sleep revision changes local presentation and playback policy only. Rolling
 History checkpoints reuse the existing profile/book-scoped Room table and store no media text; the schema
 and server endpoints/fixtures are unchanged. Existing remote-session imports and five-second local progress

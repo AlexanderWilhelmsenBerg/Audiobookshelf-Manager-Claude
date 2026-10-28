@@ -44,6 +44,34 @@ import kotlin.time.Duration.Companion.seconds
 class SessionSyncCoordinatorTest {
 
     @Test
+    fun `queued old pause cannot snapshot the successor after waiting for session ownership`() = runTest {
+        val repository = BlockingSessionSyncRepository()
+        val coordinator = coordinator(repository)
+        val oldBook = LibraryItemId("old-pause")
+        val newBook = LibraryItemId("new-session")
+        coordinator.attach(playerFor(oldBook, position = 12.minutes)) { it.bookPosition() }
+        repository.allowNextOpen()
+        coordinator.onSessionOpened(session(oldBook))
+        repository.started.receive()
+
+        val opening = async(start = CoroutineStart.UNDISPATCHED) { coordinator.onSessionOpened(session(newBook)) }
+        repository.started.receive()
+        var oldCommandCurrent = true
+        val queued = async(start = CoroutineStart.UNDISPATCHED) {
+            coordinator.sync(SyncTrigger.Paused) { oldCommandCurrent }
+        }
+        assertFalse(queued.isCompleted)
+        oldCommandCurrent = false
+        coordinator.attach(playerFor(newBook, position = 44.minutes)) { it.bookPosition() }
+        repository.allowNextOpen()
+        opening.await()
+
+        assertFalse(queued.await(), "authorization must be rechecked inside the serialized snapshot")
+        assertEquals(null, repository.lastSyncedSession, "the old pause must not upload the successor")
+        coordinator.detach()
+    }
+
+    @Test
     fun `a superseded prepared session does not open a row or publish bookkeeping`() = runTest {
         val repository = RecordingSessionSyncRepository()
         val coordinator = coordinator(repository)
@@ -61,7 +89,7 @@ class SessionSyncCoordinatorTest {
         val repository = BlockingSessionSyncRepository()
         val coordinator = coordinator(repository)
         val book = LibraryItemId("book-a")
-        coordinator.attach(playerFor(book, position = 42.minutes))
+        coordinator.attach(playerFor(book, position = 42.minutes)) { it.bookPosition() }
         repository.allowNextOpen()
         coordinator.onSessionOpened(session(book))
         repository.started.receive()
@@ -79,7 +107,7 @@ class SessionSyncCoordinatorTest {
         coordinator.sync(SyncTrigger.Paused)
         assertEquals("local-book-a", repository.lastSyncedSession)
         assertEquals(0, repository.closeCalls)
-        coordinator.attach(null)
+        coordinator.detach()
     }
 
     @Test
@@ -87,7 +115,7 @@ class SessionSyncCoordinatorTest {
         val repository = BlockingSessionSyncRepository()
         val coordinator = coordinator(repository)
         val book = LibraryItemId("book-a")
-        coordinator.attach(playerFor(book))
+        coordinator.attach(playerFor(book)) { it.bookPosition() }
         repository.allowNextOpen()
         coordinator.onSessionOpened(session(book))
         repository.started.receive()
@@ -102,7 +130,7 @@ class SessionSyncCoordinatorTest {
         assertTrue(accepting.isCancelled)
         assertEquals("local-book-a", repository.lastSyncedSession)
         assertEquals(0, repository.closeCalls)
-        coordinator.attach(null)
+        coordinator.detach()
     }
 
     @Test
@@ -164,7 +192,7 @@ class SessionSyncCoordinatorTest {
         val activeBook = LibraryItemId("book-a")
 
         coordinator.onSessionOpened(session(activeBook))
-        coordinator.attach(playerFor(LibraryItemId("book-b")))
+        coordinator.attach(playerFor(LibraryItemId("book-b"))) { it.bookPosition() }
 
         val accepted = coordinator.sync(SyncTrigger.Interval)
 
@@ -179,14 +207,14 @@ class SessionSyncCoordinatorTest {
         val old = LibraryItemId("book-a")
         val incoming = LibraryItemId("book-b")
         coordinator.onSessionOpened(session(old))
-        coordinator.attach(playerFor(incoming, position = 17.seconds))
+        coordinator.attach(playerFor(incoming, position = 17.seconds)) { it.bookPosition() }
 
         assertFalse(coordinator.sync(SyncTrigger.Paused))
         assertEquals(0, repository.syncCalls)
         coordinator.onShutdown()
         runCurrent()
         assertEquals(0, repository.closeCalls, "teardown must not close old session with new book position")
-        coordinator.attach(null)
+        coordinator.detach()
     }
 
     @Test
@@ -195,12 +223,12 @@ class SessionSyncCoordinatorTest {
         val coordinator = coordinator(repository)
         val book = LibraryItemId("book-a")
         coordinator.onSessionOpened(session(book))
-        coordinator.attach(playerFor(book, position = 47.seconds, owner = "profile-b"))
+        coordinator.attach(playerFor(book, position = 47.seconds, owner = "profile-b")) { it.bookPosition() }
 
         assertFalse(coordinator.sync(SyncTrigger.Paused))
         assertEquals(0, repository.syncCalls)
         coordinator.onShutdown()
-        coordinator.attach(null)
+        coordinator.detach()
         runCurrent()
         assertEquals(0, repository.closeCalls, "profile-b progress must not close profile-a's session")
     }
@@ -212,7 +240,7 @@ class SessionSyncCoordinatorTest {
         val book = LibraryItemId("book-a")
 
         coordinator.onSessionOpened(session(book))
-        coordinator.attach(playerFor(book, position = Duration.ZERO))
+        coordinator.attach(playerFor(book, position = Duration.ZERO)) { it.bookPosition() }
 
         val accepted = coordinator.sync(SyncTrigger.TrackChanged)
 
@@ -227,7 +255,7 @@ class SessionSyncCoordinatorTest {
         val book = LibraryItemId("book-a")
 
         coordinator.onSessionOpened(session(book))
-        coordinator.attach(playerFor(book, position = 42.seconds, resumePlaceholder = true))
+        coordinator.attach(playerFor(book, position = 42.seconds, resumePlaceholder = true)) { it.bookPosition() }
 
         val accepted = coordinator.sync(SyncTrigger.Interval)
 
@@ -242,10 +270,10 @@ class SessionSyncCoordinatorTest {
         val book = LibraryItemId("book-a")
 
         coordinator.onSessionOpened(session(book))
-        coordinator.attach(playerFor(book, position = 42.seconds))
+        coordinator.attach(playerFor(book, position = 42.seconds)) { it.bookPosition() }
 
         coordinator.onShutdown()
-        coordinator.attach(null)
+        coordinator.detach()
         runCurrent()
 
         assertEquals(1, repository.closeCalls)
@@ -262,7 +290,7 @@ class SessionSyncCoordinatorTest {
         val book = LibraryItemId("book-a")
         val player = playerFor(book, playing = { true })
         volumeEffects.attach(player)
-        coordinator.attach(player)
+        coordinator.attach(player) { it.bookPosition() }
         coordinator.onSessionOpened(session(book))
         coordinator.onPlayingChanged(true)
 
@@ -293,7 +321,7 @@ class SessionSyncCoordinatorTest {
         )
         val player = playerFor(book, playing = { true })
         volumeEffects.attach(player)
-        coordinator.attach(player)
+        coordinator.attach(player) { it.bookPosition() }
         coordinator.onSessionOpened(session(book))
         val claim = requireNotNull(volumeEffects.acquireRouteMute(player))
         coordinator.onPlayingChanged(true)
@@ -322,7 +350,7 @@ class SessionSyncCoordinatorTest {
         val paused = playerFor(book, playing = { false })
         val successor = playerFor(LibraryItemId("book-b"), playing = { false })
         volumeEffects.attach(paused)
-        coordinator.attach(paused)
+        coordinator.attach(paused) { it.bookPosition() }
         val pausedClaim = requireNotNull(volumeEffects.acquireRouteMute(paused))
         assertTrue(volumeEffects.releaseRouteMute(pausedClaim))
         runCurrent()

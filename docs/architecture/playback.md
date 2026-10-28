@@ -89,6 +89,16 @@ these adapters. See [ADR-0034](../adr/0034-one-guarded-playback-command-boundary
 candidate: muted-position compensation and the full verified transfer/rollback still require implementation
 and acceptance. Hardware routing and physical media-key attribution are separate evidence.
 
+The following position candidate uses the existing probe as the sole held-position owner.
+`MutedPositionEffects` captures before synchronous mute callbacks, projects the held point to service,
+session-sync, history and controller/profile-handover readers, and compensates silent advancement while muted.
+Forwarded Pause/Stop retire the probe after the actual command; later seek/Play/item work cannot inherit its
+timeout. Compensation provenance is call-scoped. Legitimate adopted seeks and auto-rewind rebase the same
+checkpoint and require fresh proof after a cancellable playback-thread barrier. Barrier delivery itself does
+not authorize unmute. An old pause's authorization is checked inside the existing session mutex before it can
+capture a successor. See [ADR-0035](../adr/0035-muted-verification-holds-heard-position.md). This is still a draft
+software candidate; explicit verified transfer/rollback and physical acceptance remain separate work.
+
 ## Remembered book identity
 
 BW-PLAY-01 gives the device one durable answer to **which book did this phone last actually play for this profile?** That fact is intentionally separate from resume-position freshness.
@@ -240,8 +250,9 @@ opaque mute claim; sleep updates the requested gain through the same writer, so 
 verification probe and probe completion restores the latest fade gain. The sleep timer and session listened-time
 owner consume synchronous monotonic mute-boundary callbacks: route-only silence freezes countdown and listened
 time without creating a Pause, consuming a pending explicit Play, changing the session, or issuing Play. A real
-Pause remains authoritative. This change does not alter progress journaling, position compensation, or history
-ownership; device/headset/Auto listening acceptance and the separate verified handoff/rollback remain pending.
+Pause remains authoritative. Volume composition alone does not compensate position. The subsequent
+ADR-0035 candidate projects the held point through existing progress/history readers, with repository/session
+ownership preserved. Device/headset/Auto listening acceptance and full verified handoff/rollback remain pending.
 
 `SleepTimerHistory` handles timer-session persistence and book-history effects. It snapshots the current book,
 profile, position and time before dispatching a history write. The controller retains all phase/claim and

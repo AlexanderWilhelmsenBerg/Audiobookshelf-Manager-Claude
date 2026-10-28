@@ -35,45 +35,52 @@ internal class ResumeFreshnessPlayer(
     private val delegate: Player,
     private val preparePlay: (bypassFreshness: Boolean) -> ListenableFuture<*>,
     private val consumeFreshStart: () -> Boolean,
-    private val invalidate: (ResumeInvalidation) -> Unit,
-    private val onPlayWhenReadyRequest: (Boolean) -> Unit,
+    private val invalidate: (ResumeInvalidation) -> Boolean,
+    private val onPlayWhenReadyRequest: (Boolean) -> Boolean,
     private val skipIntervals: () -> SkipIntervals,
     private val prepareCurrentOutput: () -> ListenableFuture<*>,
+    private val movementEffects: PlaybackMovementEffects,
     private val allowEffects: () -> Boolean = { true },
 ) : ForwardingSimpleBasePlayer(delegate) {
 
-    public override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
-        if (!allowEffects()) return Futures.immediateVoidFuture()
-        // This is the controller intent boundary, not an observed ExoPlayer state transition. In particular,
-        // a second Pause while focus has already made playWhenReady=false still reaches here, which lets #36
-        // invalidate stale car-continuity evidence even though the delegate may emit no listener callback.
-        onPlayWhenReadyRequest(playWhenReady)
-        if (!playWhenReady) {
-            invalidate(ResumeInvalidation.Pause)
-            return super.handleSetPlayWhenReady(false)
+    public override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> =
+        movement(if (playWhenReady) PlaybackMovement.Play else PlaybackMovement.Pause) {
+            // This is the controller intent boundary, not an observed ExoPlayer state transition. In particular,
+            // a second Pause while focus has already made playWhenReady=false still reaches here, which lets #36
+            // invalidate stale car-continuity evidence even though the delegate may emit no listener callback.
+            if (!onPlayWhenReadyRequest(playWhenReady) || (!playWhenReady && !invalidate(ResumeInvalidation.Pause))) {
+                return@movement Futures.immediateFuture(false)
+            }
+            if (!playWhenReady) {
+                return@movement super.handleSetPlayWhenReady(false)
+            }
+            // An empty session still needs MediaSession's normal playback-resumption machinery. A duplicate Play
+            // keeps its already-committed raw intent and does not consume a pending fresh-start token.
+            if (delegate.mediaItemCount == 0) {
+                return@movement super.handleSetPlayWhenReady(true)
+            }
+            val bypassFreshness = delegate.playWhenReady || consumeFreshStart()
+            preparePlay(bypassFreshness)
         }
-        // An empty session still needs MediaSession's normal playback-resumption machinery. A duplicate Play
-        // keeps its already-committed raw intent and does not consume a pending fresh-start token.
-        if (delegate.mediaItemCount == 0) {
-            return super.handleSetPlayWhenReady(true)
-        }
-        val bypassFreshness = delegate.playWhenReady || consumeFreshStart()
-        return preparePlay(bypassFreshness)
-    }
 
     public override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
         if (!allowEffects()) return Futures.immediateVoidFuture()
-        invalidate(ResumeInvalidation.Seek)
         val target = relativeTarget(seekCommand)
-            ?: return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
-        return super.handleSeek(delegate.currentMediaItemIndex, target, Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+        return movement(PlaybackMovement.Seek) {
+            if (!invalidate(ResumeInvalidation.Seek)) return@movement Futures.immediateFuture(false)
+            if (target == null) {
+                super.handleSeek(mediaItemIndex, positionMs, seekCommand)
+            } else {
+                super.handleSeek(delegate.currentMediaItemIndex, target, Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+            }
+        }
     }
 
     /** #197 — a relative command becomes an absolute position in the single book window; null if not relative. */
     private fun relativeTarget(seekCommand: Int): Long? {
         if (delegate.mediaItemCount == 0) return null
         val delta = RelativeSeekCommands.deltaFor(seekCommand, skipIntervals()) ?: return null
-        return (delegate.currentPosition + delta.inWholeMilliseconds).coerceAtLeast(0L)
+        return (movementEffects.positionMs() + delta.inWholeMilliseconds).coerceAtLeast(0L)
     }
 
     public override fun handleSetMediaItems(
@@ -82,20 +89,26 @@ internal class ResumeFreshnessPlayer(
         startPositionMs: Long,
     ): ListenableFuture<*> {
         if (!allowEffects()) return Futures.immediateVoidFuture()
-        invalidate(ResumeInvalidation.MediaChanged)
-        return super.handleSetMediaItems(mediaItems, startIndex, startPositionMs)
+        return movement(PlaybackMovement.MediaChanged) {
+            if (!invalidate(ResumeInvalidation.MediaChanged)) return@movement Futures.immediateFuture(false)
+            super.handleSetMediaItems(mediaItems, startIndex, startPositionMs)
+        }
     }
 
     public override fun handleAddMediaItems(index: Int, mediaItems: List<MediaItem>): ListenableFuture<*> {
         if (!allowEffects()) return Futures.immediateVoidFuture()
-        invalidate(ResumeInvalidation.MediaChanged)
-        return super.handleAddMediaItems(index, mediaItems)
+        return movement(PlaybackMovement.MediaChanged) {
+            if (!invalidate(ResumeInvalidation.MediaChanged)) return@movement Futures.immediateFuture(false)
+            super.handleAddMediaItems(index, mediaItems)
+        }
     }
 
     public override fun handleRemoveMediaItems(fromIndex: Int, toIndex: Int): ListenableFuture<*> {
         if (!allowEffects()) return Futures.immediateVoidFuture()
-        invalidate(ResumeInvalidation.MediaChanged)
-        return super.handleRemoveMediaItems(fromIndex, toIndex)
+        return movement(PlaybackMovement.MediaChanged) {
+            if (!invalidate(ResumeInvalidation.MediaChanged)) return@movement Futures.immediateFuture(false)
+            super.handleRemoveMediaItems(fromIndex, toIndex)
+        }
     }
 
     public override fun handleReplaceMediaItems(
@@ -104,19 +117,33 @@ internal class ResumeFreshnessPlayer(
         mediaItems: List<MediaItem>,
     ): ListenableFuture<*> {
         if (!allowEffects()) return Futures.immediateVoidFuture()
-        invalidate(ResumeInvalidation.MediaChanged)
-        return super.handleReplaceMediaItems(fromIndex, toIndex, mediaItems)
+        return movement(PlaybackMovement.MediaChanged) {
+            if (!invalidate(ResumeInvalidation.MediaChanged)) return@movement Futures.immediateFuture(false)
+            super.handleReplaceMediaItems(fromIndex, toIndex, mediaItems)
+        }
     }
 
     public override fun handleStop(): ListenableFuture<*> {
         if (!allowEffects()) return Futures.immediateVoidFuture()
-        invalidate(ResumeInvalidation.Stop)
-        return super.handleStop()
+        return movement(PlaybackMovement.Stop) {
+            if (!invalidate(ResumeInvalidation.Stop)) return@movement Futures.immediateFuture(false)
+            super.handleStop()
+        }
     }
 
     /** Media3 also prepares/seeks before its fallback Play on a failed cold-resumption future. */
     public override fun handlePrepare(): ListenableFuture<*> {
         if (!allowEffects()) return Futures.immediateVoidFuture()
         return prepareCurrentOutput()
+    }
+
+    private inline fun movement(command: PlaybackMovement, effect: () -> ListenableFuture<*>): ListenableFuture<*> {
+        if (!allowEffects()) return Futures.immediateVoidFuture()
+        val finished = movementEffects.before(command) ?: return Futures.immediateFuture(false)
+        return try {
+            effect()
+        } finally {
+            finished()
+        }
     }
 }

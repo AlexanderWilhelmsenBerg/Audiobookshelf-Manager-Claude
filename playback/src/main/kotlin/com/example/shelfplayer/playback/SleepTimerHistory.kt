@@ -37,7 +37,7 @@ class SleepTimerHistory @Inject constructor(
         val media = player ?: return
         val item = media.currentMediaItem ?: return
         val bookId = MediaItems.bookIdOf(item)
-        val position = to ?: media.bookPosition()
+        val position = to ?: sessionSync.effectiveBookPosition(media)
         val owner = MediaItems.ownerOf(item)
         val happenedAt = clock.now()
         applicationScope.launch {

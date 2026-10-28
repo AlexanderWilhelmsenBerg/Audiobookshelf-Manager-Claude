@@ -557,7 +557,7 @@ class AudioOutputRouterThreadTest {
 
         // Physical headset media keys typically appear as virtual/system input (-1). The route
         // guard must still be active when Media3 moves back into its playing state.
-        val safety = requireNotNull(fixture.guardOwner().currentPlayerListener())
+        val safety = requireNotNull(fixture.guardOwner().currentPlayerListener)
         safety.onIsPlayingChanged(true)
         runCurrent()
         assertTrue(fixture.pauseThreads.size >= 2, "post-expiry Play must be paused on an unknown route")
@@ -652,6 +652,7 @@ internal fun TestScope.fixture(): Fixture {
         get(router) as HeadsetRouteGuard
     }
     guardOwner.attachPlayer(player)
+    router.positions.bind(routingOnlyPositionEffects())
     return Fixture(router, registry, reads, pauses, volumes, preferredRequests, player, volumeEffects)
 }
 
@@ -739,7 +740,7 @@ internal data class Fixture(
         )
     }
 
-    fun safetyListener(): Player.Listener = requireNotNull(guardOwner().currentPlayerListener())
+    fun safetyListener(): Player.Listener = requireNotNull(guardOwner().currentPlayerListener)
 
     fun guardId(): String? = guardOwner().endpointId
 
@@ -806,7 +807,7 @@ class AudioOutputRouterQueuedSafetyTest {
         val fixture = fixture()
         val replacement = fixture()
         fixture.router.attach(fixture.player)
-        val oldListener = requireNotNull(fixture.guardOwner().currentPlayerListener())
+        val oldListener = requireNotNull(fixture.guardOwner().currentPlayerListener)
         fixture.router.attach(replacement.player)
         runCurrent()
 
@@ -828,7 +829,7 @@ class AudioOutputRouterQueuedSafetyTest {
     fun `old listener callbacks cannot affect a reattached same player probe`() = runTest {
         val fixture = fixture()
         fixture.router.attach(fixture.player)
-        val retiredListener = requireNotNull(fixture.guardOwner().currentPlayerListener())
+        val retiredListener = requireNotNull(fixture.guardOwner().currentPlayerListener)
         fixture.router.attach(fixture.player)
         runCurrent()
 

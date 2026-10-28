@@ -116,13 +116,18 @@ class ControllerQueueMedia3ReplayTest {
                 Futures.immediateVoidFuture()
             },
             { false },
-            { generation++ },
+            {
+                generation++
+                true
+            },
             {
                 generation++
                 if (it) playRequests++
+                true
             },
             { SkipIntervals(15.seconds, 30.seconds) },
             prepareCurrentOutput = { Futures.immediateVoidFuture() },
+            movementEffects = unprotectedMovementEffects(player),
             allowEffects = { futures.playerEffectsAllowed() },
         )
         private val resolution: ControllerQueueResolution = ControllerQueueResolution(

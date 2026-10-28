@@ -5,7 +5,9 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
@@ -73,15 +75,23 @@ internal class HeadsetRouteGuard(
         if (previousListener != null) previousPlayer?.removeListener(previousListener)
     }
 
-    fun currentPlayerListener(): Player.Listener? = attachedListener
+    val currentPlayerListener: Player.Listener? get() = attachedListener
 
     internal class Probe(val endpointId: String, val player: ExoPlayer, val preferenceEpoch: Long) {
         // The slot is reserved before mute acquisition can invoke synchronous listeners. A null claim exists
         // only during that call; cancellation retires the reservation and its returning owner releases it.
         var muteClaim: PlaybackVolumeEffects.RouteMuteClaim? = null
+        var positionCheckpoint: MutedPositionCheckpoint? = null
         var startupTimeout: Job? = null
         var routeTimeout: Job? = null
+        var completionJob: Job? = null
+        val routeUpdates = Channel<Unit>(Channel.CONFLATED)
+        var requiresPlaybackBarrier = false
     }
+
+    /** The service captures before mute listeners can reenter; the Probe remains the sole owner. */
+    internal var captureCheckpoint: ((Probe) -> MutedPositionCheckpoint?)? = null
+    internal var completeVerifiedProbe: (suspend (Probe) -> MutedProbeCompletion)? = null
 
     var endpointId: String? = null
         private set
@@ -140,13 +150,13 @@ internal class HeadsetRouteGuard(
         if (probe != null || attachedPlayer !== player) return false
         val active = Probe(id, player, preferenceEpoch)
         probe = active
-        val claim = volumeEffects.acquireRouteMute(player)
-        if (claim == null) {
+        if (!captureReservation(active)) {
             if (probe === active) probe = null
             return false
         }
+        val claim = volumeEffects.acquireRouteMute(player)
         active.muteClaim = claim
-        if (probe !== active || attachedPlayer !== player || !isCurrent(active)) {
+        if (claim == null || !ownsReservation(active)) {
             if (probe === active) cancelProbe(active) else volumeEffects.releaseRouteMute(claim)
             return false
         }
@@ -157,6 +167,17 @@ internal class HeadsetRouteGuard(
         return true
     }
 
+    private fun ownsReservation(active: Probe): Boolean =
+        probe === active && attachedPlayer === active.player && isCurrent(active)
+
+    private fun captureReservation(active: Probe): Boolean {
+        val capture = captureCheckpoint ?: return true
+        val checkpoint = capture(active)
+        if (!ownsReservation(active)) return false
+        active.positionCheckpoint = checkpoint
+        return checkpoint != null
+    }
+
     fun hasCurrentProbe(id: String, player: ExoPlayer, preferenceEpoch: Long): Boolean = probe?.let {
         it.muteClaim != null && it.endpointId == id && it.player === player &&
             it.preferenceEpoch == preferenceEpoch && isCurrent(it)
@@ -164,11 +185,12 @@ internal class HeadsetRouteGuard(
 
     fun verifyProbeIfActive(actualRoute: Set<String>?, collisions: Set<String>, isPlaying: Boolean): Boolean {
         val active = probe ?: return false
+        active.routeUpdates.trySend(Unit)
         if (!isCurrent(active)) {
             discardStaleProbe(active)
             return true
         }
-        if (active.muteClaim == null || !isPlaying) return true
+        if (active.muteClaim == null || !isPlaying || active.completionJob != null) return true
 
         val evidence = RouteEvidence(
             source = RouteEvidenceSource.ActualAudioTrack,
@@ -203,12 +225,59 @@ internal class HeadsetRouteGuard(
             discardStaleProbe(active)
             return false
         }
-        probe = null
-        cancelProbeJobs(active)
-        if (!verified && attachedPlayer === active.player) pauseForSafety(active.player)
+        return if (active.positionCheckpoint != null && completeVerifiedProbe != null) {
+            if (active.completionJob == null) startCompletion(active, verified)
+            true
+        } else {
+            finishProbeNow(active, verified)
+        }
+    }
+
+    private fun startCompletion(active: Probe, verified: Boolean) {
+        active.routeTimeout?.cancel()
+        active.routeTimeout = null
+        lateinit var work: Job
+        work = scope.launch(playerDispatcher, start = CoroutineStart.LAZY) {
+            var completion = MutedProbeCompletion.Refused
+            try {
+                completion = completeVerifiedProbe?.invoke(active) ?: MutedProbeCompletion.Refused
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (_: IllegalStateException) {
+                // Released/unavailable platform effect: refuse proof and clean up in finally.
+            } catch (_: IllegalArgumentException) {
+                // A rejected platform seek/message cannot authorize audible playback.
+            } catch (_: SecurityException) {
+                // Missing observation permission cannot authorize audible playback.
+            } catch (_: UnsupportedOperationException) {
+                // Unsupported measurement remains unverified.
+            } finally {
+                if (probe === active && active.completionJob === work) {
+                    finishProbeNow(
+                        active,
+                        verified && completion == MutedProbeCompletion.Verified,
+                        safetyPause = completion != MutedProbeCompletion.Superseded,
+                    )
+                }
+            }
+        }
+        active.completionJob = work
+        if (!work.start() && probe === active) finishProbeNow(active, verified = false)
+    }
+
+    private fun finishProbeNow(active: Probe, verified: Boolean, safetyPause: Boolean = true): Boolean {
+        if (probe !== active || active.muteClaim == null) return false
+        if (!isCurrent(active)) {
+            discardStaleProbe(active)
+            return false
+        }
+        quiesceProbe(active)
+        if (!verified && safetyPause && attachedPlayer === active.player) pauseForSafety(active.player)
+        val owned = probe === active
+        if (owned) probe = null
         volumeEffects.releaseRouteMute(active.muteClaim)
-        onProbeFinished(verified)
-        return true
+        if (owned) onProbeFinished(verified)
+        return owned
     }
 
     /** Restore the original player even if a replacement has already become current. */
@@ -224,6 +293,42 @@ internal class HeadsetRouteGuard(
         probe?.takeIf { it.endpointId == id && it.preferenceEpoch == preferenceEpoch }?.let(::cancelProbe)
     }
 
+    val positionCheckpoint: MutedPositionCheckpoint?
+        get() = currentProbe?.takeIf { volumeEffects.isRouteMuted(it.player) }?.positionCheckpoint
+
+    val currentProbe: Probe? get() = probe?.takeIf { attachedPlayer === it.player }
+
+    fun quiesceProbe(active: Probe) {
+        if (probe !== active) return
+        val work = active.completionJob
+        active.completionJob = null
+        work?.cancel()
+        active.startupTimeout?.cancel()
+        active.routeTimeout?.cancel()
+    }
+
+    fun isCurrentProbe(active: Probe): Boolean = probe === active && isCurrent(active)
+
+    fun replacePositionCheckpoint(
+        target: ExoPlayer,
+        expected: MutedPositionCheckpoint,
+        replacement: MutedPositionCheckpoint,
+    ): Boolean {
+        val active = probe?.takeIf {
+            it.player === target && volumeEffects.isRouteMuted(target) && isCurrent(it)
+        } ?: return false
+        if (active.positionCheckpoint !== expected) return false
+        active.positionCheckpoint = replacement
+        active.requiresPlaybackBarrier = true
+        val work = active.completionJob
+        active.completionJob = null
+        work?.cancel()
+        active.routeTimeout?.cancel()
+        active.routeTimeout = null
+        onPlaying()
+        return true
+    }
+
     private fun cancelGrace() {
         disappearanceGrace?.cancel()
         disappearanceGrace = null
@@ -232,6 +337,7 @@ internal class HeadsetRouteGuard(
     private fun cancelProbeJobs(active: Probe) {
         active.startupTimeout?.cancel()
         active.routeTimeout?.cancel()
+        active.completionJob?.cancel()
     }
 
     private fun isCurrent(active: Probe): Boolean =

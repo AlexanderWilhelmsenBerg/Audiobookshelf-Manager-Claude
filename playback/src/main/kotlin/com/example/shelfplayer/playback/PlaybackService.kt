@@ -126,6 +126,9 @@ class PlaybackService : MediaLibraryService() {
     @Inject
     internal lateinit var audioOutputs: AudioOutputRouter
 
+    @Inject
+    internal lateinit var volumeEffects: PlaybackVolumeEffects
+
     /** PRODUCT_SPEC 6.4 step 6 — what to play when a book ends, or nothing. See [advanceToNextInSeries]. */
     @Inject
     internal lateinit var nextInSeries: NextInSeriesUseCase
@@ -247,6 +250,7 @@ class PlaybackService : MediaLibraryService() {
     internal lateinit var coldStartToggleGate: ColdStartToggleGate
     private var serviceStartedAt: Duration = Duration.ZERO
     private var player: ExoPlayer? = null
+    private lateinit var activeProfileGeneration: () -> Long
     private var session: MediaLibrarySession? = null
     private var journal: Job? = null
     private var sleepTimerWatch: Job? = null
@@ -290,7 +294,7 @@ class PlaybackService : MediaLibraryService() {
             currentPlayer = { player },
             commandGeneration = { controllerCommandGeneration },
             itemGeneration = { mediaItemGeneration },
-            profileGeneration = { auto.activeProfileGeneration() },
+            profileGeneration = { activeProfileGeneration() },
             commands = playbackCommandEffects,
             acceptPrepared = { prepared, authorized, install ->
                 bookChanges.acceptBook(prepared.session, authorized, install)
@@ -366,6 +370,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        activeProfileGeneration = auto::activeProfileGeneration
         audioOutputs.lastHeardRouteId = { routeOwnership.heardRoute?.outputId }
         serviceStartedAt = clock.elapsed()
         audioRouteLab.serviceStarted()
@@ -399,11 +404,12 @@ class PlaybackService : MediaLibraryService() {
         liveSession.publish(mediaSession.token)
         // Attach route/volume ownership before sleep and sync observe the successor. A retiring probe may
         // restore only its own old player and cannot emit an audible-resume event into the new observers.
+        installPositionCheckpointHandlers()
         attachRouteSafetyMonitor(exoPlayer)
         attachSleepTimer(exoPlayer)
         // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does. It is given the
         // player rather than owning one, for the same reason the timer is: there is exactly one.
-        sessionSync.attach(exoPlayer)
+        sessionSync.attach(exoPlayer, ::effectiveBookPosition)
         autoRewind.attach(exoPlayer) {
             resumeFreshness.invalidate(ResumeInvalidation.AutoRewind)
         }
@@ -421,6 +427,26 @@ class PlaybackService : MediaLibraryService() {
         audioTrackRouteMonitor.onRouteChanged = audioOutputs::onActualTrackRouteChanged
         audioOutputs.attach(exoPlayer, audioTrackRouteMonitor::currentRouteIds)
     }
+
+    internal fun installPositionCheckpointHandlers() {
+        positionEffects.install()
+    }
+
+    private val positionEffects by lazy(LazyThreadSafetyMode.NONE) {
+        MutedPositionEffects(
+            audioOutputs,
+            object : MutedPositionEffects.Source {
+                override fun player(): ExoPlayer? = this@PlaybackService.player
+                override fun context() = MutedPositionEffects.Context(
+                    controllerCommandGeneration,
+                    mediaItemGeneration,
+                    activeProfileGeneration(),
+                )
+            },
+        )
+    }
+
+    private fun effectiveBookPosition(target: Player): Duration = positionEffects.position(target)
 
     /**
      * A new Play from Android Auto is an explicit request for car audio, unlike car binding.
@@ -667,6 +693,7 @@ class PlaybackService : MediaLibraryService() {
             future { prepareCurrentOutput(generation) }
         },
         consumeFreshStart = resumeFreshness::consumeFreshStart,
+        movementEffects = positionEffects,
         invalidate = ::onControllerCommand,
         onPlayWhenReadyRequest = { requestedPlay -> onControllerTransportRequest(requestedPlay, exoPlayer) },
         skipIntervals = { skips },
@@ -674,12 +701,24 @@ class PlaybackService : MediaLibraryService() {
     )
 
     /** New controller movement supersedes all suspended work, even without a raw player callback. */
-    private fun onControllerCommand(origin: ResumeInvalidation) {
+    private fun onControllerCommand(origin: ResumeInvalidation): Boolean {
+        val movement = when (origin) {
+            ResumeInvalidation.MediaChanged -> PlaybackMovement.MediaChanged
+            ResumeInvalidation.Seek, ResumeInvalidation.NotificationSkip -> PlaybackMovement.Seek
+            ResumeInvalidation.Pause, ResumeInvalidation.Stop, ResumeInvalidation.AutoRewind -> null
+        }
+        if (movement != null) {
+            val finished = positionEffects.before(movement) ?: return false
+            finished()
+        }
         controllerCommandGeneration += 1
+        val expected = positionEffects.authority()
+        val current = player
         if (origin == ResumeInvalidation.Stop) audioOutputs.outputIntentOwner.onPlaybackStopped()
         resumeFreshness.invalidate(origin)
         sleepTimer.onResumeInvalidation(origin)
         clearCarContinuity()
+        return player === current && positionEffects.authority() == expected
     }
 
     /** Actual listener/book/queue/service boundaries retire the existing claim and its pending effects. */
@@ -690,8 +729,9 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /** External transport is newer listener intent even when Media3 emits no raw state transition. */
-    private fun onControllerTransportRequest(requestedPlay: Boolean, current: ExoPlayer) {
+    private fun onControllerTransportRequest(requestedPlay: Boolean, current: ExoPlayer): Boolean {
         controllerCommandGeneration += 1
+        val expected = positionEffects.authority()
         logControllerTransportRequest(requestedPlay, current)
         routeExplicitCarPlay(requestedPlay, current)
         // Duplicate Pause still matters. Automatic continuity uses the raw player and bypasses this boundary.
@@ -699,6 +739,7 @@ class PlaybackService : MediaLibraryService() {
         carResumeEffects.cancelPending()
         if (requestedPlay) carRecovery.cancelPending() else carRecovery.cancelAll()
         carRecovery.clearAwaiting()
+        return player === current && positionEffects.authority() == expected
     }
 
     override fun onDestroy() {
@@ -711,7 +752,8 @@ class PlaybackService : MediaLibraryService() {
         // PRODUCT_SPEC PLAY-004 — "service shutdown callback". On the application scope inside the
         // coordinator, because `scope` is cancelled two lines below.
         sessionSync.onShutdown()
-        sessionSync.attach(null)
+        sessionSync.detach()
+        audioOutputs.positions.clear()
         resumeFreshness.attach(null)
         autoRewind.attach(null)
         sleepTimer.attach(null)
@@ -752,9 +794,10 @@ class PlaybackService : MediaLibraryService() {
             while (isActive) {
                 delay(JOURNAL_INTERVAL_MS)
                 val snapshot = positionSnapshot() ?: continue
+                val claim = deferredWork.capture()
                 val playing = player?.isPlaying == true
                 val at = clock.now()
-                val historySample = if (playing) {
+                val historySample = if (playing && !volumeEffects.isRouteMuted(player)) {
                     listeningHistory.capture(
                         snapshot.bookId,
                         snapshot.position,
@@ -767,14 +810,14 @@ class PlaybackService : MediaLibraryService() {
                 recordPosition(snapshot)
                 if (historySample != null) {
                     listeningHistory.persist(historySample)
-                    if (historySample.crossed) bookChanges.onChapterCrossed()
+                    if (historySample.crossed) {
+                        sessionSync.request(SyncTrigger.ChapterChanged) {
+                            claim != null && deferredWork.isCurrent(claim)
+                        }
+                    }
                 }
             }
         }
-    }
-
-    private suspend fun recordPosition() {
-        recordPosition(positionSnapshot() ?: return)
     }
 
     /**
@@ -827,24 +870,26 @@ class PlaybackService : MediaLibraryService() {
      * deliberate: it puts the capture in the same callback and the same coroutine as the sync that
      * acknowledges it, so no dispatch order can put the acknowledgement before the thing it acknowledges.
      */
-    private suspend fun onCameToRest() {
-        val snapshot = positionSnapshot()
+    private suspend fun onCameToRest(snapshot: PositionSnapshot?, claim: DeferredPlaybackWork.Claim?) {
+        val current = { claim != null && deferredWork.isCurrent(claim) }
         if (snapshot == null) {
             // Nothing worth a baseline — a player that has not started, or the single-file fallback whose
             // offsets are not book positions at all (R-61). The next Play has no acknowledged pause and
             // therefore resumes locally, which is the correct answer for a position we cannot vouch for.
-            resumeBaseline.onLocalMove()
+            if (current()) resumeBaseline.onLocalMove()
             return
         }
-        val generation = resumeBaseline.onPaused(snapshot.bookId, snapshot.position)
-        logger.debug(
-            LogCategory.Playback,
-            "The player came to rest, pending the server's acknowledgement",
-            LogField.Millis("position", snapshot.position.inWholeMilliseconds),
-            LogField.Public("generation", generation.toString()),
-        )
+        if (current()) {
+            val generation = resumeBaseline.onPaused(snapshot.bookId, snapshot.position)
+            logger.debug(
+                LogCategory.Playback,
+                "The player came to rest, pending the server's acknowledgement",
+                LogField.Millis("position", snapshot.position.inWholeMilliseconds),
+                LogField.Public("generation", generation.toString()),
+            )
+        }
         recordPosition(snapshot)
-        sessionSync.sync(SyncTrigger.Paused)
+        sessionSync.sync(SyncTrigger.Paused, current)
     }
 
     /**
@@ -885,7 +930,8 @@ class PlaybackService : MediaLibraryService() {
         // Issue #88 — this position was copied from cached/server progress solely for system presentation.
         // No audio session owns it, so journalling it would manufacture a local playback write.
         if (item == null || MediaItems.isResumePlaceholder(item)) return null
-        val positionMs = current.currentPosition
+        val position = effectiveBookPosition(current)
+        val positionMs = position.inWholeMilliseconds
         /*
          * Two reasons there is nothing worth writing, in one condition because they are one idea.
          *
@@ -906,7 +952,7 @@ class PlaybackService : MediaLibraryService() {
         // off it. There is no per-file arithmetic left to get wrong.
         return PositionSnapshot(
             bookId = MediaItems.bookIdOf(item),
-            position = current.bookPosition(),
+            position = position,
             duration = current.bookDuration(),
             // PRODUCT_SPEC 6.5 — read here, with the position, rather than resolved at the far end of the
             // write. The two facts are one observation: this position, of this account's book.
@@ -1229,6 +1275,7 @@ class PlaybackService : MediaLibraryService() {
      */
     private inner class PlayerEvents : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (isPlaying) autoRewind.onResumed()
             audioTrackRouteMonitor.sample()
             audioOutputs.verifyOutputLock()
             autoTraces.log(
@@ -1267,12 +1314,14 @@ class PlaybackService : MediaLibraryService() {
                 resumeBaseline.onLocalMove()
                 // PRODUCT_SPEC PLAY-009 — before anything else on the resume path: a rewind that landed after
                 // playback had started would be audible as a stutter.
-                autoRewind.onResumed()
+                // Rewind runs above, before any route proof can release verification mute.
             } else {
                 // PRODUCT_SPEC SYNC-002 — capture, journal, then *await* the sync that acknowledges it. See
                 // `onCameToRest` for why the awaiting is the point, and why it is not on this service's
                 // scope.
-                applicationScope.launch(mainDispatcher) { onCameToRest() }
+                val snapshot = positionSnapshot()
+                val claim = deferredWork.capture()
+                applicationScope.launch(mainDispatcher) { onCameToRest(snapshot, claim) }
             }
         }
 
@@ -1359,6 +1408,7 @@ class PlaybackService : MediaLibraryService() {
          * History sampler. Chapter lists remain in-process rather than duplicated in MediaItem extras.
          */
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            positionEffects.retireForItemTransition()
             mediaItemGeneration += 1
             pendingRecoveryRetry?.cancel()
             autoTraces.activeTrace?.let { trace ->
@@ -1390,9 +1440,11 @@ class PlaybackService : MediaLibraryService() {
             // PRODUCT_SPEC SYNC-002 — a baseline is per book and per position, and this is both changing.
             resumeBaseline.onBookClosed()
             // Record before the sync that follows it, so the row the sync uploads is this item's own.
+            val snapshot = positionSnapshot()
+            val claim = deferredWork.capture()
             scope.launch {
-                recordPosition()
-                sessionSync.request(SyncTrigger.TrackChanged)
+                if (snapshot != null) recordPosition(snapshot)
+                sessionSync.sync(SyncTrigger.TrackChanged) { claim != null && deferredWork.isCurrent(claim) }
             }
         }
 
@@ -1411,6 +1463,8 @@ class PlaybackService : MediaLibraryService() {
             if (reason == Player.DISCONTINUITY_REASON_SEEK ||
                 reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
             ) {
+                val current = player ?: return
+                if (positionEffects.onSeek(current)) return
                 // PRODUCT_SPEC PLAY-009 — "rewind is not applied after a user seek". A listener who chose a
                 // position chose it; moving it afterwards is the app overruling them.
                 autoRewind.onSeeked()
@@ -1418,9 +1472,11 @@ class PlaybackService : MediaLibraryService() {
                 // describes it. Including the adopting seek itself: the pause it belonged to is over.
                 resumeBaseline.onLocalMove()
                 // Record before the sync that follows it, so the row the sync uploads is the seek's own.
+                val snapshot = positionSnapshot()
+                val claim = deferredWork.capture()
                 scope.launch {
-                    recordPosition()
-                    sessionSync.request(SyncTrigger.SeekCompleted)
+                    if (snapshot != null) recordPosition(snapshot)
+                    sessionSync.sync(SyncTrigger.SeekCompleted) { claim != null && deferredWork.isCurrent(claim) }
                 }
             }
         }
@@ -1452,17 +1508,19 @@ class PlaybackService : MediaLibraryService() {
                 // PRODUCT_SPEC SYNC-002 — the book is over; nothing about its last pause is still true.
                 resumeBaseline.onBookClosed()
                 // Record before the sync that follows it, so the row the sync uploads is the final one.
-                scope.launch {
-                    recordPosition()
-                    sessionSync.request(SyncTrigger.BookChanged)
-                }
+                val snapshot = positionSnapshot()
+                val endedClaim = deferredWork.capture()
                 // PRODUCT_SPEC 6.4 step 6 — after the position is journalled and the sync is asked for,
                 // never before: the book that just ended has to be recorded as finished whether or not
                 // anything follows it, and an advance that failed must not have cost the last write.
                 // Capture the ended item before scheduling work; a newer manual selection must not
                 // become the "finished" book when this coroutine eventually starts.
-                deferredWork.capture()?.let { claim ->
-                    scope.launch { advanceToNextInSeries(claim) }
+                scope.launch {
+                    if (snapshot != null) recordPosition(snapshot)
+                    sessionSync.sync(SyncTrigger.BookChanged) {
+                        endedClaim != null && deferredWork.isCurrent(endedClaim)
+                    }
+                    if (endedClaim != null) advanceToNextInSeries(endedClaim)
                 }
             }
         }
@@ -1490,7 +1548,8 @@ class PlaybackService : MediaLibraryService() {
                 LogField.Public("errorCode", error.errorCodeName),
                 LogField.Count("attempt", recovery.attemptCount),
             )
-            scope.launch { recordPosition() }
+            val snapshot = positionSnapshot()
+            scope.launch { if (snapshot != null) recordPosition(snapshot) }
             reportFailureToControllers(error, willRetry = retryIn != null)
             val claim = deferredWork.capture() ?: return
             if (retryIn == null) return
@@ -2148,7 +2207,7 @@ class PlaybackService : MediaLibraryService() {
         val item = current.currentMediaItem ?: return
         if (current.mediaItemCount == 0) return
         val bookId = MediaItems.bookIdOf(item)
-        val at = current.bookPosition()
+        val at = effectiveBookPosition(current)
         // PRODUCT_SPEC 6.5 — the owner is read now, on the main thread with the position, not inside the
         // launch. See [flushProgress] for why the far end of an application-scoped launch is the wrong
         // place to ask who is signed in.
@@ -2171,7 +2230,7 @@ class PlaybackService : MediaLibraryService() {
     private fun nowPlaying(): NowPlaying? {
         val current = player ?: return null
         val bookId = current.currentMediaItem?.let(MediaItems::bookIdOf) ?: return null
-        return NowPlaying(bookId, current.currentPosition.coerceAtLeast(0).milliseconds)
+        return NowPlaying(bookId, effectiveBookPosition(current))
     }
 
     /**
@@ -2229,7 +2288,11 @@ class PlaybackService : MediaLibraryService() {
     private fun loadedNow(): MediaSession.MediaItemsWithStartPosition? {
         val current = player ?: return null
         val loaded = current.currentMediaItem ?: return null
-        return MediaSession.MediaItemsWithStartPosition(listOf(loaded), 0, current.currentPosition.coerceAtLeast(0))
+        return MediaSession.MediaItemsWithStartPosition(
+            listOf(loaded),
+            0,
+            effectiveBookPosition(current).inWholeMilliseconds.coerceAtLeast(0L),
+        )
     }
 
     private val callbackFutures by lazy { SessionCallbackFutures(applicationScope, mainDispatcher, logger) }
@@ -2350,7 +2413,7 @@ class PlaybackService : MediaLibraryService() {
         val current = player ?: return
         val item = current.currentMediaItem ?: return
         val bookId = MediaItems.bookIdOf(item)
-        val at = Bookmark.roundedFrom(current.bookPosition())
+        val at = Bookmark.roundedFrom(effectiveBookPosition(current))
         // PRODUCT_SPEC 6.5 — read here, on the main thread with the position, not inside the launch. The
         // same reasoning as `flushProgress`: the far end of an application-scoped launch is the wrong place
         // to ask who is signed in, because the whole point of that scope is outliving this moment.
@@ -2371,9 +2434,15 @@ class PlaybackService : MediaLibraryService() {
     private fun skipBy(delta: Duration) {
         val current = player ?: return
         if (current.mediaItemCount == 0) return
+        val target = effectiveBookPosition(current) + delta
         // Issue #91 — this custom notification command bypasses ResumeFreshnessPlayer.handleSeek.
-        onControllerCommand(ResumeInvalidation.NotificationSkip)
-        current.seekTo((current.bookPosition() + delta).inWholeMilliseconds.coerceAtLeast(0))
+        val finished = positionEffects.before(PlaybackMovement.Seek) ?: return
+        try {
+            if (!onControllerCommand(ResumeInvalidation.NotificationSkip)) return
+            current.seekTo(target.inWholeMilliseconds.coerceAtLeast(0))
+        } finally {
+            finished()
+        }
     }
 
     /**
@@ -2485,7 +2554,7 @@ class PlaybackService : MediaLibraryService() {
         ): ListenableFuture<MutableList<MediaItem>> {
             val trace = autoTraces.forController(controller.packageName, CAR_PACKAGES)
             autoTraces.logItems(trace, "onAddMediaItems", "asked", mediaItems)
-            onControllerCommand(ResumeInvalidation.MediaChanged)
+            if (!onControllerCommand(ResumeInvalidation.MediaChanged)) return Futures.immediateCancelledFuture()
             val claim = controllerQueueResolution.capture()
             return future {
                 controllerQueueResolution.requireCurrent(claim)
@@ -2551,7 +2620,7 @@ class PlaybackService : MediaLibraryService() {
             AutoLibrary.profileSelectionOf(mediaItems)?.let { profileId ->
                 return selectProfileFromRow(session, controller, profileId)
             }
-            onControllerCommand(ResumeInvalidation.MediaChanged)
+            if (!onControllerCommand(ResumeInvalidation.MediaChanged)) return Futures.immediateCancelledFuture()
             val claim = controllerQueueResolution.capture()
             return future {
                 setMediaItems(session, controller, mediaItems, startIndex, startPositionMs, trace, claim)

@@ -340,6 +340,7 @@ class CarContinuityResumeTransactionTest {
         val effects: CarContinuityResumeEffects
 
         init {
+            router.positions.bind(routingOnlyPositionEffects())
             volumeEffects.attach(current.player)
             router.setField("player", current.player)
             router.setField("live", if (available) mapOf(headset.id to device) else emptyMap())

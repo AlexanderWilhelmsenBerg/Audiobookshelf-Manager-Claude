@@ -53,6 +53,7 @@ class SessionSyncCoordinator @Inject constructor(
     @param:Dispatcher(ShelfDispatcher.MainImmediate) private val mainDispatcher: CoroutineDispatcher,
 ) {
     private var player: Player? = null
+    private var effectivePosition: ((Player) -> Duration)? = null
     private var current: Active? = null
     private val listened = ListenedTime()
     private var ticker: Job? = null
@@ -66,15 +67,21 @@ class SessionSyncCoordinator @Inject constructor(
     private val gate = Mutex()
 
     /** Given the player it reads positions from, as the sleep timer is. `null` on teardown. */
-    fun attach(player: Player?) {
+    fun attach(player: Player, effectivePosition: (Player) -> Duration) {
         this.player = player
-        if (player == null) {
-            ticker?.cancel()
-            ticker = null
-        } else {
-            startTicker()
-        }
+        this.effectivePosition = effectivePosition
+        startTicker()
     }
+
+    fun detach() {
+        player = null
+        effectivePosition = null
+        ticker?.cancel()
+        ticker = null
+    }
+
+    internal fun effectiveBookPosition(media: Player): Duration =
+        if (player === media) requireNotNull(effectivePosition).invoke(media) else media.bookPosition()
 
     /**
      * Records the start of a session and does not return until its local outbox row exists.
@@ -154,8 +161,8 @@ class SessionSyncCoordinator @Inject constructor(
     }
 
     /** Fire-and-forget form for triggers whose caller does not need the acknowledgement. */
-    fun request(trigger: SyncTrigger) {
-        applicationScope.launch { sync(trigger) }
+    fun request(trigger: SyncTrigger, stillAuthorized: () -> Boolean = { true }) {
+        applicationScope.launch { sync(trigger, stillAuthorized) }
     }
 
     /**
@@ -164,7 +171,8 @@ class SessionSyncCoordinator @Inject constructor(
      * Awaited pause syncs and fire-and-forget interval syncs share [gate], so neither can overtake a book
      * transition or leave the server holding an older position after a newer one.
      */
-    suspend fun sync(trigger: SyncTrigger): Boolean = gate.withLock { syncNow(trigger) }
+    suspend fun sync(trigger: SyncTrigger, stillAuthorized: () -> Boolean = { true }): Boolean =
+        gate.withLock { syncNow(trigger, stillAuthorized) }
 
     /**
      * PRODUCT_SPEC PLAY-004 — captures the final session snapshot before service teardown can detach the player.
@@ -185,11 +193,12 @@ class SessionSyncCoordinator @Inject constructor(
         applicationScope.launch { repository.drainOutbox() }
     }
 
-    private suspend fun syncNow(trigger: SyncTrigger): Boolean {
+    private suspend fun syncNow(trigger: SyncTrigger, stillAuthorized: () -> Boolean = { true }): Boolean {
         val prepared = withContext(mainDispatcher) {
+            if (!stillAuthorized()) return@withContext null
             val active = current ?: return@withContext null
             val snapshot = snapshot() ?: return@withContext null
-            if (!belongsToActiveSession(snapshot, active)) {
+            if (!stillAuthorized() || !belongsToActiveSession(snapshot, active)) {
                 logger.debug(
                     LogCategory.Playback,
                     "Skipped a stale player snapshot during session sync",
@@ -328,13 +337,19 @@ class SessionSyncCoordinator @Inject constructor(
         val item = media.currentMediaItem
         // Issue #88 — the idle Media3 holder has metadata and a remembered position, but it has never
         // opened a playback session and must never create progress writes merely because a car displayed it.
-        if (item == null || MediaItems.isResumePlaceholder(item)) return null
-        val positionMs = media.currentPosition
-        if (positionMs <= 0L || MediaItems.isSingleFileFallback(item)) return null
+        val position = effectivePosition?.invoke(media)
+        if (item == null || position == null) return null
+        val sameAttachment = media.currentMediaItem === item && player === media
+        if (MediaItems.isResumePlaceholder(item) ||
+            !isPersistablePlaybackPosition(position.inWholeMilliseconds, MediaItems.isSingleFileFallback(item)) ||
+            !sameAttachment
+        ) {
+            return null
+        }
         return Snapshot(
             bookId = MediaItems.bookIdOf(item),
             owner = MediaItems.ownerOf(item),
-            position = media.bookPosition(),
+            position = position,
             duration = media.bookDuration(),
         )
     }

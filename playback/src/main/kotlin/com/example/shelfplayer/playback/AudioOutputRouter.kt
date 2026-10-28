@@ -102,6 +102,7 @@ class AudioOutputRouter @Inject constructor(
     /** Queued preferences share one generation and the existing Media3 application dispatcher. */
     private val preferenceEffects = RoutePreferenceEffects(mainDispatcher)
     private var callback: AudioDeviceCallback? = null
+    internal val positions = PositionAccess()
 
     // Transient continuity ownership is player-attached and separate from endpoint policy.
     private val headsetGuard = HeadsetRouteGuard(
@@ -111,6 +112,7 @@ class AudioOutputRouter @Inject constructor(
         isCurrentProbe = ::isCurrentGuard,
         onProbeInvalidated = ::handleInvalidatedProbe,
         onProbeFinished = { verified ->
+            if (verified) verifyOutputLock()
             logger.info(
                 LogCategory.Playback,
                 "Car continuity silent headset verification completed",
@@ -118,7 +120,12 @@ class AudioOutputRouter @Inject constructor(
             )
         },
         onPlaying = ::pauseUnsafeGuardedPlayback,
-    )
+    ).also { guard ->
+        guard.captureCheckpoint = { probe -> positions.handlers?.capture(probe) }
+        guard.completeVerifiedProbe = { probe ->
+            positions.handlers?.complete(probe) ?: MutedProbeCompletion.Refused
+        }
+    }
     private var currentTrackRoutes: () -> Set<String>? = { null }
     private var collidingOutputIds: Set<String> = emptySet()
     private data class AutomaticProtection(
@@ -615,6 +622,43 @@ class AudioOutputRouter @Inject constructor(
 
     internal fun isRouteSafetyPause(target: ExoPlayer?): Boolean = headsetGuard.isPausingForSafety(target)
 
+    /** Narrow service/controller seam for transient position proof; no independent checkpoint state. */
+    internal inner class PositionAccess {
+        var handlers: PositionCheckpointEffects? = null
+            private set
+        val guard: HeadsetRouteGuard get() = headsetGuard
+        val intent: OutputIntentOwner.Snapshot get() = outputIntentOwner.state.value
+
+        fun bind(handlers: PositionCheckpointEffects) {
+            this.handlers = handlers
+        }
+
+        fun clear() {
+            handlers = null
+        }
+
+        fun isEligible(probe: HeadsetRouteGuard.Probe): Boolean =
+            guard.isCurrentProbe(probe) && probe.endpointId in live && probe.endpointId !in collidingOutputIds
+
+        fun measure(): Set<String>? = currentTrackRoutes()
+
+        /** Same live service position for controller/profile-handover reads, on Media3's dispatcher. */
+        fun effectivePosition(controller: Player): kotlin.time.Duration {
+            val current = player
+            val item = controller.currentMediaItem
+            val owned = current?.currentMediaItem
+            return when {
+                current == null || item == null || owned == null -> controller.bookPosition()
+
+                MediaItems.bookIdOf(item) != MediaItems.bookIdOf(owned) ||
+                    MediaItems.ownerOf(item) != MediaItems.ownerOf(owned) ->
+                    controller.bookPosition()
+
+                else -> handlers?.position(current) ?: controller.bookPosition()
+            }
+        }
+    }
+
     private fun startMutedProbe(id: String): Boolean {
         val current = player ?: return false
         val epoch = preferenceEffects.snapshot()
@@ -640,6 +684,8 @@ class AudioOutputRouter @Inject constructor(
     internal fun verifyOutputLock() {
         _canKeepAudioHere.value = currentLockTarget() != null
         val lock = outputIntentOwner.state.value.lock ?: return
+        // The same probe owns muted verification and position compensation before lock proof can be renewed.
+        if (headsetGuard.currentProbe != null) return
         val context = currentLockContext()
         if (context == null) {
             if (lock.phase == OutputIntentOwner.LockPhase.Active) outputIntentOwner.markWaiting(lock)

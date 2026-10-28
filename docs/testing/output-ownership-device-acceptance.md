@@ -14,6 +14,13 @@ retained-intent retry, accepted deferred/post-connect installs and continuity th
 software tests do not establish position compensation or a complete explicit transfer. The final candidate
 must include those remaining slices before the complete-feature rows below can be accepted.
 
+The following position candidate adds a probe-owned checkpoint and shared heard-position reads. Its
+software checks include elapsed advancement, pre-return mute callbacks, nested/later real service seek provenance,
+Pause/Stop retirement, a queued old pause crossing the session mutex, and controlled barrier/proof delivery.
+These do not fill any physical row below or establish the complete explicit transfer/rollback transaction.
+The strict local repository gate passes 2,692 tests /319 suites, including 876 playback tests; exact-head
+CI and the source SHA are recorded in #300 and the execution checkpoint. No new APK is claimed here.
+
 ## Candidate and setup
 
 Test one combined APK containing the selected playback stack and the separate #296 auth fix. Record

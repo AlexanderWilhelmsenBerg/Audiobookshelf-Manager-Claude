@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.testing.TestAppClock
@@ -13,10 +14,64 @@ import java.lang.reflect.Proxy
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @androidx.annotation.OptIn(UnstableApi::class)
 class HeadsetRouteGuardReentrantTest {
+    @Test
+    fun `cancellation from checkpoint capture cannot acquire a later mute claim`() = runTest {
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        val effects = PlaybackVolumeEffects(TestAppClock())
+        val media = MutableMediaPlayer()
+        val guard = guard(backgroundScope, dispatcher, effects, media.player)
+        effects.attach(media.player)
+        guard.attachPlayer(media.player)
+        guard.protect(OUTPUT)
+        guard.captureCheckpoint = { probe ->
+            guard.cancelProbe(probe)
+            checkpoint()
+        }
+
+        assertFalse(guard.beginProbe(OUTPUT, media.player, EPOCH))
+        advanceTimeBy(5_000)
+        runCurrent()
+
+        assertFalse(effects.isRouteMuted(media.player))
+        assertEquals(1f, media.volume)
+        assertEquals(0, media.pauseCalls)
+    }
+
+    @Test
+    fun `successor probe reserved during capture is not erased or double muted by its predecessor`() = runTest {
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        val effects = PlaybackVolumeEffects(TestAppClock())
+        val media = MutableMediaPlayer()
+        val guard = guard(backgroundScope, dispatcher, effects, media.player)
+        effects.attach(media.player)
+        guard.attachPlayer(media.player)
+        guard.protect(OUTPUT)
+        var nested = false
+        var successorStarted = false
+        guard.captureCheckpoint = { probe ->
+            if (!nested) {
+                nested = true
+                guard.cancelProbe(probe)
+                successorStarted = guard.beginProbe(OUTPUT, media.player, EPOCH + 1)
+            }
+            checkpoint()
+        }
+
+        assertFalse(guard.beginProbe(OUTPUT, media.player, EPOCH))
+        assertTrue(successorStarted)
+        assertTrue(effects.isRouteMuted(media.player))
+        guard.cancelProbe()
+
+        assertFalse(effects.isRouteMuted(media.player))
+        assertEquals(1f, media.volume)
+        assertEquals(0, media.pauseCalls)
+    }
+
     @Test
     fun `synchronous cancellation during mute acquisition retires the provisional probe`() = runTest {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
@@ -82,6 +137,16 @@ class HeadsetRouteGuardReentrantTest {
         onProbeInvalidated = { false },
         onProbeFinished = {},
         onPlaying = {},
+    )
+
+    private fun checkpoint() = MutedPositionCheckpoint(
+        item = MediaItem.Builder().setMediaId("fixture-book").build(),
+        position = 1.seconds,
+        controllerCommandGeneration = 0,
+        mediaItemGeneration = 0,
+        profileGeneration = 0,
+        bookGeneration = null,
+        selectionSequence = null,
     )
 
     private class MutableMediaPlayer {

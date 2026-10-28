@@ -117,12 +117,14 @@ class ResumeFreshnessPlayerTest {
             delegate = delegate.player,
             preparePlay = { _ -> preparation },
             consumeFreshStart = { false },
-            invalidate = {},
+            invalidate = { true },
             onPlayWhenReadyRequest = { requested ->
                 if (requested) graceAuthorized = false
+                true
             },
             skipIntervals = { SkipIntervals(back = 30.seconds, forward = 30.seconds) },
             prepareCurrentOutput = { Futures.immediateVoidFuture() },
+            movementEffects = unprotectedMovementEffects(delegate.player),
         )
 
         val play = player.handleSetPlayWhenReady(true)
@@ -318,10 +320,17 @@ class ResumeFreshnessPlayerTest {
             Futures.immediateFuture(Unit)
         },
         consumeFreshStart = consumeFreshStart,
-        invalidate = invalidate,
-        onPlayWhenReadyRequest = onPlayWhenReadyRequest,
+        invalidate = {
+            invalidate(it)
+            true
+        },
+        onPlayWhenReadyRequest = {
+            onPlayWhenReadyRequest(it)
+            true
+        },
         skipIntervals = skipIntervals,
         prepareCurrentOutput = { Futures.immediateVoidFuture() },
+        movementEffects = unprotectedMovementEffects(delegate.player),
     )
 
     private fun await(future: ListenableFuture<*>) {
