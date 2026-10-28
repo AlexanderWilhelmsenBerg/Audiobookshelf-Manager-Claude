@@ -15,10 +15,10 @@ All remain unmerged. The selected sibling is #294; closed #293 is not stacked in
 
 The #300 position checkpoint adds one probe-owned heard-position projection, compensation before Pause/Stop,
 and existing-authority checks around synchronous and suspended effects. Strict local verification passes
-2,692 tests /319 suites, including 876 playback tests, with no failures, errors or skips. Normal exact-head
+2,700 tests /319 suites, including 884 playback tests, with no failures, errors or skips. Normal exact-head
 CI and the remaining software slices are tracked in
 [the current checkpoint](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/289#issuecomment-6448375926).
-Current-item replacement guarding, verified transfer/rollback and typed selection/UI consolidation remain
+Verified transfer/rollback and typed selection/UI consolidation remain
 required. The full execution plan is not complete. A final combined candidate must also include
 separate auth #296; physical output, startup and real-token acceptance remain distinct.
 

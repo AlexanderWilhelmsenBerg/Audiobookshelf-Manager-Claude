@@ -89,7 +89,7 @@ internal class ResumeFreshnessPlayer(
         startPositionMs: Long,
     ): ListenableFuture<*> {
         if (!allowEffects()) return Futures.immediateVoidFuture()
-        return movement(PlaybackMovement.MediaChanged) {
+        return movement(PlaybackMovement.ReplaceCurrent) {
             if (!invalidate(ResumeInvalidation.MediaChanged)) return@movement Futures.immediateFuture(false)
             super.handleSetMediaItems(mediaItems, startIndex, startPositionMs)
         }
@@ -97,7 +97,12 @@ internal class ResumeFreshnessPlayer(
 
     public override fun handleAddMediaItems(index: Int, mediaItems: List<MediaItem>): ListenableFuture<*> {
         if (!allowEffects()) return Futures.immediateVoidFuture()
-        return movement(PlaybackMovement.MediaChanged) {
+        val command = if (delegate.mediaItemCount == 0 && mediaItems.isNotEmpty()) {
+            PlaybackMovement.ReplaceCurrent
+        } else {
+            PlaybackMovement.MediaChanged
+        }
+        return movement(command) {
             if (!invalidate(ResumeInvalidation.MediaChanged)) return@movement Futures.immediateFuture(false)
             super.handleAddMediaItems(index, mediaItems)
         }
@@ -105,7 +110,7 @@ internal class ResumeFreshnessPlayer(
 
     public override fun handleRemoveMediaItems(fromIndex: Int, toIndex: Int): ListenableFuture<*> {
         if (!allowEffects()) return Futures.immediateVoidFuture()
-        return movement(PlaybackMovement.MediaChanged) {
+        return movement(queueMutation(fromIndex, toIndex)) {
             if (!invalidate(ResumeInvalidation.MediaChanged)) return@movement Futures.immediateFuture(false)
             super.handleRemoveMediaItems(fromIndex, toIndex)
         }
@@ -117,7 +122,7 @@ internal class ResumeFreshnessPlayer(
         mediaItems: List<MediaItem>,
     ): ListenableFuture<*> {
         if (!allowEffects()) return Futures.immediateVoidFuture()
-        return movement(PlaybackMovement.MediaChanged) {
+        return movement(queueMutation(fromIndex, toIndex)) {
             if (!invalidate(ResumeInvalidation.MediaChanged)) return@movement Futures.immediateFuture(false)
             super.handleReplaceMediaItems(fromIndex, toIndex, mediaItems)
         }
@@ -130,6 +135,13 @@ internal class ResumeFreshnessPlayer(
             super.handleStop()
         }
     }
+
+    private fun queueMutation(fromIndex: Int, toIndex: Int): PlaybackMovement =
+        if (delegate.currentMediaItemIndex in fromIndex until toIndex) {
+            PlaybackMovement.ReplaceCurrent
+        } else {
+            PlaybackMovement.MediaChanged
+        }
 
     /** Media3 also prepares/seeks before its fallback Play on a failed cold-resumption future. */
     public override fun handlePrepare(): ListenableFuture<*> {

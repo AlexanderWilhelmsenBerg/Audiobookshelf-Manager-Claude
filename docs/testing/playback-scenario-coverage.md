@@ -58,6 +58,12 @@ command must not snapshot or upload the successor. `AutoRewindOwnershipTest` ret
 event time through a replacement book before asynchronous history persistence. These remain software
 assertions; the physical acceptance columns are unchanged.
 
+Current-item activation regressions additionally observe the raw singular/plural queue overloads selected by
+pinned Media3. Guarded Set/Replace/Remove of the current item and first-item insertion must reach that mutation
+with PlayWhenReady cleared even without an active muted probe. Future-only edits and unguarded replacement
+retain normal transport. A synchronous newer seek during the safety Pause refuses the older raw setter and
+keeps the original item at the newer position. These supplement S12/S13/S15 without claiming physical output.
+
 <!-- Updated against merged GitHub main acce406c8ffe and scenario PR #290; 2026-10-21. -->
 
 This ledger connects the 22 product scenarios to **executable production-policy tests**, existing

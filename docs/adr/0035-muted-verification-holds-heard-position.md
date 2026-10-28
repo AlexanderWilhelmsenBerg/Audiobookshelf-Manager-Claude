@@ -29,6 +29,12 @@ silent advancement while still muted, forward the real command, then retire the 
 rollback, and relative commands calculate their target from the held position. A newer Play or replacement
 cannot inherit an old timeout. Logical output lock policy remains in `OutputIntentOwner`.
 
+Current-item queue replacement has a distinct movement kind: Media3 can internally prepare the successor
+without another controller Prepare. With a guarded destination, inherited PlayWhenReady is safely cleared
+before replacing/removing the current item or inserting the first item into an empty queue. Edits confined
+to future items preserve healthy transport. Existing command/item/profile, attachment and selection authority
+are checked after synchronous pause listeners; a newer seek or selection refuses the older raw mutation.
+
 Compensation seek provenance lasts only for its synchronous raw seek call and its captured existing command,
 item and profile authority. A nested newer user command cannot inherit the correction marker; a superseded
 outer command is refused before raw transport. The actual service's pinned Media3 callback tests distinguish
@@ -56,11 +62,19 @@ actual ExoPlayer/service seek callbacks establish the provenance contract. These
 audio output or narration heard on a headset/head unit.
 
 Formatter and strict repository `verifyDebug --continue -x assembleDebug -Pshelfplayer.warningsAsErrors=true`
-pass: 2,692 tests /319 suites /0 failures, errors or skips, including 876 playback tests. Lint, Detekt and
+pass: 2,700 tests /319 suites /0 failures, errors or skips, including 884 playback tests. Lint, Detekt and
 coverage pass. APK assembly is excluded. The nested-command regression first failed at the intended real
 user write assertion; the restored fix also prevents the superseded outer raw Pause. The first full run
 found three command-admission complexity findings; simplifying that decision and rerunning the complete
 gate resolved them without suppression.
+
+Eight current-item mutation regressions cover guarded replacement/removal/first insertion, future-only and
+unguarded controls, and synchronous newer seek/Car intent. Before the fix, three raw mutations retained
+unverified PlayWhenReady while both controls passed; first insertion and seek supersession separately failed.
+Removing exact-selection admission reproduced the Car supersession failure after its callback was witnessed;
+the original bytes were restored. Pinned Media3 uses singular overloads for single-item mutations, and the
+observer checks both forms. The initial observer-only failure is not regression proof. A full run caught
+eight ignored test future results; explicit result assertions and the complete rerun passed without suppression.
 
 Explicit verified Car/Headset transfer, prior-lock commit/rollback and final output-status UI remain subsequent
 #277 work. The final combined APK and the device acceptance ledger are required before physical acceptance.

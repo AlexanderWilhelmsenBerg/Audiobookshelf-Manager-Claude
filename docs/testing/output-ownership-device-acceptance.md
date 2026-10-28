@@ -18,7 +18,9 @@ The following position candidate adds a probe-owned checkpoint and shared heard-
 software checks include elapsed advancement, pre-return mute callbacks, nested/later real service seek provenance,
 Pause/Stop retirement, a queued old pause crossing the session mutex, and controlled barrier/proof delivery.
 These do not fill any physical row below or establish the complete explicit transfer/rollback transaction.
-The strict local repository gate passes 2,692 tests /319 suites, including 876 playback tests; exact-head
+Guarded current-item replacement and first-item insertion also clear inherited Play intent before mutation;
+future-only queue edits preserve transport. Newer synchronous Seek/Car intent refuses the old raw setter.
+The strict local repository gate passes 2,700 tests /319 suites, including 884 playback tests; exact-head
 CI and the source SHA are recorded in #300 and the execution checkpoint. No new APK is claimed here.
 
 ## Candidate and setup

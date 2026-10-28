@@ -60,6 +60,8 @@ the transient held position, captures history owner/time before dispatch, and ch
 inside the existing session mutex. Existing progress/session endpoints, response fields, outbox and Room
 schema remain unchanged. Synthetic Media3/session tests do not add a tested server version or establish
 real expired-token, car/headset or narration-continuity acceptance.
+Guarded current-item replacement now clears inherited Play intent before raw queue mutation, including first
+insertion into an empty queue. This is local transport admission; the same existing server contracts apply.
 
 The 2026-10-03 series/history/sleep revision changes local presentation and playback policy only. Rolling
 History checkpoints reuse the existing profile/book-scoped Room table and store no media text; the schema

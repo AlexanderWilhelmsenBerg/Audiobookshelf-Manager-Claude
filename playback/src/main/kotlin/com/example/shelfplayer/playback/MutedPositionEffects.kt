@@ -10,7 +10,7 @@ import kotlin.coroutines.resume
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-internal enum class PlaybackMovement { Play, Pause, Stop, Seek, MediaChanged }
+internal enum class PlaybackMovement { Play, Pause, Stop, Seek, MediaChanged, ReplaceCurrent }
 
 /** Transport adapters expose this boundary; the Probe remains the sole checkpoint owner. */
 internal interface PlaybackMovementEffects {
@@ -95,10 +95,12 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
     override fun before(command: PlaybackMovement): (() -> Unit)? {
         val stamp = source.context()
         val current = source.player() ?: return {}
-        val probe = outputs.positions.guard.currentProbe?.takeIf { it.player === current } ?: return {}
+        val selection = outputs.positions.intent.selection
+        val probe = outputs.positions.guard.currentProbe?.takeIf { it.player === current }
+            ?: return beforeCurrentReplacement(current, command, stamp, selection)
         outputs.positions.guard.quiesceProbe(probe)
         val restored = restoreBeforeMovement(probe, command)
-        if (!restored || source.player() !== current || source.context() != stamp) {
+        if (!restored || !unchanged(current, stamp, selection)) {
             outputs.positions.guard.cancelProbe(probe)
             return null
         }
@@ -108,8 +110,34 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
             // A new Play/seek/install cannot inherit an old unverified activation or its timeout.
             if (outputs.positions.guard.currentProbe === probe) outputs.positions.guard.pauseForSafety(current)
             outputs.positions.guard.cancelProbe(probe)
-            if (source.player() === current && source.context() == stamp) ({}) else null
+            if (unchanged(current, stamp, selection)) ({}) else null
         }
+    }
+
+    /** Media3 may prepare a replacement internally without a later controller Prepare or Play. */
+    private fun beforeCurrentReplacement(
+        current: ExoPlayer,
+        command: PlaybackMovement,
+        stamp: Context,
+        selection: OutputIntentOwner.Selection?,
+    ): (() -> Unit)? {
+        val guarded = outputs.positions.guard.endpointId != null || outputs.positions.intent.lock != null
+        val needsHold = command == PlaybackMovement.ReplaceCurrent && guarded
+        if (needsHold && current.playWhenReady && outputs.protectManualPlayOnGuardedHeadset(
+                current,
+                willStartAudio = false,
+                holdPaused = true,
+            ) == ManualPlayProtection.Denied
+        ) {
+            return null
+        }
+        val held = !needsHold || !current.playWhenReady
+        return if (held && unchanged(current, stamp, selection)) ({}) else null
+    }
+
+    private fun unchanged(current: ExoPlayer, stamp: Context, selection: OutputIntentOwner.Selection?): Boolean {
+        val sameAttachment = source.player() === current && outputs.isAttachedPlayer(current)
+        return sameAttachment && source.context() == stamp && outputs.positions.intent.selection == selection
     }
 
     private fun restoreBeforeMovement(probe: HeadsetRouteGuard.Probe, command: PlaybackMovement): Boolean {

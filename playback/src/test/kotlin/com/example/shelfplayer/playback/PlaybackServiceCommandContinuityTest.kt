@@ -516,6 +516,141 @@ class PlaybackServiceCommandContinuityTest {
     }
 
     @Test
+    fun `guarded queue replacement clears inherited Play intent before the raw setter`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.checkCurrentItemMutation {
+                assertNull(it.handleSetMediaItems(listOf(item("replacement")), 0, 7_000L).get())
+            }
+        }
+    }
+
+    @Test
+    fun `guarded current item replacement clears inherited Play intent before mutation`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.checkCurrentItemMutation {
+                assertNull(it.handleReplaceMediaItems(0, 1, listOf(item("replacement"))).get())
+            }
+        }
+    }
+
+    @Test
+    fun `guarded removal of the current item clears inherited Play intent before advancing`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.checkCurrentItemMutation { assertNull(it.handleRemoveMediaItems(0, 1).get()) }
+        }
+    }
+
+    @Test
+    fun `future queue edits preserve the healthy current item and Play intent`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = false)
+            fixture.player.addMediaItems(listOf(item("future-one"), item("future-two")))
+            fixture.retainPlayIntentWhileIdle()
+            fixture.queueMutationIntents.clear()
+
+            assertNull(fixture.forwarding.handleAddMediaItems(3, listOf(item("future-three"))).get())
+            assertNull(fixture.forwarding.handleReplaceMediaItems(1, 2, listOf(item("replacement-future"))).get())
+            assertNull(fixture.forwarding.handleRemoveMediaItems(2, 3).get())
+
+            assertEquals(listOf(true, true, true), fixture.queueMutationIntents)
+            assertEquals("original", fixture.player.currentMediaItem?.mediaId)
+            assertEquals(12_000L, fixture.player.currentPosition)
+            assertTrue(fixture.player.playWhenReady)
+        }
+    }
+
+    @Test
+    fun `unguarded queue replacement retains normal transport behavior`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureNoManualGuard()
+            fixture.retainPlayIntentWhileIdle()
+            fixture.queueMutationIntents.clear()
+
+            assertNull(fixture.forwarding.handleSetMediaItems(listOf(item("replacement")), 0, 7_000L).get())
+
+            assertEquals(listOf(true), fixture.queueMutationIntents)
+            assertEquals("replacement", fixture.player.currentMediaItem?.mediaId)
+            assertTrue(fixture.player.playWhenReady)
+        }
+    }
+
+    @Test
+    fun `adding the first guarded item cannot inherit Play intent from an empty queue`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = true)
+            fixture.player.clearMediaItems()
+            fixture.retainPlayIntentWhileIdle()
+            fixture.queueMutationIntents.clear()
+
+            assertNull(fixture.forwarding.handleAddMediaItems(0, listOf(item("new-first-item"))).get())
+
+            assertEquals(listOf(false), fixture.queueMutationIntents)
+            assertEquals("new-first-item", fixture.player.currentMediaItem?.mediaId)
+            assertFalse(fixture.player.playWhenReady)
+        }
+    }
+
+    @Test
+    fun `a newer seek during inherited-intent pause refuses the older queue replacement`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = true)
+            fixture.retainPlayIntentWhileIdle()
+            fixture.queueMutationIntents.clear()
+            var delivered = false
+            val listener = object : Player.Listener {
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    if (!playWhenReady && !delivered) {
+                        delivered = true
+                        fixture.forwarding.handleSeek(0, 14_000L, Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+                    }
+                }
+            }
+            fixture.player.addListener(listener)
+            try {
+                val request = fixture.forwarding.handleSetMediaItems(listOf(item("replacement")), 0, 7_000L)
+
+                assertTrue(delivered, "the synchronous pause callback must reach a newer real controller seek")
+                assertEquals(false, request.get())
+                assertTrue(fixture.queueMutationIntents.isEmpty(), "the superseded raw setter must not run")
+                assertEquals("original", fixture.player.currentMediaItem?.mediaId)
+                assertEquals(14_000L, fixture.player.currentPosition)
+            } finally {
+                fixture.player.removeListener(listener)
+            }
+        }
+    }
+
+    @Test
+    fun `a newer Car choice during inherited-intent pause refuses the older queue replacement`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = true)
+            fixture.retainPlayIntentWhileIdle()
+            fixture.queueMutationIntents.clear()
+            var delivered = false
+            val listener = object : Player.Listener {
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    if (!playWhenReady && !delivered) {
+                        delivered = true
+                        fixture.selectCar()
+                    }
+                }
+            }
+            fixture.player.addListener(listener)
+            try {
+                val request = fixture.forwarding.handleSetMediaItems(listOf(item("replacement")), 0, 7_000L)
+
+                assertTrue(delivered, "the synchronous pause callback must deliver newer destination intent")
+                assertEquals(false, request.get())
+                assertTrue(fixture.queueMutationIntents.isEmpty())
+                assertEquals("original", fixture.player.currentMediaItem?.mediaId)
+                assertEquals(OutputIntentOwner.Destination.Car, fixture.explicitDestination())
+            } finally {
+                fixture.player.removeListener(listener)
+            }
+        }
+    }
+
+    @Test
     @Config(sdk = [32])
     fun `ordinary local resume without a guarded destination remains available`() = runTest {
         Fixture(this).use { fixture ->
@@ -628,6 +763,7 @@ class PlaybackServiceCommandContinuityTest {
         var rawPrepareCalls = 0
             private set
         private var rawPauseRequests = 0
+        val queueMutationIntents = mutableListOf<Boolean>()
         private val realPlayer = ExoPlayer.Builder(context).build()
         private var reportedPositionMs: Long? = null
 
@@ -636,6 +772,19 @@ class PlaybackServiceCommandContinuityTest {
             ExoPlayer::class.java.classLoader,
             arrayOf(ExoPlayer::class.java),
         ) { _, method, args ->
+            if (method.name in setOf(
+                    "setMediaItem",
+                    "setMediaItems",
+                    "addMediaItem",
+                    "addMediaItems",
+                    "replaceMediaItem",
+                    "replaceMediaItems",
+                    "removeMediaItem",
+                    "removeMediaItems",
+                )
+            ) {
+                queueMutationIntents += realPlayer.playWhenReady
+            }
             if (method.name == "play") rawPlayCalls += 1
             if (method.name == "prepare") rawPrepareCalls += 1
             if (method.name == "setPlayWhenReady" && args?.firstOrNull() == false) rawPauseRequests++
@@ -915,6 +1064,19 @@ class PlaybackServiceCommandContinuityTest {
             router.field<MutableStateFlow<String?>>("_selectedId").value = null
         }
 
+        fun checkCurrentItemMutation(change: (ResumeFreshnessPlayer) -> Unit) {
+            configureManualGuard(selected = true, colliding = true)
+            player.addMediaItem(item("future"))
+            retainPlayIntentWhileIdle()
+            queueMutationIntents.clear()
+
+            change(forwarding)
+
+            assertEquals(listOf(false), queueMutationIntents, "raw replacement cannot inherit unverified Play intent")
+            assertFalse(player.playWhenReady)
+            assertFalse(isRouteMuted(), "paused replacement does not need to start a silent playing probe")
+        }
+
         suspend fun resumeLoadedCurrent(): Boolean = suspendCoroutineUninterceptedOrReturn { continuation ->
             val method = PlaybackService::class.java.declaredMethods.single {
                 it.name == "resumeLoadedCurrent"
@@ -934,6 +1096,8 @@ class PlaybackServiceCommandContinuityTest {
         }
 
         fun explicitDestination(): OutputIntentOwner.Destination? = router.explicitSelection.value?.destination
+
+        fun selectCar() = router.selectCar()
 
         fun isRouteMuted(): Boolean = volumeEffects.isRouteMuted(player)
         fun hasPositionCheckpoint(): Boolean = router.positions.guard.positionCheckpoint != null
