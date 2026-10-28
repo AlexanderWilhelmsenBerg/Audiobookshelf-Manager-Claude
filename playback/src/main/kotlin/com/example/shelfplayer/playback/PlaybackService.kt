@@ -384,6 +384,9 @@ class PlaybackService : MediaLibraryService() {
         // Issue #75 — publish only after the real MediaSession exists. A direct session token lets a
         // recreated Activity attach to this exact session without using the service token that can start us.
         liveSession.publish(mediaSession.token)
+        // Attach route/volume ownership before sleep and sync observe the successor. A retiring probe may
+        // restore only its own old player and cannot emit an audible-resume event into the new observers.
+        attachRouteSafetyMonitor(exoPlayer)
         attachSleepTimer(exoPlayer)
         // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does. It is given the
         // player rather than owning one, for the same reason the timer is: there is exactly one.
@@ -391,9 +394,6 @@ class PlaybackService : MediaLibraryService() {
         autoRewind.attach(exoPlayer) {
             resumeFreshness.invalidate(ResumeInvalidation.AutoRewind)
         }
-        // PRODUCT_SPEC PLAY-002 — after the player exists and before anything can be chosen. A preference
-        // set on a released player routes nothing, so this is re-run on every player this service builds.
-        attachRouteSafetyMonitor(exoPlayer)
         startJournal()
         observeSleepTimer()
         observeSkipIntervals()

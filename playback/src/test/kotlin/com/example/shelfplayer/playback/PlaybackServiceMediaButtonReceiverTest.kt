@@ -179,6 +179,7 @@ class PlaybackServiceMediaButtonReceiverTest {
             logger,
             CoroutineScope(SupervisorJob() + dispatcher),
             dispatcher,
+            volumeEffects = volumeEffectsForTest(dispatcher, clock),
         )
         val service = PlaybackService()
         val carConnections = CarConnections(clock)

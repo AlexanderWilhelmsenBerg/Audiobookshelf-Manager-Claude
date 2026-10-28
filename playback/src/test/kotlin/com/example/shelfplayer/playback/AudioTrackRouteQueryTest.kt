@@ -139,7 +139,13 @@ class AudioTrackRouteQueryTest {
         val logger = object : Logger {
             override fun log(event: LogEvent) = Unit
         }
-        val router = AudioOutputRouter(context, logger, backgroundScope, dispatcher)
+        val router = AudioOutputRouter(
+            context,
+            logger,
+            backgroundScope,
+            dispatcher,
+            volumeEffects = volumeEffectsForTest(dispatcher, clock),
+        )
         val lab = AudioRouteLab(context, EventLog(clock), clock, router, backgroundScope, dispatcher)
         val device = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP).build()
         val registry = LiveOutputEndpointRegistry()

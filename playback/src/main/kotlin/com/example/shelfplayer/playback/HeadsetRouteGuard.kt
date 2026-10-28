@@ -22,6 +22,7 @@ import kotlin.time.Duration.Companion.seconds
 internal class HeadsetRouteGuard(
     private val scope: CoroutineScope,
     private val playerDispatcher: CoroutineDispatcher,
+    private val volumeEffects: PlaybackVolumeEffects,
     private val isCurrentProbe: (Long, ExoPlayer, String) -> Boolean,
     private val onProbeInvalidated: (ExoPlayer) -> Boolean,
     private val onProbeFinished: (Boolean) -> Unit,
@@ -75,7 +76,7 @@ internal class HeadsetRouteGuard(
     internal class Probe(
         val endpointId: String,
         val player: ExoPlayer,
-        val previousVolume: Float,
+        val muteClaim: PlaybackVolumeEffects.RouteMuteClaim,
         val preferenceEpoch: Long,
     ) {
         var startupTimeout: Job? = null
@@ -137,8 +138,8 @@ internal class HeadsetRouteGuard(
 
     fun beginProbe(id: String, player: ExoPlayer, preferenceEpoch: Long): Boolean {
         if (probe != null) return false
-        val active = Probe(id, player, player.volume, preferenceEpoch)
-        player.volume = 0f
+        val claim = volumeEffects.acquireRouteMute(player) ?: return false
+        val active = Probe(id, player, claim, preferenceEpoch)
         probe = active
         active.startupTimeout = scope.launch(playerDispatcher) {
             delay(PROBE_STARTUP_TIMEOUT)
@@ -191,7 +192,7 @@ internal class HeadsetRouteGuard(
         probe = null
         cancelProbeJobs(active)
         if (!verified && attachedPlayer === active.player) pauseForSafety(active.player)
-        active.player.volume = active.previousVolume
+        volumeEffects.releaseRouteMute(active.muteClaim)
         onProbeFinished(verified)
         return true
     }
@@ -202,7 +203,7 @@ internal class HeadsetRouteGuard(
         if (expected != null && expected !== active) return
         probe = null
         cancelProbeJobs(active)
-        active.player.volume = active.previousVolume
+        volumeEffects.releaseRouteMute(active.muteClaim)
     }
 
     fun cancelProbeForEndpoint(id: String, preferenceEpoch: Long) {

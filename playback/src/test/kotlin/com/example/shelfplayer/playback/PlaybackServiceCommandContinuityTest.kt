@@ -199,7 +199,15 @@ class PlaybackServiceCommandContinuityTest {
         val endpointId: String get() = endpoint.id
         private val service = PlaybackService()
         val player = ExoPlayer.Builder(context).build()
-        private val router = AudioOutputRouter(context, logger, scope.backgroundScope, dispatcher, registry)
+        private val volumeEffects = volumeEffectsForTest(dispatcher, clock)
+        private val router = AudioOutputRouter(
+            context,
+            logger,
+            scope.backgroundScope,
+            dispatcher,
+            registry,
+            volumeEffects = volumeEffects,
+        )
         private val owner: RouteHeardOwnership get() = service.routeOwnership
         private val recovery: CarContinuityRecoveryCoordinator get() = service.field("carRecovery")
         private val effects: CarContinuityResumeEffects get() = service.call(
@@ -242,6 +250,7 @@ class PlaybackServiceCommandContinuityTest {
                 baseline,
                 clock,
                 logger,
+                volumeEffects = volumeEffects,
                 applicationScope = scope.backgroundScope,
                 mainDispatcher = dispatcher,
             )
@@ -265,31 +274,41 @@ class PlaybackServiceCommandContinuityTest {
             service.setField("player", player)
         }
 
-        private fun sleepTimer(sync: SessionSyncCoordinator) = SleepTimerController(
-            repository = proxy<SleepTimerRepository> { method ->
+        private fun sleepTimer(sync: SessionSyncCoordinator): SleepTimerController {
+            val timers = proxy<SleepTimerRepository> { method ->
                 when (method) {
                     "observeSettings" -> flowOf(SleepTimerSettings.Default)
                     else -> error("Unexpected sleep repository call: $method")
                 }
-            },
-            shakes = proxy<ShakeSource> { method ->
-                when (method) {
-                    "isSensing" -> false
-                    else -> error("Unexpected shake call: $method")
-                }
-            },
-            sessionSync = sync,
-            history = unused<PlaybackHistoryRepository>(),
-            clock = clock,
-            zoneProvider = object : LocalZoneProvider {
-                override fun current(): ZoneId = ZoneId.of("UTC")
-            },
-            logger = logger,
-            applicationScope = scope.backgroundScope,
-            mainDispatcher = dispatcher,
-        )
+            }
+            return SleepTimerController(
+                repository = timers,
+                shakes = proxy<ShakeSource> { method ->
+                    when (method) {
+                        "isSensing" -> false
+                        else -> error("Unexpected shake call: $method")
+                    }
+                },
+                volumeEffects = volumeEffects,
+                history = SleepTimerHistory(
+                    timers,
+                    unused<PlaybackHistoryRepository>(),
+                    sync,
+                    clock,
+                    scope.backgroundScope,
+                ),
+                clock = clock,
+                zoneProvider = object : LocalZoneProvider {
+                    override fun current(): ZoneId = ZoneId.of("UTC")
+                },
+                logger = logger,
+                applicationScope = scope.backgroundScope,
+                mainDispatcher = dispatcher,
+            )
+        }
 
         private fun configureRouter() {
+            volumeEffects.attach(player)
             router.setField("player", player)
             router.setField("live", emptyMap<String, AudioDeviceInfo>())
             router.setField("guardedHeadsetId", headset.id)

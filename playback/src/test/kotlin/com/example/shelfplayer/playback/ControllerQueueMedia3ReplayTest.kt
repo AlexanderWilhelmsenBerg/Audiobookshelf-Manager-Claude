@@ -3,6 +3,7 @@ package com.example.shelfplayer.playback
 import android.os.Looper
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
+import androidx.media3.common.util.Clock
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaController
@@ -11,6 +12,8 @@ import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.common.time.AppClock
+import com.example.shelfplayer.core.common.time.SystemAppClock
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
@@ -84,9 +87,17 @@ class ControllerQueueMedia3ReplayTest {
     private inner class Fixture(
         private val cold: Boolean = false,
         private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
+        releaseClock: AppClock = SystemAppClock(),
     ) : AutoCloseable {
         private val service = Robolectric.buildService(QueueService::class.java).create().get()
-        private val player = ExoPlayer.Builder(service).build()
+
+        // Media3's release barrier uses elapsedRealtime for its timeout. Robolectric's paused clock can
+        // otherwise leave cleanup waiting forever if the playback thread exits before opening the barrier.
+        private val player = ExoPlayer.Builder(service).setClock(
+            object : Clock by Clock.DEFAULT {
+                override fun elapsedRealtime(): Long = releaseClock.elapsed().inWholeMilliseconds
+            },
+        ).build()
         private val scope = CoroutineScope(SupervisorJob() + mainDispatcher)
         private val logger = object : Logger {
             override fun log(event: LogEvent) = Unit

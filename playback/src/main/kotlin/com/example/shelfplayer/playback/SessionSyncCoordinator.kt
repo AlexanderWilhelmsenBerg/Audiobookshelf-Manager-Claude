@@ -48,6 +48,7 @@ class SessionSyncCoordinator @Inject constructor(
     private val clock: AppClock,
     private val logger: Logger,
     private val rememberedBookRecorder: RememberedBookRecorder = RememberedBookRecorder.None,
+    private val volumeEffects: PlaybackVolumeEffects,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
     @param:Dispatcher(ShelfDispatcher.MainImmediate) private val mainDispatcher: CoroutineDispatcher,
 ) {
@@ -149,8 +150,7 @@ class SessionSyncCoordinator @Inject constructor(
      * moved to [mainDispatcher], so the deliberately non-thread-safe counter remains single-thread confined.
      */
     fun onPlayingChanged(isPlaying: Boolean) {
-        if (isPlaying) rememberedBookRecorder.onPlaying(player?.currentMediaItem)
-        listened.onPlayingChanged(isPlaying, clock.elapsed())
+        observeAudiblePlayback(isPlaying, clock.elapsed())
     }
 
     /** Fire-and-forget form for triggers whose caller does not need the acknowledgement. */
@@ -397,5 +397,19 @@ class SessionSyncCoordinator @Inject constructor(
     private companion object {
         /** PRODUCT_SPEC PLAY-004 — "approximately every 30 seconds". */
         val REMOTE_SYNC_INTERVAL: Duration = 30.seconds
+    }
+
+    init {
+        volumeEffects.addMuteListener { change ->
+            if (player !== change.player) return@addMuteListener
+            observeAudiblePlayback(change.player.isPlaying, change.elapsed)
+        }
+    }
+
+    private fun observeAudiblePlayback(isPlaying: Boolean, at: Duration) {
+        val currentPlayer = player
+        val audible = isPlaying && !volumeEffects.isRouteMuted(currentPlayer)
+        if (audible) rememberedBookRecorder.onPlaying(currentPlayer?.currentMediaItem)
+        listened.onPlayingChanged(audible, at)
     }
 }

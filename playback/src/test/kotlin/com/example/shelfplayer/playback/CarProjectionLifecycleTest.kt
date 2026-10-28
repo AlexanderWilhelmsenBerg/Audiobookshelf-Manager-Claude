@@ -301,6 +301,7 @@ class CarProjectionLifecycleTest {
         private val service = PlaybackService()
         private val provider = ProjectionProvider().apply { state = initialState }
         private val monitor = AndroidAutoProjectionMonitor(context, dispatcher, logger, clock)
+        private val volumeEffects = volumeEffectsForTest(dispatcher, clock)
         val continuity: CarArrivalResumeGate get() = service.field("carContinuity")
 
         init {
@@ -309,28 +310,36 @@ class CarProjectionLifecycleTest {
                 baseline = ResumeBaseline(),
                 clock = clock,
                 logger = logger,
+                volumeEffects = volumeEffects,
                 applicationScope = scope,
                 mainDispatcher = dispatcher,
             )
-            service.audioOutputs = AudioOutputRouter(context, logger, scope, dispatcher)
+            service.audioOutputs = AudioOutputRouter(
+                context,
+                logger,
+                scope,
+                dispatcher,
+                volumeEffects = volumeEffects,
+            )
             service.clock = clock
             service.logger = logger
             service.carConnections = connections
+            val timers = proxy<SleepTimerRepository> { name ->
+                when (name) {
+                    "observeSettings" -> flowOf(SleepTimerSettings.Default)
+                    else -> error("Unexpected sleep repository call: $name")
+                }
+            }
             service.sleepTimer = SleepTimerController(
-                repository = proxy<SleepTimerRepository> { name ->
-                    when (name) {
-                        "observeSettings" -> flowOf(SleepTimerSettings.Default)
-                        else -> error("Unexpected sleep repository call: $name")
-                    }
-                },
+                repository = timers,
                 shakes = proxy<ShakeSource> { name ->
                     when (name) {
                         "isSensing" -> false
                         else -> error("Unexpected shake call: $name")
                     }
                 },
-                sessionSync = sync,
-                history = unused<PlaybackHistoryRepository>(),
+                volumeEffects = volumeEffects,
+                history = SleepTimerHistory(timers, unused<PlaybackHistoryRepository>(), sync, clock, scope),
                 clock = clock,
                 zoneProvider = object : LocalZoneProvider {
                     override fun current(): ZoneId = ZoneId.of("UTC")

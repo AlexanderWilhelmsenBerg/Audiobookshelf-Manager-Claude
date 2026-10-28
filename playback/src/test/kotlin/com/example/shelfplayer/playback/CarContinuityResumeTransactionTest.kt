@@ -126,6 +126,7 @@ class CarContinuityResumeTransactionTest {
     @Test
     fun `refused muted probe cannot issue Play or resume the timer`() = runTest {
         val fixture = Fixture(this)
+        fixture.volumeEffects.detach(fixture.current.player)
         fixture.router.setField("player", null)
         fixture.effects.recoverAndResume(fixture.target)
 
@@ -145,6 +146,7 @@ class CarContinuityResumeTransactionTest {
         assertFalse(pending.isCompleted)
 
         fixture.current = RecordingPlayer()
+        fixture.volumeEffects.attach(fixture.current.player)
         fixture.router.setField("player", fixture.current.player)
         fixture.returnHeadset()
         runCurrent()
@@ -293,6 +295,8 @@ class CarContinuityResumeTransactionTest {
     }
 
     private class Fixture(scope: TestScope, available: Boolean = true, immediate: Boolean = false) {
+        private val dispatcher = StandardTestDispatcher(scope.testScheduler)
+        val volumeEffects = volumeEffectsForTest(dispatcher)
         private val registry = LiveOutputEndpointRegistry()
         private val device = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP).build()
         private val endpoint = registry.reconcile(
@@ -328,13 +332,15 @@ class CarContinuityResumeTransactionTest {
             RuntimeEnvironment.getApplication(),
             logger,
             scope.backgroundScope,
-            StandardTestDispatcher(scope.testScheduler),
+            dispatcher,
             registry,
+            volumeEffects = volumeEffects,
         )
         val available: MutableStateFlow<List<AudioOutput>> = router.field("_outputs")
         val effects: CarContinuityResumeEffects
 
         init {
+            volumeEffects.attach(current.player)
             router.setField("player", current.player)
             router.setField("live", if (available) mapOf(headset.id to device) else emptyMap())
             router.setField("guardedHeadsetId", headset.id)

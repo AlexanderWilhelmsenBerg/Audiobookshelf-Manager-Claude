@@ -114,25 +114,36 @@ class AudioOutputActivityEvidenceTest {
         private val registry = LiveOutputEndpointRegistry()
         var measured: Set<String>? = null
         var reads = 0
+        val dispatcher = StandardTestDispatcher(scope.testScheduler)
         val router = AudioOutputRouter(
             context,
             object : Logger {
                 override fun log(event: LogEvent) = Unit
             },
             scope.backgroundScope,
-            StandardTestDispatcher(scope.testScheduler),
+            dispatcher,
             registry,
+            volumeEffects = volumeEffectsForTest(dispatcher),
         )
 
         init {
             manager.setOutputDevices(listOf(headset, speaker, car))
+            var playerVolume = 1f
             val player = Proxy.newProxyInstance(ExoPlayer::class.java.classLoader, arrayOf(ExoPlayer::class.java)) {
                     _,
                     method,
-                    _,
+                    args,
                 ->
                 when (method.name) {
                     "addListener", "removeListener", "setPreferredAudioDevice" -> null
+
+                    "getVolume" -> playerVolume
+
+                    "setVolume" -> {
+                        playerVolume = args!![0] as Float
+                        null
+                    }
+
                     else -> error("Unexpected player call: ${method.name}")
                 }
             } as ExoPlayer

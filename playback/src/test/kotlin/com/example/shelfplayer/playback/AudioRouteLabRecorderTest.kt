@@ -54,7 +54,14 @@ class AudioRouteLabRecorderTest {
         }
         val log = EventLog(clock)
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val router = AudioOutputRouter(context, logger, backgroundScope, dispatcher)
+        val router =
+            AudioOutputRouter(
+                context,
+                logger,
+                backgroundScope,
+                dispatcher,
+                volumeEffects = volumeEffectsForTest(dispatcher),
+            )
         val recorder = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
         recorder.start()
         runCurrent()
@@ -106,7 +113,14 @@ class AudioRouteLabRecorderTest {
         val logger = object : Logger {
             override fun log(event: LogEvent) = Unit
         }
-        val router = AudioOutputRouter(context, logger, backgroundScope, dispatcher)
+        val router =
+            AudioOutputRouter(
+                context,
+                logger,
+                backgroundScope,
+                dispatcher,
+                volumeEffects = volumeEffectsForTest(dispatcher),
+            )
         val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
         val monitor = AudioTrackRouteMonitor(context, lab)
 
@@ -138,7 +152,14 @@ class AudioRouteLabRecorderTest {
         val logger = object : Logger {
             override fun log(event: LogEvent) = Unit
         }
-        val router = AudioOutputRouter(context, logger, backgroundScope, dispatcher)
+        val router =
+            AudioOutputRouter(
+                context,
+                logger,
+                backgroundScope,
+                dispatcher,
+                volumeEffects = volumeEffectsForTest(dispatcher),
+            )
         val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
         val monitor = AudioTrackRouteMonitor(context, lab)
 
@@ -172,7 +193,14 @@ class AudioRouteLabRecorderTest {
             override fun log(event: LogEvent) = Unit
         }
         val log = EventLog(clock)
-        val router = AudioOutputRouter(context, logger, backgroundScope, dispatcher)
+        val router =
+            AudioOutputRouter(
+                context,
+                logger,
+                backgroundScope,
+                dispatcher,
+                volumeEffects = volumeEffectsForTest(dispatcher),
+            )
         val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
 
         lab.trackLifecycle("provider-installed")
@@ -210,7 +238,14 @@ class AudioRouteLabRecorderTest {
         val logger = object : Logger {
             override fun log(event: LogEvent) = Unit
         }
-        val router = AudioOutputRouter(context, logger, backgroundScope, dispatcher)
+        val router =
+            AudioOutputRouter(
+                context,
+                logger,
+                backgroundScope,
+                dispatcher,
+                volumeEffects = volumeEffectsForTest(dispatcher),
+            )
         val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
         lab.heardAt("Car")
         lab.mark("AndroidAuto")

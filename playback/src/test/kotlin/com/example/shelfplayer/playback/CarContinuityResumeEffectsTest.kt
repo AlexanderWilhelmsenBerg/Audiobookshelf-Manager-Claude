@@ -53,6 +53,7 @@ internal class CarContinuityResumeEffectsTest {
             backgroundScope,
             StandardTestDispatcher(testScheduler),
             registry,
+            volumeEffects = volumeEffectsForTest(StandardTestDispatcher(testScheduler)),
         )
         AudioOutputRouter::class.java.getDeclaredField("live").apply { isAccessible = true }
             .set(router, mapOf(endpoint.id to device))
@@ -120,6 +121,7 @@ internal class CarContinuityResumeEffectsTest {
                 logger = logger,
                 applicationScope = this,
                 mainDispatcher = StandardTestDispatcher(testScheduler),
+                volumeEffects = volumeEffectsForTest(StandardTestDispatcher(testScheduler)),
             ),
             owner = RouteHeardOwnership(OutputIntentOwner()),
             trace = { message, fields -> recorder.log(message, fields = fields) },
@@ -157,6 +159,7 @@ internal class CarContinuityResumeEffectsTest {
                 logger = logger,
                 applicationScope = this,
                 mainDispatcher = StandardTestDispatcher(testScheduler),
+                volumeEffects = volumeEffectsForTest(StandardTestDispatcher(testScheduler)),
             ),
             owner = RouteHeardOwnership(OutputIntentOwner()),
             trace = { message, fields -> recorder.log(message, fields = fields) },
@@ -209,6 +212,7 @@ internal class CarContinuityResumeEffectsTest {
                     logger = logger,
                     applicationScope = this,
                     mainDispatcher = StandardTestDispatcher(testScheduler),
+                    volumeEffects = volumeEffectsForTest(StandardTestDispatcher(testScheduler)),
                 ),
                 owner = owner,
                 trace = { message, fields -> recorder.log(message, fields = fields) },

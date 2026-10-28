@@ -697,8 +697,41 @@ private fun TestScope.fixture(): Fixture {
     val pauses = mutableListOf<Thread>()
     val volumes = mutableListOf<Float>()
     val preferredRequests = mutableListOf<Any?>()
+    val player = threadCheckedPlayer(reads, pauses, volumes, preferredRequests)
+    val registry = LiveOutputEndpointRegistry()
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    val volumeEffects = volumeEffectsForTest(dispatcher)
+    volumeEffects.attach(player)
+    val router = AudioOutputRouter(
+        context = RuntimeEnvironment.getApplication(),
+        logger = object : Logger {
+            override fun log(event: LogEvent) = Unit
+        },
+        applicationScope = this,
+        mainDispatcher = dispatcher,
+        endpointRegistry = registry,
+        volumeEffects = volumeEffects,
+    )
+    AudioOutputRouter::class.java.getDeclaredField("player").apply {
+        isAccessible = true
+        set(router, player)
+    }
+    val guardOwner = AudioOutputRouter::class.java.getDeclaredField("headsetGuard").run {
+        isAccessible = true
+        get(router) as HeadsetRouteGuard
+    }
+    guardOwner.attachPlayer(player)
+    return Fixture(router, registry, reads, pauses, volumes, preferredRequests, player, volumeEffects)
+}
+
+private fun threadCheckedPlayer(
+    reads: MutableList<Thread>,
+    pauses: MutableList<Thread>,
+    volumes: MutableList<Float>,
+    preferredRequests: MutableList<Any?>,
+): ExoPlayer {
     val owningThread = Thread.currentThread()
-    val player = Proxy.newProxyInstance(
+    return Proxy.newProxyInstance(
         ExoPlayer::class.java.classLoader,
         arrayOf(ExoPlayer::class.java),
     ) { _, method, args ->
@@ -737,26 +770,6 @@ private fun TestScope.fixture(): Fixture {
             else -> error("Unexpected ExoPlayer call: ${method.name}")
         }
     } as ExoPlayer
-    val registry = LiveOutputEndpointRegistry()
-    val router = AudioOutputRouter(
-        context = RuntimeEnvironment.getApplication(),
-        logger = object : Logger {
-            override fun log(event: LogEvent) = Unit
-        },
-        applicationScope = this,
-        mainDispatcher = StandardTestDispatcher(testScheduler),
-        endpointRegistry = registry,
-    )
-    AudioOutputRouter::class.java.getDeclaredField("player").apply {
-        isAccessible = true
-        set(router, player)
-    }
-    val guardOwner = AudioOutputRouter::class.java.getDeclaredField("headsetGuard").run {
-        isAccessible = true
-        get(router) as HeadsetRouteGuard
-    }
-    guardOwner.attachPlayer(player)
-    return Fixture(router, registry, reads, pauses, volumes, preferredRequests, player)
 }
 
 private data class Fixture(
@@ -767,6 +780,7 @@ private data class Fixture(
     val volumeChanges: List<Float>,
     val preferredRequests: List<Any?>,
     val player: ExoPlayer,
+    val volumeEffects: PlaybackVolumeEffects,
 ) {
     fun measuredRoutes(routes: () -> Set<String>?) {
         AudioOutputRouter::class.java.getDeclaredField("currentTrackRoutes").apply {
@@ -824,6 +838,7 @@ private data class Fixture(
 
     fun replacePlayerFrom(other: Fixture) {
         val field = AudioOutputRouter::class.java.getDeclaredField("player").apply { isAccessible = true }
+        volumeEffects.attach(other.player)
         guardOwner().attachPlayer(other.player)
         field.set(router, other.player)
     }
