@@ -82,8 +82,13 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     /** Used only in memory by the route safety guard. Never exported without diagnostic opt-in. */
     var onRouteChanged: (() -> Unit)? = null
 
-    /** This AudioTrack's physical sinks, or null if there is no measurable playing track. */
-    fun currentRouteIds(): Set<String>? {
+    /** Mapped sinks only; an unregistered path is never turned into an endpoint identity. */
+    fun currentRouteIds(): Set<String>? = currentRouteObservation()?.path?.let { path ->
+        if (path is AudioTrackPath.Endpoint) setOf(path.id) else emptySet()
+    }
+
+    /** A fresh, type-only observation authenticated by the existing current-track observer epoch. */
+    fun currentRouteObservation(): AudioTrackObservation? {
         val token = epoch.nextSnapshot()
         val track = active ?: return null
         val measured = runCatching {
@@ -95,18 +100,25 @@ internal class AudioTrackRouteMonitor @Inject constructor(
             } else {
                 listOfNotNull(track.routedDevice)
             }
-            // Multiple physical sinks cannot be collapsed into a single name-based identity.
-            if (routed.size != 1) {
-                emptySet()
-            } else {
-                val route = routed.single()
-                val matched = endpointRegistry.find(route.id, route.type, route.productName?.toString())
-                if (matched == null) emptySet() else setOf(matched.id)
-            }
-        }.getOrNull()
+            observedPath(routed)
+        }.getOrNull() ?: return null
         // Media3 may replace/release the output while the platform route query is in progress.
         // Even an identical endpoint cannot authenticate the successor's playing AudioTrack.
-        return measured.takeIf { epoch.isCurrent(token) && active === track }
+        return AudioTrackObservation(token, measured).takeIf { epoch.isCurrent(token) && active === track }
+    }
+
+    private fun observedPath(routes: List<AudioDeviceInfo>): AudioTrackPath = when {
+        routes.isEmpty() -> AudioTrackPath.Unresolved
+
+        routes.size > 1 -> AudioTrackPath.Multiple
+
+        routes.single().type == AudioDeviceInfo.TYPE_REMOTE_SUBMIX -> AudioTrackPath.RemoteSubmix
+
+        else -> {
+            val route = routes.single()
+            val matched = endpointRegistry.find(route.id, route.type, route.productName?.toString())
+            matched?.let { AudioTrackPath.Endpoint(it.id) } ?: AudioTrackPath.Unresolved
+        }
     }
 
     fun providerForPlayer(): AudioOutputProvider? {

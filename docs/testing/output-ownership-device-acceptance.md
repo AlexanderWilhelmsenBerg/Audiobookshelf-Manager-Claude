@@ -6,22 +6,25 @@
 Use this procedure for the combined candidate described in
 [the execution plan](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/289#issuecomment-6445791504).
 PR #297 supplies transient route-loss protection. The dependent #276 lock and #277 verified-handoff
-work must be implemented and verified before this procedure can accept the complete feature. A green
+software is implemented in the dependent drafts; final selection/UI/auth integration and software gates
+are still required before this procedure can accept the complete feature. A green
 build or an earlier smoke test does not fill in these results.
 
 The #300 command-boundary checkpoint covers loaded fresh-start/duplicate controller Play, controller Prepare,
 retained-intent retry, accepted deferred/post-connect installs and continuity through one service guard. Its
-software tests do not establish position compensation or a complete explicit transfer. The final candidate
-must include those remaining slices before the complete-feature rows below can be accepted.
+software tests are extended by the position and explicit-transfer checkpoints below. The final combined
+candidate must include all remaining integration slices before the complete-feature rows can be accepted.
 
 The following position candidate adds a probe-owned checkpoint and shared heard-position reads. Its
 software checks include elapsed advancement, pre-return mute callbacks, nested/later real service seek provenance,
 Pause/Stop retirement, a queued old pause crossing the session mutex, and controlled barrier/proof delivery.
-These do not fill any physical row below or establish the complete explicit transfer/rollback transaction.
+These do not fill any physical row below.
 Guarded current-item replacement and first-item insertion also clear inherited Play intent before mutation;
 future-only queue edits preserve transport. Newer synchronous Seek/Car intent refuses the old raw setter.
-The strict local repository gate passes 2,700 tests /319 suites, including 884 playback tests; exact-head
-CI and the source SHA are recorded in #300 and the execution checkpoint. No new APK is claimed here.
+The transfer checkpoint adds current target proof, retained prior lock, safe rollback/failure, callback
+supersession and API26/32 production-command cases. Its full strict local repository gate passes 2,748
+tests /322 suites, including 932 playback tests, with no failures, errors or skips. Exact-head CI and the
+source SHA are recorded in #300 and the execution checkpoint. No new APK is claimed here.
 
 ## Candidate and setup
 

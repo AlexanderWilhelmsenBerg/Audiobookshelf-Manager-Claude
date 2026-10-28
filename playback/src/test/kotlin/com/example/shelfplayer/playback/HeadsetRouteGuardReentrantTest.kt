@@ -13,6 +13,9 @@ import org.junit.Test
 import java.lang.reflect.Proxy
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -124,6 +127,86 @@ class HeadsetRouteGuardReentrantTest {
         assertEquals(0, media.pauseCalls)
     }
 
+    @Test
+    fun `transfer replacement keeps silence and its checkpoint through synchronous publication`() = runTest {
+        val effects = PlaybackVolumeEffects(TestAppClock())
+        val media = MutableMediaPlayer()
+        val guard = guard(backgroundScope, UnconfinedTestDispatcher(testScheduler), effects, media.player)
+        effects.attach(media.player)
+        guard.attachPlayer(media.player)
+        guard.protect(OUTPUT)
+        guard.captureCheckpoint = { checkpoint() }
+        val muteEdges = mutableListOf<Boolean>()
+        effects.addMuteListener { muteEdges += it.muted }
+        assertTrue(guard.beginProbe(OUTPUT, media.player, EPOCH))
+        val previous = assertNotNull(guard.currentProbe)
+        previous.requiresPlaybackBarrier = true
+        val owner = OutputIntentOwner().apply { onBookChanged(7) }
+        val prepared = owner.prepareTransfer(null, OutputIntentOwner.Destination.Car, EPOCH + 1, null)
+
+        assertTrue(
+            guard.beginTransfer(prepared.request, media.player) { active ->
+                assertTrue(effects.isRouteMuted(media.player))
+                assertNotNull(guard.positionCheckpoint)
+                assertNull(active.muteClaim, "publication cannot run completion against a half-bound selection")
+                owner.publishTransfer(prepared, OutputIntentOwner.TransferPhase.Verifying)
+            },
+        )
+        val successor = assertNotNull(guard.currentProbe)
+        assertTrue(successor.requiresPlaybackBarrier)
+        guard.cancelProbe(previous)
+        assertSame(successor, guard.currentProbe)
+        assertEquals(listOf(true), muteEdges, "handover must not release the old claim before acquiring its successor")
+        guard.cancelProbe(successor)
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertEquals(listOf(true, false), muteEdges)
+        assertEquals(1f, media.volume, "both exact mute claims must be retired")
+        assertEquals(0, media.pauseCalls)
+    }
+
+    @Test
+    fun `nested transfer during mute acquisition prevents older intent publication and claim leaks`() = runTest {
+        val effects = PlaybackVolumeEffects(TestAppClock())
+        val media = MutableMediaPlayer()
+        val guard = guard(backgroundScope, UnconfinedTestDispatcher(testScheduler), effects, media.player)
+        effects.attach(media.player)
+        guard.attachPlayer(media.player)
+        guard.captureCheckpoint = { checkpoint() }
+        val owner = OutputIntentOwner().apply { onBookChanged(7) }
+        val older = owner.prepareTransfer(null, OutputIntentOwner.Destination.Car, EPOCH, null)
+        var newer: OutputIntentOwner.PreparedTransfer? = null
+        var olderPublications = 0
+        effects.addMuteListener { change ->
+            if (change.muted && newer == null) {
+                val choice = owner.prepareTransfer(OUTPUT, OutputIntentOwner.Destination.Output, EPOCH + 1, null)
+                newer = choice
+                assertTrue(
+                    guard.beginTransfer(choice.request, media.player) {
+                        owner.publishTransfer(choice, OutputIntentOwner.TransferPhase.Verifying)
+                    },
+                )
+            }
+        }
+
+        assertFalse(
+            guard.beginTransfer(older.request, media.player) {
+                olderPublications++
+                owner.publishTransfer(older, OutputIntentOwner.TransferPhase.Verifying)
+            },
+        )
+
+        assertEquals(0, olderPublications)
+        assertEquals(newer?.request?.selection, owner.selection.value)
+        assertTrue(effects.isRouteMuted(media.player))
+        guard.cancelProbe()
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertEquals(1f, media.volume)
+        assertFalse(effects.isRouteMuted(media.player))
+        assertEquals(0, media.pauseCalls)
+    }
+
     private fun guard(
         scope: kotlinx.coroutines.CoroutineScope,
         dispatcher: kotlinx.coroutines.CoroutineDispatcher,
@@ -133,7 +216,9 @@ class HeadsetRouteGuardReentrantTest {
         scope = scope,
         playerDispatcher = dispatcher,
         volumeEffects = effects,
-        isCurrentProbe = { _, current, endpoint -> current === player && endpoint == OUTPUT },
+        isCurrentScope = { probe ->
+            probe.player === player && (probe.transferRequest != null || probe.endpointId == OUTPUT)
+        },
         onProbeInvalidated = { false },
         onProbeFinished = {},
         onPlaying = {},

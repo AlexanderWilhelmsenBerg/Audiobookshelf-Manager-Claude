@@ -86,8 +86,8 @@ Arm-only installation and adopted preparation hold inherited intent paused with 
 Continuity registers its awaited target before the final raw Play, so a newer synchronous Stop can clear it
 permanently. There is no post-Play old-target registration, alternate player, focus owner or route policy in
 these adapters. See [ADR-0034](../adr/0034-one-guarded-playback-command-boundary.md). This remains a draft software
-candidate: muted-position compensation and the full verified transfer/rollback still require implementation
-and acceptance. Hardware routing and physical media-key attribution are separate evidence.
+candidate with the muted-position and explicit-transfer software described below. Hardware routing and
+physical media-key attribution are separate evidence.
 
 The following position candidate uses the existing probe as the sole held-position owner.
 `MutedPositionEffects` captures before synchronous mute callbacks, projects the held point to service,
@@ -97,7 +97,15 @@ timeout. Compensation provenance is call-scoped. Legitimate adopted seeks and au
 checkpoint and require fresh proof after a cancellable playback-thread barrier. Barrier delivery itself does
 not authorize unmute. An old pause's authorization is checked inside the existing session mutex before it can
 capture a successor. See [ADR-0035](../adr/0035-muted-verification-holds-heard-position.md). This is still a draft
-software candidate; explicit verified transfer/rollback and physical acceptance remain separate work.
+software candidate; physical acceptance remains separate work.
+
+Explicit Car/output selection now uses `OutputHandoffEffects` and the same probe/preference owners:
+reserve checkpoint/mute, publish desired intent with the retained prior lock, request preference, then
+commit only current target-specific proof. Success publication is rechecked for newer selection, seek
+and actual path. Failure pauses while muted and restores held progress; rollback requires fresh unique
+original-route proof. Paused choice never manufactures Play. RemoteSubmix plus positive projection is
+delegation, not physical Car speaker proof. Actual-track verification also works below API33's separate
+policy-prediction API; unknown observation remains fail-closed. See [ADR-0036](../adr/0036-explicit-output-transfer-requires-current-track-proof.md).
 
 ## Remembered book identity
 
@@ -252,7 +260,7 @@ owner consume synchronous monotonic mute-boundary callbacks: route-only silence 
 time without creating a Pause, consuming a pending explicit Play, changing the session, or issuing Play. A real
 Pause remains authoritative. Volume composition alone does not compensate position. The subsequent
 ADR-0035 candidate projects the held point through existing progress/history readers, with repository/session
-ownership preserved. Device/headset/Auto listening acceptance and full verified handoff/rollback remain pending.
+ownership preserved. ADR-0036 adds verified handoff/rollback; device/headset/Auto listening acceptance remains pending.
 
 `SleepTimerHistory` handles timer-session persistence and book-history effects. It snapshots the current book,
 profile, position and time before dispatching a history write. The controller retains all phase/claim and

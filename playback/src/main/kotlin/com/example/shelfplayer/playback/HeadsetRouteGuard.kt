@@ -25,8 +25,8 @@ internal class HeadsetRouteGuard(
     private val scope: CoroutineScope,
     private val playerDispatcher: CoroutineDispatcher,
     private val volumeEffects: PlaybackVolumeEffects,
-    private val isCurrentProbe: (Long, ExoPlayer, String) -> Boolean,
-    private val onProbeInvalidated: (ExoPlayer) -> Boolean,
+    private val isCurrentScope: (Probe) -> Boolean,
+    private val onProbeInvalidated: (Probe) -> Boolean,
     private val onProbeFinished: (Boolean) -> Unit,
     private val onPlaying: () -> Unit,
 ) {
@@ -50,6 +50,7 @@ internal class HeadsetRouteGuard(
     }
 
     fun attachPlayer(target: ExoPlayer) {
+        cancelProbe()
         detachPlayer()
         lateinit var listener: Player.Listener
         listener = object : Player.Listener {
@@ -59,7 +60,7 @@ internal class HeadsetRouteGuard(
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 if (attachedPlayer !== target || attachedListener !== listener) return
-                if (!playWhenReady && !isPausingForSafety(target)) cancelProbe()
+                if (!playWhenReady && !isPausingForSafety(target)) retirePausedProbe(target)
             }
         }
         attachedPlayer = target
@@ -77,7 +78,12 @@ internal class HeadsetRouteGuard(
 
     val currentPlayerListener: Player.Listener? get() = attachedListener
 
-    internal class Probe(val endpointId: String, val player: ExoPlayer, val preferenceEpoch: Long) {
+    internal class Probe(
+        val endpointId: String?,
+        val player: ExoPlayer,
+        val preferenceEpoch: Long,
+        val transferRequest: OutputIntentOwner.TransferRequest? = null,
+    ) {
         // The slot is reserved before mute acquisition can invoke synchronous listeners. A null claim exists
         // only during that call; cancellation retires the reservation and its returning owner releases it.
         var muteClaim: PlaybackVolumeEffects.RouteMuteClaim? = null
@@ -87,11 +93,45 @@ internal class HeadsetRouteGuard(
         var completionJob: Job? = null
         val routeUpdates = Channel<Unit>(Channel.CONFLATED)
         var requiresPlaybackBarrier = false
+
+        fun matches(id: String, expectedPlayer: ExoPlayer, epoch: Long): Boolean {
+            val sameAttachment = player === expectedPlayer && preferenceEpoch == epoch
+            return muteClaim != null && endpointId == id && sameAttachment
+        }
     }
 
     /** The service captures before mute listeners can reenter; the Probe remains the sole owner. */
     internal var captureCheckpoint: ((Probe) -> MutedPositionCheckpoint?)? = null
     internal var completeVerifiedProbe: (suspend (Probe) -> MutedProbeCompletion)? = null
+    internal var commitVerifiedProbe: ((Probe, MutedProbeCompletion) -> MutedProbeCompletion)? = null
+    internal var onProbeCancelled: ((Probe) -> Unit)? = null
+    internal var onProbeSettled: ((Probe, MutedProbeCompletion) -> Unit)? = null
+    internal var onExternalPause: ((Probe) -> Unit)? = null
+
+    private fun retirePausedProbe(target: ExoPlayer) {
+        val active = probe?.takeIf { it.player === target } ?: return
+        quiesceProbe(active)
+        try {
+            onExternalPause?.invoke(active)
+        } finally {
+            if (probe === active) {
+                if (target.playWhenReady) {
+                    armStartupTimeout(active)
+                    onPlaying()
+                } else {
+                    cancelProbe(active)
+                }
+            }
+        }
+    }
+
+    private fun armStartupTimeout(active: Probe) {
+        active.startupTimeout?.cancel()
+        active.startupTimeout = scope.launch(playerDispatcher) {
+            delay(PROBE_STARTUP_TIMEOUT)
+            finishProbe(active, verified = false)
+        }
+    }
 
     var endpointId: String? = null
         private set
@@ -160,10 +200,7 @@ internal class HeadsetRouteGuard(
             if (probe === active) cancelProbe(active) else volumeEffects.releaseRouteMute(claim)
             return false
         }
-        active.startupTimeout = scope.launch(playerDispatcher) {
-            delay(PROBE_STARTUP_TIMEOUT)
-            finishProbe(active, verified = false)
-        }
+        armStartupTimeout(active)
         return true
     }
 
@@ -178,10 +215,65 @@ internal class HeadsetRouteGuard(
         return checkpoint != null
     }
 
-    fun hasCurrentProbe(id: String, player: ExoPlayer, preferenceEpoch: Long): Boolean = probe?.let {
-        it.muteClaim != null && it.endpointId == id && it.player === player &&
-            it.preferenceEpoch == preferenceEpoch && isCurrent(it)
-    } == true
+    /** Reserve and mute before publishing intent. Detached predecessor claims remain held until this returns. */
+    fun beginTransfer(
+        request: OutputIntentOwner.TransferRequest,
+        player: ExoPlayer,
+        publish: (Probe) -> Boolean,
+    ): Boolean {
+        if (attachedPlayer !== player) return false
+        val previous = probe
+        previous?.let(::quiesceProbe)
+        val active = Probe(request.selection.outputId, player, request.effectEpoch, request)
+        active.requiresPlaybackBarrier = previous?.requiresPlaybackBarrier == true
+        probe = active
+        return try {
+            acquireTransfer(active, previous?.positionCheckpoint, publish)
+        } finally {
+            previous?.let(::releaseDetachedProbe)
+        }
+    }
+
+    private fun acquireTransfer(
+        active: Probe,
+        fallback: MutedPositionCheckpoint?,
+        publish: (Probe) -> Boolean,
+    ): Boolean {
+        var claim: PlaybackVolumeEffects.RouteMuteClaim? = null
+        var accepted = false
+        try {
+            if (!captureReservation(active)) return false
+            claim = volumeEffects.acquireRouteMute(active.player)
+            if (claim == null || !ownsReservation(active) || !publish(active)) return false
+            if (!ownsReservation(active)) return false
+            active.muteClaim = claim
+            armStartupTimeout(active)
+            accepted = true
+            return true
+        } finally {
+            if (!accepted) discardFailedTransfer(active, fallback, claim)
+        }
+    }
+
+    private fun discardFailedTransfer(
+        active: Probe,
+        fallback: MutedPositionCheckpoint?,
+        claim: PlaybackVolumeEffects.RouteMuteClaim?,
+    ) {
+        if (probe === active) {
+            if (active.positionCheckpoint == null) active.positionCheckpoint = fallback
+            onProbeInvalidated(active)
+            if (probe === active) probe = null
+        }
+        cancelProbeJobs(active)
+        volumeEffects.releaseRouteMute(claim)
+    }
+
+    private fun releaseDetachedProbe(active: Probe) {
+        cancelProbeJobs(active)
+        volumeEffects.releaseRouteMute(active.muteClaim)
+        onProbeCancelled?.invoke(active)
+    }
 
     fun verifyProbeIfActive(actualRoute: Set<String>?, collisions: Set<String>, isPlaying: Boolean): Boolean {
         val active = probe ?: return false
@@ -191,7 +283,15 @@ internal class HeadsetRouteGuard(
             return true
         }
         if (active.muteClaim == null || !isPlaying || active.completionJob != null) return true
+        if (active.transferRequest != null) {
+            finishProbe(active, verified = true)
+        } else {
+            verifyEndpoint(active, actualRoute, collisions)
+        }
+        return true
+    }
 
+    private fun verifyEndpoint(active: Probe, actualRoute: Set<String>?, collisions: Set<String>) {
         val evidence = RouteEvidence(
             source = RouteEvidenceSource.ActualAudioTrack,
             confidence = when {
@@ -202,7 +302,7 @@ internal class HeadsetRouteGuard(
             endpointId = actualRoute?.singleOrNull(),
         )
         when {
-            evidence.confirms(active.endpointId) && active.endpointId !in collisions ->
+            active.endpointId != null && evidence.confirms(active.endpointId) && active.endpointId !in collisions ->
                 finishProbe(active, verified = true)
 
             !actualRoute.isNullOrEmpty() ->
@@ -215,7 +315,6 @@ internal class HeadsetRouteGuard(
                 }
             }
         }
-        return true
     }
 
     /** Finish only the currently-owned probe; repeated callbacks for a retired probe are no-ops. */
@@ -229,7 +328,7 @@ internal class HeadsetRouteGuard(
             if (active.completionJob == null) startCompletion(active, verified)
             true
         } else {
-            finishProbeNow(active, verified)
+            finishProbeNow(active, if (verified) MutedProbeCompletion.Verified else MutedProbeCompletion.Refused)
         }
     }
 
@@ -240,44 +339,94 @@ internal class HeadsetRouteGuard(
         work = scope.launch(playerDispatcher, start = CoroutineStart.LAZY) {
             var completion = MutedProbeCompletion.Refused
             try {
-                completion = completeVerifiedProbe?.invoke(active) ?: MutedProbeCompletion.Refused
-            } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                throw cancellation
-            } catch (_: IllegalStateException) {
-                // Released/unavailable platform effect: refuse proof and clean up in finally.
-            } catch (_: IllegalArgumentException) {
-                // A rejected platform seek/message cannot authorize audible playback.
-            } catch (_: SecurityException) {
-                // Missing observation permission cannot authorize audible playback.
-            } catch (_: UnsupportedOperationException) {
-                // Unsupported measurement remains unverified.
+                completion = completeOrRefuse(active)
             } finally {
                 if (probe === active && active.completionJob === work) {
                     finishProbeNow(
                         active,
-                        verified && completion == MutedProbeCompletion.Verified,
-                        safetyPause = completion != MutedProbeCompletion.Superseded,
+                        if (verified || completion == MutedProbeCompletion.Superseded) {
+                            completion
+                        } else {
+                            MutedProbeCompletion.Refused
+                        },
                     )
                 }
             }
         }
         active.completionJob = work
-        if (!work.start() && probe === active) finishProbeNow(active, verified = false)
+        if (!work.start() && probe === active) finishProbeNow(active, MutedProbeCompletion.Refused)
     }
 
-    private fun finishProbeNow(active: Probe, verified: Boolean, safetyPause: Boolean = true): Boolean {
+    private suspend fun completeOrRefuse(active: Probe): MutedProbeCompletion = try {
+        completeVerifiedProbe?.invoke(active) ?: MutedProbeCompletion.Refused
+    } catch (cancellation: kotlinx.coroutines.CancellationException) {
+        throw cancellation
+    } catch (_: IllegalStateException) {
+        MutedProbeCompletion.Refused
+    } catch (_: IllegalArgumentException) {
+        MutedProbeCompletion.Refused
+    } catch (_: SecurityException) {
+        MutedProbeCompletion.Refused
+    } catch (_: UnsupportedOperationException) {
+        MutedProbeCompletion.Refused
+    }
+
+    private fun finishProbeNow(active: Probe, completion: MutedProbeCompletion): Boolean {
         if (probe !== active || active.muteClaim == null) return false
         if (!isCurrent(active)) {
             discardStaleProbe(active)
             return false
         }
+        val held = active.positionCheckpoint
+        val work = active.completionJob
+        var result = MutedProbeCompletion.Refused
+        var finished = false
+        try {
+            result = if (completion.permitsAudio) {
+                commitVerifiedProbe?.invoke(active, completion)
+                    ?: if (active.transferRequest == null) completion else MutedProbeCompletion.Refused
+            } else {
+                completion
+            }
+        } finally {
+            if (canFinalize(active, held, work)) finished = releaseFinishedProbe(active, result)
+        }
+        return finished
+    }
+
+    private fun releaseFinishedProbe(active: Probe, completion: MutedProbeCompletion): Boolean {
         quiesceProbe(active)
-        if (!verified && safetyPause && attachedPlayer === active.player) pauseForSafety(active.player)
-        val owned = probe === active
-        if (owned) probe = null
-        volumeEffects.releaseRouteMute(active.muteClaim)
-        if (owned) onProbeFinished(verified)
+        val owned: Boolean
+        try {
+            if (!completion.permitsAudio && completion != MutedProbeCompletion.Superseded &&
+                attachedPlayer === active.player
+            ) {
+                pauseForSafety(active.player)
+            }
+        } finally {
+            owned = probe === active
+            if (owned) probe = null
+            volumeEffects.releaseRouteMute(active.muteClaim)
+            if (owned) {
+                onProbeSettled?.invoke(active, completion)
+                onProbeFinished(completion.permitsAudio)
+            }
+        }
         return owned
+    }
+
+    /** Commit callbacks may synchronously replace the probe or rebase the same probe's held position. */
+    private fun canFinalize(active: Probe, held: MutedPositionCheckpoint?, work: Job?): Boolean {
+        if (probe !== active) {
+            volumeEffects.releaseRouteMute(active.muteClaim)
+            return false
+        }
+        if (active.positionCheckpoint !== held || active.completionJob !== work) return false
+        if (!isCurrent(active)) {
+            discardStaleProbe(active)
+            return false
+        }
+        return true
     }
 
     /** Restore the original player even if a replacement has already become current. */
@@ -287,6 +436,7 @@ internal class HeadsetRouteGuard(
         probe = null
         cancelProbeJobs(active)
         volumeEffects.releaseRouteMute(active.muteClaim)
+        onProbeCancelled?.invoke(active)
     }
 
     fun cancelProbeForEndpoint(id: String, preferenceEpoch: Long) {
@@ -340,11 +490,10 @@ internal class HeadsetRouteGuard(
         active.completionJob?.cancel()
     }
 
-    private fun isCurrent(active: Probe): Boolean =
-        isCurrentProbe(active.preferenceEpoch, active.player, active.endpointId)
+    private fun isCurrent(active: Probe): Boolean = isCurrentScope(active)
 
     private fun discardStaleProbe(active: Probe): Boolean {
-        if (probe !== active || !onProbeInvalidated(active.player)) return false
+        if (probe !== active || !onProbeInvalidated(active)) return false
         cancelProbe(active)
         return true
     }

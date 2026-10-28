@@ -3,6 +3,7 @@ package com.example.shelfplayer.playback
 import android.media.AudioDeviceInfo
 import android.media.AudioRouting
 import android.media.AudioTrack
+import android.os.Build
 import android.os.Handler
 import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.LogEvent
@@ -22,6 +23,8 @@ import org.robolectric.annotation.Implements
 import org.robolectric.shadow.api.Shadow
 import org.robolectric.shadows.AudioDeviceInfoBuilder
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
@@ -130,6 +133,64 @@ class AudioTrackRouteQueryTest {
 
         assertNull(fixture.monitor.currentRouteIds())
         assertEquals(1, track.queryShadow.routeReads)
+    }
+
+    @Test
+    fun `RemoteSubmix is a type-only path and never a mapped physical destination`() = runTest {
+        val fixture = fixture()
+        val track = fixture.track()
+        track.queryShadow.route = remoteSubmix()
+        fixture.observe(track)
+
+        val observed = assertNotNull(fixture.monitor.currentRouteObservation())
+
+        assertEquals(AudioTrackPath.RemoteSubmix, observed.path)
+        assertEquals(emptySet(), fixture.monitor.currentRouteIds(), "the path cannot invent an endpoint ID")
+        assertEquals(observed, fixture.monitor.currentRouteObservation(), "one observer retains its existing epoch")
+    }
+
+    @Test
+    fun `an unregistered endpoint remains unresolved rather than becoming a projection path`() = runTest {
+        val fixture = fixture()
+        val track = fixture.track()
+        track.queryShadow.route = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_USB_HEADSET).build()
+        fixture.observe(track)
+
+        assertEquals(AudioTrackPath.Unresolved, fixture.monitor.currentRouteObservation()?.path)
+        assertEquals(emptySet(), fixture.monitor.currentRouteIds())
+    }
+
+    @Test
+    fun `typed route proof carries the existing observer epoch across identical endpoint replacements`() = runTest {
+        val fixture = fixture()
+        val first = fixture.track()
+        fixture.observe(first)
+        val original = assertNotNull(fixture.monitor.currentRouteObservation())
+        val successor = fixture.track()
+        first.queryShadow.onRouteRead = { fixture.observe(successor) }
+
+        assertNull(fixture.monitor.currentRouteObservation(), "a query cannot borrow the successor's epoch")
+        val current = assertNotNull(fixture.monitor.currentRouteObservation())
+        assertEquals(AudioTrackPath.Endpoint(fixture.endpointId), current.path)
+        assertEquals(original.path, current.path)
+        assertNotEquals(original.observerEpoch, current.observerEpoch)
+    }
+
+    @Test
+    fun `the production classifier cannot collapse multiple sinks into a mapped or projection path`() = runTest {
+        val fixture = fixture()
+        val submix = remoteSubmix()
+        // This Robolectric version cannot execute SDK36. Exercise the exact classifier called by its
+        // multi-route branch; the platform getRoutedDevices adapter remains a device acceptance tier.
+        val classifier = AudioTrackRouteMonitor::class.java.getDeclaredMethod("observedPath", List::class.java)
+            .apply { isAccessible = true }
+        assertEquals(AudioTrackPath.Multiple, classifier.invoke(fixture.monitor, listOf(fixture.device, submix)))
+    }
+
+    private fun remoteSubmix(): AudioDeviceInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_REMOTE_SUBMIX).build()
+    } else {
+        error("RemoteSubmix fixture requires SDK31 or later")
     }
 
     private fun TestScope.fixture(): Fixture {

@@ -278,3 +278,30 @@ behavior, and audible outcomes remain pending under the separate device acceptan
 does not implement #277's explicit verified destination transfer/rollback. Physical headset-key attribution
 remains unsupported when Android supplies only a virtual key. Use the
 [device acceptance guide](output-ownership-device-acceptance.md) for audible routing and lifecycle results.
+
+## #277 verified-transfer software checkpoint
+
+The current handoff candidate reserves mute and held position before publishing a destination or issuing
+its preferred-device request. `OutputIntentOwner` retains the prior lock until current target-specific proof;
+`OutputHandoffEffects` orchestrates the existing owner, guard and preference dispatcher without another
+transaction counter or executor. Endpoint confirmation and Auto projection delegation remain distinct.
+
+`OutputHandoffEffectsTest` drives the actual router, guard, position effects and controlled Media3
+PlayerMessage delivery through Car/Headset/Car, paused choice, old route, exact target, speaker mismatch,
+unknown/multiple paths, rollback, repeated callbacks, newer choice/book and success-publication reentrancy.
+Separate valid failing regressions establish late silent-tail compensation, Automatic retirement losing
+newer intent, direct non-controller Pause losing held progress, and policy reassertion retiring explicit
+proof or overriding Car intent. Additional regressions catch path loss and in-place seek/lock loss during
+synchronous success publication. API26/32 cases use the production command boundary with controlled
+positive projection-path evidence, absent projection and unknown paths; they do not certify OEM capability.
+
+The full strict repository gate passes 2,748 tests /322 suites, including 932 playback tests, with no
+failures, errors or skips. Initial structural findings were corrected with cohesive proof/mode splits;
+SDK-specific fixture setup is checked without suppressing rules or skipping tests. Player doubles retain
+dispatcher checks. A real service test checks successor Car mute ownership and eventual safe timeout
+cleanup. Removing the queued policy epoch guard reproduces the intended stale-pause failure; exact
+source bytes were restored. Committed source and normal exact-head CI are recorded in #300 and the checkpoint.
+
+S01–S22 physical and inconclusive results remain unchanged. API36 multiple-sink classification has direct
+software coverage; this Robolectric runtime cannot execute the API36 platform adapter. The device tier,
+actual audible routing, startup deadlines and real-token recovery remain pending.

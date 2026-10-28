@@ -21,11 +21,21 @@ internal interface PlaybackMovementEffects {
 }
 
 internal interface PositionCheckpointEffects {
+    fun authority(): MutedPositionEffects.Context
+
     fun capture(probe: HeadsetRouteGuard.Probe): MutedPositionCheckpoint?
 
     suspend fun complete(probe: HeadsetRouteGuard.Probe): MutedProbeCompletion
 
     fun position(target: Player): Duration
+
+    fun beforeTransfer(): Boolean
+
+    fun bindTransferScope(probe: HeadsetRouteGuard.Probe, request: OutputIntentOwner.TransferRequest): Boolean
+
+    fun isAuthorized(probe: HeadsetRouteGuard.Probe): Boolean
+
+    fun restorePausedProbe(probe: HeadsetRouteGuard.Probe)
 }
 
 /** Transient position compensation; repository progress and session ownership stay with their existing owners. */
@@ -45,11 +55,44 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
 
     fun install() = outputs.positions.bind(this)
 
-    fun authority(): Context = source.context()
+    override fun authority(): Context = source.context()
 
     override fun position(target: Player): Duration = checkpoint(target)?.position ?: target.bookPosition()
 
     override fun positionMs(): Long = source.player()?.let(::position)?.inWholeMilliseconds ?: 0L
+
+    override fun isAuthorized(probe: HeadsetRouteGuard.Probe): Boolean =
+        probe.positionCheckpoint?.let { authorized(probe, it) } == true
+
+    override fun restorePausedProbe(probe: HeadsetRouteGuard.Probe) {
+        if (!probe.player.playWhenReady) probe.positionCheckpoint?.let { restore(probe, it) }
+    }
+
+    /** Preserve active Play intent while moving its still-muted checkpoint into a replacement reservation. */
+    override fun beforeTransfer(): Boolean {
+        val current = source.player() ?: return false
+        val stamp = source.context()
+        val selection = outputs.positions.intent.selection
+        val active = outputs.positions.guard.currentProbe ?: return unchanged(current, stamp, selection)
+        outputs.positions.guard.quiesceProbe(active)
+        val held = active.positionCheckpoint ?: return false
+        return restore(active, held) && unchanged(current, stamp, selection)
+    }
+
+    override fun bindTransferScope(
+        probe: HeadsetRouteGuard.Probe,
+        request: OutputIntentOwner.TransferRequest,
+    ): Boolean {
+        val held = probe.positionCheckpoint ?: return false
+        val stamp = Context(held.controllerCommandGeneration, held.mediaItemGeneration, held.profileGeneration)
+        val samePlayback = ownsMedia(probe.player, held) && source.context() == stamp
+        val sameRequest = outputs.positions.intent.selection == request.selection &&
+            request.bookGeneration == held.bookGeneration
+        if (!samePlayback || !sameRequest) return false
+        val bound = held.copy(selectionSequence = request.selection.sequence)
+        probe.positionCheckpoint = bound
+        return authorized(probe, bound)
+    }
 
     override fun capture(probe: HeadsetRouteGuard.Probe): MutedPositionCheckpoint? {
         val stamp = source.context()
@@ -121,7 +164,8 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         stamp: Context,
         selection: OutputIntentOwner.Selection?,
     ): (() -> Unit)? {
-        val guarded = outputs.positions.guard.endpointId != null || outputs.positions.intent.lock != null
+        val guarded = outputs.positions.guard.endpointId != null || outputs.positions.intent.lock != null ||
+            outputs.positions.intent.transfer != null
         val needsHold = command == PlaybackMovement.ReplaceCurrent && guarded
         if (needsHold && current.playWhenReady && outputs.protectManualPlayOnGuardedHeadset(
                 current,
@@ -158,7 +202,14 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
             return true
         }
         val old = checkpoint(current) ?: return false
-        outputs.positions.guard.replacePositionCheckpoint(current, old, old.copy(position = current.bookPosition()))
+        if (outputs.positions.guard.replacePositionCheckpoint(
+                current,
+                old,
+                old.copy(position = current.bookPosition()),
+            )
+        ) {
+            outputs.positions.guard.currentProbe?.let { outputs.handoffs.rebased(it) }
+        }
         return false
     }
 
@@ -196,6 +247,7 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
 
     private suspend fun completeCurrent(probe: HeadsetRouteGuard.Probe): MutedProbeCompletion {
         val held = probe.positionCheckpoint ?: return MutedProbeCompletion.Refused
+        if (!probe.player.playWhenReady) return refusal(probe, held)
         if (!prepareProof(probe, held)) return refusal(probe, held)
         return awaitProof(probe, held)
     }
@@ -213,17 +265,46 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         held: MutedPositionCheckpoint,
     ): MutedProbeCompletion = withTimeoutOrNull(1.seconds) {
         while (authorized(probe, held)) {
-            playingProof(probe, held)?.let { return@withTimeoutOrNull it }
+            compensatedProof(probe, held)?.let { return@withTimeoutOrNull it }
             probe.routeUpdates.receive()
         }
         MutedProbeCompletion.Superseded
     } ?: refusal(probe, held)
+
+    /** The route may become provable only after another unheard interval. Proof before that seek is tentative. */
+    private suspend fun compensatedProof(
+        probe: HeadsetRouteGuard.Probe,
+        held: MutedPositionCheckpoint,
+    ): MutedProbeCompletion? {
+        val candidate = playingProof(probe, held) ?: return null
+        if (!candidate.permitsAudio) return candidate
+        return if (!probe.requiresPlaybackBarrier && probe.player.bookPosition() == held.position) {
+            candidate
+        } else if (prepareProof(probe, held)) {
+            playingProof(probe, held)
+        } else {
+            refusal(probe, held)
+        }
+    }
 
     /** Every query is fresh; neither a prior callback nor barrier delivery itself authorizes unmute. */
     private fun playingProof(probe: HeadsetRouteGuard.Probe, held: MutedPositionCheckpoint): MutedProbeCompletion? {
         if (!authorized(probe, held)) return MutedProbeCompletion.Superseded
         val current = probe.player
         if (!current.playWhenReady || !current.isPlaying || current.playbackState != Player.STATE_READY) return null
+        return if (probe.transferRequest != null) transferProof(probe, held) else endpointProof(probe, held)
+    }
+
+    private fun transferProof(probe: HeadsetRouteGuard.Probe, held: MutedPositionCheckpoint): MutedProbeCompletion? {
+        val proof = outputs.handoffs.proof(probe)
+        return when {
+            !authorized(probe, held) -> MutedProbeCompletion.Superseded
+            proof == MutedProbeCompletion.Refused -> refusal(probe, held)
+            else -> proof
+        }
+    }
+
+    private fun endpointProof(probe: HeadsetRouteGuard.Probe, held: MutedPositionCheckpoint): MutedProbeCompletion? {
         val first = outputs.positions.measure()
         if (!authorized(probe, held)) return MutedProbeCompletion.Superseded
         val second = outputs.positions.measure()
@@ -240,8 +321,11 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         }
     }
 
-    private fun refusal(probe: HeadsetRouteGuard.Probe, held: MutedPositionCheckpoint): MutedProbeCompletion =
-        if (restore(probe, held)) MutedProbeCompletion.Refused else MutedProbeCompletion.Superseded
+    private fun refusal(probe: HeadsetRouteGuard.Probe, held: MutedPositionCheckpoint): MutedProbeCompletion {
+        if (!restore(probe, held)) return MutedProbeCompletion.Superseded
+        if (probe.transferRequest != null) outputs.handoffs.rollback(probe)
+        return if (authorized(probe, held)) MutedProbeCompletion.Refused else MutedProbeCompletion.Superseded
+    }
 
     private suspend fun playbackBarrier(current: ExoPlayer): Boolean = withTimeoutOrNull(1.seconds) {
         suspendCancellableCoroutine { continuation ->

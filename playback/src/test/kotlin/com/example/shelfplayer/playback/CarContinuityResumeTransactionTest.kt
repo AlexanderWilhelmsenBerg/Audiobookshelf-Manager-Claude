@@ -417,6 +417,8 @@ class CarContinuityResumeTransactionTest {
 
                 "getMediaItemCount" -> 1
 
+                "getCurrentMediaItem" -> androidx.media3.common.MediaItem.EMPTY
+
                 "isPlaying" -> playing
 
                 "getVolume" -> volume

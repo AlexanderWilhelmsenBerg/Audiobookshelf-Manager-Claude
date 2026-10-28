@@ -397,6 +397,11 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - An explicit output lock retains its logical target across ordinary pause/resume and nonempty book changes,
   while invalidating old physical proof at book/player boundaries. Route loss or uncertainty fails closed;
   a new appearance never rebinds by name or starts playback automatically. The listener can release the lock.
+- Explicit destination changes mute before preference effects and commit only with current target-specific
+  AudioTrack proof. The prior lock remains recovery context until success; failed or unknown output stays
+  safely paused. Car projection delegation must be distinguished from proof of a physical car speaker.
+- Transfer preserves heard position, queue, speed, history and sleep state, and never manufactures Play.
+  Newer command/selection/book/profile/attachment wins; rollback requires fresh unique original-route proof.
 
 ### PLAY-003 Playback queue and tracks
 

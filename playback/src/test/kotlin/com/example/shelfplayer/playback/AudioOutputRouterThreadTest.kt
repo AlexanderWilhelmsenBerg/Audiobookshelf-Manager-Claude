@@ -1,6 +1,7 @@
 package com.example.shelfplayer.playback
 
 import android.media.AudioDeviceInfo
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.common.log.LogEvent
@@ -300,12 +301,13 @@ class AudioOutputRouterThreadTest {
     @Test
     fun `delayed automatic request cannot override newer guarded headset selection`() = runTest {
         val fixture = fixture()
+        val endpoint = fixture.observeEndpoint(61)
         // Both calls happen before the main-dispatcher work is drained.
         fixture.router.selectCar()
-        fixture.guard("bluetooth:original")
+        fixture.router.select(endpoint.id)
         runCurrent()
         assertTrue(
-            fixture.preferredRequests.isEmpty(),
+            fixture.preferredRequests.size == 1 && fixture.preferredRequests.single() != null,
             "stale Automatic/Car work must not clear a later exact headset preference",
         )
     }
@@ -668,6 +670,16 @@ private fun threadCheckedPlayer(
         arrayOf(ExoPlayer::class.java),
     ) { _, method, args ->
         when (method.name) {
+            "getCurrentMediaItem" -> {
+                check(Thread.currentThread() == owningThread) { "currentMediaItem on the wrong Media3 thread" }
+                MediaItem.EMPTY
+            }
+
+            "getPlayWhenReady" -> {
+                check(Thread.currentThread() == owningThread) { "playWhenReady on the wrong Media3 thread" }
+                true
+            }
+
             "isPlaying" -> {
                 check(Thread.currentThread() == owningThread) { "ExoPlayer isPlaying on the wrong thread" }
                 reads.add(Thread.currentThread())
@@ -743,6 +755,18 @@ internal data class Fixture(
     fun safetyListener(): Player.Listener = requireNotNull(guardOwner().currentPlayerListener)
 
     fun guardId(): String? = guardOwner().endpointId
+
+    /** Seed an already-owned replacement scope for the queued-effect test; transfer itself has separate coverage. */
+    fun adoptGuard(id: String) {
+        val preferences = AudioOutputRouter::class.java.getDeclaredField("preferenceEffects").run {
+            isAccessible = true
+            get(router) as RoutePreferenceEffects
+        }
+        preferences.supersede()
+        router.outputIntentOwner.select(id, OutputIntentOwner.Destination.Output)
+        guardOwner().cancelProbe()
+        guard(id)
+    }
 
     fun observeEndpoint(platformId: Int, name: String = "Synthetic output"): LiveOutputEndpointRegistry.Endpoint {
         val info = device(platformId, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, name)
@@ -879,7 +903,6 @@ class AudioOutputRouterQueuedSafetyTest {
         )
         fixture.replacePlayerFrom(replacement)
 
-        fixture.router.selectCar()
         runCurrent()
 
         assertEquals(listOf(0f, 1f), fixture.volumeChanges, "the muted owner must regain its prior volume")
@@ -903,16 +926,16 @@ class AudioOutputRouterQueuedSafetyTest {
     }
 
     @Test
-    fun `queued collision safety cannot pause after the listener releases the old guard`() = runTest {
+    fun `queued collision safety cannot pause after the listener chooses Automatic release`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
         fixture.colliding("bluetooth:original")
         fixture.router.resettle()
 
-        fixture.router.selectCar()
+        fixture.router.select(null)
         runCurrent()
 
-        assertTrue(fixture.pauseThreads.isEmpty(), "old collision work must not override the newer Car choice")
+        assertTrue(fixture.pauseThreads.isEmpty(), "old collision work must not override Automatic release")
         assertTrue(fixture.readThreads.isEmpty(), "the released request cannot read the current player")
     }
 
@@ -924,7 +947,7 @@ class AudioOutputRouterQueuedSafetyTest {
         fixture.router.resettle()
         fixture.router.selectCar()
         // The new owner can choose the same endpoint again before the old main-dispatcher callback runs.
-        fixture.guard("bluetooth:original")
+        fixture.adoptGuard("bluetooth:original")
 
         runCurrent()
 

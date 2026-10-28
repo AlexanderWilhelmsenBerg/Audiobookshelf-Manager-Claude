@@ -14,8 +14,9 @@ internal data class MutedPositionCheckpoint(
     val selectionSequence: Long?,
 )
 
-internal enum class MutedProbeCompletion {
-    Verified,
-    Refused,
-    Superseded,
+internal enum class MutedProbeCompletion(val permitsAudio: Boolean) {
+    Verified(true),
+    Delegated(true),
+    Refused(false),
+    Superseded(false),
 }

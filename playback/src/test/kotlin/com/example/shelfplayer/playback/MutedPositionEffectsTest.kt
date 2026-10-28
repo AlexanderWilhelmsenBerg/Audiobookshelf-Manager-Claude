@@ -127,7 +127,7 @@ class MutedPositionEffectsTest {
 
     @Test
     fun `unknown wrong and multiple post-seek routes fail closed after restoring silent advancement`() = runTest {
-        for (route in listOf(null, setOf("different"), setOf(OUTPUT, "competing"))) {
+        for (route in listOf(null, setOf("different"), setOf("one", "competing"))) {
             val fixture = Fixture(this)
             fixture.start()
             fixture.rawPosition = 25_000L
@@ -164,7 +164,59 @@ class MutedPositionEffectsTest {
         assertNull(fixture.activeProbe())
     }
 
-    private class Fixture(scope: TestScope) {
+    @Test
+    fun `route proof arriving after a silent wait compensates the additional elapsed tail`() = runTest {
+        val fixture = Fixture(this)
+        fixture.start()
+        fixture.rawPosition = 25_000L
+        fixture.prove()
+        runCurrent()
+        fixture.routes = null
+        fixture.deliver(0)
+        runCurrent()
+        assertEquals(0f, fixture.volume)
+        fixture.rawPosition = 20_000L
+        fixture.routes = setOf(fixture.outputId)
+
+        fixture.prove()
+        runCurrent()
+
+        assertEquals(12_000L, fixture.rawPosition, "later successful proof cannot skip a second unheard interval")
+        assertEquals(0f, fixture.volume, "the second compensation needs its own post-seek playback barrier")
+        assertEquals(2, fixture.messages.size)
+        fixture.deliver(1)
+        runCurrent()
+        assertEquals(1f, fixture.volume)
+        assertEquals(12_000L, fixture.rawPosition)
+    }
+
+    @Test
+    fun `a direct sleep focus or noisy pause restores the held point before retiring its probe`() = runTest {
+        val fixture = Fixture(this)
+        fixture.start()
+        fixture.rawPosition = 25_000L
+
+        fixture.externalPause()
+        runCurrent()
+
+        assertEquals(12_000L, fixture.rawPosition, "non-controller pause must not discard unheard progress")
+        assertEquals(listOf(true), fixture.compensationOrigins)
+        assertFalse(fixture.playWhenReady)
+        assertNull(fixture.activeProbe())
+        assertEquals(1f, fixture.volume)
+    }
+
+    internal class Fixture(scope: TestScope) {
+        private val registry = LiveOutputEndpointRegistry()
+        private val headset = device(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, 1, "Fixture headset")
+        private val speaker = device(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, 2, "Fixture speaker")
+        private val endpoints = registry.reconcile(
+            listOf(headset, speaker).map {
+                LiveOutputEndpointRegistry.Observation(it.id, it.type, it.productName?.toString())
+            },
+        )
+        val outputId: String = endpoints.single { it.platformId == headset.id }.id
+        val speakerId: String = endpoints.single { it.platformId == speaker.id }.id
         var rawPosition = 12_000L
         var volume = 1f
         var playWhenReady = true
@@ -172,13 +224,20 @@ class MutedPositionEffectsTest {
         var pauses = 0
         var plays = 0
         var measurements = 0
-        var routes: Set<String>? = setOf(OUTPUT)
+        var routes: Set<String>? = setOf(outputId)
         var failBarrier = false
+        var failPreference = false
+        var projection = true
+        var itemGeneration = 0L
+        var profileGeneration = 0L
+        var current: ExoPlayer? = null
+        var observation: AudioTrackObservation? = AudioTrackObservation(1, AudioTrackPath.Endpoint(outputId))
         val messages = mutableListOf<PlayerMessage>()
         val compensationOrigins = mutableListOf<Boolean>()
-        private val item = MediaItem.Builder().setMediaId("checkpoint-fixture").build()
+        val preferenceRequests = mutableListOf<AudioDeviceInfo?>()
+        var item = MediaItem.Builder().setMediaId("checkpoint-fixture").build()
         private val dispatcher = StandardTestDispatcher(scope.testScheduler)
-        private val gains = PlaybackVolumeEffects(TestAppClock())
+        val gains = PlaybackVolumeEffects(TestAppClock())
         val media: ExoPlayer = Proxy.newProxyInstance(
             ExoPlayer::class.java.classLoader,
             arrayOf(ExoPlayer::class.java),
@@ -206,6 +265,12 @@ class MutedPositionEffectsTest {
                 "getPlayWhenReady", "isPlaying" -> playWhenReady
 
                 "getPlaybackState" -> Player.STATE_READY
+
+                "setPreferredAudioDevice" -> {
+                    check(!failPreference) { "synthetic preference failure" }
+                    preferenceRequests += args!![0] as? AudioDeviceInfo
+                    null
+                }
 
                 "pause" -> {
                     pauses++
@@ -240,32 +305,33 @@ class MutedPositionEffectsTest {
                 else -> null
             }
         } as ExoPlayer
-        private val router = AudioOutputRouter(
+        val router = AudioOutputRouter(
             RuntimeEnvironment.getApplication(),
             object : Logger {
                 override fun log(event: LogEvent) = Unit
             },
             scope.backgroundScope,
             dispatcher,
+            registry,
             volumeEffects = gains,
         )
         val effects: MutedPositionEffects = MutedPositionEffects(
             router,
             object : MutedPositionEffects.Source {
-                override fun player() = media
-                override fun context() = MutedPositionEffects.Context(command, 0, 0)
+                override fun player() = current
+                override fun context() = MutedPositionEffects.Context(command, itemGeneration, profileGeneration)
             },
         )
         private val guard = field<HeadsetRouteGuard>(router, "headsetGuard")
 
         init {
+            current = media
             gains.attach(media)
             AudioOutputRouter::class.java.getDeclaredField("player").apply { isAccessible = true }.set(router, media)
-            val device = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP).build()
             AudioOutputRouter::class.java.getDeclaredField("live").apply {
                 isAccessible = true
-            }.set(router, mapOf(OUTPUT to device))
-            field<MutableStateFlow<String?>>(router, "_selectedId").value = OUTPUT
+            }.set(router, mapOf(outputId to headset, speakerId to speaker))
+            field<MutableStateFlow<String?>>(router, "_selectedId").value = outputId
             AudioOutputRouter::class.java.getDeclaredField("currentTrackRoutes").apply { isAccessible = true }.set(
                 router,
                 {
@@ -273,25 +339,73 @@ class MutedPositionEffectsTest {
                     routes
                 },
             )
+            AudioOutputRouter::class.java.getDeclaredField("currentTrackObservation").apply { isAccessible = true }.set(
+                router,
+                { observation.takeIf { playWhenReady } },
+            )
+            router.currentProjection = { projection }
             guard.attachPlayer(media)
-            guard.protect(OUTPUT)
+            guard.protect(outputId)
             effects.install()
+            router.outputIntentOwner.onBookChanged(1)
+            router.onActualTrackRouteChanged()
         }
 
-        fun start() = assertTrue(guard.beginProbe(OUTPUT, media, 0))
-        fun prove() = guard.verifyProbeIfActive(setOf(OUTPUT), emptySet(), true)
+        fun start() = assertTrue(guard.beginProbe(outputId, media, 0))
+        fun prove() = guard.verifyProbeIfActive(setOf(outputId), emptySet(), true)
         fun activeProbe() = guard.currentProbe
         fun cancel() = guard.cancelProbe()
         fun deliver(index: Int) = messages[index].target.handleMessage(0, null)
+
+        fun externalPause() {
+            media.pause()
+            guard.currentPlayerListener?.onPlayWhenReadyChanged(
+                false,
+                Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST,
+            )
+        }
+
+        fun playWithProtection(beforeRawPlay: () -> Unit): Boolean = PlaybackCommandEffects(
+            currentPlayer = { current },
+            itemGeneration = { itemGeneration },
+            isAttached = { router.isAttachedPlayer(it) },
+            protectOutput = { target, willStartAudio, holdForSeek ->
+                router.protectManualPlayOnGuardedHeadset(target, willStartAudio, holdForSeek)
+            },
+        ).play(media, stillAuthorized = { true }, beforeRawPlay = beforeRawPlay)
+
+        fun report(path: AudioTrackPath?, epoch: Long = 1) {
+            observation = path?.let { AudioTrackObservation(epoch, it) }
+            routes = when (path) {
+                is AudioTrackPath.Endpoint -> setOf(path.id)
+                null -> null
+                AudioTrackPath.RemoteSubmix, AudioTrackPath.Unresolved, AudioTrackPath.Multiple -> emptySet()
+            }
+            router.onActualTrackRouteChanged()
+        }
+
+        fun replaceBook() {
+            effects.retireForItemTransition()
+            item = MediaItem.Builder().setMediaId("successor-fixture").build()
+            itemGeneration++
+            rawPosition = 5_000L
+            val generation = (router.outputIntentOwner.state.value.activeBookGeneration ?: 0L) + 1
+            router.outputIntentOwner.onBookChanged(generation)
+        }
 
         private inline fun <reified T> field(target: Any, name: String): T =
             target.javaClass.getDeclaredField(name).run {
                 isAccessible = true
                 get(target) as T
             }
-    }
 
-    private companion object {
-        const val OUTPUT = "bluetooth:checkpoint-fixture"
+        private fun device(type: Int, id: Int, name: String): android.media.AudioDeviceInfo {
+            val device = AudioDeviceInfoBuilder.newBuilder().setType(type).build()
+            val port = org.robolectric.util.ReflectionHelpers.getField<Any>(device, "mPort")
+            org.robolectric.util.ReflectionHelpers.setField(port, "mName", name)
+            val handle = org.robolectric.util.ReflectionHelpers.getField<Any>(port, "mHandle")
+            org.robolectric.util.ReflectionHelpers.setField(handle, "mId", id)
+            return device
+        }
     }
 }

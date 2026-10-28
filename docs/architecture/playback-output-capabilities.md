@@ -114,8 +114,10 @@ acquisition, and revalidates existing preference epoch, attachment and target af
 Fresh-start/duplicate loaded forwarding Play, controller Prepare, deferred queue installs/retry, post-connect
 commands and continuity now reach the same service-owned output preparation/Play boundary in the #300
 candidate. [ADR-0034](../adr/0034-one-guarded-playback-command-boundary.md) records its attachment and originating
-command/profile checks, retained-intent handling and synchronous Stop invalidation. The muted-position
-checkpoint and complete verified-transfer work remain required; this integration alone does not establish them.
+command/profile checks, retained-intent handling and synchronous Stop invalidation. The probe-owned
+[muted-position checkpoint](../adr/0035-muted-verification-holds-heard-position.md) is published at `84f192d4`.
+The [explicit verified-transfer continuation](../adr/0036-explicit-output-transfer-requires-current-track-proof.md)
+is under verification. Neither software component establishes physical output acceptance.
 
 | Case | Current evidence | Required check |
 | --- | --- | --- |

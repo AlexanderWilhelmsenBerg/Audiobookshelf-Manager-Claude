@@ -6,8 +6,10 @@ import kotlin.time.Duration
 
 /** Router policy fixtures isolate route effects. Actual service fixtures install full position protection. */
 internal fun routingOnlyPositionEffects(): PositionCheckpointEffects = object : PositionCheckpointEffects {
+    override fun authority() = MutedPositionEffects.Context(0, 0, 0)
+
     override fun capture(probe: HeadsetRouteGuard.Probe) = MutedPositionCheckpoint(
-        MediaItem.EMPTY,
+        probe.player.currentMediaItem ?: MediaItem.EMPTY,
         Duration.ZERO,
         0,
         0,
@@ -19,4 +21,21 @@ internal fun routingOnlyPositionEffects(): PositionCheckpointEffects = object : 
     override suspend fun complete(probe: HeadsetRouteGuard.Probe) = MutedProbeCompletion.Verified
 
     override fun position(target: Player): Duration = target.bookPosition()
+
+    override fun beforeTransfer(): Boolean = true
+
+    override fun bindTransferScope(
+        probe: HeadsetRouteGuard.Probe,
+        request: OutputIntentOwner.TransferRequest,
+    ): Boolean {
+        probe.positionCheckpoint = probe.positionCheckpoint?.copy(
+            selectionSequence = request.selection.sequence,
+            bookGeneration = request.bookGeneration,
+        )
+        return true
+    }
+
+    override fun isAuthorized(probe: HeadsetRouteGuard.Probe): Boolean = true
+
+    override fun restorePausedProbe(probe: HeadsetRouteGuard.Probe) = Unit
 }

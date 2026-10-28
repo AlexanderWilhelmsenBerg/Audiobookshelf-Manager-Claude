@@ -103,21 +103,18 @@ class AudioOutputRouter @Inject constructor(
     private val preferenceEffects = RoutePreferenceEffects(mainDispatcher)
     private var callback: AudioDeviceCallback? = null
     internal val positions = PositionAccess()
+    internal val handoffs by lazy(LazyThreadSafetyMode.NONE) { OutputHandoffEffects(HandoffAccess()) }
+    internal var currentProjection: () -> Boolean = { false }
 
     // Transient continuity ownership is player-attached and separate from endpoint policy.
     private val headsetGuard = HeadsetRouteGuard(
         scope = applicationScope,
         playerDispatcher = mainDispatcher,
         volumeEffects = volumeEffects,
-        isCurrentProbe = ::isCurrentGuard,
+        isCurrentScope = ::isCurrentProbeScope,
         onProbeInvalidated = ::handleInvalidatedProbe,
         onProbeFinished = { verified ->
             if (verified) verifyOutputLock()
-            logger.info(
-                LogCategory.Playback,
-                "Car continuity silent headset verification completed",
-                LogField.Public("verified", verified),
-            )
         },
         onPlaying = ::pauseUnsafeGuardedPlayback,
     ).also { guard ->
@@ -125,8 +122,23 @@ class AudioOutputRouter @Inject constructor(
         guard.completeVerifiedProbe = { probe ->
             positions.handlers?.complete(probe) ?: MutedProbeCompletion.Refused
         }
+        guard.commitVerifiedProbe = { probe, proof -> handoffs.commit(probe, proof) }
+        guard.onProbeCancelled = { probe -> handoffs.cancelled(probe) }
+        guard.onExternalPause = { probe -> positions.handlers?.restorePausedProbe(probe) }
+        guard.onProbeSettled = { probe, proof ->
+            handoffs.settled(probe, proof)
+            logger.info(
+                LogCategory.Playback,
+                "Muted output route proof completed",
+                LogField.Public("confirmation", proof.name),
+                LogField.Public("destination", probe.transferRequest?.selection?.destination?.name ?: "HeldOutput"),
+            )
+        }
     }
     private var currentTrackRoutes: () -> Set<String>? = { null }
+
+    /** Bound by the service after attachment; absent evidence fails closed. Retired on detach/replacement. */
+    internal var currentTrackObservation: () -> AudioTrackObservation? = { null }
     private var collidingOutputIds: Set<String> = emptySet()
     private data class AutomaticProtection(
         val outputId: String,
@@ -154,6 +166,7 @@ class AudioOutputRouter @Inject constructor(
         headsetGuard.detachPlayer()
         val epoch = preferenceEffects.supersede()
         currentTrackRoutes = trackRoutes
+        currentTrackObservation = { null }
         player = target
         outputIntentOwner.state.value.lock?.let(outputIntentOwner::invalidateProof)
         headsetGuard.attachPlayer(target)
@@ -179,6 +192,7 @@ class AudioOutputRouter @Inject constructor(
         volumeEffects.detach(player)
         headsetGuard.release()
         currentTrackRoutes = { null }
+        currentTrackObservation = { null }
         collidingOutputIds = emptySet()
         headsetGuard.detachPlayer()
         player = null
@@ -252,7 +266,7 @@ class AudioOutputRouter @Inject constructor(
         val intent = outputIntentOwner.state.value
         val generation = intent.activeBookGeneration ?: return null
         val attached = player ?: return null
-        if (!attached.isPlaying || attached.mediaItemCount == 0) return null
+        if (!attached.isPlaying || attached.mediaItemCount == 0 || volumeEffects.isRouteMuted(attached)) return null
         return LockContext(attached, generation, intent.selection?.sequence, preferenceEffects.snapshot())
     }
 
@@ -289,6 +303,10 @@ class AudioOutputRouter @Inject constructor(
      * it intentionally does not emit through [explicitSelection].
      */
     internal suspend fun reassert(id: String): Boolean {
+        val selection = explicitSelection.value
+        val incompatible = selection?.destination == OutputIntentOwner.Destination.Car ||
+            (selection?.destination == OutputIntentOwner.Destination.Output && selection.outputId != id)
+        if (incompatible) return false
         if (id !in live) {
             logger.info(
                 LogCategory.Playback,
@@ -297,6 +315,7 @@ class AudioOutputRouter @Inject constructor(
             )
             return false
         }
+        if (handoffs.isPendingFor(id)) return true
         val epoch = preferenceEffects.supersede()
         headsetGuard.protect(id)
         automaticProtection = automaticProtection?.takeIf { it.outputId == id }?.copy(
@@ -403,19 +422,7 @@ class AudioOutputRouter @Inject constructor(
             )
             return
         }
-        // Even a repeated null Car/Automatic choice is newer intent; output id equality is insufficient.
-        val epoch = preferenceEffects.supersede()
-        automaticProtection = null
-        headsetGuard.clearOwnership()
-        applicationScope.launch(mainDispatcher) { headsetGuard.cancelProbe() }
-        outputIntentOwner.select(
-            id,
-            destination,
-            releasedRouteId = if (destination == OutputIntentOwner.Destination.Automatic) lastHeardRouteId() else null,
-        )
-        _selectedId.value = id
-        publish()
-        applicationScope.launch { apply(id, epoch) }
+        handoffs.select(id, destination)
     }
 
     private suspend fun apply(id: String?, epoch: Long) = preferenceEffects.run(epoch) {
@@ -605,6 +612,9 @@ class AudioOutputRouter @Inject constructor(
     internal fun isAttachedPlayer(expectedPlayer: Player): Boolean = player === expectedPlayer
 
     private fun beginManualPlayProtection(): ManualPlayProtection {
+        if (explicitSelection.value?.destination?.let { it != OutputIntentOwner.Destination.Automatic } == true) {
+            return handoffs.protectPlay()
+        }
         val lock = outputIntentOwner.state.value.lock
         val id = headsetGuard.endpointId ?: return if (lock == null) {
             ManualPlayProtection.NoGuard
@@ -638,7 +648,7 @@ class AudioOutputRouter @Inject constructor(
         }
 
         fun isEligible(probe: HeadsetRouteGuard.Probe): Boolean =
-            guard.isCurrentProbe(probe) && probe.endpointId in live && probe.endpointId !in collidingOutputIds
+            probe.endpointId?.let { guard.isCurrentProbe(probe) && it in live && it !in collidingOutputIds } == true
 
         fun measure(): Set<String>? = currentTrackRoutes()
 
@@ -662,7 +672,9 @@ class AudioOutputRouter @Inject constructor(
     private fun startMutedProbe(id: String): Boolean {
         val current = player ?: return false
         val epoch = preferenceEffects.snapshot()
-        val existing = headsetGuard.hasCurrentProbe(id, current, epoch)
+        val existing = headsetGuard.currentProbe?.let {
+            it.matches(id, current, epoch) && headsetGuard.isCurrentProbe(it)
+        } == true
         val started = existing || headsetGuard.beginProbe(id, current, epoch)
         if (!started) return false
         val valid = isCurrentGuard(epoch, current, id) && id in live && id !in collidingOutputIds
@@ -752,7 +764,26 @@ class AudioOutputRouter @Inject constructor(
      * without any AudioDeviceCallback, so checking only publish/resettle misses that route race.
      */
     private fun pauseUnsafeGuardedPlayback() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val transfer = headsetGuard.currentProbe?.takeIf { it.transferRequest != null }
+        if (transfer != null) {
+            observeTransfer(transfer)
+        } else {
+            observeGuardedEndpoint()
+        }
+    }
+
+    private fun observeTransfer(transfer: HeadsetRouteGuard.Probe) {
+        applicationScope.launch(mainDispatcher) {
+            if (!headsetGuard.isCurrentProbe(transfer)) return@launch
+            val actual = currentTrackRoutes()
+            if (!headsetGuard.isCurrentProbe(transfer)) return@launch
+            val playing = transfer.player.isPlaying
+            if (!headsetGuard.isCurrentProbe(transfer)) return@launch
+            headsetGuard.verifyProbeIfActive(actual, collidingOutputIds, playing)
+        }
+    }
+
+    private fun observeGuardedEndpoint() {
         // The route-settle coroutine and AudioDeviceCallback may call publish() off the
         // ExoPlayer application looper. Even reading isPlaying there crashes Media3.
         // Check only our own routing state before dispatching; every Player access,
@@ -791,8 +822,22 @@ class AudioOutputRouter @Inject constructor(
         preferenceEffects.isCurrent(epoch) && player === target && headsetGuard.endpointId == guarded &&
             _selectedId.value == guarded
 
+    private fun isCurrentProbeScope(probe: HeadsetRouteGuard.Probe): Boolean = if (probe.transferRequest != null) {
+        preferenceEffects.isCurrent(probe.preferenceEpoch) && player === probe.player
+    } else {
+        probe.endpointId?.let { isCurrentGuard(probe.preferenceEpoch, probe.player, it) } == true
+    }
+
     /** Preserve fail-closed playback if policy supersedes a probe but still owns a guarded route. */
-    private fun handleInvalidatedProbe(probePlayer: ExoPlayer): Boolean {
+    private fun handleInvalidatedProbe(probe: HeadsetRouteGuard.Probe): Boolean = if (probe.transferRequest != null) {
+        handoffs.invalidate(probe)
+        true
+    } else {
+        invalidateEndpointProbe(probe)
+    }
+
+    private fun invalidateEndpointProbe(probe: HeadsetRouteGuard.Probe): Boolean {
+        val probePlayer = probe.player
         val currentGuard = headsetGuard.endpointId
         if (player !== probePlayer || currentGuard == null || _selectedId.value != currentGuard) return true
         val epoch = preferenceEffects.snapshot()
@@ -846,6 +891,50 @@ class AudioOutputRouter @Inject constructor(
 
     /** Kind half only; product names never reach logs. */
     private fun kindOf(id: String): String = id.substringBefore(':')
+
+    /** Engine-specific effect port; all state is read from its existing owner, attachment and inventory. */
+    private inner class HandoffAccess : OutputHandoffEffects.Source {
+        override val owner: OutputIntentOwner get() = outputIntentOwner
+        override val guard: HeadsetRouteGuard get() = headsetGuard
+        override val preferences: RoutePreferenceEffects get() = preferenceEffects
+        override val positions: PositionCheckpointEffects? get() = this@AudioOutputRouter.positions.handlers
+
+        override fun player(): ExoPlayer? = this@AudioOutputRouter.player
+        override fun observation(): AudioTrackObservation? = currentTrackObservation()
+
+        override fun targets(): OutputProofTargets {
+            val eligible = live.keys - collidingOutputIds
+            val cars = outputs.value.filter {
+                it.id in eligible && it.role == com.example.shelfplayer.core.model.playback.AudioOutputRole.Car
+            }.map { it.id }.toSet()
+            return OutputProofTargets(eligible, cars, currentProjection())
+        }
+
+        override fun selected(selection: OutputIntentOwner.Selection) {
+            automaticProtection = null
+            val id = selection.outputId
+            if (id == null) headsetGuard.clearOwnership() else headsetGuard.protect(id)
+            _selectedId.value = id
+            publish()
+        }
+
+        override fun releasedRouteId(): String? = lastHeardRouteId()
+
+        override fun enqueue(epoch: Long, effect: () -> Unit) {
+            applicationScope.launch { preferenceEffects.run(epoch) { effect() } }
+        }
+
+        override fun requestPreference(player: ExoPlayer, outputId: String?): Boolean {
+            val device = outputId?.let(live::get)
+            if (outputId != null && device == null) return false
+            player.setPreferredAudioDevice(device)
+            return true
+        }
+
+        override fun changed() {
+            publish()
+        }
+    }
 
     private companion object {
         val ROUTE_SETTLE_DELAY = 400.milliseconds

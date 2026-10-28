@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -384,7 +385,18 @@ class PlaybackServiceCommandContinuityTest {
                 states.any { it.state != Player.STATE_IDLE },
                 "the old request must not prepare after the synchronous newer destination choice",
             )
-            assertFalse(fixture.isRouteMuted(), "the superseded probe must release its route-mute claim")
+            assertTrue(fixture.isRouteMuted(), "the newer Car request must retain its own mute until proof")
+            assertEquals(
+                OutputIntentOwner.Destination.Car,
+                fixture.activeTransferDestination(),
+                "the superseded headset probe must not remain the mute owner",
+            )
+            assertEquals(0f, fixture.player.volume)
+            advanceTimeBy(5_100L)
+            runCurrent()
+            assertFalse(fixture.player.playWhenReady, "an idle unverified successor times out safely")
+            assertFalse(fixture.isRouteMuted(), "neither the old claim nor the failed successor may strand mute")
+            assertEquals(null, fixture.activeTransferDestination())
             assertEquals(1f, fixture.player.volume)
         }
     }
@@ -1096,6 +1108,9 @@ class PlaybackServiceCommandContinuityTest {
         }
 
         fun explicitDestination(): OutputIntentOwner.Destination? = router.explicitSelection.value?.destination
+
+        fun activeTransferDestination(): OutputIntentOwner.Destination? =
+            router.positions.guard.currentProbe?.transferRequest?.selection?.destination
 
         fun selectCar() = router.selectCar()
 

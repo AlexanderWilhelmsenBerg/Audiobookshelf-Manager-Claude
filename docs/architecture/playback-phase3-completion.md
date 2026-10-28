@@ -18,9 +18,25 @@ and existing-authority checks around synchronous and suspended effects. Strict l
 2,700 tests /319 suites, including 884 playback tests, with no failures, errors or skips. Normal exact-head
 CI and the remaining software slices are tracked in
 [the current checkpoint](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/289#issuecomment-6448375926).
-Verified transfer/rollback and typed selection/UI consolidation remain
+Explicit transfer/rollback now passes full strict local verification: 2,748 tests /322 suites, including
+932 playback tests, with no failures, errors or skips. Its exact committed source and normal CI are recorded
+in that checkpoint. Asynchronous selection ownership and typed selection/UI consolidation remain
 required. The full execution plan is not complete. A final combined candidate must also include
 separate auth #296; physical output, startup and real-token acceptance remain distinct.
+
+### Remaining work overview
+
+| Work | Current status | Exit evidence |
+| --- | --- | --- |
+| Common activation and held position | Published in draft #300 at `84f192d4`; strict local and normal exact-head CI 40704175652 pass 2,700 tests | Recheck the final combined candidate |
+| Explicit verified handoff and rollback | Software implemented; strict local gate passes, ADR-0036 | Exact committed source and normal CI in the checkpoint; physical acceptance remains separate |
+| Service asynchronous ownership | Remaining | Existing selection sequence revokes stale prepare/install/Play; captured progress writes still complete; muted playback cannot create heard-route evidence |
+| Typed presentation and callback cleanup | Remaining | Requested/measured/predicted/unknown remain distinct; Waiting/Verifying/Verified/Delegated/Failed shown truthfully, with English/Norwegian and accessibility checks |
+| Final integration and APK | Remaining | Include auth #296, full `verifyDebug --rerun-tasks`, normal exact-head CI, independent review, then one combined signed QA APK |
+| Device/server acceptance | Pending | Stationary headset/Auto and lifecycle guide, #295 startup cases, #288 genuine 401 renewal; unsupported input identity recorded honestly |
+
+Green evidence above belongs to its recorded revision. It does not verify subsequent implementation work or
+constitute physical audio, zero-silence, headset-key identity, startup or real-server acceptance.
 
 ## Ownership after refactoring
 

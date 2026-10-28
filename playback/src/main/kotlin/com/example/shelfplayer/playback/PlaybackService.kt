@@ -371,6 +371,7 @@ class PlaybackService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         activeProfileGeneration = auto::activeProfileGeneration
+        audioOutputs.currentProjection = { carLifecycle.projectionState.carConnected }
         audioOutputs.lastHeardRouteId = { routeOwnership.heardRoute?.outputId }
         serviceStartedAt = clock.elapsed()
         audioRouteLab.serviceStarted()
@@ -426,6 +427,8 @@ class PlaybackService : MediaLibraryService() {
     private fun attachRouteSafetyMonitor(exoPlayer: ExoPlayer) {
         audioTrackRouteMonitor.onRouteChanged = audioOutputs::onActualTrackRouteChanged
         audioOutputs.attach(exoPlayer, audioTrackRouteMonitor::currentRouteIds)
+        audioOutputs.currentTrackObservation = audioTrackRouteMonitor::currentRouteObservation
+        audioOutputs.onActualTrackRouteChanged()
     }
 
     internal fun installPositionCheckpointHandlers() {
@@ -754,6 +757,7 @@ class PlaybackService : MediaLibraryService() {
         sessionSync.onShutdown()
         sessionSync.detach()
         audioOutputs.positions.clear()
+        audioOutputs.currentProjection = { false }
         resumeFreshness.attach(null)
         autoRewind.attach(null)
         sleepTimer.attach(null)
