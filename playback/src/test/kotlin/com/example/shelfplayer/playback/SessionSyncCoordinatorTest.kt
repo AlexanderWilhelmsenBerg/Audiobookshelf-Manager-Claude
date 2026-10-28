@@ -253,15 +253,114 @@ class SessionSyncCoordinatorTest {
         assertEquals(SyncTrigger.ServiceShutdown, repository.lastCloseTrigger)
     }
 
-    private fun kotlinx.coroutines.test.TestScope.coordinator(repository: SessionSyncRepository) =
-        SessionSyncCoordinator(
+    @Test
+    fun `route verification interval is excluded from listened duration`() = runTest {
+        val repository = RecordingSessionSyncRepository()
+        val clock = TestAppClock()
+        val volumeEffects = PlaybackVolumeEffects(clock)
+        val coordinator = coordinator(repository, clock, volumeEffects)
+        val book = LibraryItemId("book-a")
+        val player = playerFor(book, playing = { true })
+        volumeEffects.attach(player)
+        coordinator.attach(player)
+        coordinator.onSessionOpened(session(book))
+        coordinator.onPlayingChanged(true)
+
+        clock.advanceBy(2.minutes)
+        val claim = requireNotNull(volumeEffects.acquireRouteMute(player))
+        clock.advanceBy(5.minutes)
+        assertTrue(volumeEffects.releaseRouteMute(claim))
+        clock.advanceBy(3.minutes)
+        coordinator.onShutdown()
+        runCurrent()
+
+        assertEquals(5.minutes, repository.lastClosedProgress?.timeListened)
+    }
+
+    @Test
+    fun `verified unmute remembers current audible book without another raw Play`() = runTest {
+        val repository = RecordingSessionSyncRepository()
+        val clock = TestAppClock()
+        val volumeEffects = PlaybackVolumeEffects(clock)
+        val remembered = FakeRememberedBooks()
+        val profile = ProfileId("profile-a")
+        val book = LibraryItemId("book-a")
+        val coordinator = coordinator(
+            repository,
+            clock,
+            volumeEffects,
+            RememberedBookRecorder(remembered, backgroundScope),
+        )
+        val player = playerFor(book, playing = { true })
+        volumeEffects.attach(player)
+        coordinator.attach(player)
+        coordinator.onSessionOpened(session(book))
+        val claim = requireNotNull(volumeEffects.acquireRouteMute(player))
+        coordinator.onPlayingChanged(true)
+        runCurrent()
+        assertEquals(null, remembered.valueFor(profile), "route-muted playback is not remembered as audible")
+
+        assertTrue(volumeEffects.releaseRouteMute(claim))
+        runCurrent()
+
+        assertEquals(book, remembered.valueFor(profile))
+    }
+
+    @Test
+    fun `paused or retired route mute cleanup does not remember a book`() = runTest {
+        val clock = TestAppClock()
+        val volumeEffects = PlaybackVolumeEffects(clock)
+        val remembered = FakeRememberedBooks()
+        val profile = ProfileId("profile-a")
+        val book = LibraryItemId("book-a")
+        val coordinator = coordinator(
+            RecordingSessionSyncRepository(),
+            clock,
+            volumeEffects,
+            RememberedBookRecorder(remembered, backgroundScope),
+        )
+        val paused = playerFor(book, playing = { false })
+        val successor = playerFor(LibraryItemId("book-b"), playing = { false })
+        volumeEffects.attach(paused)
+        coordinator.attach(paused)
+        val pausedClaim = requireNotNull(volumeEffects.acquireRouteMute(paused))
+        assertTrue(volumeEffects.releaseRouteMute(pausedClaim))
+        runCurrent()
+        assertEquals(null, remembered.valueFor(profile), "a paused verification cannot claim audible ownership")
+
+        val retiredClaim = requireNotNull(volumeEffects.acquireRouteMute(paused))
+        volumeEffects.attach(successor)
+        assertTrue(volumeEffects.releaseRouteMute(retiredClaim))
+        runCurrent()
+
+        assertEquals(null, remembered.valueFor(profile), "retired-player cleanup cannot claim a successor book")
+    }
+
+    private fun kotlinx.coroutines.test.TestScope.coordinator(
+        repository: SessionSyncRepository,
+    ): SessionSyncCoordinator {
+        val clock = TestAppClock()
+        return coordinator(repository, clock, volumeEffectsForTest(UnconfinedTestDispatcher(testScheduler), clock))
+    }
+
+    private fun kotlinx.coroutines.test.TestScope.coordinator(
+        repository: SessionSyncRepository,
+        clock: TestAppClock,
+        volumeEffects: PlaybackVolumeEffects,
+        rememberedBookRecorder: RememberedBookRecorder = RememberedBookRecorder.None,
+    ): SessionSyncCoordinator {
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        return SessionSyncCoordinator(
             repository = repository,
             baseline = ResumeBaseline(),
-            clock = TestAppClock(),
+            clock = clock,
             logger = NO_OP_LOGGER,
+            rememberedBookRecorder = rememberedBookRecorder,
+            volumeEffects = volumeEffects,
             applicationScope = backgroundScope,
-            mainDispatcher = UnconfinedTestDispatcher(testScheduler),
+            mainDispatcher = dispatcher,
         )
+    }
 
     private fun session(bookId: LibraryItemId) = PlaybackSession(
         id = "remote-${bookId.value}",
@@ -281,6 +380,7 @@ class SessionSyncCoordinatorTest {
         position: Duration = 10.seconds,
         resumePlaceholder: Boolean = false,
         owner: String = "profile-a",
+        playing: () -> Boolean = { false },
     ): Player {
         val extras = Bundle().apply {
             putString(MediaItems.KEY_OWNER_PROFILE_ID, owner)
@@ -298,6 +398,7 @@ class SessionSyncCoordinatorTest {
                 "getCurrentMediaItem" -> item
                 "getCurrentPosition" -> position.inWholeMilliseconds
                 "getDuration" -> 60.minutes.inWholeMilliseconds
+                "isPlaying" -> playing()
                 else -> defaultValue(method.returnType)
             }
         } as Player

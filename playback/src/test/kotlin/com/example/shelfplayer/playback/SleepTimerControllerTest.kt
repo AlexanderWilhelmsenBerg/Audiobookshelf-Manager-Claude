@@ -2,6 +2,7 @@ package com.example.shelfplayer.playback
 
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.AppResult
@@ -35,6 +36,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -43,6 +46,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import java.lang.reflect.Proxy
 import java.time.Instant
+import java.time.ZoneOffset
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
@@ -63,6 +67,81 @@ import kotlin.time.Duration.Companion.seconds
 class SleepTimerControllerTest {
 
     @Test
+    fun `timer history snapshots the book position and time before asynchronous dispatch`() = runTest {
+        val clock = TestAppClock()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val volume = PlaybackVolumeEffects(clock)
+        val sync = SessionSyncCoordinator(
+            repository = FakeSessionSyncRepository(),
+            baseline = ResumeBaseline(),
+            clock = clock,
+            logger = NO_OP_LOGGER,
+            volumeEffects = volume,
+            applicationScope = backgroundScope,
+            mainDispatcher = dispatcher,
+        )
+        val repository = FakePlaybackHistoryRepository()
+        val effects = SleepTimerHistory(FakeSleepTimerRepository(), repository, sync, clock, backgroundScope)
+        var bookId = "book-a"
+        var position = 10.minutes
+        val media = routeTestPlayer(bookId = { bookId }, position = { position }) {}
+        val happenedAt = clock.now()
+
+        effects.record(media, PlaybackEvent.SleepTimerStarted)
+        bookId = "replacement"
+        position = 20.minutes
+        clock.advanceBy(30.seconds)
+        runCurrent()
+
+        assertEquals(
+            HistorySnapshot(LibraryItemId("book-a"), 10.minutes, happenedAt, null),
+            repository.snapshots.single(),
+        )
+    }
+
+    @Test
+    fun `queued unmute replay cannot authorize a replacement book`() = runTest {
+        val clock = TestAppClock(Instant.parse("2026-09-19T23:00:00Z"))
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val effects = PlaybackVolumeEffects(clock)
+        val baseSchedule = SleepTimerScheduleSettings.Default.copy(enabled = true)
+        val occurrence =
+            requireNotNull(SleepSchedulePolicy.currentOccurrence(clock.now(), ZoneOffset.UTC, baseSchedule))
+        val settings = MutableStateFlow(
+            SleepTimerSettings.Default.copy(schedule = baseSchedule.copy(replayRequiredOccurrence = occurrence.id)),
+        )
+        val repository = FakeSleepTimerRepository(settings)
+        val controller = controller(
+            repository,
+            FakeShakeSource(),
+            clock,
+            volumeEffects = effects,
+            dispatcher = dispatcher,
+        )
+        var bookId = "book-a"
+        val sharedPlayer = routeTestPlayer(bookId = { bookId }) {}
+        val guard = routeTestGuard(sharedPlayer, effects, dispatcher)
+        guard.attachPlayer(sharedPlayer)
+        controller.attach(sharedPlayer)
+        runCurrent()
+        assertTrue(guard.beginProbe("headset", sharedPlayer, 5L))
+        val requested = launch { controller.onPlayRequest(explicit = true) }
+        runCurrent()
+        requested.join()
+        controller.onPlaybackChanged(true)
+        runCurrent()
+
+        guard.verifyProbeIfActive(setOf("headset"), emptySet(), isPlaying = true)
+        controller.onBookChangedImmediately(emptyList())
+        bookId = "book-b"
+        runCurrent()
+
+        assertEquals(0, repository.started, "the old book's queued unmute must not start a replacement timer")
+        assertEquals(occurrence.id, settings.value.schedule.replayRequiredOccurrence)
+        assertFalse(controller.state.value.isActive)
+    }
+
+    @Test
     fun `pause during a suspended start retires its provisional session`() = runTest {
         val repository = FakeSleepTimerRepository()
         val controller = controller(repository, FakeShakeSource(), TestAppClock())
@@ -79,6 +158,212 @@ class SleepTimerControllerTest {
         assertIs<AppResult.Failure>(result)
         assertFalse(controller.state.value.isActive)
         assertEquals(1, repository.ended.count { it == SleepTimerOutcome.PlaybackStopped })
+    }
+
+    @Test
+    fun `sleep tick cannot unmute an active route verification probe`() = runTest {
+        val clock = TestAppClock()
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        val volumeEffects = PlaybackVolumeEffects(clock)
+        val controller = controller(FakeSleepTimerRepository(), FakeShakeSource(), clock, volumeEffects = volumeEffects)
+        var rawVolume = 1f
+        val sharedPlayer = Proxy.newProxyInstance(
+            ExoPlayer::class.java.classLoader,
+            arrayOf(ExoPlayer::class.java),
+        ) { _, method, args ->
+            when (method.name) {
+                "getVolume" -> rawVolume
+
+                "setVolume" -> {
+                    rawVolume = args!![0] as Float
+                    null
+                }
+
+                "isPlaying" -> true
+
+                "getCurrentMediaItem" -> MediaItem.Builder().setMediaId("book-a").build()
+
+                "getCurrentPosition" -> 10.minutes.inWholeMilliseconds
+
+                "getDuration" -> 60.minutes.inWholeMilliseconds
+
+                "addListener", "removeListener" -> null
+
+                else -> defaultValue(method.returnType)
+            }
+        } as ExoPlayer
+        val guard = HeadsetRouteGuard(
+            scope = backgroundScope,
+            playerDispatcher = dispatcher,
+            volumeEffects = volumeEffects,
+            isCurrentProbe = { _, player, _ -> player === sharedPlayer },
+            onProbeInvalidated = { false },
+            onProbeFinished = {},
+            onPlaying = {},
+        )
+        guard.attachPlayer(sharedPlayer)
+        controller.attach(sharedPlayer)
+        controller.start(SleepTimerMode.Fixed(30.minutes))
+        runCurrent()
+        assertTrue(guard.beginProbe("headset", sharedPlayer, 1L))
+        assertEquals(0f, rawVolume)
+
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        assertEquals(0f, rawVolume, "a sleep fade/tick must not undo the route-owned mute")
+    }
+
+    @Test
+    fun `route verification mute freezes a fixed timer without changing audible player state`() = runTest {
+        val clock = TestAppClock()
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        val volumeEffects = PlaybackVolumeEffects(clock)
+        val controller = controller(FakeSleepTimerRepository(), FakeShakeSource(), clock, volumeEffects = volumeEffects)
+        var rawVolume = 1f
+        val sharedPlayer = Proxy.newProxyInstance(
+            ExoPlayer::class.java.classLoader,
+            arrayOf(ExoPlayer::class.java),
+        ) { _, method, args ->
+            when (method.name) {
+                "getVolume" -> rawVolume
+
+                "setVolume" -> {
+                    rawVolume = args!![0] as Float
+                    null
+                }
+
+                "isPlaying" -> true
+
+                "getCurrentMediaItem" -> MediaItem.Builder().setMediaId("book-a").build()
+
+                "getCurrentPosition" -> 10.minutes.inWholeMilliseconds
+
+                "getDuration" -> 60.minutes.inWholeMilliseconds
+
+                "addListener", "removeListener" -> null
+
+                else -> defaultValue(method.returnType)
+            }
+        } as ExoPlayer
+        val guard = HeadsetRouteGuard(
+            scope = backgroundScope,
+            playerDispatcher = dispatcher,
+            volumeEffects = volumeEffects,
+            isCurrentProbe = { _, player, _ -> player === sharedPlayer },
+            onProbeInvalidated = { false },
+            onProbeFinished = {},
+            onPlaying = {},
+        )
+        guard.attachPlayer(sharedPlayer)
+        controller.attach(sharedPlayer)
+        controller.start(SleepTimerMode.Fixed(30.minutes))
+        runCurrent()
+        assertTrue(guard.beginProbe("headset", sharedPlayer, 1L))
+        controller.onPlaybackChanged(true)
+
+        clock.advanceBy(5.minutes)
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        assertEquals(30.minutes, controller.state.value.remaining)
+        assertTrue(controller.state.value.isActive)
+        assertEquals(0f, rawVolume)
+    }
+
+    @Test
+    fun `mute preserves the latest fade gain until route proof ends`() = runTest {
+        val clock = TestAppClock()
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        val effects = PlaybackVolumeEffects(clock)
+        val settings = MutableStateFlow(SleepTimerSettings.Default.copy(fadeLength = 10.minutes))
+        val controller =
+            controller(FakeSleepTimerRepository(settings), FakeShakeSource(), clock, volumeEffects = effects)
+        var rawVolume = 1f
+        val sharedPlayer = routeTestPlayer { value -> rawVolume = value }
+        val guard = routeTestGuard(sharedPlayer, effects, dispatcher)
+        guard.attachPlayer(sharedPlayer)
+        controller.attach(sharedPlayer)
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(30.minutes)))
+        runCurrent()
+
+        clock.advanceBy(25.minutes)
+        advanceTimeBy(1_001)
+        runCurrent()
+        val latestFadeGain = rawVolume
+        assertTrue(latestFadeGain in 0f..1f && latestFadeGain < 1f)
+        assertTrue(guard.beginProbe("headset", sharedPlayer, 2L))
+        controller.onPlaybackChanged(true)
+        clock.advanceBy(5.minutes)
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        assertEquals(5.minutes, controller.state.value.remaining)
+        assertEquals(0f, rawVolume)
+        assertTrue(guard.verifyProbeIfActive(setOf("headset"), emptySet(), isPlaying = true))
+        runCurrent()
+        assertEquals(latestFadeGain, rawVolume, "probe completion restores the latest requested sleep fade")
+        assertEquals(5.minutes, controller.state.value.remaining)
+    }
+
+    @Test
+    fun `muted raw playing callback preserves explicit replay marker until audible verification ends`() = runTest {
+        val clock = TestAppClock(Instant.parse("2026-09-19T23:00:00Z"))
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        val effects = PlaybackVolumeEffects(clock)
+        val baseSchedule = SleepTimerScheduleSettings.Default.copy(enabled = true)
+        val occurrence =
+            requireNotNull(SleepSchedulePolicy.currentOccurrence(clock.now(), ZoneOffset.UTC, baseSchedule))
+        val schedule = baseSchedule.copy(replayRequiredOccurrence = occurrence.id)
+        val settings = MutableStateFlow(SleepTimerSettings.Default.copy(schedule = schedule))
+        val repository = FakeSleepTimerRepository(settings)
+        val controller = controller(repository, FakeShakeSource(), clock, volumeEffects = effects)
+        var rawVolume = 1f
+        val sharedPlayer = routeTestPlayer { value -> rawVolume = value }
+        val guard = routeTestGuard(sharedPlayer, effects, dispatcher)
+        guard.attachPlayer(sharedPlayer)
+        controller.attach(sharedPlayer)
+        assertTrue(guard.beginProbe("headset", sharedPlayer, 3L))
+        assertIs<AppResult.Failure>(controller.start(SleepTimerMode.Fixed(30.minutes)))
+
+        controller.onPlayRequest(explicit = true)
+        controller.onPlaybackChanged(true)
+        runCurrent()
+        assertEquals(0, repository.started, "muted playback cannot arm a new timer")
+
+        guard.verifyProbeIfActive(setOf("headset"), emptySet(), isPlaying = true)
+        runCurrent()
+
+        assertEquals(1, repository.started, "the deferred explicit Play authorizes the replay after verification")
+        assertTrue(controller.state.value.isActive)
+        assertTrue(rawVolume > 0f)
+    }
+
+    @Test
+    fun `route mute invalidates a timer creation suspended in history persistence`() = runTest {
+        val clock = TestAppClock()
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        val effects = PlaybackVolumeEffects(clock)
+        val repository = FakeSleepTimerRepository()
+        val controller = controller(repository, FakeShakeSource(), clock, volumeEffects = effects)
+        var rawVolume = 1f
+        val sharedPlayer = routeTestPlayer { value -> rawVolume = value }
+        val guard = routeTestGuard(sharedPlayer, effects, dispatcher)
+        guard.attachPlayer(sharedPlayer)
+        controller.attach(sharedPlayer)
+        val persistence = repository.blockNextRecordStarted()
+        var result: AppResult<Unit>? = null
+        val starting = launch { result = controller.start(SleepTimerMode.Fixed(30.minutes)) }
+        persistence.awaitEntered()
+
+        assertTrue(guard.beginProbe("headset", sharedPlayer, 4L))
+        persistence.resume()
+        starting.join()
+
+        assertIs<AppResult.Failure>(result)
+        assertFalse(controller.state.value.isActive)
+        assertEquals(listOf(SleepTimerOutcome.PlaybackStopped), repository.ended)
+        assertEquals(0f, rawVolume)
     }
 
     @Test
@@ -1459,21 +1744,23 @@ class SleepTimerControllerTest {
         shakes: ShakeSource,
         clock: TestAppClock,
         history: PlaybackHistoryRepository = FakePlaybackHistoryRepository(),
+        volumeEffects: PlaybackVolumeEffects = PlaybackVolumeEffects(clock),
+        dispatcher: TestDispatcher = UnconfinedTestDispatcher(testScheduler),
     ): SleepTimerController {
-        val dispatcher = UnconfinedTestDispatcher(testScheduler)
         val sync = SessionSyncCoordinator(
             repository = FakeSessionSyncRepository(),
             baseline = ResumeBaseline(),
             clock = clock,
             logger = NO_OP_LOGGER,
+            volumeEffects = volumeEffects,
             applicationScope = backgroundScope,
             mainDispatcher = dispatcher,
         )
         return SleepTimerController(
             repository = repository,
             shakes = shakes,
-            sessionSync = sync,
-            history = history,
+            volumeEffects = volumeEffects,
+            history = SleepTimerHistory(repository, history, sync, clock, backgroundScope),
             clock = clock,
             zoneProvider = object : LocalZoneProvider {
                 override fun current() = java.time.ZoneOffset.UTC
@@ -1483,6 +1770,54 @@ class SleepTimerControllerTest {
             mainDispatcher = dispatcher,
         )
     }
+
+    private fun routeTestPlayer(
+        bookId: () -> String = { "book-a" },
+        position: () -> Duration = { 10.minutes },
+        onVolumeChanged: (Float) -> Unit,
+    ): ExoPlayer {
+        var volume = 1f
+        return Proxy.newProxyInstance(
+            ExoPlayer::class.java.classLoader,
+            arrayOf(ExoPlayer::class.java),
+        ) { _, method, args ->
+            when (method.name) {
+                "getVolume" -> volume
+
+                "setVolume" -> {
+                    volume = args!![0] as Float
+                    onVolumeChanged(volume)
+                    null
+                }
+
+                "isPlaying" -> true
+
+                "getCurrentMediaItem" -> MediaItem.Builder().setMediaId(bookId()).build()
+
+                "getCurrentPosition" -> position().inWholeMilliseconds
+
+                "getDuration" -> 60.minutes.inWholeMilliseconds
+
+                "addListener", "removeListener" -> null
+
+                else -> defaultValue(method.returnType)
+            }
+        } as ExoPlayer
+    }
+
+    private fun TestScope.routeTestGuard(
+        player: ExoPlayer,
+        volumeEffects: PlaybackVolumeEffects,
+        dispatcher: TestDispatcher,
+    ) = HeadsetRouteGuard(
+        scope = backgroundScope,
+        playerDispatcher = dispatcher,
+        volumeEffects = volumeEffects,
+        isCurrentProbe = { _, current, _ -> current === player },
+        onProbeInvalidated = { false },
+        onProbeFinished = {},
+        onPlaying = {},
+    )
 
     private fun resumeOwner(onResume: () -> Unit = {}): SleepTimerResumeOwner = object : SleepTimerResumeOwner {
         override suspend fun resume(stillAuthorized: () -> Boolean): Boolean {
@@ -1692,6 +2027,7 @@ class SleepTimerControllerTest {
 
     private class FakePlaybackHistoryRepository : PlaybackHistoryRepository {
         val events = mutableListOf<PlaybackEvent>()
+        val snapshots = mutableListOf<HistorySnapshot>()
 
         override fun observe(bookId: LibraryItemId, limit: Int): Flow<List<PlaybackHistoryEntry>> = flowOf(emptyList())
 
@@ -1705,12 +2041,20 @@ class SleepTimerControllerTest {
             owner: ProfileId?,
         ) {
             events += event
+            snapshots += HistorySnapshot(bookId, to, at, owner)
         }
 
         override suspend fun refreshServerSessions(bookId: LibraryItemId) = Unit
 
         override suspend fun clear(bookId: LibraryItemId) = Unit
     }
+
+    private data class HistorySnapshot(
+        val bookId: LibraryItemId,
+        val position: Duration,
+        val at: Instant?,
+        val owner: ProfileId?,
+    )
 
     private class FakeSessionSyncRepository : SessionSyncRepository {
         override suspend fun openSession(

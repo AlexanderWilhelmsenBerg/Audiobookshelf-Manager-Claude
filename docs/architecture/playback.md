@@ -220,6 +220,19 @@ BookWave continues to delegate audio-focus ownership to ExoPlayer/Media3. On the
 
 PD-002 and merged PR #213 suppress new automatic timers while a car controller/projection owns the connection, preserve existing/manual timers and re-evaluate eligible active playback on disconnect without starting audio or clearing cancellation. The service supplies connection truth to that existing timer owner.
 
+Route verification and sleep fades share the singleton `PlaybackVolumeEffects` writer. The headset guard holds an
+opaque mute claim; sleep updates the requested gain through the same writer, so timer ticks cannot unmute a
+verification probe and probe completion restores the latest fade gain. The sleep timer and session listened-time
+owner consume synchronous monotonic mute-boundary callbacks: route-only silence freezes countdown and listened
+time without creating a Pause, consuming a pending explicit Play, changing the session, or issuing Play. A real
+Pause remains authoritative. This change does not alter progress journaling, position compensation, or history
+ownership; device/headset/Auto listening acceptance and the separate verified handoff/rollback remain pending.
+
+`SleepTimerHistory` handles timer-session persistence and book-history effects. It snapshots the current book,
+profile, position and time before dispatching a history write. The controller retains all phase/claim and
+schedule decisions; committed end effects preserve the order of timer-session close, progress-sync request,
+and sync drain. An invalidated provisional start closes only its own returned session id.
+
 Phone players retain the book title and display the countdown on the Sleep action. Car metadata/commands never expose it; because one MediaSession is shared, the phone notification/lock screen also hide it while Auto is connected. Device rendering, sensors/grace and the timer-expiry/continuity interaction remain acceptance cases in the [verification register](../testing/roadmap-verification-register.md).
 
 ## System surfaces

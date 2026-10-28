@@ -53,6 +53,7 @@ class AudioOutputRouter @Inject constructor(
     @param:ApplicationScope private val applicationScope: CoroutineScope,
     @param:Dispatcher(ShelfDispatcher.MainImmediate) private val mainDispatcher: CoroutineDispatcher,
     private val endpointRegistry: LiveOutputEndpointRegistry = LiveOutputEndpointRegistry(),
+    private val volumeEffects: PlaybackVolumeEffects,
 ) {
 
     private val _outputs = MutableStateFlow<List<AudioOutput>>(emptyList())
@@ -105,6 +106,7 @@ class AudioOutputRouter @Inject constructor(
     private val headsetGuard = HeadsetRouteGuard(
         scope = applicationScope,
         playerDispatcher = mainDispatcher,
+        volumeEffects = volumeEffects,
         isCurrentProbe = ::isCurrentGuard,
         onProbeInvalidated = ::handleInvalidatedProbe,
         onProbeFinished = { verified ->
@@ -134,6 +136,9 @@ class AudioOutputRouter @Inject constructor(
     private var live: Map<String, AudioDeviceInfo> = emptyMap()
 
     fun attach(target: ExoPlayer, trackRoutes: () -> Set<String>? = { null }) {
+        // Publish the successor attachment before retiring old callbacks. A stale probe then restores only its
+        // own player and cannot emit an audible-resume event into the successor's sleep/session accounting.
+        volumeEffects.attach(target)
         clearMeasuredPlayingHeadsetProtection()
         // A probe owns the volume it muted. Restore it while its player is still attached,
         // before a replacement can become the router's current player.
@@ -163,6 +168,7 @@ class AudioOutputRouter @Inject constructor(
         outputIntentOwner.state.value.lock?.let(outputIntentOwner::invalidateProof)
         preferenceEffects.supersede()
         automaticProtection = null
+        volumeEffects.detach(player)
         headsetGuard.release()
         currentTrackRoutes = { null }
         collidingOutputIds = emptySet()
