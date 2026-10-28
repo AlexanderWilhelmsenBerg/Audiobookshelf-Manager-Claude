@@ -1023,20 +1023,63 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
-    /** The old direct Play behavior, now used only after the shared freshness decision says to stay local. */
+    /** Local resume after the shared freshness decision, using the same guarded command boundaries. */
     private suspend fun resumeLoadedCurrent(stillAuthorized: () -> Boolean = { true }): Boolean =
         withContext(mainDispatcher) {
             if (!stillAuthorized()) return@withContext false
             val current = player ?: return@withContext false
             if (current.mediaItemCount == 0) return@withContext false
-            if (current.playbackState == Player.STATE_IDLE || current.playerError != null) current.prepare()
+            if ((current.playbackState == Player.STATE_IDLE || current.playerError != null) &&
+                !prepareOnCurrentOutput(current, stillAuthorized)
+            ) {
+                return@withContext false
+            }
             if (!stillAuthorized()) return@withContext false
             // The freshness network request may take seconds. Start the muted route
             // probe only NOW, immediately before the actual raw ExoPlayer Play.
-            if (!current.playWhenReady) audioOutputs.protectManualPlayOnGuardedHeadset()
-            current.play()
-            true
+            playOnCurrentOutput(current, stillAuthorized)
         }
+
+    /** One final raw-Play boundary for local and adopted resumes; denied proof cannot reach transport. */
+    private fun playOnCurrentOutput(current: ExoPlayer, stillAuthorized: () -> Boolean): Boolean {
+        val itemGeneration = mediaItemGeneration
+        if (!isCurrentResumeEffect(current, itemGeneration, stillAuthorized)) return false
+        if (!current.playWhenReady && audioOutputs.protectManualPlayOnGuardedHeadset() == ManualPlayProtection.Denied) {
+            return false
+        }
+        // Acquiring mute synchronously notifies existing effect owners; newer intent can revoke this command.
+        if (!isCurrentResumeEffect(current, itemGeneration, stillAuthorized)) return false
+        current.play()
+        return true
+    }
+
+    /** Retained Play intent makes prepare an audio-start effect too; adopted seeks additionally hold Pause. */
+    private fun prepareOnCurrentOutput(
+        current: ExoPlayer,
+        stillAuthorized: () -> Boolean,
+        holdForSeek: Boolean = false,
+    ): Boolean {
+        val itemGeneration = mediaItemGeneration
+        if (!isCurrentResumeEffect(current, itemGeneration, stillAuthorized)) return false
+        if (current.playWhenReady &&
+            audioOutputs.protectManualPlayOnGuardedHeadset(holdPaused = holdForSeek) == ManualPlayProtection.Denied
+        ) {
+            return false
+        }
+        if (!isCurrentResumeEffect(current, itemGeneration, stillAuthorized) ||
+            (holdForSeek && current.playWhenReady)
+        ) {
+            return false
+        }
+        current.prepare()
+        return isCurrentResumeEffect(current, itemGeneration, stillAuthorized)
+    }
+
+    private fun isCurrentResumeEffect(
+        current: ExoPlayer,
+        itemGeneration: Long,
+        stillAuthorized: () -> Boolean,
+    ): Boolean = player === current && mediaItemGeneration == itemGeneration && stillAuthorized()
 
     /** Records the REST check result independently of whether a later adopted seek succeeds. */
     private fun recordFreshnessCheck(plan: ResumeFreshnessPlan) {
@@ -1111,9 +1154,9 @@ class PlaybackService : MediaLibraryService() {
     /**
      * [ResumeTarget] over the service's own [ExoPlayer]. Main thread only, like its subject.
      *
-     * Thin on purpose: the ordering it is driven by is asserted against a fake in `AtomicResumeTest`, and
-     * everything here is a single Media3 call so that there is as little as possible that only a device can
-     * exercise.
+     * `AtomicResumeTest` verifies prepare/seek/confirm/Play ordering. Command helpers additionally enforce
+     * route preparation and current ownership around synchronous callbacks; seek confirmation still reads
+     * this exact raw player's events on its application thread.
      */
     private inner class OwnedPlayer(
         private val media: ExoPlayer,
@@ -1126,7 +1169,7 @@ class PlaybackService : MediaLibraryService() {
 
         override fun needsPreparing(): Boolean = media.playbackState == Player.STATE_IDLE || media.playerError != null
 
-        override fun prepare() = media.prepare()
+        override fun prepare(): Boolean = prepareOnCurrentOutput(media, stillAuthorized, holdForSeek = true)
 
         /**
          * Seeks, and waits for **this player** to say where it ended up.
@@ -1178,13 +1221,7 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override suspend fun playIfCurrent(): Boolean = resumeFreshness.withCurrentPlan(plan, requireBaseline = false) {
-            if (!stillAuthorized()) {
-                false
-            } else {
-                if (!media.playWhenReady) audioOutputs.protectManualPlayOnGuardedHeadset()
-                media.play()
-                true
-            }
+            playOnCurrentOutput(media, stillAuthorized)
         } ?: false
     }
 
@@ -1261,13 +1298,14 @@ class PlaybackService : MediaLibraryService() {
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
             // Record transport intent, not buffer or route changes, and never invent a physical key origin.
+            val routeSafetyPause = !playWhenReady && audioOutputs.isRouteSafetyPause(player)
             val input = PlaybackTransportInput.interpret(
                 playWhenReady,
                 reason,
-                routeSafetyPause = audioOutputs.isRouteSafetyPause(player),
+                routeSafetyPause = routeSafetyPause,
             )
             carResumeEffects.cancelPending()
-            recordTransport(if (input.isPlay) PlaybackEvent.Play else PlaybackEvent.Pause)
+            if (!routeSafetyPause) recordTransport(if (input.isPlay) PlaybackEvent.Play else PlaybackEvent.Pause)
             logger.debug(
                 LogCategory.Playback,
                 "Playback was asked to change",

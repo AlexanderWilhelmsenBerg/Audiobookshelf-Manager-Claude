@@ -273,7 +273,7 @@ class AudioOutputRouterThreadTest {
         assertTrue(fixture.router.protectMeasuredPlayingHeadset(endpoint.id, 7L, 0L) { true })
         assertTrue(fixture.router.reassert(endpoint.id), "same-endpoint policy reassertion remains safe")
         runCurrent()
-        assertTrue(fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
         assertEquals(listOf(0f), fixture.volumeChanges)
         fixture.router.clearMeasuredPlayingHeadsetProtection()
         runCurrent()
@@ -323,7 +323,7 @@ class AudioOutputRouterThreadTest {
         val endpoint = fixture.observeEndpoint(48)
         fixture.measuredRoutes { setOf(endpoint.id) }
         assertTrue(fixture.router.protectMeasuredPlayingHeadset(endpoint.id, 1L, 0L) { true })
-        assertTrue(fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
 
         fixture.router.attach(replacement.player)
         runCurrent()
@@ -444,7 +444,7 @@ class AudioOutputRouterThreadTest {
     fun `manual headset Play stays silent until the actual track route is verified`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
-        assertTrue(fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
         assertEquals(listOf(0f), fixture.volumeChanges)
         fixture.measuredRoutes { emptySet() }
         fixture.safetyListener().onIsPlayingChanged(true)
@@ -468,7 +468,7 @@ class AudioOutputRouterThreadTest {
     fun `wrong actual sink aborts silent manual Play without unmuting early`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
-        assertTrue(fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
         fixture.measuredRoutes { setOf("bluetooth:car") }
         fixture.safetyListener().onIsPlayingChanged(true)
         runCurrent()
@@ -480,7 +480,7 @@ class AudioOutputRouterThreadTest {
     fun `unknown actual sink times out while silent and pauses`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
-        assertTrue(fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
         fixture.measuredRoutes { emptySet() }
         fixture.safetyListener().onIsPlayingChanged(true)
         runCurrent()
@@ -586,7 +586,7 @@ class AudioOutputRouterThreadTest {
     @Test
     fun `after grace expires unattributed Play still cannot escape to default car route`() = runTest {
         val fixture = fixture()
-        fixture.guard("bluetooth:original")
+        fixture.guard("bluetooth:original", connected = false)
 
         // Emulate the exact missing-output branch reached by AudioDeviceCallback after car arrival.
         // The OS may expose only an unmapped projection output for much longer than two seconds.
@@ -843,7 +843,19 @@ private data class Fixture(
         field.set(router, other.player)
     }
 
-    fun guard(outputId: String) {
+    fun guard(outputId: String, connected: Boolean = true) {
+        // These probe fixtures represent a connected guarded endpoint; disappearance tests refresh inventory.
+        AudioOutputRouter::class.java.getDeclaredField("live").apply {
+            isAccessible = true
+            set(
+                router,
+                if (connected) {
+                    mapOf(outputId to device(99, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "Fixture headset"))
+                } else {
+                    emptyMap<String, AudioDeviceInfo>()
+                },
+            )
+        }
         guardOwner().protect(outputId)
         @Suppress("UNCHECKED_CAST")
         val selection = AudioOutputRouter::class.java.getDeclaredField("_selectedId").run {
@@ -868,7 +880,7 @@ class AudioOutputRouterQueuedSafetyTest {
         runCurrent()
 
         fixture.guard("bluetooth:original")
-        assertTrue(fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
         val pausesBeforeOldCallback = replacement.pauseThreads.size
         oldListener.onPlayWhenReadyChanged(false, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
         oldListener.onIsPlayingChanged(true)
@@ -887,7 +899,7 @@ class AudioOutputRouterQueuedSafetyTest {
         runCurrent()
 
         fixture.guard("bluetooth:original")
-        assertTrue(fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
         val pausesBeforeRetiredCallback = fixture.pauseThreads.size
         retiredListener.onPlayWhenReadyChanged(false, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
         retiredListener.onIsPlayingChanged(true)
@@ -901,7 +913,7 @@ class AudioOutputRouterQueuedSafetyTest {
     fun `stale probe timeout restores its volume without pausing after a newer car choice`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
-        assertTrue(fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
 
         fixture.router.selectCar()
         fixture.guardOwner().verifyProbeIfActive(
@@ -920,7 +932,7 @@ class AudioOutputRouterQueuedSafetyTest {
         val fixture = fixture()
         val replacement = fixture()
         fixture.guard("bluetooth:original")
-        assertTrue(fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
         fixture.replacePlayerFrom(replacement)
 
         fixture.router.selectCar()

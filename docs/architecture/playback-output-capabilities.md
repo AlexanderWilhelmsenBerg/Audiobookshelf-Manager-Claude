@@ -100,6 +100,21 @@ must remain part of any Media3 upgrade; this is not an unbounded pending-origin 
 
 ## Investigation and physical acceptance still required
 
+Manual service resume distinguishes `NoGuard`, `MutedAllowed` and `Denied`. A missing guard never releases
+an existing logical lock. Unsupported guarded preparation, missing selection/live endpoint, conflicting lock
+or colliding identity returns Denied before the service's raw Play. Both local and adopted resumes use one
+final Play gate, rechecking player, existing item generation and request authorization after synchronous mute
+notifications. Ordinary unguarded resume remains available on API 32; guarded support is conservative and
+does not imply hardware acceptance. Retained Play intent is checked before local preparation too. Adopted
+position preparation holds the player paused until seek confirmation; a refused preparation cannot seek or
+Play and cannot claim a remote-progress history event. Safety pauses retain guard provenance and do not add
+listener Pause history. A guard reserves its probe identity before synchronous mute callbacks, rejects nested
+acquisition, and revalidates existing preference epoch, attachment and target after those callbacks.
+
+Fresh-start forwarding, deferred queue installs/retry and post-connect commands must also reach the final
+output preparation/Play boundary; that integration remains part of #277. The checkpoint and verified-transfer
+work below is not established by the local/adopted resume tests alone.
+
 | Case | Current evidence | Required check |
 | --- | --- | --- |
 | Original headset remains live during Auto arrival | Earlier configuration-specific 2240 success | Retest current exact source, active and paused, including host autoplay on/off |

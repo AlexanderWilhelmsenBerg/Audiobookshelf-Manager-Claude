@@ -564,11 +564,30 @@ class AudioOutputRouter @Inject constructor(
     internal fun beginMutedHeadsetProbe(id: String): Boolean = canProbeHeldHeadset(id) && startMutedProbe(id)
 
     /** An unattributed manual Play can only become audible on this already-guarded headset. */
-    internal fun protectManualPlayOnGuardedHeadset(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
-        val id = headsetGuard.endpointId ?: return false
-        if (_selectedId.value != id || id in collidingOutputIds) return false
-        return startMutedProbe(id)
+    internal fun protectManualPlayOnGuardedHeadset(holdPaused: Boolean = false): ManualPlayProtection {
+        val protection = beginManualPlayProtection()
+        if (protection != ManualPlayProtection.Denied && holdPaused) {
+            val current = player ?: return ManualPlayProtection.Denied
+            headsetGuard.pauseForSafety(current)
+            if (current.playWhenReady) return ManualPlayProtection.Denied
+        }
+        return protection
+    }
+
+    private fun beginManualPlayProtection(): ManualPlayProtection {
+        val lock = outputIntentOwner.state.value.lock
+        val id = headsetGuard.endpointId ?: return if (lock == null) {
+            ManualPlayProtection.NoGuard
+        } else {
+            ManualPlayProtection.Denied
+        }
+        return when {
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU -> ManualPlayProtection.Denied
+            _selectedId.value != id || id !in live || id in collidingOutputIds -> ManualPlayProtection.Denied
+            lock != null && lock.outputId != id -> ManualPlayProtection.Denied
+            startMutedProbe(id) -> ManualPlayProtection.MutedAllowed
+            else -> ManualPlayProtection.Denied
+        }
     }
 
     internal fun isRouteSafetyPause(target: ExoPlayer?): Boolean = headsetGuard.isPausingForSafety(target)
@@ -576,10 +595,15 @@ class AudioOutputRouter @Inject constructor(
     private fun startMutedProbe(id: String): Boolean {
         val current = player ?: return false
         val epoch = preferenceEffects.snapshot()
-        val started = headsetGuard.beginProbe(id, current, epoch)
+        val existing = headsetGuard.hasCurrentProbe(id, current, epoch)
+        val started = existing || headsetGuard.beginProbe(id, current, epoch)
         if (!started) return false
-        logger.info(LogCategory.Playback, "Car continuity began silent headset verification")
-        return true
+        val valid = isCurrentGuard(epoch, current, id) && id in live && id !in collidingOutputIds
+        if (!valid) headsetGuard.cancelProbeForEndpoint(id, epoch)
+        if (valid && !existing) {
+            logger.info(LogCategory.Playback, "Car continuity began silent headset verification")
+        }
+        return valid
     }
 
     /** AudioTrack can change sinks without an AudioManager device-list callback. */
@@ -772,6 +796,9 @@ private fun statusFor(lock: OutputIntentOwner.Lock?): AudioOutputLockStatus? = w
     OutputIntentOwner.LockPhase.Unverified -> AudioOutputLockStatus.Unverified
     null -> null
 }
+
+/** No guard is distinct from a guard that cannot safely prepare this Play. */
+internal enum class ManualPlayProtection { NoGuard, MutedAllowed, Denied }
 
 internal fun shouldSuspendGuardedPlayback(
     guardedHeadsetId: String?,

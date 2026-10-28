@@ -38,6 +38,8 @@ import org.robolectric.annotation.Config
 import org.robolectric.shadows.AudioDeviceInfoBuilder
 import java.lang.reflect.Proxy
 import java.time.ZoneId
+import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
+import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -112,6 +114,169 @@ class PlaybackServiceCommandContinuityTest {
     }
 
     @Test
+    fun `guarded local resume refuses a colliding endpoint without raw Play`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = true)
+
+            assertFalse(fixture.resumeLoadedCurrent())
+            assertFalse(fixture.resumeLoadedCurrent(), "repeated denial must remain fail closed")
+
+            assertEquals(0, fixture.rawPlayTransitions)
+            assertFalse(fixture.player.playWhenReady)
+            assertEquals(1f, fixture.player.volume, "a denied probe must not claim or change volume")
+        }
+    }
+
+    @Test
+    fun `guarded local resume refuses a missing selection without raw Play`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = false, colliding = false)
+
+            assertFalse(fixture.resumeLoadedCurrent())
+
+            assertEquals(0, fixture.rawPlayTransitions)
+            assertFalse(fixture.player.playWhenReady)
+            assertEquals(1f, fixture.player.volume)
+        }
+    }
+
+    @Test
+    fun `guarded local resume refuses an absent endpoint without raw Play`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = false, connected = false)
+
+            assertFalse(fixture.resumeLoadedCurrent())
+
+            assertEquals(0, fixture.rawPlayTransitions)
+            assertFalse(fixture.player.playWhenReady)
+            assertEquals(1f, fixture.player.volume)
+        }
+    }
+
+    @Test
+    fun `a logical output lock cannot bypass protection when its guard is absent`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.armLogicalLock()
+            fixture.configureNoManualGuard()
+
+            assertFalse(fixture.resumeLoadedCurrent())
+
+            assertEquals(0, fixture.rawPlayTransitions)
+            assertFalse(fixture.player.playWhenReady)
+            assertNotNull(fixture.currentLock())
+        }
+    }
+
+    @Test
+    @Config(sdk = [32])
+    fun `guarded local resume refuses when measured route support is unavailable`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = false)
+
+            assertFalse(fixture.resumeLoadedCurrent())
+
+            assertEquals(0, fixture.rawPlayTransitions)
+            assertFalse(fixture.player.playWhenReady)
+            assertEquals(1f, fixture.player.volume)
+        }
+    }
+
+    @Test
+    fun `guarded local resume makes one muted Play transition when the probe can start`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = false)
+
+            assertTrue(fixture.resumeLoadedCurrent())
+            assertTrue(fixture.player.playWhenReady)
+            assertEquals(0f, fixture.player.volume, "the allowed command starts under the route mute")
+            assertEquals(1, fixture.rawPlayTransitions, "one PlayWhenReady transport transition")
+            assertEquals(1, fixture.rawPlayCalls, "one accepted request issues exactly one raw Play")
+
+            assertTrue(fixture.resumeLoadedCurrent(), "an already-requested Play remains idempotent")
+            assertEquals(1, fixture.rawPlayTransitions, "repeated Play must not add a transport transition")
+            assertEquals(2, fixture.rawPlayCalls, "the second accepted request also issues only one raw Play")
+            assertEquals(0f, fixture.player.volume)
+        }
+    }
+
+    @Test
+    fun `guarded retained Play intent cannot prepare an idle player before route proof`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = true)
+            fixture.retainPlayIntentWhileIdle()
+            val states = fixture.observePlaybackStates()
+            val transitionsBeforeResume = fixture.rawPlayTransitions
+
+            assertFalse(fixture.resumeLoadedCurrent())
+
+            assertEquals(Player.STATE_IDLE, fixture.player.playbackState)
+            assertTrue(fixture.player.playWhenReady, "the pre-existing intent stays visible but does not prepare")
+            assertFalse(
+                states.any { it.state != Player.STATE_IDLE && it.playWhenReady && it.volume > 0f },
+                "no state transition may prepare requested playback while the guarded route is unmuted",
+            )
+            assertEquals(transitionsBeforeResume, fixture.rawPlayTransitions)
+            assertEquals(1f, fixture.player.volume)
+        }
+    }
+
+    @Test
+    fun `unguarded retained Play intent can prepare an idle player`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureNoManualGuard()
+            fixture.retainPlayIntentWhileIdle()
+            val states = fixture.observePlaybackStates()
+
+            assertTrue(fixture.resumeLoadedCurrent())
+
+            assertTrue(fixture.player.playWhenReady)
+            assertTrue(
+                states.any { it.state != Player.STATE_IDLE && it.playWhenReady && it.volume == 1f },
+                "ordinary local preparation remains available without an output guard",
+            )
+        }
+    }
+
+    @Test
+    fun `new Car choice during mute notification cancels the retained resume`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = false)
+            fixture.retainPlayIntentWhileIdle()
+            val states = fixture.observePlaybackStates()
+            val transitionsBeforeResume = fixture.rawPlayTransitions
+            fixture.chooseCarOnNextRouteMute()
+
+            assertFalse(fixture.resumeLoadedCurrent())
+            runCurrent()
+
+            assertEquals(OutputIntentOwner.Destination.Car, fixture.explicitDestination())
+            assertEquals(Player.STATE_IDLE, fixture.player.playbackState)
+            assertTrue(fixture.player.playWhenReady, "the newer route choice does not erase existing transport intent")
+            assertEquals(transitionsBeforeResume, fixture.rawPlayTransitions)
+            assertFalse(
+                states.any { it.state != Player.STATE_IDLE },
+                "the old request must not prepare after the synchronous newer destination choice",
+            )
+            assertFalse(fixture.isRouteMuted(), "the superseded probe must release its route-mute claim")
+            assertEquals(1f, fixture.player.volume)
+        }
+    }
+
+    @Test
+    @Config(sdk = [32])
+    fun `ordinary local resume without a guarded destination remains available`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureNoManualGuard()
+
+            assertTrue(fixture.resumeLoadedCurrent())
+
+            assertTrue(fixture.player.playWhenReady)
+            assertEquals(1, fixture.rawPlayTransitions)
+            assertEquals(1f, fixture.player.volume)
+        }
+    }
+
+    @Test
     fun `forwarding Seek revokes continuity while the raw player is already paused`() = runTest {
         assertCommandSupersedes {
             assertNull(forwarding.handleSeek(0, 5_000L, Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM).get())
@@ -175,6 +340,7 @@ class PlaybackServiceCommandContinuityTest {
 
             assertTrue(fixture.commandGeneration() > before)
             assertEquals(0, fixture.rawPlayTransitions, "no raw transport callback can provide cancellation")
+            assertEquals(0, fixture.rawPlayCalls, "a newer command must prevent even a no-op raw Play")
             fixture.returnHeadset()
             runCurrent()
             assertFalse(fixture.player.playWhenReady, "old continuity must not Play after newer listener intent")
@@ -192,13 +358,28 @@ class PlaybackServiceCommandContinuityTest {
         }
         private val registry = LiveOutputEndpointRegistry()
         private val device = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP).build()
+            .apply {
+                val port = org.robolectric.util.ReflectionHelpers.getField<Any>(this, "mPort")
+                org.robolectric.util.ReflectionHelpers.setField(port, "mName", "Fixture headset")
+            }
         private val endpoint = registry.reconcile(
             listOf(LiveOutputEndpointRegistry.Observation(device.id, device.type, device.productName?.toString())),
         ).single()
         private val headset = endpoint.output.copy(id = endpoint.id, isActive = true)
         val endpointId: String get() = endpoint.id
         private val service = PlaybackService()
-        val player = ExoPlayer.Builder(context).build()
+        var rawPlayCalls = 0
+            private set
+        private val realPlayer = ExoPlayer.Builder(context).build()
+
+        // Observe commands while retaining one real pinned Media3 player and all its normal callbacks.
+        val player = Proxy.newProxyInstance(
+            ExoPlayer::class.java.classLoader,
+            arrayOf(ExoPlayer::class.java),
+        ) { _, method, args ->
+            if (method.name == "play") rawPlayCalls += 1
+            method.invoke(realPlayer, *args.orEmpty())
+        } as ExoPlayer
         private val volumeEffects = volumeEffectsForTest(dispatcher, clock)
         private val router = AudioOutputRouter(
             context,
@@ -330,6 +511,12 @@ class PlaybackServiceCommandContinuityTest {
         }
 
         fun checkRouteSafetyPauseReason() {
+            var recordedEvents = 0
+            service.history = proxy<PlaybackHistoryRepository> { method ->
+                check(method.substringBefore('-') == "record") { "Unexpected history call: $method" }
+                recordedEvents += 1
+                Unit
+            }
             service.autoRewind = AutoRewindController(
                 proxy<PlaybackSettingsRepository> { method ->
                     when (method) {
@@ -354,24 +541,80 @@ class PlaybackServiceCommandContinuityTest {
             player.addListener(listener)
             player.addListener(originListener)
             player.playWhenReady = true
+            scope.runCurrent()
+            val beforeSafetyPause = recordedEvents
             service.autoRewind.onPaused(wasUserInitiated = true)
 
             router.field<HeadsetRouteGuard>("headsetGuard").pauseForSafety(player)
+            scope.runCurrent()
 
             assertTrue(callbackWasSafetyPause, "pinned Media3 must deliver the pause callback in its effect scope")
             assertNull(service.autoRewind.field<Any?>("pausedAt"), "a safety pause must not prime auto-rewind")
             assertFalse(router.isRouteSafetyPause(player), "effect provenance must not outlive the pause call")
+            assertEquals(beforeSafetyPause, recordedEvents, "route safety must not fabricate listener Pause history")
             player.playWhenReady = true
             player.pause()
+            scope.runCurrent()
             assertNotNull(
                 service.autoRewind.field<Any?>("pausedAt"),
                 "a later listener pause still primes auto-rewind",
             )
             assertFalse(callbackWasSafetyPause, "the later listener pause must have no safety-effect provenance")
+            assertEquals(beforeSafetyPause + 2, recordedEvents, "the later real Play and Pause remain in history")
             player.removeListener(originListener)
             player.removeListener(listener)
         }
 
+        fun configureManualGuard(selected: Boolean, colliding: Boolean, connected: Boolean = true) {
+            if (connected) returnHeadset() else router.setField("live", emptyMap<String, AudioDeviceInfo>())
+            router.setField("guardedHeadsetId", endpointId)
+            router.field<MutableStateFlow<String?>>("_selectedId").value = if (selected) endpointId else null
+            router.setField("collidingOutputIds", if (colliding) setOf(endpointId) else emptySet<String>())
+        }
+
+        fun configureNoManualGuard() {
+            router.setField("guardedHeadsetId", null)
+            router.field<MutableStateFlow<String?>>("_selectedId").value = null
+        }
+
+        suspend fun resumeLoadedCurrent(): Boolean = suspendCoroutineUninterceptedOrReturn { continuation ->
+            val method = PlaybackService::class.java.declaredMethods.single {
+                it.name == "resumeLoadedCurrent"
+            }.apply { isAccessible = true }
+            val result = method.invoke(service, { true }, continuation)
+            if (result === COROUTINE_SUSPENDED) COROUTINE_SUSPENDED else result as Boolean
+        }
+
+        fun chooseCarOnNextRouteMute() {
+            var selected = false
+            volumeEffects.addMuteListener { change ->
+                if (!selected && change.player === player && change.muted) {
+                    selected = true
+                    router.selectCar()
+                }
+            }
+        }
+
+        fun explicitDestination(): OutputIntentOwner.Destination? = router.explicitSelection.value?.destination
+
+        fun isRouteMuted(): Boolean = volumeEffects.isRouteMuted(player)
+        fun retainPlayIntentWhileIdle() {
+            assertEquals(Player.STATE_IDLE, player.playbackState)
+            player.playWhenReady = true
+            assertTrue(player.playWhenReady)
+            assertEquals(Player.STATE_IDLE, player.playbackState)
+        }
+
+        fun observePlaybackStates(): MutableList<PlaybackStateSample> =
+            mutableListOf<PlaybackStateSample>().also { states ->
+                player.addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        states += PlaybackStateSample(playbackState, player.playWhenReady, player.volume)
+                    }
+                })
+            }
+
+        data class PlaybackStateSample(val state: Int, val playWhenReady: Boolean, val volume: Float)
         fun routerGuardId(): String? = router.field<HeadsetRouteGuard>("headsetGuard")
             .field<String?>("endpointId")
 

@@ -55,7 +55,8 @@ internal class HeadsetRouteGuard(
             }
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                if (attachedPlayer === target && attachedListener === listener && !playWhenReady) cancelProbe()
+                if (attachedPlayer !== target || attachedListener !== listener) return
+                if (!playWhenReady && !isPausingForSafety(target)) cancelProbe()
             }
         }
         attachedPlayer = target
@@ -73,12 +74,10 @@ internal class HeadsetRouteGuard(
 
     fun currentPlayerListener(): Player.Listener? = attachedListener
 
-    internal class Probe(
-        val endpointId: String,
-        val player: ExoPlayer,
-        val muteClaim: PlaybackVolumeEffects.RouteMuteClaim,
-        val preferenceEpoch: Long,
-    ) {
+    internal class Probe(val endpointId: String, val player: ExoPlayer, val preferenceEpoch: Long) {
+        // The slot is reserved before mute acquisition can invoke synchronous listeners. A null claim exists
+        // only during that call; cancellation retires the reservation and its returning owner releases it.
+        var muteClaim: PlaybackVolumeEffects.RouteMuteClaim? = null
         var startupTimeout: Job? = null
         var routeTimeout: Job? = null
     }
@@ -137,10 +136,19 @@ internal class HeadsetRouteGuard(
     }
 
     fun beginProbe(id: String, player: ExoPlayer, preferenceEpoch: Long): Boolean {
-        if (probe != null) return false
-        val claim = volumeEffects.acquireRouteMute(player) ?: return false
-        val active = Probe(id, player, claim, preferenceEpoch)
+        if (probe != null || attachedPlayer !== player) return false
+        val active = Probe(id, player, preferenceEpoch)
         probe = active
+        val claim = volumeEffects.acquireRouteMute(player)
+        if (claim == null) {
+            if (probe === active) probe = null
+            return false
+        }
+        active.muteClaim = claim
+        if (probe !== active || attachedPlayer !== player || !isCurrent(active)) {
+            if (probe === active) cancelProbe(active) else volumeEffects.releaseRouteMute(claim)
+            return false
+        }
         active.startupTimeout = scope.launch(playerDispatcher) {
             delay(PROBE_STARTUP_TIMEOUT)
             finishProbe(active, verified = false)
@@ -148,13 +156,18 @@ internal class HeadsetRouteGuard(
         return true
     }
 
+    fun hasCurrentProbe(id: String, player: ExoPlayer, preferenceEpoch: Long): Boolean = probe?.let {
+        it.muteClaim != null && it.endpointId == id && it.player === player &&
+            it.preferenceEpoch == preferenceEpoch && isCurrent(it)
+    } == true
+
     fun verifyProbeIfActive(actualRoute: Set<String>?, collisions: Set<String>, isPlaying: Boolean): Boolean {
         val active = probe ?: return false
         if (!isCurrent(active)) {
             discardStaleProbe(active)
             return true
         }
-        if (!isPlaying) return true
+        if (active.muteClaim == null || !isPlaying) return true
 
         val evidence = RouteEvidence(
             source = RouteEvidenceSource.ActualAudioTrack,
@@ -184,7 +197,7 @@ internal class HeadsetRouteGuard(
 
     /** Finish only the currently-owned probe; repeated callbacks for a retired probe are no-ops. */
     fun finishProbe(active: Probe, verified: Boolean): Boolean {
-        if (probe !== active) return false
+        if (probe !== active || active.muteClaim == null) return false
         if (!isCurrent(active)) {
             discardStaleProbe(active)
             return false
