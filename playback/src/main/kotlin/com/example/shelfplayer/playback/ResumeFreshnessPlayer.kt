@@ -33,11 +33,12 @@ import com.google.common.util.concurrent.ListenableFuture
 @OptIn(UnstableApi::class)
 internal class ResumeFreshnessPlayer(
     private val delegate: Player,
-    private val preparePlay: () -> ListenableFuture<*>,
+    private val preparePlay: (bypassFreshness: Boolean) -> ListenableFuture<*>,
     private val consumeFreshStart: () -> Boolean,
     private val invalidate: (ResumeInvalidation) -> Unit,
     private val onPlayWhenReadyRequest: (Boolean) -> Unit,
     private val skipIntervals: () -> SkipIntervals,
+    private val prepareCurrentOutput: () -> ListenableFuture<*>,
     private val allowEffects: () -> Boolean = { true },
 ) : ForwardingSimpleBasePlayer(delegate) {
 
@@ -52,12 +53,12 @@ internal class ResumeFreshnessPlayer(
             return super.handleSetPlayWhenReady(false)
         }
         // An empty session still needs MediaSession's normal playback-resumption machinery. A duplicate Play
-        // while the raw player is already committed to playing also has no paused baseline left to inspect.
-        // Neither consumes a fresh-start token: there is no loaded first Play in either case.
-        if (delegate.mediaItemCount == 0 || delegate.playWhenReady) {
+        // keeps its already-committed raw intent and does not consume a pending fresh-start token.
+        if (delegate.mediaItemCount == 0) {
             return super.handleSetPlayWhenReady(true)
         }
-        return if (consumeFreshStart()) super.handleSetPlayWhenReady(true) else preparePlay()
+        val bypassFreshness = delegate.playWhenReady || consumeFreshStart()
+        return preparePlay(bypassFreshness)
     }
 
     public override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
@@ -116,6 +117,6 @@ internal class ResumeFreshnessPlayer(
     /** Media3 also prepares/seeks before its fallback Play on a failed cold-resumption future. */
     public override fun handlePrepare(): ListenableFuture<*> {
         if (!allowEffects()) return Futures.immediateVoidFuture()
-        return super.handlePrepare()
+        return prepareCurrentOutput()
     }
 }

@@ -39,6 +39,13 @@ Capability provenance and pending physical checks are in
 [`../architecture/playback-output-capabilities.md`](../architecture/playback-output-capabilities.md).
 The rest of this ledger remains the baseline scenario inventory.
 
+The #300 command-boundary continuation adds actual-service regressions for fresh-start controller Play,
+retained-intent controller Prepare and deferred accepted installation on a denied output. Continuity's
+synchronous raw-Play callback can issue a newer forwarding Stop without resurrecting the old awaited target;
+the test observes Stop's idle state and controller generation, because Media3 may retain PlayWhenReady.
+Post-connect tests cover Arm with inherited Play intent and same-item installation without an assumed item
+generation increment. These supplement S08/S12/S13/S15/S18/S19; their physical acceptance columns are unchanged.
+
 <!-- Updated against merged GitHub main acce406c8ffe and scenario PR #290; 2026-10-21. -->
 
 This ledger connects the 22 product scenarios to **executable production-policy tests**, existing

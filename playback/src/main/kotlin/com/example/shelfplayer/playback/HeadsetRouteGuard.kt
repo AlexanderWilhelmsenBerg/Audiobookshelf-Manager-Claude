@@ -35,8 +35,8 @@ internal class HeadsetRouteGuard(
     /** Local effect provenance, never a claim about the physical controller that sent a command. */
     fun isPausingForSafety(target: ExoPlayer?): Boolean = target != null && safetyPausePlayer === target
 
-    fun pauseForSafety(target: ExoPlayer) {
-        if (attachedPlayer !== target) return
+    fun pauseForSafety(target: ExoPlayer): Boolean {
+        if (attachedPlayer !== target) return false
         val previous = safetyPausePlayer
         safetyPausePlayer = target
         try {
@@ -44,6 +44,7 @@ internal class HeadsetRouteGuard(
         } finally {
             safetyPausePlayer = previous
         }
+        return true
     }
 
     fun attachPlayer(target: ExoPlayer) {

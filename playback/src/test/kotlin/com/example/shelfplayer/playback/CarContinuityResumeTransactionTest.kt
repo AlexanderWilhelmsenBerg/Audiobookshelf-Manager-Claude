@@ -352,7 +352,16 @@ class CarContinuityResumeTransactionTest {
             target = requireNotNull(recovery.carArrival(11.seconds, owner.currentGeneration, 0).target)
             effects = CarContinuityResumeEffects(
                 recovery, router, owner, { _, _ -> }, { current.player }, { 0 }, { emptyList() },
-                onServiceResumeIntent = { timerResumes++ },
+                resumePlayer = { current, authorized, beforeRawPlay ->
+                    if (!authorized()) {
+                        false
+                    } else {
+                        timerResumes++
+                        beforeRawPlay()
+                        current.play()
+                        true
+                    }
+                },
                 scope = workScope,
                 synchronizeOutputIntent = { synchronizeIntent() },
                 onOutputsChanged = {},

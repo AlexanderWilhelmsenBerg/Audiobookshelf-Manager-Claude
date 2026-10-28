@@ -9,6 +9,11 @@ PR #297 supplies transient route-loss protection. The dependent #276 lock and #2
 work must be implemented and verified before this procedure can accept the complete feature. A green
 build or an earlier smoke test does not fill in these results.
 
+The #300 command-boundary checkpoint covers loaded fresh-start/duplicate controller Play, controller Prepare,
+retained-intent retry, accepted deferred/post-connect installs and continuity through one service guard. Its
+software tests do not establish position compensation or a complete explicit transfer. The final candidate
+must include those remaining slices before the complete-feature rows below can be accepted.
+
 ## Candidate and setup
 
 Test one combined APK containing the selected playback stack and the separate #296 auth fix. Record

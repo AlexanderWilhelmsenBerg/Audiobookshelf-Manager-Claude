@@ -268,6 +268,18 @@ class PlaybackService : MediaLibraryService() {
     /** Only the newest failed stream may retry; book changes and successful playback cancel older delays. */
     private var pendingRecoveryRetry: Job? = null
 
+    /** One synchronous gate for every service-owned raw prepare/Play activation. */
+    internal val playbackCommandEffects: PlaybackCommands by lazy(LazyThreadSafetyMode.NONE) {
+        PlaybackCommandEffects(
+            currentPlayer = { player },
+            itemGeneration = { mediaItemGeneration },
+            isAttached = audioOutputs::isAttachedPlayer,
+            protectOutput = { expectedPlayer, willStartAudio, holdForSeek ->
+                audioOutputs.protectManualPlayOnGuardedHeadset(expectedPlayer, willStartAudio, holdForSeek)
+            },
+        )
+    }
+
     /**
      * PLAY-001 / ROUTE-002 / issue #257 — one service-owned claim for delayed recovery and automatic
      * media replacement. The controller generation remains the existing Media3 freshness authority;
@@ -279,6 +291,7 @@ class PlaybackService : MediaLibraryService() {
             commandGeneration = { controllerCommandGeneration },
             itemGeneration = { mediaItemGeneration },
             profileGeneration = { auto.activeProfileGeneration() },
+            commands = playbackCommandEffects,
             acceptPrepared = { prepared, authorized, install ->
                 bookChanges.acceptBook(prepared.session, authorized, install)
             },
@@ -643,11 +656,15 @@ class PlaybackService : MediaLibraryService() {
     /** The actual MediaSession adapter; service-owned effects keep the raw player. */
     internal fun createSessionPlayer(exoPlayer: ExoPlayer): ResumeFreshnessPlayer = ResumeFreshnessPlayer(
         delegate = exoPlayer,
-        preparePlay = {
+        preparePlay = { bypassFreshness ->
             val generation = controllerCommandGeneration
             // Capture before launching: the scoped Media3 resumption listener ends when it returns.
             val explicit = !callbackFutures.isPlaybackResumptionDelivery()
-            future { handleFreshnessPlay(generation, explicit) }
+            future { handleFreshnessPlay(generation, explicit, bypassFreshness) }
+        },
+        prepareCurrentOutput = {
+            val generation = controllerCommandGeneration
+            future { prepareCurrentOutput(generation) }
         },
         consumeFreshStart = resumeFreshness::consumeFreshStart,
         invalidate = ::onControllerCommand,
@@ -913,12 +930,15 @@ class PlaybackService : MediaLibraryService() {
      * screen. A superseded request does nothing; the newer seek/Pause/book/profile command already owns the
      * player.
      */
-    private suspend fun handleFreshnessPlay(expectedCommandGeneration: Long, explicit: Boolean) {
-        performFreshnessPlay(
-            explicit = explicit,
-            stillAuthorized = { controllerCommandGeneration == expectedCommandGeneration },
-        )
-    }
+    private suspend fun handleFreshnessPlay(
+        expectedCommandGeneration: Long,
+        explicit: Boolean,
+        bypassFreshness: Boolean,
+    ): Boolean = performFreshnessPlay(
+        explicit = explicit,
+        bypassFreshness = bypassFreshness,
+        stillAuthorized = { controllerCommandGeneration == expectedCommandGeneration },
+    )
 
     /**
      * The one service-owned resume implementation used by both MediaSession Play and sleep-grace Play.
@@ -927,7 +947,11 @@ class PlaybackService : MediaLibraryService() {
      * The predicate is checked again inside the same main-thread turn as the final raw command, so schedule
      * expiry, teardown, book replacement or newer controller intent can revoke a suspended grace attempt.
      */
-    private suspend fun performFreshnessPlay(explicit: Boolean, stillAuthorized: () -> Boolean = { true }): Boolean {
+    private suspend fun performFreshnessPlay(
+        explicit: Boolean,
+        stillAuthorized: () -> Boolean = { true },
+        bypassFreshness: Boolean = false,
+    ): Boolean {
         // Issue #88 — BookChanges.onBookOpened invalidates sleep Play claims. Materialize the display-only
         // holder first so the claim below belongs to the real book generation it is authorizing.
         if (!stillAuthorized() || !materializeHeldResume(stillAuthorized)) return false
@@ -936,10 +960,14 @@ class PlaybackService : MediaLibraryService() {
             sleepTimer.clearPlayRequest(sleepPlayRequest)
             return false
         }
-        val requestedPlay = when (val prepared = resumeFreshness.preparePlay()) {
-            ResumePlayPreparation.Bypass -> resumeLoadedCurrent(stillAuthorized)
-            ResumePlayPreparation.Superseded -> false
-            is ResumePlayPreparation.Ready -> applyFreshnessPlan(prepared.plan, stillAuthorized)
+        val requestedPlay = if (bypassFreshness) {
+            resumeLoadedCurrent(stillAuthorized)
+        } else {
+            when (val prepared = resumeFreshness.preparePlay()) {
+                ResumePlayPreparation.Bypass -> resumeLoadedCurrent(stillAuthorized)
+                ResumePlayPreparation.Superseded -> false
+                is ResumePlayPreparation.Ready -> applyFreshnessPlan(prepared.plan, stillAuthorized)
+            }
         }
         if (!requestedPlay) sleepTimer.clearPlayRequest(sleepPlayRequest)
         return requestedPlay
@@ -1030,56 +1058,23 @@ class PlaybackService : MediaLibraryService() {
             val current = player ?: return@withContext false
             if (current.mediaItemCount == 0) return@withContext false
             if ((current.playbackState == Player.STATE_IDLE || current.playerError != null) &&
-                !prepareOnCurrentOutput(current, stillAuthorized)
+                !playbackCommandEffects.prepare(current, stillAuthorized)
             ) {
                 return@withContext false
             }
             if (!stillAuthorized()) return@withContext false
             // The freshness network request may take seconds. Start the muted route
             // probe only NOW, immediately before the actual raw ExoPlayer Play.
-            playOnCurrentOutput(current, stillAuthorized)
+            playbackCommandEffects.play(current, stillAuthorized)
         }
 
-    /** One final raw-Play boundary for local and adopted resumes; denied proof cannot reach transport. */
-    private fun playOnCurrentOutput(current: ExoPlayer, stillAuthorized: () -> Boolean): Boolean {
-        val itemGeneration = mediaItemGeneration
-        if (!isCurrentResumeEffect(current, itemGeneration, stillAuthorized)) return false
-        if (!current.playWhenReady && audioOutputs.protectManualPlayOnGuardedHeadset() == ManualPlayProtection.Denied) {
-            return false
-        }
-        // Acquiring mute synchronously notifies existing effect owners; newer intent can revoke this command.
-        if (!isCurrentResumeEffect(current, itemGeneration, stillAuthorized)) return false
-        current.play()
-        return true
+    private suspend fun prepareCurrentOutput(expectedCommandGeneration: Long): Boolean = withContext(mainDispatcher) {
+        val current = player ?: return@withContext false
+        playbackCommandEffects.prepare(
+            current,
+            stillAuthorized = { controllerCommandGeneration == expectedCommandGeneration },
+        )
     }
-
-    /** Retained Play intent makes prepare an audio-start effect too; adopted seeks additionally hold Pause. */
-    private fun prepareOnCurrentOutput(
-        current: ExoPlayer,
-        stillAuthorized: () -> Boolean,
-        holdForSeek: Boolean = false,
-    ): Boolean {
-        val itemGeneration = mediaItemGeneration
-        if (!isCurrentResumeEffect(current, itemGeneration, stillAuthorized)) return false
-        if (current.playWhenReady &&
-            audioOutputs.protectManualPlayOnGuardedHeadset(holdPaused = holdForSeek) == ManualPlayProtection.Denied
-        ) {
-            return false
-        }
-        if (!isCurrentResumeEffect(current, itemGeneration, stillAuthorized) ||
-            (holdForSeek && current.playWhenReady)
-        ) {
-            return false
-        }
-        current.prepare()
-        return isCurrentResumeEffect(current, itemGeneration, stillAuthorized)
-    }
-
-    private fun isCurrentResumeEffect(
-        current: ExoPlayer,
-        itemGeneration: Long,
-        stillAuthorized: () -> Boolean,
-    ): Boolean = player === current && mediaItemGeneration == itemGeneration && stillAuthorized()
 
     /** Records the REST check result independently of whether a later adopted seek succeeds. */
     private fun recordFreshnessCheck(plan: ResumeFreshnessPlan) {
@@ -1169,7 +1164,7 @@ class PlaybackService : MediaLibraryService() {
 
         override fun needsPreparing(): Boolean = media.playbackState == Player.STATE_IDLE || media.playerError != null
 
-        override fun prepare(): Boolean = prepareOnCurrentOutput(media, stillAuthorized, holdForSeek = true)
+        override fun prepare(): Boolean = playbackCommandEffects.prepare(media, stillAuthorized, holdForSeek = true)
 
         /**
          * Seeks, and waits for **this player** to say where it ended up.
@@ -1221,7 +1216,7 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override suspend fun playIfCurrent(): Boolean = resumeFreshness.withCurrentPlan(plan, requireBaseline = false) {
-            playOnCurrentOutput(media, stillAuthorized)
+            playbackCommandEffects.play(media, stillAuthorized)
         } ?: false
     }
 
@@ -1725,7 +1720,14 @@ class PlaybackService : MediaLibraryService() {
             currentPlayer = { player },
             selectionSequence = ::currentExplicitSelectionSequence,
             snapshot = ::carSnapshotFields,
-            onServiceResumeIntent = sleepTimer::onServiceResumeIntent,
+            resumePlayer = { current, stillAuthorized, beforeRawPlay ->
+                if (!stillAuthorized()) {
+                    false
+                } else {
+                    sleepTimer.onServiceResumeIntent()
+                    playbackCommandEffects.play(current, stillAuthorized, beforeRawPlay)
+                }
+            },
             scope = scope,
             synchronizeOutputIntent = ::syncExplicitOutputIntent,
             onOutputsChanged = ::republishOutputButtons,
@@ -2990,11 +2992,12 @@ class PlaybackService : MediaLibraryService() {
         }
 
         private fun carPostConnectRestorer(trace: AndroidAutoTraceRecorder.Trace?): CarPostConnectRestorer {
-            val requestGeneration = resumeFreshness.currentRequestGeneration()
+            val requestGeneration = controllerCommandGeneration
             return CarPostConnectRestorer(
                 activeProfileId = auto::activeProfileId,
                 profileGeneration = auto::activeProfileGeneration,
-                isRequestCurrent = { resumeFreshness.currentRequestGeneration() == requestGeneration },
+                isRequestCurrent = { controllerCommandGeneration == requestGeneration },
+                commands = playbackCommandEffects,
                 isProfileLocked = lock::isActiveProfileLocked,
                 lastPlayedBookId = { auto.lastPlayedAfter(::refreshResumeAccount)?.id },
                 heldResume = { auto.heldResumeAfter(::refreshResumeAccount) },

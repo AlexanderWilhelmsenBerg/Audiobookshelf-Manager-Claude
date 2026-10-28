@@ -48,6 +48,13 @@ No endpoint, schema, permission or newly tested server version is introduced. Th
 
 ## Server versions tested
 
+The 2026-10-28 draft output-ownership command boundary (#300, ADR-0034) changes local Media3 activation
+ordering only. It shares existing output protection across loaded controller Play/Prepare, retry, accepted
+installation and car continuity. It adds no Audiobookshelf endpoint, response field, permission or Room
+schema. Fresh-session exemptions retain their existing server policy. No additional server version or
+real-token/physical-route acceptance is claimed; the final combined candidate still requires the separate
+#296 auth fix and the [output acceptance procedure](testing/output-ownership-device-acceptance.md).
+
 The 2026-10-03 series/history/sleep revision changes local presentation and playback policy only. Rolling
 History checkpoints reuse the existing profile/book-scoped Room table and store no media text; the schema
 and server endpoints/fixtures are unchanged. Existing remote-session imports and five-second local progress

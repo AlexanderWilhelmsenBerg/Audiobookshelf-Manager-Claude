@@ -7,6 +7,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
 import androidx.annotation.OptIn
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.common.dispatcher.ApplicationScope
@@ -564,15 +565,37 @@ class AudioOutputRouter @Inject constructor(
     internal fun beginMutedHeadsetProbe(id: String): Boolean = canProbeHeldHeadset(id) && startMutedProbe(id)
 
     /** An unattributed manual Play can only become audible on this already-guarded headset. */
-    internal fun protectManualPlayOnGuardedHeadset(holdPaused: Boolean = false): ManualPlayProtection {
-        val protection = beginManualPlayProtection()
-        if (protection != ManualPlayProtection.Denied && holdPaused) {
-            val current = player ?: return ManualPlayProtection.Denied
-            headsetGuard.pauseForSafety(current)
-            if (current.playWhenReady) return ManualPlayProtection.Denied
+    internal fun protectManualPlayOnGuardedHeadset(
+        expectedPlayer: Player,
+        willStartAudio: Boolean = true,
+        holdPaused: Boolean = false,
+    ): ManualPlayProtection = when {
+        // A stale service callback must never borrow the router's current attachment to authorize a successor.
+        player !== expectedPlayer -> ManualPlayProtection.Denied
+
+        !willStartAudio -> if (!holdPaused || !expectedPlayer.playWhenReady || pauseForSafety(expectedPlayer)) {
+            ManualPlayProtection.NoGuard
+        } else {
+            ManualPlayProtection.Denied
         }
-        return protection
+
+        else -> beginManualPlayProtection().let { protection ->
+            when {
+                protection == ManualPlayProtection.Denied -> ManualPlayProtection.Denied
+                holdPaused && !pauseForSafety(expectedPlayer) -> ManualPlayProtection.Denied
+                else -> protection
+            }
+        }
     }
+
+    private fun pauseForSafety(expectedPlayer: Player): Boolean {
+        val current = player as? ExoPlayer ?: return false
+        if (current !== expectedPlayer) return false
+        return headsetGuard.pauseForSafety(current)
+    }
+
+    /** The raw service player is usable only while the router owns that same attachment. */
+    internal fun isAttachedPlayer(expectedPlayer: Player): Boolean = player === expectedPlayer
 
     private fun beginManualPlayProtection(): ManualPlayProtection {
         val lock = outputIntentOwner.state.value.lock
@@ -774,8 +797,6 @@ class AudioOutputRouter @Inject constructor(
      * here by construction.
      */
     fun available(): List<AudioOutput> = _outputs.value.filterNot(AudioOutput::isSpeaker)
-
-    fun selected(): String? = _selectedId.value
 
     /** Kind half only; product names never reach logs. */
     private fun kindOf(id: String): String = id.substringBefore(':')

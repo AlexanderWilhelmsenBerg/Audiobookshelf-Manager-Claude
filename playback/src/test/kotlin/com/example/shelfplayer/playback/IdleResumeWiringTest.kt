@@ -26,7 +26,12 @@ class IdleResumeWiringTest {
         assertTrue("auto.heldResumeAfter(::refreshResumeAccount)" in postConnect)
         assertTrue("activeProfileId = auto::activeProfileId" in postConnect)
         assertTrue("profileGeneration = auto::activeProfileGeneration" in postConnect)
-        assertTrue("resumeFreshness.currentRequestGeneration() == requestGeneration" in postConnect)
+        val restorerFactory = source
+            .substringAfter("private fun carPostConnectRestorer(")
+            .substringBefore("private suspend fun refreshResumeAccount")
+        assertTrue("val requestGeneration = controllerCommandGeneration" in restorerFactory)
+        assertTrue("controllerCommandGeneration == requestGeneration" in restorerFactory)
+        assertTrue("commands = playbackCommandEffects" in restorerFactory)
         assertTrue("AutoStartAction.None -> holdLastBook(current, claim)" in restorer)
         assertTrue("current.setMediaItem(held.item, held.startPositionMs)" in restorer)
     }

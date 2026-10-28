@@ -3,6 +3,7 @@ package com.example.shelfplayer.playback
 import android.media.AudioDeviceInfo
 import android.os.Bundle
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -10,6 +11,9 @@ import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
@@ -110,6 +114,29 @@ class PlaybackServiceCommandContinuityTest {
             assertTrue(fixture.player.playWhenReady, "the fixture must reach the actual raw Play effect")
             assertEquals(0f, fixture.player.volume, "a route request cannot unmute the playing track")
             assertFalse(fixture.isRecoveryCurrent(), "the one-shot claim is consumed")
+        }
+    }
+
+    @Test
+    fun `synchronous Stop from raw continuity Play cannot resurrect its awaiting target`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.beginRecovery()
+            runCurrent()
+            fixture.stopOnFirstRawPlay()
+            val commandBeforeStop = fixture.commandGeneration()
+
+            fixture.returnHeadset()
+            runCurrent()
+
+            assertEquals(Player.STATE_IDLE, fixture.player.playbackState)
+            assertTrue(fixture.commandGeneration() > commandBeforeStop, "the forwarding Stop must become newest intent")
+            assertEquals(1, fixture.rawPlayCalls, "the old recovery may issue at most its already-entered Play")
+            assertFalse(fixture.isRecoveryPlayAwaiting(), "a callback must not resurrect the stopped recovery target")
+
+            fixture.beginRecovery()
+            runCurrent()
+            assertEquals(1, fixture.rawPlayCalls, "the consumed recovery cannot issue another Play")
+            assertFalse(fixture.isRecoveryPlayAwaiting())
         }
     }
 
@@ -263,6 +290,132 @@ class PlaybackServiceCommandContinuityTest {
     }
 
     @Test
+    fun `fresh-start forwarding Play cannot bypass guarded output denial`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.armFreshStartForCurrentItem()
+            fixture.configureManualGuard(selected = true, colliding = true)
+            val transitionsBefore = fixture.rawPlayTransitions
+            val playCallsBefore = fixture.rawPlayCalls
+
+            val request = fixture.forwarding.handleSetPlayWhenReady(true)
+            runCurrent()
+            val accepted = request.get()
+
+            assertEquals(false, accepted, "the forwarding future must report guarded refusal")
+            assertFalse(fixture.player.playWhenReady)
+            assertEquals(transitionsBefore, fixture.rawPlayTransitions)
+            assertEquals(playCallsBefore, fixture.rawPlayCalls)
+            assertEquals(1f, fixture.player.volume)
+        }
+    }
+
+    @Test
+    fun `fresh-start forwarding Play still skips a second freshness request without a guard`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.armFreshStartForCurrentItem()
+            fixture.configureNoManualGuard()
+            val playCallsBefore = fixture.rawPlayCalls
+
+            val request = fixture.forwarding.handleSetPlayWhenReady(true)
+            runCurrent()
+            val accepted = request.get()
+
+            assertEquals(true, accepted)
+            assertTrue(fixture.player.playWhenReady)
+            assertEquals(playCallsBefore + 1, fixture.rawPlayCalls)
+        }
+    }
+
+    @Test
+    fun `deferred accepted install uses the service guard before raw Play`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = true)
+            val deferred = DeferredPlaybackWork(
+                currentPlayer = { fixture.player },
+                commandGeneration = fixture::commandGeneration,
+                itemGeneration = { fixture.serviceItemGeneration() },
+                profileGeneration = { 0L },
+                commands = fixture.commands,
+                acceptPrepared = { _, authorized, install ->
+                    if (authorized()) {
+                        install()
+                        true
+                    } else {
+                        false
+                    }
+                },
+            )
+            val claim = requireNotNull(deferred.capture())
+            val playCallsBefore = fixture.rawPlayCalls
+
+            val installed = deferred.installIfCurrent(
+                claim = claim,
+                prepared = CarPostConnectRestorer.Prepared(
+                    session = PlaybackSession(
+                        id = "deferred-fixture",
+                        profileId = ProfileId("fixture-profile"),
+                        bookId = LibraryItemId("deferred-book"),
+                        title = "Fixture",
+                        author = null,
+                        coverUrl = null,
+                        startAt = Duration.ZERO,
+                        duration = Duration.ZERO,
+                        tracks = emptyList(),
+                        chapters = emptyList(),
+                    ),
+                    queue = MediaItems.Queue(item("deferred-book"), 0L),
+                ),
+                startPlaying = true,
+                condition = { true },
+            )
+            runCurrent()
+
+            assertFalse(installed)
+            assertEquals("deferred-book", fixture.player.currentMediaItem?.mediaId)
+            assertFalse(fixture.player.playWhenReady)
+            assertEquals(playCallsBefore, fixture.rawPlayCalls)
+        }
+    }
+
+    @Test
+    fun `forwarded prepare cannot prepare retained intent on a denied guarded route`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureManualGuard(selected = true, colliding = true)
+            fixture.retainPlayIntentWhileIdle()
+            val preparesBefore = fixture.rawPrepareCalls
+            val transitionsBefore = fixture.rawPlayTransitions
+
+            val request = fixture.forwarding.handlePrepare()
+            runCurrent()
+            val accepted = request.get()
+
+            assertEquals(false, accepted, "the forwarding prepare future must report guarded refusal")
+            assertEquals(preparesBefore, fixture.rawPrepareCalls)
+            assertEquals(Player.STATE_IDLE, fixture.player.playbackState)
+            assertTrue(fixture.player.playWhenReady)
+            assertEquals(transitionsBefore, fixture.rawPlayTransitions)
+            assertEquals(1f, fixture.player.volume)
+        }
+    }
+
+    @Test
+    fun `forwarded prepare remains available without an output guard`() = runTest {
+        Fixture(this).use { fixture ->
+            fixture.configureNoManualGuard()
+            fixture.retainPlayIntentWhileIdle()
+            val preparesBefore = fixture.rawPrepareCalls
+
+            val request = fixture.forwarding.handlePrepare()
+            runCurrent()
+            val accepted = request.get()
+
+            assertEquals(true, accepted, "the normal prepare future must report the command result")
+            assertEquals(preparesBefore + 1, fixture.rawPrepareCalls)
+            assertTrue(fixture.player.playWhenReady)
+        }
+    }
+
+    @Test
     @Config(sdk = [32])
     fun `ordinary local resume without a guarded destination remains available`() = runTest {
         Fixture(this).use { fixture ->
@@ -316,6 +469,7 @@ class PlaybackServiceCommandContinuityTest {
                 commandGeneration = fixture::commandGeneration,
                 itemGeneration = { 0 },
                 profileGeneration = { 0 },
+                commands = fixture.commands,
                 acceptPrepared = { _, _, _ -> error("A skipped-over deferred claim must not install anything") },
             )
             val claim = requireNotNull(deferred.capture())
@@ -368,7 +522,10 @@ class PlaybackServiceCommandContinuityTest {
         private val headset = endpoint.output.copy(id = endpoint.id, isActive = true)
         val endpointId: String get() = endpoint.id
         private val service = PlaybackService()
+        val commands: PlaybackCommands get() = service.playbackCommandEffects
         var rawPlayCalls = 0
+            private set
+        var rawPrepareCalls = 0
             private set
         private val realPlayer = ExoPlayer.Builder(context).build()
 
@@ -378,6 +535,7 @@ class PlaybackServiceCommandContinuityTest {
             arrayOf(ExoPlayer::class.java),
         ) { _, method, args ->
             if (method.name == "play") rawPlayCalls += 1
+            if (method.name == "prepare") rawPrepareCalls += 1
             method.invoke(realPlayer, *args.orEmpty())
         } as ExoPlayer
         private val volumeEffects = volumeEffectsForTest(dispatcher, clock)
@@ -400,6 +558,11 @@ class PlaybackServiceCommandContinuityTest {
             private set
 
         init {
+            player.addListener(object : Player.Listener {
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    service.setField("mediaItemGeneration", service.field<Long>("mediaItemGeneration") + 1L)
+                }
+            })
             player.setMediaItem(item("original"))
             player.seekTo(12_000L)
             player.addListener(object : Player.Listener {
@@ -618,6 +781,35 @@ class PlaybackServiceCommandContinuityTest {
         fun routerGuardId(): String? = router.field<HeadsetRouteGuard>("headsetGuard")
             .field<String?>("endpointId")
 
+        fun armFreshStartForCurrentItem() {
+            val profile = ProfileId("fresh-profile")
+            val bookId = LibraryItemId("fresh-book")
+            val extras = Bundle().apply { putString(MediaItems.KEY_OWNER_PROFILE_ID, profile.value) }
+            player.setMediaItem(
+                MediaItem.Builder()
+                    .setMediaId(bookId.value)
+                    .setUri("file:///fixture")
+                    .setMediaMetadata(MediaMetadata.Builder().setExtras(extras).build())
+                    .build(),
+            )
+            service.resumeFreshness.attach(player)
+            service.resumeFreshness.onSessionOpenedImmediately(
+                PlaybackSession(
+                    id = "fresh-session",
+                    profileId = profile,
+                    bookId = bookId,
+                    title = "Fresh",
+                    author = null,
+                    coverUrl = null,
+                    startAt = Duration.ZERO,
+                    duration = Duration.ZERO,
+                    tracks = emptyList(),
+                    chapters = emptyList(),
+                ),
+                initialPlayWillFollow = true,
+            )
+            service.resumeFreshness.invalidate(ResumeInvalidation.MediaChanged)
+        }
         fun armLogicalLock(): Long {
             val generation = requireNotNull(owner.currentGeneration)
             owner.intentOwner.keepHere(endpointId, generation, 0)
@@ -681,7 +873,23 @@ class PlaybackServiceCommandContinuityTest {
 
         fun isRecoveryCurrent(): Boolean = recovery.isCurrent(target, owner.currentGeneration, 0)
 
+        fun isRecoveryPlayAwaiting(): Boolean = recovery.isPlayAwaiting
+
+        fun stopOnFirstRawPlay() {
+            var stopped = false
+            player.addListener(object : Player.Listener {
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    if (playWhenReady && !stopped) {
+                        stopped = true
+                        assertNull(forwarding.handleStop().get())
+                    }
+                }
+            })
+        }
+
         fun commandGeneration(): Long = service.field("controllerCommandGeneration")
+
+        fun serviceItemGeneration(): Long = service.field("mediaItemGeneration")
 
         fun skip(delta: Duration) {
             // Kotlin's inline Duration is a mangled JVM long parameter on this private service seam.

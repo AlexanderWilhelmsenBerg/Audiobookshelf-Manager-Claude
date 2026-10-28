@@ -57,6 +57,7 @@ class DeferredPlaybackWorkTest {
             commandGeneration = { command },
             itemGeneration = { itemVersion },
             profileGeneration = { profile },
+            commands = UnprotectedPlaybackCommands(),
             acceptPrepared = { _, authorized, install ->
                 beforeAccept()
                 if (authorized()) {
@@ -297,6 +298,7 @@ class DeferredPlaybackWorkTest {
             commandGeneration = { generation },
             itemGeneration = { 0L },
             profileGeneration = { 0L },
+            commands = UnprotectedPlaybackCommands(),
             acceptPrepared = { _, _, _ -> error("unused") },
         )
         val claim = requireNotNull(retry.capture())
@@ -320,6 +322,7 @@ class DeferredPlaybackWorkTest {
             commandGeneration = { 0L },
             itemGeneration = { 0L },
             profileGeneration = { 0L },
+            commands = UnprotectedPlaybackCommands(),
             acceptPrepared = { _, _, _ -> error("unused") },
         )
         val claim = requireNotNull(retry.capture())

@@ -111,9 +111,11 @@ Play and cannot claim a remote-progress history event. Safety pauses retain guar
 listener Pause history. A guard reserves its probe identity before synchronous mute callbacks, rejects nested
 acquisition, and revalidates existing preference epoch, attachment and target after those callbacks.
 
-Fresh-start forwarding, deferred queue installs/retry and post-connect commands must also reach the final
-output preparation/Play boundary; that integration remains part of #277. The checkpoint and verified-transfer
-work below is not established by the local/adopted resume tests alone.
+Fresh-start/duplicate loaded forwarding Play, controller Prepare, deferred queue installs/retry, post-connect
+commands and continuity now reach the same service-owned output preparation/Play boundary in the #300
+candidate. [ADR-0034](../adr/0034-one-guarded-playback-command-boundary.md) records its attachment and originating
+command/profile checks, retained-intent handling and synchronous Stop invalidation. The muted-position
+checkpoint and complete verified-transfer work remain required; this integration alone does not establish them.
 
 | Case | Current evidence | Required check |
 | --- | --- | --- |

@@ -20,6 +20,7 @@ internal class DeferredPlaybackWork(
     private val commandGeneration: () -> Long,
     private val itemGeneration: () -> Long,
     private val profileGeneration: () -> Long,
+    private val commands: PlaybackCommands,
     private val acceptPrepared: suspend (CarPostConnectRestorer.Prepared, suspend () -> Boolean, () -> Unit) -> Boolean,
 ) {
     data class Claim(
@@ -62,7 +63,7 @@ internal class DeferredPlaybackWork(
         if (!stillErrored) return
         // Media3 preserves playWhenReady across an error. prepare() restores the old intent without
         // manufacturing a new Play or touching any newer book selected while the delay was suspended.
-        active.prepare()
+        commands.prepare(active, stillAuthorized = { isCurrent(claim) })
     }
 
     /**
@@ -82,10 +83,23 @@ internal class DeferredPlaybackWork(
             allowed() && isCurrent(claim) && condition(claim.player)
         }
         if (!authorized()) return false
-        return acceptPrepared(prepared, authorized) {
-            claim.player.setMediaItem(prepared.queue.item, prepared.queue.startPositionMs)
-            claim.player.prepare()
-            if (startPlaying) claim.player.play()
+        var effectsApplied = false
+        val accepted = acceptPrepared(prepared, authorized) {
+            effectsApplied = commands.installAndPrepare(
+                current = claim.player,
+                item = prepared.queue.item,
+                startPositionMs = prepared.queue.startPositionMs,
+                authorizedBeforeInstall = { isCurrent(claim) && condition(claim.player) },
+                stillAuthorizedAfterInstall = { isInstalledCurrent(claim, prepared.queue.item) },
+                startPlaying = startPlaying,
+            )
         }
+        return accepted && effectsApplied
+    }
+
+    private fun isInstalledCurrent(claim: Claim, item: MediaItem): Boolean {
+        val active = currentPlayer() ?: return false
+        return active === claim.player && active.currentMediaItem == item &&
+            commandGeneration() == claim.command && profileGeneration() == claim.profile
     }
 }

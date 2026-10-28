@@ -71,7 +71,7 @@ internal class CarContinuityResumeEffectsTest {
             currentPlayer = { player },
             selectionSequence = { requireNotNull(router.explicitSelection.value).sequence },
             snapshot = { emptyList() },
-            onServiceResumeIntent = { error("Rebind must not create Play intent") },
+            resumePlayer = { _, _, _ -> error("Rebind must not create Play intent") },
             scope = backgroundScope,
             synchronizeOutputIntent = {
                 val selection = requireNotNull(router.explicitSelection.value)
@@ -128,7 +128,7 @@ internal class CarContinuityResumeEffectsTest {
             currentPlayer = { player },
             selectionSequence = { 0 },
             snapshot = { emptyList() },
-            onServiceResumeIntent = { error("Active playback must not ask the sleep timer to resume") },
+            resumePlayer = { _, _, _ -> error("Active playback must not ask the sleep timer to resume") },
             scope = this,
         )
         effects.recoverAndResume(
@@ -166,7 +166,7 @@ internal class CarContinuityResumeEffectsTest {
             currentPlayer = { null },
             selectionSequence = { 0 },
             snapshot = { emptyList() },
-            onServiceResumeIntent = {},
+            resumePlayer = { _, _, _ -> true },
             scope = this,
         )
         effects.logHeldHeadset("bluetooth:private-fixture-id")
@@ -219,7 +219,7 @@ internal class CarContinuityResumeEffectsTest {
                 currentPlayer = { player },
                 selectionSequence = { selection },
                 snapshot = { emptyList() },
-                onServiceResumeIntent = { error("Stale recovery must not resume the timer") },
+                resumePlayer = { _, _, _ -> error("Stale recovery must not resume the timer") },
                 scope = this,
             )
 

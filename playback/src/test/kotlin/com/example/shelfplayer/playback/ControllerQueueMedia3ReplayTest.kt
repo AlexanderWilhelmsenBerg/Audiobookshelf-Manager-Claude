@@ -110,7 +110,7 @@ class ControllerQueueMedia3ReplayTest {
         private val release = CompletableDeferred<Unit>()
         private val forwarding = ResumeFreshnessPlayer(
             player,
-            {
+            { _ ->
                 if (futures.isPlaybackResumptionDelivery()) passiveRequests++
                 player.play()
                 Futures.immediateVoidFuture()
@@ -122,6 +122,7 @@ class ControllerQueueMedia3ReplayTest {
                 if (it) playRequests++
             },
             { SkipIntervals(15.seconds, 30.seconds) },
+            prepareCurrentOutput = { Futures.immediateVoidFuture() },
             allowEffects = { futures.playerEffectsAllowed() },
         )
         private val resolution: ControllerQueueResolution = ControllerQueueResolution(

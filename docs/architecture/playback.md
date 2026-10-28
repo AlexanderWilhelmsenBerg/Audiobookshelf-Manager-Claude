@@ -74,6 +74,21 @@ The debug cold-resume diagnostic may replace only the Media3-installed initial p
 
 No future widget, shortcut, App Action, Android Auto callback or UI button may reimplement this policy privately.
 
+### Guarded activation in the output-ownership candidate
+
+The dependent #277 candidate uses one service-owned `PlaybackCommandEffects` for raw Prepare and Play. Loaded
+controller Play, including the direct fresh-session exemption and duplicate Play, enters that boundary;
+the exemption skips only a redundant server check. Controller Prepare, deferred retry/install, post-connect
+restore and car continuity use the same instance. Existing attachment, item and caller command/profile claims
+are checked around synchronous callbacks; retained Play intent cannot turn Prepare into an unguarded start.
+Arm-only installation and adopted preparation hold inherited intent paused with local safety provenance.
+
+Continuity registers its awaited target before the final raw Play, so a newer synchronous Stop can clear it
+permanently. There is no post-Play old-target registration, alternate player, focus owner or route policy in
+these adapters. See [ADR-0034](../adr/0034-one-guarded-playback-command-boundary.md). This remains a draft software
+candidate: muted-position compensation and the full verified transfer/rollback still require implementation
+and acceptance. Hardware routing and physical media-key attribution are separate evidence.
+
 ## Remembered book identity
 
 BW-PLAY-01 gives the device one durable answer to **which book did this phone last actually play for this profile?** That fact is intentionally separate from resume-position freshness.

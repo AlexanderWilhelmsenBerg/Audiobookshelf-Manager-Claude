@@ -40,106 +40,6 @@ import kotlin.test.assertTrue
 @Config(sdk = [34])
 class AudioOutputRouterThreadTest {
     @Test
-    fun `Keep audio here rejects collision or newer intent delivered during measurement`() = runTest {
-        for (collision in listOf(false, true)) {
-            val fixture = fixture()
-            val endpoint = fixture.observeEndpoint(47)
-            fixture.router.outputIntentOwner.onBookChanged(15L)
-            fixture.present(endpoint)
-            var queries = 0
-            fixture.measuredRoutes {
-                queries++
-                if (queries == 2) {
-                    if (collision) fixture.colliding(endpoint.id) else fixture.router.selectCar()
-                }
-                setOf(endpoint.id)
-            }
-
-            assertTrue(!fixture.router.keepAudioHere())
-            assertEquals(null, fixture.router.outputLock.value)
-            if (!collision) {
-                assertEquals(OutputIntentOwner.Destination.Car, fixture.router.explicitSelection.value?.destination)
-            }
-            runCurrent()
-        }
-    }
-
-    @Test
-    fun `Keep audio here cannot authorize a replacement player from its predecessor measurement`() = runTest {
-        val fixture = fixture()
-        val replacement = fixture()
-        val endpoint = fixture.observeEndpoint(48)
-        fixture.router.outputIntentOwner.onBookChanged(16L)
-        fixture.present(endpoint)
-        var queries = 0
-        fixture.measuredRoutes {
-            queries++
-            if (queries == 2) fixture.replacePlayerFrom(replacement)
-            setOf(endpoint.id)
-        }
-
-        assertTrue(!fixture.router.keepAudioHere())
-        assertEquals(null, fixture.router.outputLock.value)
-        assertTrue(replacement.pauseThreads.isEmpty())
-    }
-
-    @Test
-    fun `Keep audio here arms only a unique exact live playing track and shares router owner`() = runTest {
-        val fixture = fixture()
-        val endpoint = fixture.observeEndpoint(40, "Ambiguous A2DP")
-        fixture.measuredRoutes { setOf(endpoint.id) }
-        fixture.router.outputIntentOwner.onBookChanged(7L)
-        fixture.present(endpoint)
-
-        assertTrue(fixture.router.keepAudioHere())
-        val lock = fixture.router.outputLock.value
-        assertEquals(OutputIntentOwner.LockPhase.Active, lock?.phase)
-        assertEquals(endpoint.id, lock?.outputId)
-        assertEquals(endpoint.id, fixture.router.selectedId.value)
-        assertEquals(lock?.selectionSequence, fixture.router.explicitSelection.value?.sequence)
-        assertTrue(!fixture.router.selectCarFromGenericController())
-        assertEquals(lock?.selectionSequence, fixture.router.explicitSelection.value?.sequence)
-        assertEquals(endpoint.id, fixture.router.outputLock.value?.outputId)
-    }
-
-    @Test
-    fun `Keep audio here refuses unknown duplicate and stale measurements`() = runTest {
-        val fixture = fixture()
-        val endpoint = fixture.observeEndpoint(43, "Ambiguous A2DP")
-        fixture.router.outputIntentOwner.onBookChanged(5L)
-        fixture.present(endpoint)
-
-        fixture.measuredRoutes { null }
-        assertTrue(!fixture.router.keepAudioHere())
-        fixture.measuredRoutes { setOf(endpoint.id, "other") }
-        assertTrue(!fixture.router.keepAudioHere())
-        fixture.measuredRoutes { setOf(endpoint.id) }
-        fixture.colliding(endpoint.id)
-        assertTrue(!fixture.router.keepAudioHere())
-        fixture.colliding(null)
-        fixture.present(endpoint, com.example.shelfplayer.core.model.playback.AudioOutputRole.Car)
-        assertTrue(!fixture.router.keepAudioHere(), "a measured car/speaker category is not eligible")
-        assertEquals(null, fixture.router.outputLock.value)
-    }
-
-    @Test
-    fun `Keep audio here rejects a book generation change during route query`() = runTest {
-        val fixture = fixture()
-        val endpoint = fixture.observeEndpoint(44, "Ambiguous A2DP")
-        fixture.router.outputIntentOwner.onBookChanged(11L)
-        fixture.present(endpoint)
-        var reads = 0
-        fixture.measuredRoutes {
-            reads += 1
-            if (reads == 2) fixture.router.outputIntentOwner.onBookChanged(12L)
-            setOf(endpoint.id)
-        }
-
-        assertTrue(!fixture.router.keepAudioHere())
-        assertEquals(null, fixture.router.outputLock.value)
-    }
-
-    @Test
     fun `Waiting lock fails closed when the next book plays through a different route`() = runTest {
         val fixture = fixture()
         val endpoint = fixture.observeEndpoint(46, "Ambiguous A2DP")
@@ -259,6 +159,22 @@ class AudioOutputRouterThreadTest {
     }
 
     @Test
+    fun `manual protection refuses a player other than the router attachment`() = runTest {
+        val fixture = fixture()
+        val retiredPlayer = fixture()
+        fixture.router.attach(fixture.player)
+        fixture.guard("bluetooth:attached")
+
+        assertEquals(
+            ManualPlayProtection.Denied,
+            fixture.router.protectManualPlayOnGuardedHeadset(retiredPlayer.player),
+        )
+        runCurrent()
+        assertTrue(fixture.volumeChanges.isEmpty(), "a stale caller cannot mute the attached player")
+        assertTrue(retiredPlayer.volumeChanges.isEmpty())
+    }
+
+    @Test
     fun `book boundary clears only the transient automatic protection`() = runTest {
         val fixture = fixture()
         val info = device(44, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "Ambiguous output")
@@ -273,7 +189,10 @@ class AudioOutputRouterThreadTest {
         assertTrue(fixture.router.protectMeasuredPlayingHeadset(endpoint.id, 7L, 0L) { true })
         assertTrue(fixture.router.reassert(endpoint.id), "same-endpoint policy reassertion remains safe")
         runCurrent()
-        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(
+            ManualPlayProtection.MutedAllowed,
+            fixture.router.protectManualPlayOnGuardedHeadset(fixture.player),
+        )
         assertEquals(listOf(0f), fixture.volumeChanges)
         fixture.router.clearMeasuredPlayingHeadsetProtection()
         runCurrent()
@@ -323,7 +242,10 @@ class AudioOutputRouterThreadTest {
         val endpoint = fixture.observeEndpoint(48)
         fixture.measuredRoutes { setOf(endpoint.id) }
         assertTrue(fixture.router.protectMeasuredPlayingHeadset(endpoint.id, 1L, 0L) { true })
-        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(
+            ManualPlayProtection.MutedAllowed,
+            fixture.router.protectManualPlayOnGuardedHeadset(fixture.player),
+        )
 
         fixture.router.attach(replacement.player)
         runCurrent()
@@ -444,7 +366,10 @@ class AudioOutputRouterThreadTest {
     fun `manual headset Play stays silent until the actual track route is verified`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
-        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(
+            ManualPlayProtection.MutedAllowed,
+            fixture.router.protectManualPlayOnGuardedHeadset(fixture.player),
+        )
         assertEquals(listOf(0f), fixture.volumeChanges)
         fixture.measuredRoutes { emptySet() }
         fixture.safetyListener().onIsPlayingChanged(true)
@@ -468,7 +393,10 @@ class AudioOutputRouterThreadTest {
     fun `wrong actual sink aborts silent manual Play without unmuting early`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
-        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(
+            ManualPlayProtection.MutedAllowed,
+            fixture.router.protectManualPlayOnGuardedHeadset(fixture.player),
+        )
         fixture.measuredRoutes { setOf("bluetooth:car") }
         fixture.safetyListener().onIsPlayingChanged(true)
         runCurrent()
@@ -480,7 +408,10 @@ class AudioOutputRouterThreadTest {
     fun `unknown actual sink times out while silent and pauses`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
-        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(
+            ManualPlayProtection.MutedAllowed,
+            fixture.router.protectManualPlayOnGuardedHeadset(fixture.player),
+        )
         fixture.measuredRoutes { emptySet() }
         fixture.safetyListener().onIsPlayingChanged(true)
         runCurrent()
@@ -692,7 +623,7 @@ private fun device(id: Int, type: Int, name: String): AudioDeviceInfo {
     return device
 }
 
-private fun TestScope.fixture(): Fixture {
+internal fun TestScope.fixture(): Fixture {
     val reads = mutableListOf<Thread>()
     val pauses = mutableListOf<Thread>()
     val volumes = mutableListOf<Float>()
@@ -772,7 +703,7 @@ private fun threadCheckedPlayer(
     } as ExoPlayer
 }
 
-private data class Fixture(
+internal data class Fixture(
     val router: AudioOutputRouter,
     val registry: LiveOutputEndpointRegistry,
     val readThreads: List<Thread>,
@@ -880,7 +811,10 @@ class AudioOutputRouterQueuedSafetyTest {
         runCurrent()
 
         fixture.guard("bluetooth:original")
-        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(
+            ManualPlayProtection.MutedAllowed,
+            fixture.router.protectManualPlayOnGuardedHeadset(replacement.player),
+        )
         val pausesBeforeOldCallback = replacement.pauseThreads.size
         oldListener.onPlayWhenReadyChanged(false, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
         oldListener.onIsPlayingChanged(true)
@@ -899,7 +833,10 @@ class AudioOutputRouterQueuedSafetyTest {
         runCurrent()
 
         fixture.guard("bluetooth:original")
-        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(
+            ManualPlayProtection.MutedAllowed,
+            fixture.router.protectManualPlayOnGuardedHeadset(fixture.player),
+        )
         val pausesBeforeRetiredCallback = fixture.pauseThreads.size
         retiredListener.onPlayWhenReadyChanged(false, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
         retiredListener.onIsPlayingChanged(true)
@@ -913,7 +850,10 @@ class AudioOutputRouterQueuedSafetyTest {
     fun `stale probe timeout restores its volume without pausing after a newer car choice`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
-        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(
+            ManualPlayProtection.MutedAllowed,
+            fixture.router.protectManualPlayOnGuardedHeadset(fixture.player),
+        )
 
         fixture.router.selectCar()
         fixture.guardOwner().verifyProbeIfActive(
@@ -932,7 +872,10 @@ class AudioOutputRouterQueuedSafetyTest {
         val fixture = fixture()
         val replacement = fixture()
         fixture.guard("bluetooth:original")
-        assertEquals(ManualPlayProtection.MutedAllowed, fixture.router.protectManualPlayOnGuardedHeadset())
+        assertEquals(
+            ManualPlayProtection.MutedAllowed,
+            fixture.router.protectManualPlayOnGuardedHeadset(fixture.player),
+        )
         fixture.replacePlayerFrom(replacement)
 
         fixture.router.selectCar()

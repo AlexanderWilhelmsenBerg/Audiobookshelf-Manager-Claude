@@ -56,16 +56,25 @@ class CarContinuityPlayPrecheckTest {
         val source = File("src/main/kotlin/com/example/shelfplayer/playback/CarContinuityResumeEffects.kt").readText()
         val resume = source
             .substringAfter("private fun resumeAfterCarContinuity")
-            .substringBefore("\n}")
+            .substringBefore("private suspend fun recoverCarContinuityHeadset")
 
         val precheck = resume.indexOf("CarContinuityPlayPrecheck.decide")
         val verdict = resume.indexOf("recovery.assess")
         val rejected = resume.indexOf("if (!result.accepted)")
-        val play = resume.indexOf("current.play()")
+        val acceptedPlay = resume.indexOf("resumePlayer(current, { stillAuthorized(current) })")
+        val reservedBeforeRawPlay = resume.indexOf("recovery.notePlayIssued(target)")
         assertTrue(precheck in 0 until verdict, "the precheck precedes coordinator claim consumption")
         assertTrue(rejected > verdict, "a rejected verdict must return before Play")
-        assertTrue(play > rejected, "the accepted path must issue Play")
-        assertEquals(1, Regex("""current\.play\(\)""").findAll(resume).count(), "exactly one Play")
+        assertTrue(acceptedPlay > rejected, "the accepted path must request guarded service Play")
+        assertTrue(reservedBeforeRawPlay > acceptedPlay, "awaiting is reserved only on the accepted command path")
+        val service = File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt").readText()
+        val serviceEffect = service.substringAfter("private val carResumeEffects by lazy")
+            .substringBefore("private fun carSnapshotFields")
+        assertTrue(
+            "playbackCommandEffects.play(current, stillAuthorized, beforeRawPlay)" in serviceEffect,
+            "continuity Play must reach the shared service command gate",
+        )
+        assertEquals(1, Regex("""\.play\(current, stillAuthorized, beforeRawPlay\)""").findAll(serviceEffect).count())
         val coordinator = File("src/main/kotlin/com/example/shelfplayer/playback/CarContinuityRecoveryCoordinator.kt")
             .readText()
         assertTrue(coordinator.contains("gate.consumeRecovery("), "the coordinator must consume the gate claim")

@@ -8,6 +8,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 
 /**
@@ -27,7 +28,7 @@ internal class CarContinuityResumeEffects(
     private val currentPlayer: () -> ExoPlayer?,
     private val selectionSequence: () -> Long,
     private val snapshot: () -> List<LogField>,
-    private val onServiceResumeIntent: () -> Unit,
+    private val resumePlayer: (ExoPlayer, () -> Boolean, () -> Unit) -> Boolean,
     private val scope: CoroutineScope,
     private val synchronizeOutputIntent: () -> Unit = {},
     private val onOutputsChanged: () -> Unit = {},
@@ -209,6 +210,7 @@ internal class CarContinuityResumeEffects(
         // It owns focus restoration in that state; issuing another Play or reasserting the output
         // would only disturb a player that is already committed to continuing.
         try {
+            val recoveryJob = currentCoroutineContext().job
             currentCoroutineContext().ensureActive()
             if (currentPlayer()?.playWhenReady == true) {
                 log("Car lifecycle left active playback intent with Media3")
@@ -216,7 +218,11 @@ internal class CarContinuityResumeEffects(
             }
             val heldHeadset = recoverCarContinuityHeadset(target)
             currentCoroutineContext().ensureActive()
-            resumeAfterCarContinuity(target, heldHeadset)
+            resumeAfterCarContinuity(target, heldHeadset) { current ->
+                recoveryJob.isActive && owner.currentGeneration == target.generation &&
+                    selectionSequence() == target.explicitSelectionSequence &&
+                    currentPlayer() === current && current.mediaItemCount > 0
+            }
         } finally {
             recovery.discard(target)
         }
@@ -228,7 +234,11 @@ internal class CarContinuityResumeEffects(
      * The log says Play was issued rather than claiming playback resumed. Actual audio movement is logged from
      * onIsPlayingChanged, which is the first service callback that can truthfully make that claim.
      */
-    private fun resumeAfterCarContinuity(target: CarArrivalResumeGate.Target, heldHeadset: String?) {
+    private fun resumeAfterCarContinuity(
+        target: CarArrivalResumeGate.Target,
+        heldHeadset: String?,
+        stillAuthorized: (ExoPlayer) -> Boolean,
+    ) {
         val current = currentPlayer()
         val precheck = CarContinuityPlayPrecheck.decide(
             hasPlayer = current != null,
@@ -279,7 +289,10 @@ internal class CarContinuityResumeEffects(
             log("Car lifecycle refused unverified headset probe")
             return
         }
-        recovery.notePlayIssued(target)
+        if (!resumePlayer(current, { stillAuthorized(current) }) { recovery.notePlayIssued(target) }) {
+            recovery.clearAwaiting(target)
+            return
+        }
         log(
             "Car lifecycle continuity issued Play",
             fields = listOf(
@@ -287,8 +300,6 @@ internal class CarContinuityResumeEffects(
                 LogField.Public("kind", target.outputId.substringBefore(':')),
             ) + snapshot(),
         )
-        onServiceResumeIntent()
-        current.play()
     }
 
     /**
