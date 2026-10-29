@@ -20,8 +20,9 @@ CI and the remaining software slices are tracked in
 [the current checkpoint](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/289#issuecomment-6448375926).
 Explicit transfer/rollback now passes full strict local verification: 2,748 tests /322 suites, including
 932 playback tests, with no failures, errors or skips. Its exact committed source and normal CI are recorded
-in that checkpoint. Asynchronous selection ownership and typed selection/UI consolidation remain
-required. The full execution plan is not complete. A final combined candidate must also include
+in that checkpoint. Selection-scoped deferred work also passes full strict local verification: 2,759 tests
+/325 suites, including 943 playback tests, with no failures, errors or skips. Muted heard-route gating
+and typed selection/UI consolidation remain required. The full execution plan is not complete. A final combined candidate must also include
 separate auth #296; physical output, startup and real-token acceptance remain distinct.
 
 ### Remaining work overview
@@ -29,14 +30,37 @@ separate auth #296; physical output, startup and real-token acceptance remain di
 | Work | Current status | Exit evidence |
 | --- | --- | --- |
 | Common activation and held position | Published in draft #300 at `84f192d4`; strict local and normal exact-head CI 40704175652 pass 2,700 tests | Recheck the final combined candidate |
-| Explicit verified handoff and rollback | Software implemented; strict local gate passes, ADR-0036 | Exact committed source and normal CI in the checkpoint; physical acceptance remains separate |
-| Service asynchronous ownership | Remaining | Existing selection sequence revokes stale prepare/install/Play; captured progress writes still complete; muted playback cannot create heard-route evidence |
+| Explicit verified handoff and rollback | Published in draft #300 at `7133b974`; strict local and normal exact-head CI 40762550930 pass 2,748 tests, ADR-0036 | Recheck the final combined candidate; physical acceptance remains separate |
+| Service asynchronous ownership | Selection scope passes strict local verification; normal exact-head CI tracked in checkpoint | Existing selection sequence revokes stale prepare/install/Play; captured progress writes still complete |
+| Muted heard-route observation | Remaining | Muted raw playback cannot create heard-route evidence or consume the awaiting recovery claim; unmute and listener teardown use current ownership |
 | Typed presentation and callback cleanup | Remaining | Requested/measured/predicted/unknown remain distinct; Waiting/Verifying/Verified/Delegated/Failed shown truthfully, with English/Norwegian and accessibility checks |
 | Final integration and APK | Remaining | Include auth #296, full `verifyDebug --rerun-tasks`, normal exact-head CI, independent review, then one combined signed QA APK |
 | Device/server acceptance | Pending | Stationary headset/Auto and lifecycle guide, #295 startup cases, #288 genuine 401 renewal; unsupported input identity recorded honestly |
 
 Green evidence above belongs to its recorded revision. It does not verify subsequent implementation work or
 constitute physical audio, zero-silence, headset-key identity, startup or real-server acceptance.
+
+### Selection-scoped deferred work — 29 October 2026
+
+Pending player mutations capture the existing explicit-selection sequence alongside command, item,
+profile and player identity. A newer output choice revokes queued Play/Prepare, retry, held-item
+materialization and accepted-connect restoration. A Car controller's own synchronous route selection
+is captured before its Play future starts, so the accepted request does not invalidate itself.
+Controller queue preparation and durable acceptance capture that same sequence, including cold
+callback delivery. Two suspended-queue regressions and a real Media3 cold-future regression failed
+before that claim gained the selection check.
+
+Captured pause journaling and session synchronization intentionally retain their original book,
+profile and heard position after an output-only choice. Their authorization remains separate from
+player mutation. No selection counter or persistence owner was added. Changing output also retires
+sleep-grace transport authority through the existing timer API without resetting an active timer.
+
+The focused production-path controls pass. Removing only the selection guards produced five intended
+regression failures while the captured-persistence, own-Car-Play and current-post-connect controls
+remained green; exact source bytes were restored. The restored full strict repository gate passes
+2,759 tests /325 suites, including 943 playback tests; formatter, lint, Detekt and coverage pass.
+The shared service fixture and tests are split by command continuity, queue mutation, output protection
+and selection scope, retaining the existing cases and assertions. APK assembly was excluded.
 
 ## Ownership after refactoring
 

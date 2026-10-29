@@ -110,6 +110,7 @@ class PlaybackResumptionCallbacksTest {
         val resolution = ControllerQueueResolution(
             commandGeneration = { generation },
             profileGeneration = { profileGeneration },
+            explicitSelectionSequence = { 0L },
             serviceOwner = { identity },
             activeProfileId = { PROFILE },
             isProfileLocked = { locked },

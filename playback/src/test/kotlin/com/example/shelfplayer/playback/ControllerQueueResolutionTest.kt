@@ -36,6 +36,24 @@ class ControllerQueueResolutionTest {
     }
 
     @Test
+    fun `newer output selection during remote prepare revokes queue publication`() = runTest {
+        val fixture = Fixture()
+        fixture.beforePrepare = { fixture.selectionSequence++ }
+        assertFailsWith<CancellationException> { fixture.owner.resolve(fixture.owner.capture(), BOOK, null) }
+        assertEquals(0, fixture.accepted)
+        assertEquals(0, fixture.published)
+    }
+
+    @Test
+    fun `newer output selection during durable acceptance revokes queue publication`() = runTest {
+        val fixture = Fixture()
+        fixture.beforeAccept = { fixture.selectionSequence++ }
+        assertFailsWith<CancellationException> { fixture.owner.resolve(fixture.owner.capture(), BOOK, null) }
+        assertEquals(1, fixture.accepted)
+        assertEquals(0, fixture.published)
+    }
+
+    @Test
     fun `accepted queue preserves server start and publishes once`() = runTest {
         val fixture = Fixture()
         val result = fixture.owner.resolve(fixture.owner.capture(), BOOK, null)
@@ -151,6 +169,7 @@ class ControllerQueueResolutionTest {
     private class Fixture {
         var commandGeneration = 0L
         var profileGeneration = 0L
+        var selectionSequence = 0L
         var serviceOwner: Any? = Any()
         var sessionProfile = PROFILE
         var locked = false
@@ -163,6 +182,7 @@ class ControllerQueueResolutionTest {
         val owner = ControllerQueueResolution(
             commandGeneration = { commandGeneration },
             profileGeneration = { profileGeneration },
+            explicitSelectionSequence = { selectionSequence },
             serviceOwner = { serviceOwner },
             activeProfileId = { PROFILE },
             isProfileLocked = { locked },

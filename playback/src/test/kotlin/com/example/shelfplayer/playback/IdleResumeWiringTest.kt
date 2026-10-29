@@ -22,15 +22,27 @@ class IdleResumeWiringTest {
 
         // The service delegates the whole post-connect install to the restorer, whose behaviour
         // CarPostConnectRestorerTest proves against a real player.
-        assertTrue("carPostConnectRestorer(trace).restore(action, current)" in postConnect)
+        assertTrue(
+            "carPostConnectRestorer(trace, requestGeneration, selectionSequence).restore(action, current)" in
+                postConnect,
+        )
+        val entry = postConnect.substringBefore("private suspend fun runCarPostConnect")
+        assertTrue("val requestGeneration = controllerCommandGeneration" in entry)
+        assertTrue("val selectionSequence = currentExplicitSelectionSequence()" in entry)
+        assertTrue(entry.indexOf("val requestGeneration = controllerCommandGeneration") < entry.indexOf("scope.launch"))
+        assertTrue(
+            entry.indexOf("val selectionSequence = currentExplicitSelectionSequence()") < entry.indexOf("scope.launch"),
+        )
         assertTrue("auto.heldResumeAfter(::refreshResumeAccount)" in postConnect)
         assertTrue("activeProfileId = auto::activeProfileId" in postConnect)
         assertTrue("profileGeneration = auto::activeProfileGeneration" in postConnect)
         val restorerFactory = source
             .substringAfter("private fun carPostConnectRestorer(")
             .substringBefore("private suspend fun refreshResumeAccount")
-        assertTrue("val requestGeneration = controllerCommandGeneration" in restorerFactory)
+        assertTrue("requestGeneration: Long" in restorerFactory)
+        assertTrue("selectionSequence: Long" in restorerFactory)
         assertTrue("controllerCommandGeneration == requestGeneration" in restorerFactory)
+        assertTrue("currentExplicitSelectionSequence() == selectionSequence" in restorerFactory)
         assertTrue("commands = playbackCommandEffects" in restorerFactory)
         assertTrue("AutoStartAction.None -> holdLastBook(current, claim)" in restorer)
         assertTrue("current.setMediaItem(held.item, held.startPositionMs)" in restorer)

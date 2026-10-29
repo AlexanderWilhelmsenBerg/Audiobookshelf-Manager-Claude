@@ -67,6 +67,17 @@ class ControllerQueueMedia3ReplayTest {
     }
 
     @Test
+    fun `newer output selection cancels cold callback without fallback Play`() {
+        Fixture(cold = true).use { fixture ->
+            fixture.request()
+            fixture.selectNewOutput()
+            fixture.complete()
+            fixture.assertCancelled()
+            fixture.assertLaterExplicitPlay()
+        }
+    }
+
+    @Test
     fun `valid cold resumption performs one passive compound install and Play`() {
         Fixture(cold = true).use { fixture ->
             fixture.request()
@@ -103,6 +114,7 @@ class ControllerQueueMedia3ReplayTest {
             override fun log(event: LogEvent) = Unit
         }
         private var generation = 0L
+        private var selectionSequence = 0L
         private var prepared = 0
         private var published = 0
         private var passiveRequests = 0
@@ -133,6 +145,7 @@ class ControllerQueueMedia3ReplayTest {
         private val resolution: ControllerQueueResolution = ControllerQueueResolution(
             commandGeneration = { generation },
             profileGeneration = { 0L },
+            explicitSelectionSequence = { selectionSequence },
             serviceOwner = { player },
             activeProfileId = { PROFILE },
             isProfileLocked = { false },
@@ -212,6 +225,11 @@ class ControllerQueueMedia3ReplayTest {
             val beforeStop = generation
             stopper.stop()
             pump { generation > beforeStop }
+            if (cold) player.setMediaItem(item("current"), 7_000L)
+        }
+
+        fun selectNewOutput() {
+            selectionSequence++
             if (cold) player.setMediaItem(item("current"), 7_000L)
         }
 

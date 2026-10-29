@@ -20,6 +20,7 @@ internal class DeferredPlaybackWork(
     private val commandGeneration: () -> Long,
     private val itemGeneration: () -> Long,
     private val profileGeneration: () -> Long,
+    private val explicitSelectionSequence: () -> Long,
     private val commands: PlaybackCommands,
     private val acceptPrepared: suspend (CarPostConnectRestorer.Prepared, suspend () -> Boolean, () -> Unit) -> Boolean,
 ) {
@@ -29,6 +30,7 @@ internal class DeferredPlaybackWork(
         val command: Long,
         val itemVersion: Long,
         val profile: Long,
+        val selectionSequence: Long,
     )
 
     /** Must be captured on the Media3 player thread, before the asynchronous operation begins. */
@@ -40,6 +42,7 @@ internal class DeferredPlaybackWork(
             command = commandGeneration(),
             itemVersion = itemGeneration(),
             profile = profileGeneration(),
+            selectionSequence = explicitSelectionSequence(),
         )
     }
 
@@ -52,18 +55,22 @@ internal class DeferredPlaybackWork(
             profileGeneration() == claim.profile
     }
 
+    /** Selection revokes pending player mutations, but preserves captured bookkeeping authorization. */
+    fun isMutationCurrent(claim: Claim): Boolean =
+        isCurrent(claim) && explicitSelectionSequence() == claim.selectionSequence
+
     /** Only the exact idle, still-errored stream may be re-prepared after its retry delay. */
     suspend fun retryIfCurrent(claim: Claim, retryIn: Duration) {
         delay(retryIn)
         val active = currentPlayer() ?: return
-        if (!isCurrent(claim)) return
+        if (!isMutationCurrent(claim)) return
         val stillErrored = active.mediaItemCount > 0 &&
             active.playbackState == Player.STATE_IDLE &&
             active.playerError != null
         if (!stillErrored) return
         // Media3 preserves playWhenReady across an error. prepare() restores the old intent without
         // manufacturing a new Play or touching any newer book selected while the delay was suspended.
-        commands.prepare(active, stillAuthorized = { isCurrent(claim) })
+        commands.prepare(active, stillAuthorized = { isMutationCurrent(claim) })
     }
 
     /**
@@ -80,7 +87,7 @@ internal class DeferredPlaybackWork(
         val authorized: suspend () -> Boolean = {
             // Profile/lock checks may suspend. Re-read the player and generations afterwards, as the
             // very last synchronous part of the predicate before the session owner installs the item.
-            allowed() && isCurrent(claim) && condition(claim.player)
+            allowed() && isMutationCurrent(claim) && condition(claim.player)
         }
         if (!authorized()) return false
         var effectsApplied = false
@@ -89,7 +96,7 @@ internal class DeferredPlaybackWork(
                 current = claim.player,
                 item = prepared.queue.item,
                 startPositionMs = prepared.queue.startPositionMs,
-                authorizedBeforeInstall = { isCurrent(claim) && condition(claim.player) },
+                authorizedBeforeInstall = { isMutationCurrent(claim) && condition(claim.player) },
                 stillAuthorizedAfterInstall = { isInstalledCurrent(claim, prepared.queue.item) },
                 startPlaying = startPlaying,
             )
@@ -100,6 +107,7 @@ internal class DeferredPlaybackWork(
     private fun isInstalledCurrent(claim: Claim, item: MediaItem): Boolean {
         val active = currentPlayer() ?: return false
         return active === claim.player && active.currentMediaItem == item &&
-            commandGeneration() == claim.command && profileGeneration() == claim.profile
+            commandGeneration() == claim.command && profileGeneration() == claim.profile &&
+            explicitSelectionSequence() == claim.selectionSequence
     }
 }

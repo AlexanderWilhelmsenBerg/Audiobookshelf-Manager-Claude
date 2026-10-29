@@ -295,6 +295,7 @@ class PlaybackService : MediaLibraryService() {
             commandGeneration = { controllerCommandGeneration },
             itemGeneration = { mediaItemGeneration },
             profileGeneration = { activeProfileGeneration() },
+            explicitSelectionSequence = ::currentExplicitSelectionSequence,
             commands = playbackCommandEffects,
             acceptPrepared = { prepared, authorized, install ->
                 bookChanges.acceptBook(prepared.session, authorized, install)
@@ -687,13 +688,16 @@ class PlaybackService : MediaLibraryService() {
         delegate = exoPlayer,
         preparePlay = { bypassFreshness ->
             val generation = controllerCommandGeneration
+            // Car routing runs synchronously in onPlayWhenReadyRequest before this future factory.
+            val selectionSequence = currentExplicitSelectionSequence()
             // Capture before launching: the scoped Media3 resumption listener ends when it returns.
             val explicit = !callbackFutures.isPlaybackResumptionDelivery()
-            future { handleFreshnessPlay(generation, explicit, bypassFreshness) }
+            future { handleFreshnessPlay(generation, selectionSequence, explicit, bypassFreshness) }
         },
         prepareCurrentOutput = {
             val generation = controllerCommandGeneration
-            future { prepareCurrentOutput(generation) }
+            val selectionSequence = currentExplicitSelectionSequence()
+            future { prepareCurrentOutput(generation, selectionSequence) }
         },
         consumeFreshStart = resumeFreshness::consumeFreshStart,
         movementEffects = positionEffects,
@@ -982,12 +986,16 @@ class PlaybackService : MediaLibraryService() {
      */
     private suspend fun handleFreshnessPlay(
         expectedCommandGeneration: Long,
+        expectedSelectionSequence: Long,
         explicit: Boolean,
         bypassFreshness: Boolean,
     ): Boolean = performFreshnessPlay(
         explicit = explicit,
         bypassFreshness = bypassFreshness,
-        stillAuthorized = { controllerCommandGeneration == expectedCommandGeneration },
+        stillAuthorized = {
+            controllerCommandGeneration == expectedCommandGeneration &&
+                currentExplicitSelectionSequence() == expectedSelectionSequence
+        },
     )
 
     /**
@@ -1002,21 +1010,24 @@ class PlaybackService : MediaLibraryService() {
         stillAuthorized: () -> Boolean = { true },
         bypassFreshness: Boolean = false,
     ): Boolean {
+        // Sleep-grace Play enters directly; its output owner must be captured before any suspension.
+        val selectionSequence = currentExplicitSelectionSequence()
+        val authorized = { stillAuthorized() && currentExplicitSelectionSequence() == selectionSequence }
         // Issue #88 — BookChanges.onBookOpened invalidates sleep Play claims. Materialize the display-only
         // holder first so the claim below belongs to the real book generation it is authorizing.
-        if (!stillAuthorized() || !materializeHeldResume(stillAuthorized)) return false
+        if (!authorized() || !materializeHeldResume(authorized)) return false
         val sleepPlayRequest = sleepTimer.onPlayRequest(explicit)
-        if (!stillAuthorized()) {
+        if (!authorized()) {
             sleepTimer.clearPlayRequest(sleepPlayRequest)
             return false
         }
         val requestedPlay = if (bypassFreshness) {
-            resumeLoadedCurrent(stillAuthorized)
+            resumeLoadedCurrent(authorized)
         } else {
             when (val prepared = resumeFreshness.preparePlay()) {
-                ResumePlayPreparation.Bypass -> resumeLoadedCurrent(stillAuthorized)
+                ResumePlayPreparation.Bypass -> resumeLoadedCurrent(authorized)
                 ResumePlayPreparation.Superseded -> false
-                is ResumePlayPreparation.Ready -> applyFreshnessPlan(prepared.plan, stillAuthorized)
+                is ResumePlayPreparation.Ready -> applyFreshnessPlan(prepared.plan, authorized)
             }
         }
         if (!requestedPlay) sleepTimer.clearPlayRequest(sleepPlayRequest)
@@ -1058,7 +1069,7 @@ class PlaybackService : MediaLibraryService() {
                 target.profileId?.let { auto.isActiveProfile(it) } == true &&
                 prepared.session.profileId == target.profileId
             val item = player?.currentMediaItem
-            allowed && stillAuthorized() && deferredWork.isCurrent(claim) && item != null &&
+            allowed && stillAuthorized() && deferredWork.isMutationCurrent(claim) && item != null &&
                 MediaItems.isResumePlaceholder(item) &&
                 MediaItems.ownerOf(item) == target.profileId && MediaItems.bookIdOf(item) == target.bookId
         }
@@ -1118,11 +1129,17 @@ class PlaybackService : MediaLibraryService() {
             playbackCommandEffects.play(current, stillAuthorized)
         }
 
-    private suspend fun prepareCurrentOutput(expectedCommandGeneration: Long): Boolean = withContext(mainDispatcher) {
+    private suspend fun prepareCurrentOutput(
+        expectedCommandGeneration: Long,
+        expectedSelectionSequence: Long,
+    ): Boolean = withContext(mainDispatcher) {
         val current = player ?: return@withContext false
         playbackCommandEffects.prepare(
             current,
-            stillAuthorized = { controllerCommandGeneration == expectedCommandGeneration },
+            stillAuthorized = {
+                controllerCommandGeneration == expectedCommandGeneration &&
+                    currentExplicitSelectionSequence() == expectedSelectionSequence
+            },
         )
     }
 
@@ -1668,7 +1685,10 @@ class PlaybackService : MediaLibraryService() {
             selectionSequence = selection.sequence,
             destination = selection.destination,
         )
-        if (changed) clearCarContinuity()
+        if (changed) {
+            clearCarContinuity()
+            sleepTimer.onControllerTransportIntent()
+        }
     }
 
     private fun currentExplicitSelectionSequence(): Long = audioOutputs.explicitSelection.value?.sequence ?: 0L
@@ -2305,6 +2325,7 @@ class PlaybackService : MediaLibraryService() {
         ControllerQueueResolution(
             commandGeneration = { controllerCommandGeneration },
             profileGeneration = auto::activeProfileGeneration,
+            explicitSelectionSequence = ::currentExplicitSelectionSequence,
             serviceOwner = { player.takeIf { scope.isActive } },
             activeProfileId = auto::activeProfileId,
             isProfileLocked = lock::isActiveProfileLocked,
@@ -3030,10 +3051,18 @@ class PlaybackService : MediaLibraryService() {
                 )
                 return
             }
-            scope.launch { runCarPostConnect(current, trace) }
+            // The accepted-connect request owns both snapshots before any coroutine dispatch.
+            val requestGeneration = controllerCommandGeneration
+            val selectionSequence = currentExplicitSelectionSequence()
+            scope.launch { runCarPostConnect(current, trace, requestGeneration, selectionSequence) }
         }
 
-        private suspend fun runCarPostConnect(current: ExoPlayer, trace: AndroidAutoTraceRecorder.Trace) {
+        private suspend fun runCarPostConnect(
+            current: ExoPlayer,
+            trace: AndroidAutoTraceRecorder.Trace,
+            requestGeneration: Long,
+            selectionSequence: Long,
+        ) {
             val startedAt = clock.elapsed()
             val action = CarConnection.decide(devices, lock, clock.now())
             val actionName = when (action) {
@@ -3047,7 +3076,7 @@ class PlaybackService : MediaLibraryService() {
                 trace,
                 listOf(LogField.Public("action", actionName)) + AndroidAutoDiagnostics.playerFields(current),
             )
-            carPostConnectRestorer(trace).restore(action, current)
+            carPostConnectRestorer(trace, requestGeneration, selectionSequence).restore(action, current)
             autoTraces.log(
                 "Android Auto post-connect async work completed",
                 trace,
@@ -3064,41 +3093,45 @@ class PlaybackService : MediaLibraryService() {
             )
         }
 
-        private fun carPostConnectRestorer(trace: AndroidAutoTraceRecorder.Trace?): CarPostConnectRestorer {
-            val requestGeneration = controllerCommandGeneration
-            return CarPostConnectRestorer(
-                activeProfileId = auto::activeProfileId,
-                profileGeneration = auto::activeProfileGeneration,
-                isRequestCurrent = { controllerCommandGeneration == requestGeneration },
-                commands = playbackCommandEffects,
-                isProfileLocked = lock::isActiveProfileLocked,
-                lastPlayedBookId = { auto.lastPlayedAfter(::refreshResumeAccount)?.id },
-                heldResume = { auto.heldResumeAfter(::refreshResumeAccount) },
-                openQueue = { bookId -> prepareQueue(bookId, startAt = null) },
-                acceptQueue = { prepared, authorized, install ->
-                    bookChanges.acceptBook(prepared.session, authorized, install)
-                },
-                observer = object : CarPostConnectRestorer.Observer {
-                    override fun note(message: String, player: Player?) {
-                        if (player == null) {
-                            autoTraces.log(message, trace)
-                        } else {
-                            autoTraces.log(message, trace, AndroidAutoDiagnostics.playerFields(player))
-                        }
+        private fun carPostConnectRestorer(
+            trace: AndroidAutoTraceRecorder.Trace?,
+            requestGeneration: Long,
+            selectionSequence: Long,
+        ): CarPostConnectRestorer = CarPostConnectRestorer(
+            activeProfileId = auto::activeProfileId,
+            profileGeneration = auto::activeProfileGeneration,
+            isRequestCurrent = {
+                controllerCommandGeneration == requestGeneration &&
+                    currentExplicitSelectionSequence() == selectionSequence
+            },
+            commands = playbackCommandEffects,
+            isProfileLocked = lock::isActiveProfileLocked,
+            lastPlayedBookId = { auto.lastPlayedAfter(::refreshResumeAccount)?.id },
+            heldResume = { auto.heldResumeAfter(::refreshResumeAccount) },
+            openQueue = { bookId -> prepareQueue(bookId, startAt = null) },
+            acceptQueue = { prepared, authorized, install ->
+                bookChanges.acceptBook(prepared.session, authorized, install)
+            },
+            observer = object : CarPostConnectRestorer.Observer {
+                override fun note(message: String, player: Player?) {
+                    if (player == null) {
+                        autoTraces.log(message, trace)
+                    } else {
+                        autoTraces.log(message, trace, AndroidAutoDiagnostics.playerFields(player))
                     }
+                }
 
-                    override fun installing(direction: String, item: MediaItem, extraFields: List<LogField>) {
-                        autoTraces.logItems(
-                            trace = trace,
-                            callback = "onPostConnect",
-                            direction = direction,
-                            items = listOf(item),
-                            extraFields = extraFields,
-                        )
-                    }
-                },
-            )
-        }
+                override fun installing(direction: String, item: MediaItem, extraFields: List<LogField>) {
+                    autoTraces.logItems(
+                        trace = trace,
+                        callback = "onPostConnect",
+                        direction = direction,
+                        items = listOf(item),
+                        extraFields = extraFields,
+                    )
+                }
+            },
+        )
 
         private suspend fun refreshResumeAccount() {
             val trace = autoTraces.activeTrace

@@ -11,7 +11,7 @@ import kotlin.time.Duration
  * PLAY-001 / AUTH-002 / #289 — asynchronous controller resolution owns a request, never live playback.
  *
  * Capture on the Media3 application thread before launching the callback future. The service's existing
- * command and profile generations invalidate suspended work, including an A→B→A profile switch. Preparing
+ * command, profile and selection identities invalidate suspended work, including an A→B→A profile switch. Preparing
  * a remote queue cannot change History, sleep, freshness, or the live session until guarded acceptance.
  * A superseded request fails its future rather than returning an empty successful queue, which Media3
  * would install over the newer listener choice.
@@ -19,6 +19,7 @@ import kotlin.time.Duration
 internal class ControllerQueueResolution(
     private val commandGeneration: () -> Long,
     private val profileGeneration: () -> Long,
+    private val explicitSelectionSequence: () -> Long,
     private val serviceOwner: () -> Any?,
     private val activeProfileId: suspend () -> ProfileId?,
     private val isProfileLocked: suspend () -> Boolean,
@@ -28,10 +29,11 @@ internal class ControllerQueueResolution(
     class Claim internal constructor(
         internal val commandGeneration: Long,
         internal val profileGeneration: Long,
+        internal val selectionSequence: Long,
         internal val owner: Any?,
     )
 
-    fun capture() = Claim(commandGeneration(), profileGeneration(), serviceOwner())
+    fun capture() = Claim(commandGeneration(), profileGeneration(), explicitSelectionSequence(), serviceOwner())
 
     /** A locked/no-candidate reply must still belong to the request that asked for it. */
     fun requireUnchanged(claim: Claim) {
@@ -79,7 +81,8 @@ internal class ControllerQueueResolution(
     }
 
     fun isUnchanged(claim: Claim): Boolean = claim.owner != null && serviceOwner() === claim.owner &&
-        commandGeneration() == claim.commandGeneration && profileGeneration() == claim.profileGeneration
+        commandGeneration() == claim.commandGeneration && profileGeneration() == claim.profileGeneration &&
+        explicitSelectionSequence() == claim.selectionSequence
 
     private fun superseded(): Nothing = throw CancellationException("Controller media request superseded")
 }

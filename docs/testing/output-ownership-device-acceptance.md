@@ -26,6 +26,13 @@ supersession and API26/32 production-command cases. Its full strict local reposi
 tests /322 suites, including 932 playback tests, with no failures, errors or skips. Exact-head CI and the
 source SHA are recorded in #300 and the execution checkpoint. No new APK is claimed here.
 
+The selection-scope checkpoint extends the strict local gate to 2,759 tests /325 suites, including
+943 playback tests, with no failures, errors or skips. Pending controller queues, accepted-connect
+restoration, retry, Prepare and Play lose authority to a newer output choice; captured pause writes
+retain their original profile/book/position. A real Media3 cold-callback regression proves that a
+cancelled old selection cannot install or fallback Play over the current item. Muted heard-route,
+presentation and final auth integration are still pending; this does not fill any physical row.
+
 ## Candidate and setup
 
 Test one combined APK containing the selected playback stack and the separate #296 auth fix. Record
