@@ -1,14 +1,18 @@
 # Output ownership and handoff device acceptance
 
-**Status:** acceptance procedure; no device results recorded. Updated 29 October 2026.
+**Status:** build 2242 failed the reported Headset-transfer case; replacement-device acceptance pending.
+Updated 29 October 2026.
 **Requirements:** PLAY-002/004/005/008/009, ROUTE-001/002/003.
 
 Use this procedure for the combined candidate described in
 [the execution plan](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/289#issuecomment-6445791504).
-PR #297 supplies transient route-loss protection. The dependent #276 lock and #277 verified-handoff
-software is implemented in the dependent drafts; final selection/UI/auth integration and software gates
-are still required before this procedure can accept the complete feature. A green
-build or an earlier smoke test does not fill in these results.
+PR #297 supplies transient route-loss protection. The dependent #276 lock, #277 handoff, selection/UI
+and separate auth software are integrated in the single QA branch below. The 2242 device report exposed
+seek/buffering feedback; [the regression follow-up](output-settling-regression.md) records its software
+correction. A green build or earlier smoke test does not accept physical routing.
+
+The following paragraphs retain earlier software checkpoints. The current candidate and its exact gates
+are maintained in the execution checkpoint linked below.
 
 The #300 command-boundary checkpoint covers loaded fresh-start/duplicate controller Play, controller Prepare,
 retained-intent retry, accepted deferred/post-connect installs and continuity through one service guard. Its
@@ -48,13 +52,15 @@ forced combined verification, exact CI and review still precede the APK; physica
 ## Candidate and setup
 
 The combined branch `codex/289-ownership-device-test-0c966ed6` contains playback source
-`0c966ed6bb7d4b18a3a99dfd17652ed3d798afbe` and separate auth #296 source
+`6ad54d65a7a8d3bf43fe72b42da1f5a5a7f7208b` and separate auth #296 source
 `9379a828c504eb56b0122d876d3f2669beb2363a`, integrated as `e91c3c5905219deb31e7da516b90e0728a80bb96`.
 The already-identical Windows recorder-test compatibility change is not duplicated. No GitHub PR was
 merged, and main is unchanged. The exact final source/tree, forced local verification, normal CI,
 independent review and signed APK identity are maintained in
 [the execution checkpoint](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/289#issuecomment-6448375926).
 Hardware acceptance must use that one final APK, rather than a different APK for every draft PR.
+Build 2242 (`27c1a921dc0c`) is retained as failed device evidence; it does not verify the replacement.
+The branch-name suffix is historical: use the exact commit and APK version from the checkpoint.
 
 Test one combined APK containing the selected playback stack and the separate #296 auth fix. Record
 its build number, exact source commit/tree, APK workflow run, and installed application identity.
@@ -80,7 +86,7 @@ only; it does not identify the physical car speaker. A virtual media key does no
 | Headset transport | With the lock active, press Pause then Play on the headset before and after Auto connection. | Pause remains authoritative; Play uses the owned destination or stays safely paused when it cannot be verified. It does not manufacture headset identity. | Pending |
 | Generic Auto transport | With the lock active, use the Auto screen's ordinary Pause and Play controls. | Transport preserves the lock. A generic car-controller request does not silently become a destination choice. | Pending |
 | Explicit Car transfer | With the lock active, press the existing **Car** destination action. | The newer explicit destination supersedes the lock through verified handoff. Success requires adequate current projection/output evidence; otherwise playback stays paused with truthful status. | Pending |
-| Explicit Headset return | After confirmed Car transfer, press the existing **Headset** action or select the live headset in the phone chooser. | The current exact headset must be verified before audible playback there. A virtual headset Play alone does not authorize a transfer. | Pending |
+| Explicit Headset return | After confirmed Car transfer, press the existing **Headset** action or select the live headset in the phone chooser. | The current exact headset must be verified before audible playback there. A virtual headset Play alone does not authorize a transfer. | 2242: jumbled audio reported; replacement pending |
 | Lock release | Choose **Release lock** or explicit **Automatic**. | The lock releases as a new choice. Retired observations cannot resurrect it. | Pending |
 | Endpoint loss | While locked and playing, cause genuine output disconnection; repeat during Auto arrival. | No continued audio on speaker, car or another headset after invalid routing is observed. Playback pauses and retains a truthful waiting/unverified state. Record any residual callback-to-pause latency. | Pending |
 | New appearance | Reconnect the disconnected headset, then repeat with a second headset sharing its display name. | No silent adoption by name, list order or sole-Bluetooth status. No autoplay on reconnect. A fresh explicit choice and current proof are required when identity cannot be established. | Pending |
