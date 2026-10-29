@@ -282,29 +282,30 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         probe: HeadsetRouteGuard.Probe,
         held: MutedPositionCheckpoint,
     ): MutedProbeCompletion = withTimeoutOrNull(1.seconds) {
-        var waitedForRoute = false
-        var restoredAfterWait = false
-        while (authorized(probe, held)) {
-            val candidate = playingProof(probe, held)
-            when {
-                candidate == null -> {
-                    // Buffering after our seek does not mean another unheard playing interval occurred.
-                    waitedForRoute = waitedForRoute || probe.player.isPlaying
-                    probe.routeUpdates.receive()
-                }
-
-                !candidate.permitsAudio -> return@withTimeoutOrNull candidate
-
-                waitedForRoute && !restoredAfterWait -> {
-                    restoredAfterWait = true
-                    if (!prepareProof(probe, held)) return@withTimeoutOrNull refusal(probe, held)
-                }
-
-                else -> return@withTimeoutOrNull settledProof(probe, held, candidate)
-            }
+        var proof = awaitPlayingProof(probe, held)
+        if (proof.waitedWhilePlaying && proof.completion.permitsAudio) {
+            if (!prepareProof(probe, held)) return@withTimeoutOrNull refusal(probe, held)
+            // This second stage cannot schedule another correction, even if its route remains unknown.
+            proof = awaitPlayingProof(probe, held)
         }
-        MutedProbeCompletion.Superseded
+        if (proof.completion.permitsAudio) settledProof(probe, held, proof.completion) else proof.completion
     } ?: refusal(probe, held)
+
+    private data class AwaitedProof(val completion: MutedProbeCompletion, val waitedWhilePlaying: Boolean)
+
+    private suspend fun awaitPlayingProof(
+        probe: HeadsetRouteGuard.Probe,
+        held: MutedPositionCheckpoint,
+    ): AwaitedProof {
+        var waitedWhilePlaying = false
+        while (authorized(probe, held)) {
+            playingProof(probe, held)?.let { return AwaitedProof(it, waitedWhilePlaying) }
+            // Buffering after our seek is distinct from a further unheard playing interval.
+            waitedWhilePlaying = waitedWhilePlaying || probe.player.isPlaying
+            probe.routeUpdates.receive()
+        }
+        return AwaitedProof(MutedProbeCompletion.Superseded, waitedWhilePlaying)
+    }
 
     /** A playback-thread acknowledgement orders the seek; it cannot freeze a playing media clock. */
     private fun settledProof(
