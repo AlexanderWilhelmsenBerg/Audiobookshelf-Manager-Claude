@@ -47,6 +47,15 @@ forced combined verification, exact CI and review still precede the APK; physica
 
 ## Candidate and setup
 
+The combined branch `codex/289-ownership-device-test-0c966ed6` contains playback source
+`0c966ed6bb7d4b18a3a99dfd17652ed3d798afbe` and separate auth #296 source
+`9379a828c504eb56b0122d876d3f2669beb2363a`, integrated as `e91c3c5905219deb31e7da516b90e0728a80bb96`.
+The already-identical Windows recorder-test compatibility change is not duplicated. No GitHub PR was
+merged, and main is unchanged. The exact final source/tree, forced local verification, normal CI,
+independent review and signed APK identity are maintained in
+[the execution checkpoint](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/289#issuecomment-6448375926).
+Hardware acceptance must use that one final APK, rather than a different APK for every draft PR.
+
 Test one combined APK containing the selected playback stack and the separate #296 auth fix. Record
 its build number, exact source commit/tree, APK workflow run, and installed application identity.
 Use the same installed candidate for every row; changing the candidate invalidates affected results.
