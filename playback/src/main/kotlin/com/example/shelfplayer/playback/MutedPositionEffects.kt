@@ -8,6 +8,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 internal enum class PlaybackMovement { Play, Pause, Stop, Seek, MediaChanged, ReplaceCurrent }
@@ -35,6 +36,8 @@ internal interface PositionCheckpointEffects {
 
     fun isAuthorized(probe: HeadsetRouteGuard.Probe): Boolean
 
+    fun isSettled(probe: HeadsetRouteGuard.Probe): Boolean
+
     fun restorePausedProbe(probe: HeadsetRouteGuard.Probe)
 }
 
@@ -49,6 +52,10 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         fun player(): ExoPlayer?
 
         fun context(): Context
+
+        fun onSettlingRefused(advance: Duration) = Unit
+
+        fun onCompensated(advance: Duration) = Unit
     }
 
     private var compensation: HeadsetRouteGuard.Probe? = null
@@ -63,6 +70,15 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
 
     override fun isAuthorized(probe: HeadsetRouteGuard.Probe): Boolean =
         probe.positionCheckpoint?.let { authorized(probe, it) } == true
+
+    override fun isSettled(probe: HeadsetRouteGuard.Probe): Boolean {
+        val held = probe.positionCheckpoint ?: return false
+        val advance = probe.player.bookPosition() - held.position
+        if (!authorized(probe, held)) return false
+        if (!probe.requiresPlaybackBarrier && advance in Duration.ZERO..MAX_SETTLING_ADVANCE) return true
+        source.onSettlingRefused(advance)
+        return false
+    }
 
     override fun restorePausedProbe(probe: HeadsetRouteGuard.Probe) {
         if (!probe.player.playWhenReady) probe.positionCheckpoint?.let { restore(probe, it) }
@@ -223,7 +239,8 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
 
     private fun restore(probe: HeadsetRouteGuard.Probe, held: MutedPositionCheckpoint): Boolean {
         if (!authorized(probe, held)) return false
-        if (probe.player.bookPosition() == held.position) return true
+        val advance = probe.player.bookPosition() - held.position
+        if (advance == Duration.ZERO) return true
         val previous = compensation
         probe.requiresPlaybackBarrier = true
         compensation = probe
@@ -232,6 +249,7 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         } finally {
             compensation = previous
         }
+        source.onCompensated(advance)
         return authorized(probe, held)
     }
 
@@ -264,27 +282,40 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         probe: HeadsetRouteGuard.Probe,
         held: MutedPositionCheckpoint,
     ): MutedProbeCompletion = withTimeoutOrNull(1.seconds) {
+        var waitedForRoute = false
+        var restoredAfterWait = false
         while (authorized(probe, held)) {
-            compensatedProof(probe, held)?.let { return@withTimeoutOrNull it }
-            probe.routeUpdates.receive()
+            val candidate = playingProof(probe, held)
+            when {
+                candidate == null -> {
+                    // Buffering after our seek does not mean another unheard playing interval occurred.
+                    waitedForRoute = waitedForRoute || probe.player.isPlaying
+                    probe.routeUpdates.receive()
+                }
+
+                !candidate.permitsAudio -> return@withTimeoutOrNull candidate
+
+                waitedForRoute && !restoredAfterWait -> {
+                    restoredAfterWait = true
+                    if (!prepareProof(probe, held)) return@withTimeoutOrNull refusal(probe, held)
+                }
+
+                else -> return@withTimeoutOrNull settledProof(probe, held, candidate)
+            }
         }
         MutedProbeCompletion.Superseded
     } ?: refusal(probe, held)
 
-    /** The route may become provable only after another unheard interval. Proof before that seek is tentative. */
-    private suspend fun compensatedProof(
+    /** A playback-thread acknowledgement orders the seek; it cannot freeze a playing media clock. */
+    private fun settledProof(
         probe: HeadsetRouteGuard.Probe,
         held: MutedPositionCheckpoint,
-    ): MutedProbeCompletion? {
-        val candidate = playingProof(probe, held) ?: return null
-        if (!candidate.permitsAudio) return candidate
-        return if (!probe.requiresPlaybackBarrier && probe.player.bookPosition() == held.position) {
-            candidate
-        } else if (prepareProof(probe, held)) {
-            playingProof(probe, held)
-        } else {
-            refusal(probe, held)
-        }
+        candidate: MutedProbeCompletion,
+    ): MutedProbeCompletion {
+        if (!authorized(probe, held)) return MutedProbeCompletion.Superseded
+        if (isSettled(probe)) return candidate
+        // Never seek-buffer-seek in pursuit of exact equality. Excessive drift stops at the held point.
+        return refusal(probe, held)
     }
 
     /** Every query is fresh; neither a prior callback nor barrier delivery itself authorizes unmute. */
@@ -337,4 +368,9 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
             continuation.invokeOnCancellation { message.cancel() }
         }
     } != null
+
+    private companion object {
+        // A bound on unheard media, not a wall-clock or route-mismatch tolerance. Target proof stays exact.
+        val MAX_SETTLING_ADVANCE = 50.milliseconds
+    }
 }

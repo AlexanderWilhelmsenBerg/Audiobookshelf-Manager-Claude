@@ -401,6 +401,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   AudioTrack proof. The prior lock remains recovery context until success; failed or unknown output stays
   safely paused. Car projection delegation must be distinguished from proof of a physical car speaker.
 - Transfer preserves heard position, queue, speed, history and sleep state, and never manufactures Play.
+  Shared position reads remain held during verification. At final validation a successful transfer permits
+  at most 50ms of normal post-seek media-clock settling; larger or backward movement restores and pauses.
   Newer command/selection/book/profile/attachment wins; rollback requires fresh unique original-route proof.
 
 ### PLAY-003 Playback queue and tracks

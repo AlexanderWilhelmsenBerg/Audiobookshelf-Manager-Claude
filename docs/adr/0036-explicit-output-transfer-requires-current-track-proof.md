@@ -48,6 +48,9 @@ Success publication is followed by fresh target proof under that same checkpoint
 observer changes the route without a newer request, the attempt fails while still muted, restores the
 held point and retained prior lock, and pauses. A newer selection or in-place seek cannot be rejected
 by the retired confirmation. The retained lock is an immutable local commit snapshot, not a second owner.
+ADR-0035's post-seek position bound is also checked after publication and fresh route measurement. Excessive
+clock movement refuses that confirmation while the same prior-lock snapshot is still available for recovery;
+the attempt restores the held point and pauses. Publishing Verified/Delegated cannot bypass the final check.
 An in-place seek that invalidates the published success retains that same prior recovery lock while its
 new checkpoint/barrier is verified; it does not resurrect a lock after a newer destination or release.
 

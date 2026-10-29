@@ -37,5 +37,7 @@ internal fun routingOnlyPositionEffects(): PositionCheckpointEffects = object : 
 
     override fun isAuthorized(probe: HeadsetRouteGuard.Probe): Boolean = true
 
+    override fun isSettled(probe: HeadsetRouteGuard.Probe): Boolean = true
+
     override fun restorePausedProbe(probe: HeadsetRouteGuard.Probe) = Unit
 }

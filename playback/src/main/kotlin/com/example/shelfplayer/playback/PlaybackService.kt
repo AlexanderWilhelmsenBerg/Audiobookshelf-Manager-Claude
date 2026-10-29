@@ -455,6 +455,22 @@ class PlaybackService : MediaLibraryService() {
                     mediaItemGeneration,
                     activeProfileGeneration(),
                 )
+
+                override fun onSettlingRefused(advance: Duration) {
+                    logger.info(
+                        LogCategory.Playback,
+                        "Muted output verification refused excessive post-seek clock movement",
+                        LogField.Millis("advance", advance.inWholeMilliseconds),
+                    )
+                }
+
+                override fun onCompensated(advance: Duration) {
+                    logger.info(
+                        LogCategory.Playback,
+                        "Muted output position compensated",
+                        LogField.Millis("advance", advance.inWholeMilliseconds),
+                    )
+                }
             },
         )
     }
