@@ -76,11 +76,9 @@ internal class CarContinuityResumeEffectsTest {
             synchronizeOutputIntent = {
                 val selection = requireNotNull(router.explicitSelection.value)
                 owner.onExplicitSelection(
-                    selection.outputId,
+                    selection,
                     router.outputs.value,
-                    true,
-                    selection.sequence,
-                    selection.destination,
+                    isAudible = true,
                 )
             },
         )

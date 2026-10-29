@@ -322,6 +322,7 @@ class CarProjectionLifecycleTest {
                 volumeEffects = volumeEffects,
             )
             service.clock = clock
+            service.volumeEffects = volumeEffects
             service.logger = logger
             service.carConnections = connections
             val timers = proxy<SleepTimerRepository> { name ->

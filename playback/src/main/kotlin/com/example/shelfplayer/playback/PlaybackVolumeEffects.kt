@@ -81,6 +81,10 @@ class PlaybackVolumeEffects @Inject constructor(private val clock: AppClock) {
         listeners += listener
     }
 
+    internal fun removeMuteListener(listener: (MuteChange) -> Unit) {
+        listeners -= listener
+    }
+
     private fun activeHasClaims(attachment: Attachment): Boolean = claimOwners.values.any { it === attachment }
 
     private fun writeEffectiveGain(attachment: Attachment) {
@@ -91,6 +95,8 @@ class PlaybackVolumeEffects @Inject constructor(private val clock: AppClock) {
 
     private fun notifyMute(target: Player, muted: Boolean) {
         val change = MuteChange(target, muted, clock.elapsed())
-        listeners.toList().forEach { it(change) }
+        listeners.toList().forEach { listener ->
+            if (listener in listeners) listener(change)
+        }
     }
 }

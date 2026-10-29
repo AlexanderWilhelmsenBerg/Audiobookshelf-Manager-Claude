@@ -336,6 +336,14 @@ class PlaybackService : MediaLibraryService() {
         RouteHeardOwnership(audioOutputs.outputIntentOwner)
     }
 
+    private val routeObservationEffects by lazy(LazyThreadSafetyMode.NONE) {
+        PlaybackRouteObservationEffects(
+            currentPlayer = { player },
+            volumeEffects = volumeEffects,
+            onAudible = ::onRouteAudible,
+        )
+    }
+
     /**
      * Issue #36 — one owner correlates measured audio-focus loss with car arrival or final departure.
      *
@@ -408,6 +416,7 @@ class PlaybackService : MediaLibraryService() {
         // restore only its own old player and cannot emit an audible-resume event into the new observers.
         installPositionCheckpointHandlers()
         attachRouteSafetyMonitor(exoPlayer)
+        routeObservationEffects.attach()
         attachSleepTimer(exoPlayer)
         // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does. It is given the
         // player rather than owning one, for the same reason the timer is: there is exactly one.
@@ -750,6 +759,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        routeObservationEffects.detach()
         audioOutputs.outputIntentOwner.releaseRuntime()
         audioOutputs.lastHeardRouteId = { null }
         audioRouteLab.serviceStopped()
@@ -1300,7 +1310,7 @@ class PlaybackService : MediaLibraryService() {
             audioTrackRouteMonitor.sample()
             audioOutputs.verifyOutputLock()
             autoTraces.log(
-                "Media3 audible playback changed",
+                "Media3 playback activity changed",
                 fields = listOf(LogField.Public("isPlaying", isPlaying)) +
                     AndroidAutoDiagnostics.playerFields(player) + carSnapshotFields(),
             )
@@ -1315,21 +1325,7 @@ class PlaybackService : MediaLibraryService() {
                 pendingRecoveryRetry?.cancel()
                 // ROUTE-002 — real playback is the gate for creating route-heard evidence.
                 syncExplicitOutputIntent()
-                val outputs = audioOutputs.outputs.value
-                routeOwnership.onPlaybackObserved(outputs)
-                observeCarContinuityHeadset(outputs)
-                carRecovery.playbackBecameActive(
-                    routeOwnership.currentGeneration,
-                    currentExplicitSelectionSequence(),
-                )?.let { target ->
-                    autoTraces.log(
-                        "Car lifecycle continuity playback became active",
-                        fields = listOf(
-                            LogField.Public("phase", target.phase.name),
-                            LogField.Public("kind", target.outputId.substringBefore(':')),
-                        ) + carSnapshotFields(),
-                    )
-                }
+                observeCurrentAudibleRoute()
                 // PRODUCT_SPEC SYNC-002 — the book is moving again, so the position it was resting at is no
                 // longer a description of where this device is. See `ResumeBaseline.onLocalMove`.
                 resumeBaseline.onLocalMove()
@@ -1453,11 +1449,7 @@ class PlaybackService : MediaLibraryService() {
             audioOutputs.clearMeasuredPlayingHeadsetProtection()
             // Retire the old recovery before observing playback into the incoming book's generation.
             clearCarContinuity()
-            if (mediaItem != null && player?.isPlaying == true) {
-                val outputs = audioOutputs.outputs.value
-                routeOwnership.onPlaybackObserved(outputs)
-                observeCarContinuityHeadset(outputs)
-            }
+            if (mediaItem != null) observeCurrentAudibleRoute()
             // PRODUCT_SPEC SYNC-002 — a baseline is per book and per position, and this is both changing.
             resumeBaseline.onBookClosed()
             // Record before the sync that follows it, so the row the sync uploads is this item's own.
@@ -1650,7 +1642,7 @@ class PlaybackService : MediaLibraryService() {
             launch {
                 combine(audioOutputs.outputs, audioOutputs.selectedId, ::Pair).collect { (outputs, _) ->
                     syncExplicitOutputIntent()
-                    val isPlaying = player?.isPlaying == true
+                    val isPlaying = routeObservationEffects.isAudible()
                     if ((player?.mediaItemCount ?: 0) == 0) {
                         routeOwnership.onQueueEmptied()
                         audioOutputs.clearMeasuredPlayingHeadsetProtection()
@@ -1679,11 +1671,9 @@ class PlaybackService : MediaLibraryService() {
     private fun syncExplicitOutputIntent() {
         val selection = audioOutputs.explicitSelection.value ?: return
         val changed = routeOwnership.onExplicitSelection(
-            outputId = selection.outputId,
+            selection = selection,
             outputs = audioOutputs.outputs.value,
-            isPlaying = player?.isPlaying == true,
-            selectionSequence = selection.sequence,
-            destination = selection.destination,
+            isAudible = routeObservationEffects.isAudible(),
         )
         if (changed) {
             clearCarContinuity()
@@ -1692,6 +1682,28 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun currentExplicitSelectionSequence(): Long = audioOutputs.explicitSelection.value?.sequence ?: 0L
+
+    private fun observeCurrentAudibleRoute(target: Player? = player) {
+        routeObservationEffects.observe(target)
+    }
+
+    private fun onRouteAudible() {
+        val outputs = audioOutputs.outputs.value
+        routeOwnership.onPlaybackObserved(outputs)
+        observeCarContinuityHeadset(outputs)
+        carRecovery.playbackBecameActive(
+            routeOwnership.currentGeneration,
+            currentExplicitSelectionSequence(),
+        )?.let { recoveryTarget ->
+            autoTraces.log(
+                "Car lifecycle continuity playback became active",
+                fields = listOf(
+                    LogField.Public("phase", recoveryTarget.phase.name),
+                    LogField.Public("kind", recoveryTarget.outputId.substringBefore(':')),
+                ) + carSnapshotFields(),
+            )
+        }
+    }
 
     /**
      * Refreshes #36's car-session continuity target only from positive route evidence while audio is playing.
@@ -1846,10 +1858,8 @@ class PlaybackService : MediaLibraryService() {
         val carWasConnected = carConnections.isConnected()
         val carArrivedAt = if (carWasConnected) null else clock.elapsed()
         carLifecycle.onControllerConnected()
-        if (player?.isPlaying == true) {
-            // Preserve the positively heard headset before the host can change routing or focus.
-            observeCarContinuityHeadset(audioOutputs.outputs.value)
-        }
+        // Preserve positive evidence before the host can change routing or focus; muted playback is ignored.
+        observeCurrentAudibleRoute()
         // The first arrival must be registered synchronously. Routing resettle runs in a later coroutine,
         // and Media3 focus loss can arrive before that coroutine is scheduled.
         val arrivalDecision = carArrivedAt?.let { at ->

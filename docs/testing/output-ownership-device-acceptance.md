@@ -33,6 +33,12 @@ retain their original profile/book/position. A real Media3 cold-callback regress
 cancelled old selection cannot install or fallback Play over the current item. Muted heard-route,
 presentation and final auth integration are still pending; this does not fill any physical row.
 
+The heard-route checkpoint adds typed selection and one service audible observer, with strict local
+verification passing 2,765 tests /326 suites /949 playback, no failures, errors or skips. Actual service
+callbacks under route mute cannot create heard evidence or consume recovery. Successful current-player
+unmute, paused release, player replacement and listener removal during dispatch are covered. Output
+presentation and final auth integration still precede the combined APK; no physical row is filled.
+
 ## Candidate and setup
 
 Test one combined APK containing the selected playback stack and the separate #296 auth fix. Record

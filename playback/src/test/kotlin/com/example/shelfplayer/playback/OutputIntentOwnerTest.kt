@@ -130,15 +130,15 @@ class OutputIntentOwnerTest {
 
         assertEquals(
             true,
-            routeOwner.onExplicitSelection("A", listOf(output), true, selection.sequence, selection.destination),
+            routeOwner.onExplicitSelection(selection, listOf(output), isAudible = true),
         )
         assertEquals(
             false,
-            routeOwner.onExplicitSelection("A", listOf(output), true, selection.sequence, selection.destination),
+            routeOwner.onExplicitSelection(selection, listOf(output), isAudible = true),
         )
         assertEquals(
             false,
-            routeOwner.onExplicitSelection("wrong", listOf(output), true, selection.sequence, selection.destination),
+            routeOwner.onExplicitSelection(selection.copy(outputId = "wrong"), listOf(output), isAudible = true),
         )
     }
 }

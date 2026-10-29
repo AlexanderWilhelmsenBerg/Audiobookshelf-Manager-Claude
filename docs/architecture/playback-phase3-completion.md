@@ -21,8 +21,9 @@ CI and the remaining software slices are tracked in
 Explicit transfer/rollback now passes full strict local verification: 2,748 tests /322 suites, including
 932 playback tests, with no failures, errors or skips. Its exact committed source and normal CI are recorded
 in that checkpoint. Selection-scoped deferred work also passes full strict local verification: 2,759 tests
-/325 suites, including 943 playback tests, with no failures, errors or skips. Muted heard-route gating
-and typed selection/UI consolidation remain required. The full execution plan is not complete. A final combined candidate must also include
+/325 suites, including 943 playback tests, with no failures, errors or skips. Typed selection and muted
+heard-route observation then pass the full strict gate at 2,765 tests /326 suites, including 949 playback
+tests, with no failures, errors or skips. Truthful output UI remains required. The full execution plan is not complete. A final combined candidate must also include
 separate auth #296; physical output, startup and real-token acceptance remain distinct.
 
 ### Remaining work overview
@@ -32,7 +33,7 @@ separate auth #296; physical output, startup and real-token acceptance remain di
 | Common activation and held position | Published in draft #300 at `84f192d4`; strict local and normal exact-head CI 40704175652 pass 2,700 tests | Recheck the final combined candidate |
 | Explicit verified handoff and rollback | Published in draft #300 at `7133b974`; strict local and normal exact-head CI 40762550930 pass 2,748 tests, ADR-0036 | Recheck the final combined candidate; physical acceptance remains separate |
 | Service asynchronous ownership | Selection scope passes strict local verification; normal exact-head CI tracked in checkpoint | Existing selection sequence revokes stale prepare/install/Play; captured progress writes still complete |
-| Muted heard-route observation | Remaining | Muted raw playback cannot create heard-route evidence or consume the awaiting recovery claim; unmute and listener teardown use current ownership |
+| Muted heard-route observation | Typed selection and common audible observer pass strict local verification; exact source/CI tracked in checkpoint | Muted raw playback cannot create heard-route evidence or consume the awaiting recovery claim; unmute and listener teardown use current ownership |
 | Typed presentation and callback cleanup | Remaining | Requested/measured/predicted/unknown remain distinct; Waiting/Verifying/Verified/Delegated/Failed shown truthfully, with English/Norwegian and accessibility checks |
 | Final integration and APK | Remaining | Include auth #296, full `verifyDebug --rerun-tasks`, normal exact-head CI, independent review, then one combined signed QA APK |
 | Device/server acceptance | Pending | Stationary headset/Auto and lifecycle guide, #295 startup cases, #288 genuine 401 renewal; unsupported input identity recorded honestly |
@@ -62,6 +63,21 @@ remained green; exact source bytes were restored. The restored full strict repos
 The shared service fixture and tests are split by command continuity, queue mutation, output protection
 and selection scope, retaining the existing cases and assertions. APK assembly was excluded.
 
+### Heard-route observation — 29 October 2026
+
+The service now passes the immutable current selection to `RouteHeardOwnership`; its watermark remains
+consumer bookkeeping. One stateless route-observation collaborator gates positive evidence and owns
+the service's exact mute-listener lifetime. Raw playing under verification mute cannot create heard
+evidence or confirm pending recovery. Current still-playing unmute can; paused release cannot.
+Player getters and dispatch-time listener removal are rechecked against their existing owners.
+
+The actual service callback and shared production component pass focused checks. Guard removal caused
+five intended failures among eight checks, with exact source restoration. The restored full strict gate
+passes 2,765 tests /326 suites /949 playback, no failures, errors or skips, plus lint, Detekt and coverage.
+The projection fixture uses the same volume owner as its router and timer. Test setup was extracted to
+meet the size limit without dropping assertions. Physical routing and complete Hilt lifecycle remain
+device acceptance work.
+
 ## Ownership after refactoring
 
 | Responsibility | Owner and boundary |
@@ -84,6 +100,7 @@ and selection scope, retaining the existing cases and assertions. APK assembly w
 | Route mute and latest sleep gain | One `PlaybackVolumeEffects` writer; synchronous mute boundaries freeze timer/listened accounting |
 | Held position and compensation during muted verification | `MutedPositionEffects`, using the sole checkpoint on the existing probe and existing authorization scopes |
 | Loaded-book candidate evidence | `RouteHeardOwnership`, preserving the router's typed provenance |
+| Positive route observations and service mute-listener lifetime | `PlaybackRouteObservationEffects`, using the shared volume owner and current player; no route or recovery state |
 | Progress, history, sleep, rewind and profiles | Existing domain/repository collaborators; accepted atomically by `BookChanges` |
 
 There is no new independent playback authority, player, session, focus manager,
