@@ -220,6 +220,8 @@ class MutedPositionEffectsTest {
         var rawPosition = 12_000L
         var volume = 1f
         var playWhenReady = true
+        var playbackState = Player.STATE_READY
+        var bufferOnSeek = false
         var command = 0L
         var pauses = 0
         var plays = 0
@@ -262,9 +264,11 @@ class MutedPositionEffectsTest {
                     null
                 }
 
-                "getPlayWhenReady", "isPlaying" -> playWhenReady
+                "getPlayWhenReady" -> playWhenReady
 
-                "getPlaybackState" -> Player.STATE_READY
+                "isPlaying" -> playWhenReady && playbackState == Player.STATE_READY
+
+                "getPlaybackState" -> playbackState
 
                 "setPreferredAudioDevice" -> {
                     check(!failPreference) { "synthetic preference failure" }
@@ -286,6 +290,7 @@ class MutedPositionEffectsTest {
 
                 "seekTo" -> {
                     rawPosition = args!!.last() as Long
+                    if (bufferOnSeek) playbackState = Player.STATE_BUFFERING
                     compensationOrigins += effects.onSeek(media)
                     null
                 }

@@ -223,8 +223,21 @@ internal class OutputHandoffEffects(private val source: Source) {
 
     fun commit(probe: HeadsetRouteGuard.Probe, proof: MutedProbeCompletion): MutedProbeCompletion {
         if (source.positions?.isAuthorized(probe) != true) return MutedProbeCompletion.Superseded
-        val request = probe.transferRequest ?: return proof
+        val request = probe.transferRequest ?: return commitEndpoint(probe, proof)
         return commitTransfer(probe, request, proof)
+    }
+
+    private fun commitEndpoint(probe: HeadsetRouteGuard.Probe, proof: MutedProbeCompletion): MutedProbeCompletion {
+        if (source.positions?.isSettled(probe) == true) return proof
+        if (source.positions?.isAuthorized(probe) != true || !source.guard.pauseForSafety(probe.player)) {
+            return MutedProbeCompletion.Superseded
+        }
+        source.positions?.restorePausedProbe(probe)
+        return if (source.positions?.isAuthorized(probe) == true) {
+            MutedProbeCompletion.Refused
+        } else {
+            MutedProbeCompletion.Superseded
+        }
     }
 
     private fun commitTransfer(
@@ -254,8 +267,9 @@ internal class OutputHandoffEffects(private val source: Source) {
     ): MutedProbeCompletion {
         if (!sameConfirmation(probe, request, held)) return supersededConfirmation(request, previousLock)
         val fresh = measureProof(request)
+        val settled = source.positions?.isSettled(probe) == true
         if (!sameConfirmation(probe, request, held)) return supersededConfirmation(request, previousLock)
-        return if (fresh == proof) proof else refusePublished(probe, request, held, previousLock)
+        return if (fresh == proof && settled) proof else refusePublished(probe, request, held, previousLock)
     }
 
     private fun sameConfirmation(

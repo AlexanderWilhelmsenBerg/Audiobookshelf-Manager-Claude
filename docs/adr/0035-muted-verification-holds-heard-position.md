@@ -47,6 +47,18 @@ PlayWhenReady/IsPlaying state, exact live endpoint and collision checks must sti
 or multiple sinks fail closed. Timeout restores any further silent advancement before safety Pause and volume
 release. Repeated callbacks cannot start another completion. No application thread blocks for the barrier.
 
+The 2242 device test exposed a missing distinction: a playback-thread message orders the seek but does not
+freeze a playing media clock. Verification must not keep seeking back to demand exact position equality.
+After the initial compensation, buffering waits for Ready without another seek. A genuinely playing,
+unknown-route interval may require one further compensation when proof arrives; that extra correction is
+bounded to once per completion. All post-seek target proof remains fresh and exact. At the final position
+validation, normal media advancement of zero through 50ms is allowed; this is a small residual unheard-media
+budget, not permission to accept a different endpoint or stale evidence. Larger or backward movement restores
+the held point and pauses instead of scheduling another verification seek. Explicit transfers recheck this
+bound after synchronous success publication, before releasing mute, with the prior lock retained as scoped
+recovery context. Existing scope,
+timeout, cancellation, sleep/listened-duration and user-seek provenance rules remain in force.
+
 Immutable event snapshots travel into asynchronous persistence. An old pause may persist its captured local
 owner's point, but cannot establish a successor baseline or sync a successor after waiting for the session
 mutex. Authorization is checked inside the serialized main-thread capture. Auto-rewind history likewise
