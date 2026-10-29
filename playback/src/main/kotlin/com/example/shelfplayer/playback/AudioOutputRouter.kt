@@ -20,6 +20,7 @@ import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import com.example.shelfplayer.core.model.playback.AudioOutputLockStatus
+import com.example.shelfplayer.core.model.playback.AudioOutputPresentation
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -39,8 +40,8 @@ import kotlin.time.Duration.Companion.milliseconds
  * PRODUCT_SPEC PLAY-002 — sending the current book to a chosen output, and saying which one that is.
  *
  * `ExoPlayer.setPreferredAudioDevice` is a preference, not a promise. Android may decline it. API 33+
- * supplies the framework-reported media route through `getAudioDevicesForAttributes`; below that the
- * explicit request is the best available fallback.
+ * supplies a framework media-policy prediction through `getAudioDevicesForAttributes`; it is not a
+ * measurement of the current AudioTrack. The chooser keeps that prediction separate from track observation.
  *
  * The complete output flow deliberately still contains the phone speaker so routing safety can observe it.
  * The retired Android Auto browse output list excluded speakers: BookWave never offers the built-in speaker as a manual
@@ -62,9 +63,12 @@ class AudioOutputRouter @Inject constructor(
     /** Every output connected right now, including speakers needed for route observation. */
     val outputs: StateFlow<List<AudioOutput>> = _outputs.asStateFlow()
 
+    /** Current request and current-track observation, projected from the existing owner on MainImmediate. */
+    val presentation: StateFlow<AudioOutputPresentation> get() = presentationPublisher.state
+
     private val _selectedId = MutableStateFlow<String?>(null)
 
-    /** The chosen output id, or `null` for Automatic — let Android route. */
+    /** The chosen endpoint id; Car and Automatic both have no endpoint id (see [explicitSelection]). */
     val selectedId: StateFlow<String?> = _selectedId.asStateFlow()
 
     /**
@@ -105,6 +109,9 @@ class AudioOutputRouter @Inject constructor(
     internal val positions = PositionAccess()
     internal val handoffs by lazy(LazyThreadSafetyMode.NONE) { OutputHandoffEffects(HandoffAccess()) }
     internal var currentProjection: () -> Boolean = { false }
+
+    /** Projection lifecycle edges can change presentation even when the device inventory is unchanged. */
+    internal val refreshPresentationForLifecycle: () -> Unit get() = presentationPublisher::refresh
 
     // Transient continuity ownership is player-attached and separate from endpoint policy.
     private val headsetGuard = HeadsetRouteGuard(
@@ -155,6 +162,17 @@ class AudioOutputRouter @Inject constructor(
     /** Process-scoped live endpoints; never key physical routing by persistent name-based policy ID. */
     private var live: Map<String, AudioDeviceInfo> = emptyMap()
 
+    private val presentationPublisher =
+        OutputPresentationPublisher(outputIntentOwner.state, applicationScope, mainDispatcher) {
+            OutputPresentationProjection.present(
+                outputIntentOwner.state.value,
+                currentTrackObservation(),
+                _outputs.value,
+                currentProjection(),
+                live.keys - collidingOutputIds,
+            )
+        }
+
     fun attach(target: ExoPlayer, trackRoutes: () -> Set<String>? = { null }) {
         // Publish the successor attachment before retiring old callbacks. A stale probe then restores only its
         // own player and cannot emit an audible-resume event into the successor's sleep/session accounting.
@@ -196,6 +214,7 @@ class AudioOutputRouter @Inject constructor(
         collidingOutputIds = emptySet()
         headsetGuard.detachPlayer()
         player = null
+        refreshPresentationForLifecycle()
     }
 
     /**
@@ -738,25 +757,17 @@ class AudioOutputRouter @Inject constructor(
         // on Media3's dispatcher before deciding whether playback may become audible.
         val actual = currentTrackRoutes()
         val predicted = if (actual == null) routedIds() else null
-        val routed = actual ?: predicted
         val chosen = _selectedId.value
-        val source = when {
-            actual != null -> AudioOutputActivitySource.PlayingAudioTrack
-            predicted != null -> AudioOutputActivitySource.FrameworkMediaPolicy
-            chosen != null -> AudioOutputActivitySource.SelectedPreference
-            else -> AudioOutputActivitySource.Unmeasured
-        }
         pauseUnsafeGuardedPlayback()
-        _outputs.value = live.mapNotNull { (id, info) ->
-            endpointRegistry.find(info.id, info.type, info.productName?.toString())?.output?.copy(
-                id = id,
-                isActive = routed?.contains(id) ?: (id == chosen),
-                activitySource = source,
-            )
-        }
+        _outputs.value = OutputActivityProjection.rows(availableOutputs(), actual, predicted, chosen)
         applicationScope.launch(mainDispatcher) {
             _canKeepAudioHere.value = currentLockTarget() != null
+            presentationPublisher.refresh()
         }
+    }
+
+    private fun availableOutputs(): List<AudioOutput> = live.mapNotNull { (id, info) ->
+        endpointRegistry.find(info.id, info.type, info.productName?.toString())?.output?.copy(id = id)
     }
 
     /**

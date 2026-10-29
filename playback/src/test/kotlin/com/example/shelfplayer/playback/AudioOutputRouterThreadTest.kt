@@ -640,7 +640,7 @@ internal fun TestScope.fixture(): Fixture {
         logger = object : Logger {
             override fun log(event: LogEvent) = Unit
         },
-        applicationScope = this,
+        applicationScope = backgroundScope,
         mainDispatcher = dispatcher,
         endpointRegistry = registry,
         volumeEffects = volumeEffects,

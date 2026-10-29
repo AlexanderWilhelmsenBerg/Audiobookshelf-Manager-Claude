@@ -20,6 +20,8 @@ import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.AudioOutputLockStatus
+import com.example.shelfplayer.core.model.playback.AudioOutputPresentation
+import com.example.shelfplayer.core.model.playback.OutputDestination
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.domain.playback.GlobalTimeline
@@ -92,12 +94,13 @@ class PlaybackController @Inject constructor(
      * second object in the view model would be a second place for the two to disagree.
      */
     val outputs: StateFlow<List<AudioOutput>> = audioOutputs.outputs
+    val outputPresentation: StateFlow<AudioOutputPresentation> = audioOutputs.presentation
 
     /**
      * PRODUCT_SPEC PLAY-002 — the output the listener *chose*, or `null` for *Automatic*.
      *
-     * Not the same question as [AudioOutput.isActive], which is where the platform says the audio went. The
-     * chooser shows both because they can disagree — see `AudioOutputRouter`.
+     * An endpoint id only; explicit Car intent also has a null id. The chooser uses
+     * [outputPresentation] to distinguish Car from Automatic and to show measured track output.
      */
     val selectedOutput: StateFlow<String?> = audioOutputs.selectedId
 
@@ -106,7 +109,14 @@ class PlaybackController @Inject constructor(
     val canKeepAudioHere: StateFlow<Boolean> = audioOutputs.canKeepAudioHere
 
     /** PRODUCT_SPEC PLAY-002 — chooses an output, or `null` for *Automatic*. Not remembered (ADR-0027). */
-    fun selectOutput(id: String?) = audioOutputs.select(id)
+    fun selectOutput(
+        id: String?,
+        destination: OutputDestination = if (id == null) OutputDestination.Automatic else OutputDestination.Output,
+    ) = when (destination) {
+        OutputDestination.Automatic -> audioOutputs.select(null)
+        OutputDestination.Car -> audioOutputs.selectCar()
+        OutputDestination.Output -> if (id != null) audioOutputs.select(id) else Unit
+    }
 
     fun keepAudioHere(): Boolean = audioOutputs.keepAudioHere()
 

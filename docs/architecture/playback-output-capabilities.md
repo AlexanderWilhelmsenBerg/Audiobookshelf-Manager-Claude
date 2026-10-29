@@ -98,6 +98,39 @@ or identify a physical controller. A regression using real pinned Media3 callbac
 actual `PlayerEvents` verifies scope delivery, cleanup and a later ordinary listener pause. That test
 must remain part of any Media3 upgrade; this is not an unbounded pending-origin flag.
 
+## Read-only phone presentation
+
+`AudioOutputPresentation` is an immutable platform-free projection exposed by the existing router,
+controller and player ViewModel. The router reads the existing intent snapshot, fresh track observation,
+unique collision-free live inventory and projection state on `MainImmediate`. Owner changes, actual-route
+notifications, inventory publication, projection lifecycle and detach refresh it. It creates no intent,
+route preference, retry or player authority.
+
+`OutputPresentationPublisher` confines projection reads and derived-flow publication to that dispatcher.
+`OutputActivityProjection` classifies one captured inventory publication as track measurement, framework
+prediction or preference. Neither chooses a route. The router retains its existing physical inventory,
+selection and effect owners, and the controller extends its existing selection command with a typed
+destination rather than adding another command façade. The chooser groups destination, measurement,
+transfer, endpoint and lock controls into focused presentation functions.
+
+The chooser distinguishes requested Automatic, Car and endpoint even when Car and Automatic both have
+no endpoint ID. Only a current uniquely mapped track path labels a measured row. Framework prediction
+and selected preference cannot produce that label. Missing observation says unmeasured; unresolved,
+multiple and RemoteSubmix paths retain their distinct explanations. Current transfer success reuses
+`OutputTargetProof` and requires the same selection/book scope; stale evidence becomes Waiting.
+Delegated means a current Auto projection path, never proof of a physical car speaker.
+
+A previous lock retained during transfer is recovery context, rather than the newly selected destination.
+The read model exposes that distinction without changing the lock owner. The chooser describes the
+retained choice and preserves the existing Automatic/release command. Selected rows expose explicit
+selection semantics; status text has readable contrast and transfer updates use polite announcements.
+
+The existing full-player caller reaches this projection and the same destination commands. The
+mini-player has no output chooser. English/Norwegian, empty-inventory controls, transfer states, large
+text and a simulated landscape configuration update have component coverage. See the
+[rendered chooser review](../testing/output-presentation-review.md). This does not claim full Activity
+recreation, physical routing or Android Auto screen acceptance.
+
 ## Investigation and physical acceptance still required
 
 Manual service resume distinguishes `NoGuard`, `MutedAllowed` and `Denied`. A missing guard never releases

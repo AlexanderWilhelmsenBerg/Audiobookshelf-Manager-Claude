@@ -117,7 +117,7 @@ internal class CarContinuityResumeEffectsTest {
             outputs = AudioOutputRouter(
                 context = RuntimeEnvironment.getApplication(),
                 logger = logger,
-                applicationScope = this,
+                applicationScope = backgroundScope,
                 mainDispatcher = StandardTestDispatcher(testScheduler),
                 volumeEffects = volumeEffectsForTest(StandardTestDispatcher(testScheduler)),
             ),
@@ -155,7 +155,7 @@ internal class CarContinuityResumeEffectsTest {
             outputs = AudioOutputRouter(
                 context = RuntimeEnvironment.getApplication(),
                 logger = logger,
-                applicationScope = this,
+                applicationScope = backgroundScope,
                 mainDispatcher = StandardTestDispatcher(testScheduler),
                 volumeEffects = volumeEffectsForTest(StandardTestDispatcher(testScheduler)),
             ),
@@ -208,7 +208,7 @@ internal class CarContinuityResumeEffectsTest {
                 outputs = AudioOutputRouter(
                     context = RuntimeEnvironment.getApplication(),
                     logger = logger,
-                    applicationScope = this,
+                    applicationScope = backgroundScope,
                     mainDispatcher = StandardTestDispatcher(testScheduler),
                     volumeEffects = volumeEffectsForTest(StandardTestDispatcher(testScheduler)),
                 ),

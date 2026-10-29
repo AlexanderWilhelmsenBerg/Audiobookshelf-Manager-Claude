@@ -1,6 +1,6 @@
 # Output ownership and handoff device acceptance
 
-**Status:** acceptance procedure; no device results recorded. 27 October 2026.
+**Status:** acceptance procedure; no device results recorded. Updated 29 October 2026.
 **Requirements:** PLAY-002/004/005/008/009, ROUTE-001/002/003.
 
 Use this procedure for the combined candidate described in
@@ -38,6 +38,12 @@ verification passing 2,765 tests /326 suites /949 playback, no failures, errors 
 callbacks under route mute cannot create heard evidence or consume recovery. Successful current-player
 unmute, paused release, player replacement and listener removal during dispatch are covered. Output
 presentation and final auth integration still precede the combined APK; no physical row is filled.
+
+The phone presentation checkpoint passes the strict repository gate at 2,784 tests /327 suites /
+960 playback, no failures, errors or skips. It distinguishes requested, measured, unknown and delegated
+paths plus retained previous choice; selected semantics, full-contrast status and actual doubled-font
+rendering are covered. The controller keeps one typed selection command. Final auth integration,
+forced combined verification, exact CI and review still precede the APK; physical rows remain pending.
 
 ## Candidate and setup
 

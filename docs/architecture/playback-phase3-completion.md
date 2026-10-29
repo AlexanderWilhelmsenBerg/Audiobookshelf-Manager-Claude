@@ -23,7 +23,8 @@ Explicit transfer/rollback now passes full strict local verification: 2,748 test
 in that checkpoint. Selection-scoped deferred work also passes full strict local verification: 2,759 tests
 /325 suites, including 943 playback tests, with no failures, errors or skips. Typed selection and muted
 heard-route observation then pass the full strict gate at 2,765 tests /326 suites, including 949 playback
-tests, with no failures, errors or skips. Truthful output UI remains required. The full execution plan is not complete. A final combined candidate must also include
+tests, with no failures, errors or skips. Truthful output presentation passes the full strict gate at
+2,784 tests /327 suites, including 960 playback tests, with no failures, errors or skips. A final combined candidate must also include
 separate auth #296; physical output, startup and real-token acceptance remain distinct.
 
 ### Remaining work overview
@@ -34,7 +35,7 @@ separate auth #296; physical output, startup and real-token acceptance remain di
 | Explicit verified handoff and rollback | Published in draft #300 at `7133b974`; strict local and normal exact-head CI 40762550930 pass 2,748 tests, ADR-0036 | Recheck the final combined candidate; physical acceptance remains separate |
 | Service asynchronous ownership | Selection scope passes strict local verification; normal exact-head CI tracked in checkpoint | Existing selection sequence revokes stale prepare/install/Play; captured progress writes still complete |
 | Muted heard-route observation | Typed selection and common audible observer pass strict local verification; exact source/CI tracked in checkpoint | Muted raw playback cannot create heard-route evidence or consume the awaiting recovery claim; unmute and listener teardown use current ownership |
-| Typed presentation and callback cleanup | Remaining | Requested/measured/predicted/unknown remain distinct; Waiting/Verifying/Verified/Delegated/Failed shown truthfully, with English/Norwegian and accessibility checks |
+| Typed presentation and callback cleanup | Software implemented; full strict local gate passes 2,784 tests; exact source/normal CI in checkpoint | Requested/measured/predicted/unknown remain distinct; Waiting/Verifying/Verified/Delegated/Failed, English/Norwegian, selected semantics and rendered doubled-font checks |
 | Final integration and APK | Remaining | Include auth #296, full `verifyDebug --rerun-tasks`, normal exact-head CI, independent review, then one combined signed QA APK |
 | Device/server acceptance | Pending | Stationary headset/Auto and lifecycle guide, #295 startup cases, #288 genuine 401 renewal; unsupported input identity recorded honestly |
 
@@ -77,6 +78,21 @@ passes 2,765 tests /326 suites /949 playback, no failures, errors or skips, plus
 The projection fixture uses the same volume owner as its router and timer. Test setup was extracted to
 meet the size limit without dropping assertions. Physical routing and complete Hilt lifecycle remain
 device acceptance work.
+
+### Phone output presentation — 29 October 2026
+
+One read-only publisher confines derived-flow updates to the player dispatcher. Pure activity and
+presentation projections keep current track facts, framework prediction, requested destination and
+previous-lock recovery context distinct. Target-specific success reuses `OutputTargetProof`; no new
+intent, player, focus or retry owner is introduced. The controller's existing command accepts a typed
+destination. The chooser groups controls by purpose and exposes selected semantics and readable status.
+
+The full strict gate passes 2,784 tests /327 suites /960 playback, no failures, errors or skips, with
+lint, Detekt and coverage green. Three intended regressions fail when unique/current proof and Car
+classification are removed; exact sources were restored. The post-cleanup Car regression also fails
+as intended. All tests and rule thresholds are retained. See the
+[rendered review](../testing/output-presentation-review.md) for normal and actual doubled-font frames.
+Final auth integration, forced verification, normal exact-head CI/review and one combined APK remain.
 
 ## Ownership after refactoring
 

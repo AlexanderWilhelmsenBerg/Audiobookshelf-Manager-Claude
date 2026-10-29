@@ -256,6 +256,7 @@ private fun ShelfPlayerContent(
     // PRODUCT_SPEC PLAY-002 — the outputs the book can be sent to, for the chooser in the player's top bar.
     val audioOutputs by playerViewModel.outputs.collectAsStateWithLifecycle()
     val selectedOutput by playerViewModel.selectedOutput.collectAsStateWithLifecycle()
+    val outputPresentation by playerViewModel.outputPresentation.collectAsStateWithLifecycle()
     val outputLock by playerViewModel.outputLock.collectAsStateWithLifecycle()
     val canKeepAudioHere by playerViewModel.canKeepAudioHere.collectAsStateWithLifecycle()
     val history by playerViewModel.history.collectAsStateWithLifecycle()
@@ -394,8 +395,10 @@ private fun ShelfPlayerContent(
             // callback that acts on it come from the one view model that owns the session.
             outputs = OutputControls(
                 outputs = audioOutputs,
+                presentation = outputPresentation,
                 selectedId = selectedOutput,
                 onSelect = playerViewModel::onOutputSelected,
+                onSelectCar = playerViewModel::onCarOutputSelected,
                 lockStatus = outputLock,
                 canKeepAudioHere = canKeepAudioHere,
                 onKeepAudioHere = playerViewModel::onKeepAudioHere,

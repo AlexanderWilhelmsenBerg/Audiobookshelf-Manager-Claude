@@ -1,5 +1,7 @@
 package com.example.shelfplayer.playback
 
+import com.example.shelfplayer.core.model.playback.OutputMeasurement
+import com.example.shelfplayer.core.model.playback.OutputTransferStatus
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -14,6 +16,76 @@ import kotlin.test.assertTrue
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class AudioOutputRouterAttachmentCommandTest {
+    @Test
+    fun `route observation publication tracks request measurement and teardown`() = runTest {
+        val fixture = fixture()
+        val endpoint = fixture.observeEndpoint(49)
+        fixture.present(endpoint)
+        fixture.router.outputIntentOwner.select(endpoint.id, OutputIntentOwner.Destination.Output)
+        fixture.router.currentTrackObservation = {
+            AudioTrackObservation(1L, AudioTrackPath.Endpoint(endpoint.id))
+        }
+
+        fixture.router.onActualTrackRouteChanged()
+        runCurrent()
+
+        assertEquals(endpoint.id, fixture.router.presentation.value.requestedOutputId)
+        assertEquals(OutputMeasurement.Endpoint, fixture.router.presentation.value.measurement)
+        assertEquals(endpoint.id, fixture.router.presentation.value.measuredOutputId)
+
+        fixture.colliding(endpoint.id)
+        fixture.router.onActualTrackRouteChanged()
+        runCurrent()
+        assertEquals(OutputMeasurement.Unresolved, fixture.router.presentation.value.measurement)
+        assertEquals(null, fixture.router.presentation.value.measuredOutputId)
+        fixture.colliding(null)
+
+        fixture.router.currentTrackObservation = { AudioTrackObservation(2L, AudioTrackPath.Multiple) }
+        fixture.router.onActualTrackRouteChanged()
+        runCurrent()
+
+        assertEquals(OutputMeasurement.Multiple, fixture.router.presentation.value.measurement)
+        assertEquals(null, fixture.router.presentation.value.measuredOutputId)
+        assertEquals(null, fixture.router.presentation.value.transfer)
+
+        fixture.router.detach()
+        runCurrent()
+        assertEquals(OutputMeasurement.Unavailable, fixture.router.presentation.value.measurement)
+    }
+
+    @Test
+    fun `projection lifecycle refresh updates delegation when endpoint inventory stays unchanged`() = runTest {
+        val fixture = fixture()
+        val owner = fixture.router.outputIntentOwner
+        owner.onBookChanged(21L)
+        val prepared = owner.prepareTransfer(
+            outputId = null,
+            destination = OutputIntentOwner.Destination.Car,
+            effectEpoch = 3L,
+            originalPath = null,
+        )
+        assertTrue(owner.publishTransfer(prepared, OutputIntentOwner.TransferPhase.Waiting))
+        assertTrue(owner.transitionTransfer(prepared.request, OutputIntentOwner.TransferPhase.Verifying))
+        assertTrue(owner.transitionTransfer(prepared.request, OutputIntentOwner.TransferPhase.Delegated))
+        fixture.router.currentTrackObservation = {
+            AudioTrackObservation(3L, AudioTrackPath.RemoteSubmix)
+        }
+        var projected = true
+        fixture.router.currentProjection = { projected }
+        val originalOutputs = fixture.router.outputs.value
+
+        fixture.router.refreshPresentationForLifecycle()
+        runCurrent()
+        assertEquals(OutputTransferStatus.Delegated, fixture.router.presentation.value.transfer)
+        assertEquals(originalOutputs, fixture.router.outputs.value)
+
+        projected = false
+        fixture.router.refreshPresentationForLifecycle()
+        runCurrent()
+        assertEquals(OutputTransferStatus.Waiting, fixture.router.presentation.value.transfer)
+        assertEquals(originalOutputs, fixture.router.outputs.value)
+    }
+
     @Test
     fun `Keep audio here rejects collision or newer intent delivered during measurement`() = runTest {
         for (collision in listOf(false, true)) {

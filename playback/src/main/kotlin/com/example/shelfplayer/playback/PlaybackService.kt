@@ -1934,6 +1934,7 @@ class PlaybackService : MediaLibraryService() {
             autoTraces.activeTrace
         }
         carLifecycle.onProjectionReported(update.current)
+        audioOutputs.refreshPresentationForLifecycle()
         autoTraces.log(
             "Android Auto projection state changed",
             trace,
