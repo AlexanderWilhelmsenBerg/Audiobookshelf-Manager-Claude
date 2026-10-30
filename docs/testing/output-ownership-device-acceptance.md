@@ -1,6 +1,6 @@
 # Output ownership and handoff device acceptance
 
-**Status:** owner-reported partial device evidence on2243; extended-diagnostic candidate acceptance pending.
+**Status:** owner-reported device failure on2244; replacement acceptance pending.
 Updated 30 October 2026.
 **Requirements:** PLAY-002/004/005/008/009, ROUTE-001/002/003.
 
@@ -18,6 +18,14 @@ ID-1/source0 and did not identify a physical headset. These are positive results
 configuration and an unresolved attribution capability, not acceptance of every matrix row or the new
 diagnostic candidate. The trace also contains a focus-loss pause/recovery, so retention alone does not
 certify uninterrupted human-heard audio.
+
+On2244 (`c501404e0ba9`), the owner reported lost audio at Auto connection, failed explicit Headset
+transfer, and refused manual playback after car disconnection. The capture shows original endpoint
+churn,116ms final settling refusal after a measured Bluetooth route, and retained Car intent after
+paused projection departure. The [regression assessment](output-2244-regression.md) separates these
+failures from virtual-key attribution. The replacement adds bounded buffering recovery and scoped
+paused-Car retirement; the unlabeled2244 correction stage cannot establish a hardware fix. Repeat
+the matrix and inspect Initial/Final proof-stage rows before accepting the replacement.
 
 The following paragraphs retain earlier software checkpoints. The current candidate and its exact gates
 are maintained in the execution checkpoint linked below.
@@ -60,8 +68,8 @@ forced combined verification, exact CI and review still precede the APK; physica
 ## Candidate and setup
 
 The combined branch `codex/289-ownership-device-test-0c966ed6` contains playback source
-`e2d35c37f54abfb2b36f9357d08000d38d2d3c2a` and separate auth #296 source
-`9379a828c504eb56b0122d876d3f2669beb2363a`, integrated locally at `cebdfdc3ecf4da70f0e427b3574511f8454e027f`.
+`f3f3b5675c21ebffcab00bbca181c2c09f6c7a1f` and separate auth #296 source
+`9379a828c504eb56b0122d876d3f2669beb2363a`, integrated locally at `de2e8f5538f4597029956f86395c65433d78d553`.
 The already-identical Windows recorder-test compatibility change is not duplicated. No GitHub PR was
 merged, and main is unchanged. The exact final source/tree, forced local verification, normal CI,
 independent review and signed APK identity are maintained in
