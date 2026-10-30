@@ -68,8 +68,8 @@ forced combined verification, exact CI and review still precede the APK; physica
 ## Candidate and setup
 
 The combined branch `codex/289-ownership-device-test-0c966ed6` contains playback source
-`f3f3b5675c21ebffcab00bbca181c2c09f6c7a1f` and separate auth #296 source
-`9379a828c504eb56b0122d876d3f2669beb2363a`, integrated locally at `de2e8f5538f4597029956f86395c65433d78d553`.
+`b30ba552ef6846ed6b9f3cae9dc0acbd2647e5c9` and separate auth #296 source
+`9379a828c504eb56b0122d876d3f2669beb2363a`, integrated locally at `772366b8dc66f2fde862e8f2023ed9db4a9d637a`.
 The already-identical Windows recorder-test compatibility change is not duplicated. No GitHub PR was
 merged, and main is unchanged. The exact final source/tree, forced local verification, normal CI,
 independent review and signed APK identity are maintained in
@@ -77,8 +77,10 @@ independent review and signed APK identity are maintained in
 Hardware acceptance must use that one final APK, rather than a different APK for every draft PR.
 Build 2242 (`27c1a921dc0c`) is retained as failed device evidence; it does not verify the replacement.
 The branch-name suffix is historical: use the exact commit and APK version from the checkpoint.
-The current addition records input capabilities and Auto/route evidence under existing opt-in controls;
-it changes no routing policy. Follow the [extended input/Auto capture procedure](unified-diagnostics.md#input-and-auto-capability-capture)
+The current addition isolates Android output access and preserves a measured healthy headset before
+requesting preferences. Eligible paused recovery can begin its one muted probe promptly; actual output
+proof still gates unmute. Follow the [adapter continuity procedure](output-adapter-continuity.md) for repeated
+arrival and the less-than-one-second audible-gap target, as well as the [extended input/Auto capture procedure](unified-diagnostics.md#input-and-auto-capability-capture)
 and [platform research](../architecture/playback-input-capability-research.md) for the next test.
 
 Test one combined APK containing the selected playback stack and the separate #296 auth fix. Record
