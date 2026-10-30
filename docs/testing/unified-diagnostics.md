@@ -96,6 +96,11 @@ correlate effect ordering. `proofEpoch`, `requestGeneration` and `requestSelecti
 captured preference/transfer scope; `none` means no transfer request was present. Raw identifiers,
 descriptors and names are never needed in a public report.
 
+`proof-prepared` distinguishes Initial/Final compensation stages and records `bufferedSeek` with
+captured proof/request scope. `car-intent-retired` records the departed Car request and replacement
+selection sequence. A final-stage overshoot still fails closed. These rows diagnose timing and state
+retirement; they do not establish physical button identity or human-heard audio.
+
 See [platform/related-issue research](../architecture/playback-input-capability-research.md). If the
 app still receives only virtual events, an immediately collected **private** Android bug report may
 help locate where origin is lost; it does not guarantee an app-accessible physical source.

@@ -59,6 +59,15 @@ bound after synchronous success publication, before releasing mute, with the pri
 recovery context. Existing scope,
 timeout, cancellation, sleep/listened-duration and user-seek provenance rules remain in force.
 
+The 2244 follow-up retains buffering attributable to the initial compensation seek, including a delayed
+Buffering callback before its playback-thread acknowledgement. If fresh playing target proof then shows
+forward movement beyond 50ms, it may spend the same one remaining correction even when the application
+never observed the intervening playing interval. Already-buffering/paused state alone is insufficient.
+The final stage still refuses over 50ms or backward movement and cannot repeat. Temporary observation is
+scoped to that preparation and removed on success, cancellation and failure. Durable stage labels and
+captured request scope make budget exhaustion distinguishable in a later device export; see the
+[2244 regression assessment](../testing/output-2244-regression.md).
+
 Immutable event snapshots travel into asynchronous persistence. An old pause may persist its captured local
 owner's point, but cannot establish a successor baseline or sync a successor after waiting for the session
 mutex. Authorization is checked inside the serialized main-thread capture. Auto-rewind history likewise

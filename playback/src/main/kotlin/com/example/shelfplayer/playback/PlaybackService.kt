@@ -471,6 +471,24 @@ class PlaybackService : MediaLibraryService() {
                         LogField.Millis("advance", advance.inWholeMilliseconds),
                     )
                 }
+
+                override fun onPrepared(probe: HeadsetRouteGuard.Probe, finalStage: Boolean, bufferedSeek: Boolean) {
+                    logger.info(
+                        LogCategory.Playback,
+                        "Muted output proof preparation completed",
+                        LogField.Public("stage", if (finalStage) "Final" else "Initial"),
+                        LogField.Public("bufferedSeek", bufferedSeek),
+                        LogField.Public("proofEpoch", probe.preferenceEpoch),
+                        LogField.Public(
+                            "requestGeneration",
+                            probe.transferRequest?.bookGeneration?.toString() ?: "none",
+                        ),
+                        LogField.Public(
+                            "requestSelection",
+                            probe.transferRequest?.selection?.sequence?.toString() ?: "none",
+                        ),
+                    )
+                }
             },
         )
     }
@@ -1994,7 +2012,7 @@ class PlaybackService : MediaLibraryService() {
 
             CarLifecycleAuthority.ProjectionEdge.PhysicalDeparture -> {
                 // Controller bindings have already been retired by the lifecycle authority.
-                completeCarDeparture("projection-disconnect", physicalProjection = true)
+                completeProjectionDeparture()
             }
 
             CarLifecycleAuthority.ProjectionEdge.None -> Unit
@@ -2007,7 +2025,26 @@ class PlaybackService : MediaLibraryService() {
         sleepTimer.onCarConnectionChanged(carLifecycle.connectedForSleepTimer)
     }
 
-    private fun completeCarDeparture(source: String, physicalProjection: Boolean = false) {
+    private fun completeProjectionDeparture() {
+        val selection = audioOutputs.explicitSelection.value
+        val decision = completeCarDeparture("projection-disconnect", physicalProjection = true)
+        if (decision.status == CarArrivalResumeGate.Status.Rejected &&
+            decision.reason == CarArrivalResumeGate.Reason.NoPlayingCarHeadset &&
+            audioOutputs.handoffs.retirePausedCar(selection)
+        ) {
+            logger.info(
+                LogCategory.Playback,
+                "A paused Car destination expired after projection disconnection",
+                LogField.Public("requestSelection", selection?.sequence?.toString() ?: "none"),
+                LogField.Public("selectionSequence", currentExplicitSelectionSequence()),
+            )
+        }
+    }
+
+    private fun completeCarDeparture(
+        source: String,
+        physicalProjection: Boolean = false,
+    ): CarArrivalResumeGate.Decision {
         val departedAt = clock.elapsed()
         val generation = routeOwnership.currentGeneration
         val selectionSequence = currentExplicitSelectionSequence()
@@ -2019,6 +2056,7 @@ class PlaybackService : MediaLibraryService() {
         )
         logCarContinuityDecision(source, decision)
         carResumeEffects.onDeparture(decision)
+        return decision
     }
 
     /**

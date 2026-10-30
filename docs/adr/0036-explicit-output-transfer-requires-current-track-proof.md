@@ -28,6 +28,14 @@ prior lock. Only current successful proof releases that prior lock. A paused sel
 does not create Play. A later deliberate Play revalidates the existing selection without emitting a second
 listener choice. Automatic/Release retains its deliberate existing release policy.
 
+A confirmed physical projection departure rejected as `NoPlayingCarHeadset` may expire the exact paused,
+unlocked Car choice to Automatic. This uses the same sequence/owner and retires queued preference/probe
+work, without a preference request, Play or Automatic-release suppression. It preserves explicit locks,
+newer choices, pending Play and accepted continuity recovery. Unknown projection and ordinary controller
+churn do not authorize expiration. This corrects 2244's departed Car proof blocking subsequent manual Play;
+it is not an input-origin association or automatic headset rebinding. The
+[2244 assessment](../testing/output-2244-regression.md) records the narrower acceptance scope.
+
 Current-track observations use the existing AudioTrack observer epoch and retain four distinct paths: one
 mapped endpoint, RemoteSubmix, unresolved, or multiple sinks. Endpoint confirmation requires a fresh unique
 exact live mapping with no collision. Explicit Speaker is a valid endpoint request; an unexpected speaker

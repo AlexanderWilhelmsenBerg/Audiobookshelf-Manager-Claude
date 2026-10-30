@@ -69,6 +69,35 @@ internal class OutputHandoffEffects(private val source: Source) {
         return start(prepared, origin, forPlay = false)
     }
 
+    /** Confirmed departure may expire an unlocked paused Car choice, without release suppression or Play. */
+    fun retirePausedCar(expected: OutputIntentOwner.Selection?): Boolean {
+        val origin = pausedCarOrigin(expected) ?: return false
+        val active = source.guard.currentProbe
+        val epoch = source.preferences.supersede()
+        source.guard.clearOwnership()
+        if (active != null) source.guard.cancelProbe(active)
+        if (!canRetireCar(expected) || !selectionScope(origin, expected, epoch)) return false
+        val selection = source.owner.select(null, OutputIntentOwner.Destination.Automatic)
+        if (!selectionScope(origin, selection, epoch)) return false
+        source.selected(selection)
+        return selectionScope(origin, selection, epoch)
+    }
+
+    private fun canRetireCar(expected: OutputIntentOwner.Selection?): Boolean {
+        val current = source.owner.state.value
+        val sameCar = expected?.destination == OutputIntentOwner.Destination.Car && current.selection == expected
+        val pausedUnlocked = current.lock == null && source.player()?.playWhenReady == false
+        return sameCar && pausedUnlocked && !source.targets().projection
+    }
+
+    private fun pausedCarOrigin(expected: OutputIntentOwner.Selection?): Origin? {
+        if (!canRetireCar(expected)) return null
+        val origin = prepareOrigin() ?: return null
+        val active = source.guard.currentProbe
+        val matchingProbe = active == null || active.transferRequest?.selection == expected
+        return origin.takeIf { matchingProbe && canRetireCar(expected) && unchanged(it) }
+    }
+
     /** The caller owns the one raw Play. This method only reserves its mute and requests the existing destination. */
     fun protectPlay(): ManualPlayProtection {
         val selection = source.owner.selection.value

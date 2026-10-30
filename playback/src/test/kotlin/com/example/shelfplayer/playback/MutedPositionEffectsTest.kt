@@ -235,6 +235,7 @@ class MutedPositionEffectsTest {
         var current: ExoPlayer? = null
         var observation: AudioTrackObservation? = AudioTrackObservation(1, AudioTrackPath.Endpoint(outputId))
         val messages = mutableListOf<PlayerMessage>()
+        val playbackListeners = mutableListOf<Player.Listener>()
         val compensationOrigins = mutableListOf<Boolean>()
         val preferenceRequests = mutableListOf<AudioDeviceInfo?>()
         var item = MediaItem.Builder().setMediaId("checkpoint-fixture").build()
@@ -249,6 +250,10 @@ class MutedPositionEffectsTest {
                 args,
             ->
             when (method.name) {
+                "addListener" -> playbackListeners.add(args!![0] as Player.Listener).let { null }
+
+                "removeListener" -> playbackListeners.remove(args!![0] as Player.Listener).let { null }
+
                 "getCurrentPosition" -> rawPosition
 
                 "getCurrentMediaItem" -> item
@@ -361,6 +366,11 @@ class MutedPositionEffectsTest {
         fun activeProbe() = guard.currentProbe
         fun cancel() = guard.cancelProbe()
         fun deliver(index: Int) = messages[index].target.handleMessage(0, null)
+
+        fun reportPlaybackState(state: Int) {
+            playbackState = state
+            playbackListeners.toList().forEach { it.onPlaybackStateChanged(state) }
+        }
 
         fun externalPause() {
             media.pause()
