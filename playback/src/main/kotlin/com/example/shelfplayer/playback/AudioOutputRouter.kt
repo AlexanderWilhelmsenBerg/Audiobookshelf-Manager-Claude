@@ -322,9 +322,7 @@ class AudioOutputRouter @Inject constructor(
      */
     internal suspend fun reassert(id: String): Boolean {
         val selection = explicitSelection.value
-        val incompatible = selection?.destination == OutputIntentOwner.Destination.Car ||
-            (selection?.destination == OutputIntentOwner.Destination.Output && selection.outputId != id)
-        if (incompatible) return false
+        if (!selection.allowsRecoveryTo(id)) return false
         if (id !in live) {
             logger.info(
                 LogCategory.Playback,
@@ -359,6 +357,13 @@ class AudioOutputRouter @Inject constructor(
                 true
             }
         }
+    }
+
+    /** Recovery can preserve Automatic or its exact headset; it cannot override a listener's destination. */
+    private fun OutputIntentOwner.Selection?.allowsRecoveryTo(id: String): Boolean = when (this?.destination) {
+        null, OutputIntentOwner.Destination.Automatic -> true
+        OutputIntentOwner.Destination.Car -> false
+        OutputIntentOwner.Destination.Output -> outputId == id
     }
 
     private fun sameReassertScope(selection: OutputIntentOwner.Selection?, attached: ExoPlayer?, epoch: Long): Boolean =

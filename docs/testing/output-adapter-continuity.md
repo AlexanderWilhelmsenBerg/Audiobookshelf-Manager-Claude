@@ -49,11 +49,13 @@ zero failures, errors or skips. Lint, Detekt and coverage pass. The first full r
 but failed function-count/return-count checks and the extracted adapter's missing Media3 opt-in. Removing
 an uncalled router API, consolidating reassertion scope checks and declaring that opt-in fixed the gate;
 no rule or baseline was weakened. A subsequent comment-only encoding repair does not change behavior.
-The final combined gate and normal exact-head CI cover the committed candidate.
+The final combined gate and normal exact-head CI cover the committed candidate, including a later
+behavior-preserving cleanup: recovery destination compatibility has a named predicate, and diagnostic
+reporting consumes the already-computed target-application result rather than recomputing it from scalars.
 
 Agent00 reviewed the changed ownership, current callers and source. Additional independent review could
 not run because the available reviewer hit its account usage limit; it remains outstanding. Physical file
-lengths are router 991 (previously 1012), adapter 101 (new), recovery 140 (131), resume effects 311 (310).
+lengths are router 996 (previously 1012), adapter 101 (new), recovery 135 (131), resume effects 311 (310).
 PlaybackService remains 3410 and the endpoint registry 78. This is focused ownership improvement, not a
 claim that the entire playback hotspot has been eliminated.
 
