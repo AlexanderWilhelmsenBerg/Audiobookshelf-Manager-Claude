@@ -1,10 +1,6 @@
 package com.example.shelfplayer.playback
 
 import android.content.Context
-import android.media.AudioAttributes
-import android.media.AudioDeviceCallback
-import android.media.AudioDeviceInfo
-import android.media.AudioManager
 import android.os.Build
 import androidx.annotation.OptIn
 import androidx.media3.common.Player
@@ -50,11 +46,11 @@ import kotlin.time.Duration.Companion.milliseconds
 @OptIn(UnstableApi::class)
 @Singleton
 class AudioOutputRouter @Inject constructor(
-    @param:ApplicationContext private val context: Context,
+    @ApplicationContext context: Context,
     private val logger: Logger,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
     @param:Dispatcher(ShelfDispatcher.MainImmediate) private val mainDispatcher: CoroutineDispatcher,
-    private val endpointRegistry: LiveOutputEndpointRegistry = LiveOutputEndpointRegistry(),
+    endpointRegistry: LiveOutputEndpointRegistry = LiveOutputEndpointRegistry(),
     private val volumeEffects: PlaybackVolumeEffects,
 ) {
 
@@ -105,7 +101,7 @@ class AudioOutputRouter @Inject constructor(
 
     /** Queued preferences share one generation and the existing Media3 application dispatcher. */
     private val preferenceEffects = RoutePreferenceEffects(mainDispatcher)
-    private var callback: AudioDeviceCallback? = null
+    internal val localOutputs = AndroidLocalOutputAdapter(context, endpointRegistry, applicationScope, mainDispatcher)
     internal val positions = PositionAccess()
     internal val handoffs by lazy(LazyThreadSafetyMode.NONE) { OutputHandoffEffects(HandoffAccess()) }
     internal var currentProjection: () -> Boolean = { false }
@@ -149,7 +145,7 @@ class AudioOutputRouter @Inject constructor(
 
     /** Bound by the service after attachment; absent evidence fails closed. Retired on detach/replacement. */
     internal var currentTrackObservation: () -> AudioTrackObservation? = { null }
-    private var collidingOutputIds: Set<String> = emptySet()
+    private val collidingOutputIds: Set<String> get() = localOutputs.collidingOutputIds
     private data class AutomaticProtection(
         val outputId: String,
         val generation: Long,
@@ -163,7 +159,7 @@ class AudioOutputRouter @Inject constructor(
     private var automaticProtection: AutomaticProtection? = null
 
     /** Process-scoped live endpoints; never key physical routing by persistent name-based policy ID. */
-    private var live: Map<String, AudioDeviceInfo> = emptyMap()
+    private val live: Set<String> get() = localOutputs.endpointIds
 
     private val presentationPublisher =
         OutputPresentationPublisher(outputIntentOwner.state, applicationScope, mainDispatcher) {
@@ -172,7 +168,7 @@ class AudioOutputRouter @Inject constructor(
                 currentTrackObservation(),
                 _outputs.value,
                 currentProjection(),
-                live.keys - collidingOutputIds,
+                live - collidingOutputIds,
             )
         }
 
@@ -191,15 +187,7 @@ class AudioOutputRouter @Inject constructor(
         player = target
         outputIntentOwner.state.value.lock?.let(outputIntentOwner::invalidateProof)
         headsetGuard.attachPlayer(target)
-        val manager = context.getSystemService(AudioManager::class.java) ?: return
-        if (callback == null) {
-            val registered = object : AudioDeviceCallback() {
-                override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) = refresh()
-                override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) = refresh()
-            }
-            manager.registerAudioDeviceCallback(registered, null)
-            callback = registered
-        }
+        localOutputs.start(::refresh)
         refresh()
         applicationScope.launch { apply(_selectedId.value, epoch) }
     }
@@ -214,7 +202,6 @@ class AudioOutputRouter @Inject constructor(
         headsetGuard.release()
         currentTrackRoutes = { null }
         currentTrackObservation = { null }
-        collidingOutputIds = emptySet()
         headsetGuard.detachPlayer()
         player = null
         refreshPresentationForLifecycle()
@@ -318,6 +305,15 @@ class AudioOutputRouter @Inject constructor(
         }
     }
 
+    /** Fresh playing-track evidence only; policy prediction and preferred output cannot preserve a route. */
+    internal fun isMeasuredHeadset(id: String): Boolean {
+        val context = currentLockContext() ?: return false
+        val first = currentTrackObservation() ?: return false
+        val second = currentTrackObservation()
+        return first.path == AudioTrackPath.Endpoint(id) && first == second &&
+            isEligibleLockOutput(id) && !volumeEffects.isRouteMuted(context.player) && isCurrentLockContext(context)
+    }
+
     /**
      * Reasserts already-owned routing when a car arrives.
      *
@@ -337,18 +333,36 @@ class AudioOutputRouter @Inject constructor(
             )
             return false
         }
-        if (handoffs.isPendingFor(id)) return true
-        val epoch = preferenceEffects.supersede()
-        headsetGuard.protect(id)
-        automaticProtection = automaticProtection?.takeIf { it.outputId == id }?.copy(
-            preferenceEpoch = epoch,
-            preferredDeviceRequested = true,
-        )
-        _selectedId.value = id
-        publish()
-        apply(id, epoch)
-        return true
+        val attached = player
+        val priorEpoch = preferenceEffects.snapshot()
+        val measured = isMeasuredHeadset(id)
+        return when {
+            !sameReassertScope(selection, attached, priorEpoch) -> false
+
+            measured -> {
+                protectPlayingHeadset(id)
+                true
+            }
+
+            handoffs.isPendingFor(id) -> true
+
+            else -> {
+                val epoch = preferenceEffects.supersede()
+                headsetGuard.protect(id)
+                automaticProtection = automaticProtection?.takeIf { it.outputId == id }?.copy(
+                    preferenceEpoch = epoch,
+                    preferredDeviceRequested = true,
+                )
+                _selectedId.value = id
+                publish()
+                apply(id, epoch)
+                true
+            }
+        }
     }
+
+    private fun sameReassertScope(selection: OutputIntentOwner.Selection?, attached: ExoPlayer?, epoch: Long): Boolean =
+        explicitSelection.value == selection && player === attached && preferenceEffects.isCurrent(epoch)
 
     /**
      * Protect an already-running exact headset without touching ExoPlayer's output selection.
@@ -452,15 +466,14 @@ class AudioOutputRouter @Inject constructor(
         // player reattachments, and the recovery router silently asserting the same output ID.
         if (_selectedId.value != id) return@run
         val target = player ?: return@run
-        val device = id?.let(live::get)
-        target.setPreferredAudioDevice(device)
+        if (!localOutputs.requestPreference(target, id)) return@run
         publish()
         val routed = routedIds()
         logger.info(
             LogCategory.Playback,
             "The audio output was set",
             LogField.Public("asked", if (id == null) "automatic" else kindOf(id)),
-            LogField.Public("connected", (device != null).toString()),
+            LogField.Public("connected", (id != null && id in live).toString()),
             LogField.Public("routedTo", routed?.joinToString("+") { kindOf(it) } ?: "unknown"),
             LogField.Public(
                 "honoured",
@@ -471,8 +484,11 @@ class AudioOutputRouter @Inject constructor(
                 },
             ),
         )
-        // A request may become stale during the delay. It must not publish a superseded outcome.
-        preferenceEffects.afterSettle(epoch, ROUTE_SETTLE_DELAY) { publish() }
+        // Keep the delayed observation as a fallback for silent platform changes, off the recovery path.
+        // It never certifies a route and cannot publish a superseded request.
+        applicationScope.launch(mainDispatcher) {
+            preferenceEffects.afterSettle(epoch, ROUTE_SETTLE_DELAY) { publish() }
+        }
     }
 
     /** Observe a car-driven OS route change independently of output-preference requests. */
@@ -507,24 +523,11 @@ class AudioOutputRouter @Inject constructor(
     }
 
     private fun refresh() {
-        val manager = context.getSystemService(AudioManager::class.java) ?: return
-        val devices = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).orEmpty()
-        val observations = devices.map { info ->
-            LiveOutputEndpointRegistry.Observation(info.id, info.type, info.productName?.toString())
-        }
-        val endpointEntries = endpointRegistry.reconcile(observations)
-        val byHandle = devices.associateBy(AudioDeviceInfo::getId)
-        live = endpointEntries.mapNotNull { endpoint ->
-            byHandle[endpoint.platformId]?.let { endpoint.id to it }
-        }.toMap()
-        // Distinct live endpoints that share a legacy saved name are not one physical route.
-        val duplicates = endpointEntries.groupBy { it.knownDeviceId }
-            .values.filter { it.size > 1 }
-        collidingOutputIds = duplicates.flatMap { group -> group.map { it.id } }.toSet()
+        localOutputs.refresh()
         val found = live
         val chosen = _selectedId.value
         when {
-            chosen != null && chosen !in found -> onDisconnectedSelection(chosen, found.keys)
+            chosen != null && chosen !in found -> onDisconnectedSelection(chosen, found)
 
             chosen != null && chosen == headsetGuard.endpointId && headsetGuard.endpointMissing ->
                 onGuardedHeadsetReappeared(chosen)
@@ -769,9 +772,7 @@ class AudioOutputRouter @Inject constructor(
         }
     }
 
-    private fun availableOutputs(): List<AudioOutput> = live.mapNotNull { (id, info) ->
-        endpointRegistry.find(info.id, info.type, info.productName?.toString())?.output?.copy(id = id)
-    }
+    private fun availableOutputs(): List<AudioOutput> = localOutputs.outputs()
 
     /**
      * Check again when Media3 transitions to audible playback. A Gearhead Play can arrive
@@ -882,26 +883,8 @@ class AudioOutputRouter @Inject constructor(
         )
     }
 
-    /** Framework-reported devices for BookWave's media attributes, or `null` before API 33. */
-    private fun routedIds(): Set<String>? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
-        val manager = context.getSystemService(AudioManager::class.java) ?: return null
-        val attributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-            .build()
-        return manager.getAudioDevicesForAttributes(attributes)
-            .mapNotNull { info ->
-                endpointRegistry.find(info.id, info.type, info.productName?.toString())?.id
-            }
-            .toSet()
-    }
-
-    /**
-     * The selectable list exposed to the car browse tree. Speakers remain in [outputs] above but are absent
-     * here by construction.
-     */
-    fun available(): List<AudioOutput> = _outputs.value.filterNot(AudioOutput::isSpeaker)
+    /** Framework-reported devices are prediction, never actual-track proof. */
+    private fun routedIds(): Set<String>? = localOutputs.predictedIds()
 
     /** Kind half only; product names never reach logs. */
     private fun kindOf(id: String): String = id.substringBefore(':')
@@ -917,7 +900,7 @@ class AudioOutputRouter @Inject constructor(
         override fun observation(): AudioTrackObservation? = currentTrackObservation()
 
         override fun targets(): OutputProofTargets {
-            val eligible = live.keys - collidingOutputIds
+            val eligible = live - collidingOutputIds
             val cars = outputs.value.filter {
                 it.id in eligible && it.role == com.example.shelfplayer.core.model.playback.AudioOutputRole.Car
             }.map { it.id }.toSet()
@@ -938,12 +921,8 @@ class AudioOutputRouter @Inject constructor(
             applicationScope.launch { preferenceEffects.run(epoch) { effect() } }
         }
 
-        override fun requestPreference(player: ExoPlayer, outputId: String?): Boolean {
-            val device = outputId?.let(live::get)
-            if (outputId != null && device == null) return false
-            player.setPreferredAudioDevice(device)
-            return true
-        }
+        override fun requestPreference(player: ExoPlayer, outputId: String?): Boolean =
+            localOutputs.requestPreference(player, outputId)
 
         override fun changed() {
             publish()

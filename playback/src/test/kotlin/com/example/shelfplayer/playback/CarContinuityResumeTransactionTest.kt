@@ -294,8 +294,14 @@ class CarContinuityResumeTransactionTest {
         assertEquals(0, fixture.timerResumes)
     }
 
-    private class Fixture(scope: TestScope, available: Boolean = true, immediate: Boolean = false) {
-        private val dispatcher = StandardTestDispatcher(scope.testScheduler)
+    internal class Fixture(scope: TestScope, available: Boolean = true, immediate: Boolean = false) {
+        private val dispatcher = if (immediate) {
+            UnconfinedTestDispatcher(
+                scope.testScheduler,
+            )
+        } else {
+            StandardTestDispatcher(scope.testScheduler)
+        }
         val volumeEffects = volumeEffectsForTest(dispatcher)
         private val registry = LiveOutputEndpointRegistry()
         private val device = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP).build()
@@ -395,7 +401,7 @@ class CarContinuityResumeTransactionTest {
         )
     }
 
-    private class RecordingPlayer {
+    internal class RecordingPlayer {
         var playing = false
         var playWhenReady = false
         var volume = 1f
@@ -490,7 +496,8 @@ class CarContinuityResumeTransactionTest {
                 if (value == null) owner.release() else owner.protect(value as String)
                 return
             }
-            AudioOutputRouter::class.java.getDeclaredField(name).apply { isAccessible = true }.set(this, value)
+            val target: Any = if (name == "live") localOutputs else this
+            target.javaClass.getDeclaredField(name).apply { isAccessible = true }.set(target, value)
         }
     }
 }

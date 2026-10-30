@@ -338,9 +338,9 @@ class MutedPositionEffectsTest {
             current = media
             gains.attach(media)
             AudioOutputRouter::class.java.getDeclaredField("player").apply { isAccessible = true }.set(router, media)
-            AudioOutputRouter::class.java.getDeclaredField("live").apply {
+            AndroidLocalOutputAdapter::class.java.getDeclaredField("live").apply {
                 isAccessible = true
-            }.set(router, mapOf(outputId to headset, speakerId to speaker))
+            }.set(router.localOutputs, mapOf(outputId to headset, speakerId to speaker))
             field<MutableStateFlow<String?>>(router, "_selectedId").value = outputId
             AudioOutputRouter::class.java.getDeclaredField("currentTrackRoutes").apply { isAccessible = true }.set(
                 router,

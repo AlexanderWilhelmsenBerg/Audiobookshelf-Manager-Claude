@@ -8,6 +8,13 @@ The ownership/lock/handoff execution plan is recorded in
 This document distinguishes capabilities used by the first route-loss safety slice from capabilities
 that still require device investigation. It does not certify physical output or button attribution.
 
+The owner-approved [adapter continuation](playback-output-adapter-plan.md) extracts Android inventory,
+platform handles and preferred-device access into `AndroidLocalOutputAdapter`. The existing registry
+retains appearance identity; actual-track measurement and Auto projection remain distinct inputs.
+Recovery now requires an explicit actual-measurement port, and `ProbeReady` permits only the existing
+silent verification path. It is not successful routing. The delayed fallback refresh does not block
+recovery. See the [implementation and acceptance record](../testing/output-adapter-continuity.md).
+
 ## Capabilities available in production
 
 | Observation or request | What it establishes | What it cannot establish |

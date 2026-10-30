@@ -272,7 +272,7 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
     private fun configureRouter() {
         volumeEffects.attach(player)
         router.setPlaybackField("player", player)
-        router.setPlaybackField("live", emptyMap<String, AudioDeviceInfo>())
+        router.localOutputs.setPlaybackField("live", emptyMap<String, AudioDeviceInfo>())
         router.setPlaybackField("guardedHeadsetId", headset.id)
         router.playbackField<MutableStateFlow<String?>>("_selectedId").value = headset.id
     }
@@ -281,7 +281,7 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
         val measured = headset.copy(
             activitySource = AudioOutputActivitySource.PlayingAudioTrack,
         )
-        router.setPlaybackField("live", mapOf(endpoint.id to device))
+        router.localOutputs.setPlaybackField("live", mapOf(endpoint.id to device))
         router.setPlaybackField("currentTrackRoutes", { setOf(endpoint.id) })
         router.setPlaybackField("guardedHeadsetId", null)
         router.playbackField<MutableStateFlow<String?>>("_selectedId").value = null
@@ -406,10 +406,20 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
     }
 
     fun configureManualGuard(selected: Boolean, colliding: Boolean, connected: Boolean = true) {
-        if (connected) returnHeadset() else router.setPlaybackField("live", emptyMap<String, AudioDeviceInfo>())
+        if (connected) {
+            returnHeadset()
+        } else {
+            router.localOutputs.setPlaybackField(
+                "live",
+                emptyMap<String, AudioDeviceInfo>(),
+            )
+        }
         router.setPlaybackField("guardedHeadsetId", endpointId)
         router.playbackField<MutableStateFlow<String?>>("_selectedId").value = if (selected) endpointId else null
-        router.setPlaybackField("collidingOutputIds", if (colliding) setOf(endpointId) else emptySet<String>())
+        router.localOutputs.setPlaybackField(
+            "collidingOutputIds",
+            if (colliding) setOf(endpointId) else emptySet<String>(),
+        )
     }
 
     fun configureNoManualGuard() {
@@ -612,7 +622,7 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
     }
 
     fun returnHeadset() {
-        router.setPlaybackField("live", mapOf(headset.id to device))
+        router.localOutputs.setPlaybackField("live", mapOf(headset.id to device))
         router.playbackField<MutableStateFlow<List<AudioOutput>>>("_outputs").value = listOf(headset)
     }
 

@@ -517,8 +517,11 @@ class OutputHandoffEffectsTest {
         val fixture = MutedPositionEffectsTest.Fixture(this)
         assertTrue(fixture.router.keepAudioHere())
         fixture.playWhenReady = false
-        val field = AudioOutputRouter::class.java.getDeclaredField("collidingOutputIds").apply { isAccessible = true }
-        field.set(fixture.router, setOf(fixture.outputId))
+        val field = AndroidLocalOutputAdapter::class.java.getDeclaredField("collidingOutputIds").apply {
+            isAccessible =
+                true
+        }
+        field.set(fixture.router.localOutputs, setOf(fixture.outputId))
         fixture.command++
 
         assertEquals(ManualPlayProtection.Denied, fixture.router.protectManualPlayOnGuardedHeadset(fixture.media))
