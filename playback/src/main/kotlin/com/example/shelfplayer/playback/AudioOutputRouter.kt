@@ -139,6 +139,9 @@ class AudioOutputRouter @Inject constructor(
                 "Muted output route proof completed",
                 LogField.Public("confirmation", proof.name),
                 LogField.Public("destination", probe.transferRequest?.selection?.destination?.name ?: "HeldOutput"),
+                LogField.Public("proofEpoch", probe.preferenceEpoch),
+                LogField.Public("requestGeneration", probe.transferRequest?.bookGeneration?.toString() ?: "none"),
+                LogField.Public("requestSelection", probe.transferRequest?.selection?.sequence?.toString() ?: "none"),
             )
         }
     }

@@ -8,7 +8,9 @@ import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.LogLevel
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.time.AppClock
+import com.example.shelfplayer.core.testing.TestAppClock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -40,6 +42,36 @@ class AudioRouteLabRecorderTest {
         context.getSharedPreferences("audio-route-lab", Context.MODE_PRIVATE).edit { clear() }
         File(context.noBackupFilesDir, "audio-route-lab.txt").delete()
         File(context.noBackupFilesDir, "audio-route-lab.txt.bak").delete()
+    }
+
+    @Test
+    fun `input bursts keep every retained event without queuing one disk writer per callback`() = runTest {
+        val clock = TestAppClock()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val logger = object : Logger {
+            override fun log(event: LogEvent) = Unit
+        }
+        val router = AudioOutputRouter(
+            context,
+            logger,
+            backgroundScope,
+            dispatcher,
+            volumeEffects = volumeEffectsForTest(dispatcher),
+        )
+        val recorder = AudioRouteLab(context, EventLog(clock), clock, router, backgroundScope, dispatcher)
+        recorder.start()
+        val parent = requireNotNull(backgroundScope.coroutineContext[Job])
+        val before = parent.children.count()
+        repeat(200) {
+            recorder.mediaButtonInput(null, MediaInputController(), MediaInputEntry.SessionCallback)
+        }
+        assertEquals(before, parent.children.count(), "disk work must remain bounded while IO is suspended")
+        assertEquals(200, recorder.state.value.entries.count { "input-key" in it })
+        recorder.stop()
+        runCurrent()
+        val persisted = File(context.noBackupFilesDir, "audio-route-lab.txt").readText()
+        assertEquals(200, persisted.lineSequence().count { "input-key" in it })
+        assertTrue("diagnostic-stop" in persisted)
     }
 
     @Test

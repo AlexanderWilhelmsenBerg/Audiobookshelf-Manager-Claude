@@ -8,6 +8,7 @@ import android.database.MatrixCursor
 import android.net.Uri
 import android.os.Looper
 import androidx.media3.common.Player
+import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
@@ -322,6 +323,8 @@ class CarProjectionLifecycleTest {
                 volumeEffects = volumeEffects,
             )
             service.clock = clock
+            service.audioRouteLab =
+                AudioRouteLab(context, EventLog(clock), clock, service.audioOutputs, scope, dispatcher)
             service.volumeEffects = volumeEffects
             service.logger = logger
             service.carConnections = connections

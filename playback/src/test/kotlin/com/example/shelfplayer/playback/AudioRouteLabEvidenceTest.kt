@@ -13,6 +13,45 @@ import kotlin.test.assertNull
 
 class AudioRouteLabEvidenceTest {
     @Test
+    fun `route proof and controller lifecycle preserve ordering without exposing caller identifiers`() {
+        val proof = requireNotNull(
+            AudioRouteLabEvidence.event(
+                LoggedEvent(
+                    Instant.EPOCH,
+                    LogLevel.Info,
+                    "Playback",
+                    "Muted output route proof completed confirmation=Delegated destination=Car " +
+                        "generation=3 selectionSequence=7 proofEpoch=8 requestGeneration=3 requestSelection=7 " +
+                        "controllerPackage=private.package deviceAddress=private-address",
+                ),
+            ),
+        )
+        assertContains(proof, "output-proof")
+        assertContains(proof, "confirmation=Delegated")
+        assertContains(proof, "selectionSequence=7")
+        assertContains(proof, "generation=3")
+        assertContains(proof, "proofEpoch=8")
+        assertContains(proof, "requestSelection=7")
+        assertFalse(proof.contains("private"))
+
+        val departure = requireNotNull(
+            AudioRouteLabEvidence.event(
+                LoggedEvent(
+                    Instant.EPOCH,
+                    LogLevel.Info,
+                    "AndroidAuto",
+                    "A car controller disconnected from the media session finalDeparture=false " +
+                        "carStillConnected=true selectionSequence=7 controllerPackage=private.package",
+                ),
+            ),
+        )
+        assertContains(departure, "car-controller-unbound")
+        assertContains(departure, "finalDeparture=false")
+        assertContains(departure, "carStillConnected=true")
+        assertFalse(departure.contains("private"))
+    }
+
+    @Test
     fun `event classifier exports only allowlisted keys and not private media metadata`() {
         val event = LoggedEvent(
             Instant.EPOCH,
