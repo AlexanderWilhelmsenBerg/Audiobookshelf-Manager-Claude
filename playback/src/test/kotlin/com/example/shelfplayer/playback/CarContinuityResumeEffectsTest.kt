@@ -55,8 +55,8 @@ internal class CarContinuityResumeEffectsTest {
             registry,
             volumeEffects = volumeEffectsForTest(StandardTestDispatcher(testScheduler)),
         )
-        AudioOutputRouter::class.java.getDeclaredField("live").apply { isAccessible = true }
-            .set(router, mapOf(endpoint.id to device))
+        AndroidLocalOutputAdapter::class.java.getDeclaredField("live").apply { isAccessible = true }
+            .set(router.localOutputs, mapOf(endpoint.id to device))
         AudioOutputRouter::class.java.getDeclaredField("currentTrackRoutes").apply { isAccessible = true }
             .set(router, { setOf(endpoint.id) })
         val owner = RouteHeardOwnership(router.outputIntentOwner).apply { onBookChanged(true) }

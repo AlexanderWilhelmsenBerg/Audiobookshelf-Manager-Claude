@@ -111,9 +111,9 @@ class AudioOutputRouterThreadTest {
         val endpoint = registry.reconcile(
             listOf(LiveOutputEndpointRegistry.Observation(42, info.type, info.productName?.toString())),
         ).single()
-        AudioOutputRouter::class.java.getDeclaredField("live").apply {
+        AndroidLocalOutputAdapter::class.java.getDeclaredField("live").apply {
             isAccessible = true
-            set(fixture.router, mapOf(endpoint.id to info))
+            set(fixture.router.localOutputs, mapOf(endpoint.id to info))
         }
         fixture.measuredRoutes { setOf(endpoint.id, "bluetooth:other") }
         assertTrue(!fixture.router.protectMeasuredPlayingHeadset(endpoint.id, 1L, 0L) { true })
@@ -140,9 +140,9 @@ class AudioOutputRouterThreadTest {
         val endpoint = fixture.registry.reconcile(
             listOf(LiveOutputEndpointRegistry.Observation(43, info.type, info.productName?.toString())),
         ).single()
-        AudioOutputRouter::class.java.getDeclaredField("live").apply {
+        AndroidLocalOutputAdapter::class.java.getDeclaredField("live").apply {
             isAccessible = true
-            set(fixture.router, mapOf(endpoint.id to info))
+            set(fixture.router.localOutputs, mapOf(endpoint.id to info))
         }
         var changeDestination = true
         fixture.measuredRoutes {
@@ -182,9 +182,9 @@ class AudioOutputRouterThreadTest {
         val endpoint = fixture.registry.reconcile(
             listOf(LiveOutputEndpointRegistry.Observation(44, info.type, info.productName?.toString())),
         ).single()
-        AudioOutputRouter::class.java.getDeclaredField("live").apply {
+        AndroidLocalOutputAdapter::class.java.getDeclaredField("live").apply {
             isAccessible = true
-            set(fixture.router, mapOf(endpoint.id to info))
+            set(fixture.router.localOutputs, mapOf(endpoint.id to info))
         }
         fixture.measuredRoutes { setOf(endpoint.id) }
         assertTrue(fixture.router.protectMeasuredPlayingHeadset(endpoint.id, 7L, 0L) { true })
@@ -773,9 +773,9 @@ internal data class Fixture(
         val endpoint = registry.reconcile(
             listOf(LiveOutputEndpointRegistry.Observation(platformId, info.type, info.productName?.toString())),
         ).single()
-        AudioOutputRouter::class.java.getDeclaredField("live").apply {
+        AndroidLocalOutputAdapter::class.java.getDeclaredField("live").apply {
             isAccessible = true
-            set(router, mapOf(endpoint.id to info))
+            set(router.localOutputs, mapOf(endpoint.id to info))
         }
         return endpoint
     }
@@ -786,9 +786,9 @@ internal data class Fixture(
     }
 
     fun colliding(outputId: String?) {
-        AudioOutputRouter::class.java.getDeclaredField("collidingOutputIds").apply {
+        AndroidLocalOutputAdapter::class.java.getDeclaredField("collidingOutputIds").apply {
             isAccessible = true
-            set(router, outputId?.let(::setOf).orEmpty())
+            set(router.localOutputs, outputId?.let(::setOf).orEmpty())
         }
     }
 
@@ -801,10 +801,10 @@ internal data class Fixture(
 
     fun guard(outputId: String, connected: Boolean = true) {
         // These probe fixtures represent a connected guarded endpoint; disappearance tests refresh inventory.
-        AudioOutputRouter::class.java.getDeclaredField("live").apply {
+        AndroidLocalOutputAdapter::class.java.getDeclaredField("live").apply {
             isAccessible = true
             set(
-                router,
+                router.localOutputs,
                 if (connected) {
                     mapOf(outputId to device(99, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "Fixture headset"))
                 } else {

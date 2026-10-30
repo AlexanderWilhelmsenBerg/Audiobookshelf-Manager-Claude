@@ -113,7 +113,7 @@ internal class CarContinuityResumeEffects(
         currentCoroutineContext().ensureActive()
         val available = outputs.outputs.value
         val hold = owner.headsetForCar(available) ?: return
-        val healthyHeadset = current.isPlaying && headsetAlreadyActive(hold, available)
+        val healthyHeadset = outputs.isMeasuredHeadset(hold)
         if (current.playWhenReady || healthyHeadset) {
             outputs.protectPlayingHeadset(hold)
             log(
@@ -142,6 +142,8 @@ internal class CarContinuityResumeEffects(
             selectedId = outputs.selectedId,
             currentGeneration = { owner.currentGeneration },
             selectionSequence = selectionSequence,
+            measured = outputs::isMeasuredHeadset,
+            canProbe = outputs::canProbeHeldHeadset,
             onEvent = { event -> logCarContinuityRouteEvent(target, event) },
             reassert = outputs::reassert,
         )
@@ -169,7 +171,6 @@ internal class CarContinuityResumeEffects(
             recovery.discard(target)
             return null
         }
-        logHeldHeadset(held, target.phase)
         return held
     }
 
@@ -229,7 +230,7 @@ internal class CarContinuityResumeEffects(
     }
 
     /**
-     * Issues one Play only after the exact target is secured and the final generation/intent guard passes.
+     * Issues one silent Play after the exact target is eligible and the final generation/intent guard passes.
      *
      * The log says Play was issued rather than claiming playback resumed. Actual audio movement is logged from
      * onIsPlayingChanged, which is the first service callback that can truthfully make that claim.
@@ -279,7 +280,7 @@ internal class CarContinuityResumeEffects(
 
         // A headset that stayed uniquely active can satisfy route recovery without reassertion.
         // Preserve that exact original target as the safety guard before the muted probe.
-        if (heldHeadset != null && headsetAlreadyActive(heldHeadset, outputs.outputs.value)) {
+        if (heldHeadset != null) {
             outputs.protectPlayingHeadset(heldHeadset)
         }
         // An AudioManager preference is NOT proof of a physical route. Only the playing

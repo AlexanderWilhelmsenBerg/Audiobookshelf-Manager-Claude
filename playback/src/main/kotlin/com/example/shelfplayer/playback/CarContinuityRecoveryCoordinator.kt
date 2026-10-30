@@ -119,6 +119,8 @@ internal class CarContinuityRecoveryCoordinator(
         selectedId: StateFlow<String?>,
         currentGeneration: () -> Long?,
         selectionSequence: () -> Long,
+        measured: (String) -> Boolean,
+        canProbe: (String) -> Boolean = { false },
         onEvent: (CarArrivalRouteRecovery.Event) -> Unit = {},
         reassert: suspend (String) -> Boolean,
     ): String? = routeRecovery.secure(
@@ -126,6 +128,8 @@ internal class CarContinuityRecoveryCoordinator(
         outputs = outputs,
         selectedId = selectedId,
         isStillEligible = { gate.isCurrent(target, currentGeneration(), selectionSequence()) },
+        measured = measured,
+        canProbe = canProbe,
         onEvent = onEvent,
         reassert = reassert,
     )

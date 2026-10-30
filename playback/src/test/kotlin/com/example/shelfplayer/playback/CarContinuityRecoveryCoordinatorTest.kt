@@ -107,6 +107,7 @@ class CarContinuityRecoveryCoordinatorTest {
         val secured = coordinator.secure(
             target = target,
             outputs = MutableStateFlow(listOf(headset)),
+            measured = { id -> fixtureHeadsetMeasured(id, listOf(headset)) },
             selectedId = MutableStateFlow<String?>(null),
             currentGeneration = { target.generation },
             selectionSequence = { 0 },
@@ -121,6 +122,7 @@ class CarContinuityRecoveryCoordinatorTest {
         val denied = stale.secure(
             target = staleTarget,
             outputs = MutableStateFlow(listOf(headset)),
+            measured = { id -> fixtureHeadsetMeasured(id, listOf(headset)) },
             selectedId = MutableStateFlow<String?>(null),
             currentGeneration = { staleTarget.generation },
             selectionSequence = { 1 },

@@ -86,6 +86,7 @@ class PlaybackContinuityInvariantMatrixTest {
                 val held = CarArrivalRouteRecovery(100.milliseconds).secure(
                     target = item.target,
                     outputs = MutableStateFlow(listOf(headset.copy(isActive = true))),
+                    measured = { id -> fixtureHeadsetMeasured(id, listOf(headset.copy(isActive = true))) },
                     selectedId = MutableStateFlow<String?>(null),
                     isStillEligible = { item.gate.isCurrent(item.target, item.generation, 0) },
                 ) {
@@ -123,6 +124,7 @@ class PlaybackContinuityInvariantMatrixTest {
                     val held = CarArrivalRouteRecovery(100.milliseconds).secure(
                         target = item.target,
                         outputs = MutableStateFlow(listOf(headset.copy(isActive = true))),
+                        measured = { id -> fixtureHeadsetMeasured(id, listOf(headset.copy(isActive = true))) },
                         selectedId = MutableStateFlow<String?>(null),
                         isStillEligible = { item.gate.isCurrent(item.target, generation, selection) },
                     ) {
@@ -147,6 +149,7 @@ class PlaybackContinuityInvariantMatrixTest {
                 val held = CarArrivalRouteRecovery(80.milliseconds).secure(
                     target = item.target,
                     outputs = MutableStateFlow(listOf(headset, speaker)),
+                    measured = { id -> fixtureHeadsetMeasured(id, listOf(headset, speaker)) },
                     selectedId = selected,
                     isStillEligible = { item.gate.isCurrent(item.target, item.generation, 0) },
                 ) { id ->

@@ -136,8 +136,8 @@ class MutedPositionMedia3IntegrationTest {
             volumeEffects.attach(player)
             set(router, "player", player)
             set(router, "currentTrackRoutes", { measuredRoute })
-            set(router, "live", mapOf(outputId to headset))
-            set(router, "collidingOutputIds", emptySet<String>())
+            set(router.localOutputs, "live", mapOf(outputId to headset))
+            set(router.localOutputs, "collidingOutputIds", emptySet<String>())
             field<kotlinx.coroutines.flow.MutableStateFlow<String?>>(router, "_selectedId").value = outputId
             guard.attachPlayer(player)
             guard.protect(outputId)

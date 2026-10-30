@@ -75,6 +75,7 @@ internal class PlaybackScenarioAsyncEffectsTest {
             coordinator.secure(
                 target = target,
                 outputs = outputs,
+                measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
                 selectedId = selected,
                 currentGeneration = { target.generation },
                 selectionSequence = { selectionSequence },
@@ -114,6 +115,7 @@ internal class PlaybackScenarioAsyncEffectsTest {
             coordinator.secure(
                 target = target,
                 outputs = outputs,
+                measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
                 selectedId = MutableStateFlow<String?>(null),
                 currentGeneration = { currentGeneration },
                 selectionSequence = { 0 },
@@ -150,6 +152,7 @@ internal class PlaybackScenarioAsyncEffectsTest {
             coordinator.secure(
                 target = target,
                 outputs = outputs,
+                measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
                 selectedId = MutableStateFlow<String?>(null),
                 currentGeneration = { target.generation },
                 selectionSequence = { 0 },
@@ -180,6 +183,7 @@ internal class PlaybackScenarioAsyncEffectsTest {
             coordinator.secure(
                 target = target,
                 outputs = MutableStateFlow(listOf(headset)),
+                measured = { id -> fixtureHeadsetMeasured(id, listOf(headset)) },
                 selectedId = selected,
                 currentGeneration = { target.generation },
                 selectionSequence = { 0 },
@@ -208,6 +212,7 @@ internal class PlaybackScenarioAsyncEffectsTest {
             coordinator.secure(
                 target = target,
                 outputs = outputs,
+                measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
                 selectedId = MutableStateFlow<String?>(null),
                 currentGeneration = { target.generation },
                 selectionSequence = { 0 },
@@ -220,6 +225,7 @@ internal class PlaybackScenarioAsyncEffectsTest {
             coordinator.secure(
                 target = target,
                 outputs = outputs,
+                measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
                 selectedId = MutableStateFlow<String?>(null),
                 currentGeneration = { target.generation },
                 selectionSequence = { 0 },

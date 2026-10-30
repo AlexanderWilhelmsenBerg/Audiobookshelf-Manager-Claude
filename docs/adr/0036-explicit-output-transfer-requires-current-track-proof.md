@@ -69,6 +69,13 @@ does not acquire a new physical identity.
 
 ## Verification and limits
 
+The [output adapter continuation](../architecture/playback-output-adapter-plan.md) retains this decision.
+Android output access is separated from intent/proof ownership. Healthy-route preservation uses fresh
+current-track observations; an eligible paused recovery can reach the existing silent probe promptly.
+Neither `ProbeReady` nor the asynchronous 400ms fallback observation replaces target proof or the final
+position check. The [acceptance record](../testing/output-adapter-continuity.md) separates software timing
+from the owner's under-one-second physical interruption target.
+
 Implementation tests must exercise actual router/controller/service paths, not a second playback model:
 Car-to-Headset-to-Car, paused choice, exact proof, old route during settling, mismatch/unknown/multiple,
 timeouts, rollback, nested/newer choices, command/book/profile/attachment supersession and repeated callbacks.
