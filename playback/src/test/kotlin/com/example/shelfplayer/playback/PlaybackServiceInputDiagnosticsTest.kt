@@ -41,10 +41,10 @@ class PlaybackServiceInputDiagnosticsTest {
                     intent,
                 )
             }
-            val key = lab.state.value.entries.single { "input-key" in it }
-            assertContains(key, "entry=SessionCallback")
-            assertContains(key, "caller=AndroidAuto")
-            assertContains(key, "association=Unproven")
+            val buttonRecord = lab.state.value.entries.single { "input-key" in it }
+            assertContains(buttonRecord, "entry=SessionCallback")
+            assertContains(buttonRecord, "caller=AndroidAuto")
+            assertContains(buttonRecord, "association=Unproven")
             assertEquals(before, fixture.currentLock())
             lab.stop()
             runCurrent()

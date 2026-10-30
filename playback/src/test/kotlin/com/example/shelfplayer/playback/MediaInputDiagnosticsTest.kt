@@ -54,13 +54,13 @@ class MediaInputDiagnosticsTest {
             MediaInputController(MediaInputController.Caller.BluetoothService, 0, 0, true),
             MediaInputEntry.SessionCallback,
         )
-        val key = fixture.rows.single { "input-key" in it }
-        assertContains(key, "keyInputId=-1")
-        assertContains(key, "keyInputSource=0")
-        assertContains(key, "deviceQuery=Missing")
-        assertContains(key, "caller=BluetoothService")
-        assertContains(key, "association=Unproven")
-        assertFalse("Headset" in key)
+        val buttonRecord = fixture.rows.single { "input-key" in it }
+        assertContains(buttonRecord, "keyInputId=-1")
+        assertContains(buttonRecord, "keyInputSource=0")
+        assertContains(buttonRecord, "deviceQuery=Missing")
+        assertContains(buttonRecord, "caller=BluetoothService")
+        assertContains(buttonRecord, "association=Unproven")
+        assertFalse("Headset" in buttonRecord)
 
         fixture.trace.transport(true, MediaInputController(MediaInputController.Caller.AndroidAuto))
         assertContains(fixture.rows.last(), "caller=AndroidAuto")
@@ -87,13 +87,13 @@ class MediaInputDiagnosticsTest {
             257,
         )
         fixture.trace.mediaKey(event, MediaInputController(), MediaInputEntry.ReceiverStart)
-        val key = fixture.rows.single { "input-key" in it }
-        assertContains(key, "deviceQuery=Resolved")
-        assertContains(key, "inputAlias=i1")
-        assertContains(key, "descriptorAlias=s1")
-        assertContains(key, "repeat=2")
-        assertContains(key, "longPress=true")
-        assertContains(key, "heldMillis=50")
+        val buttonRecord = fixture.rows.single { "input-key" in it }
+        assertContains(buttonRecord, "deviceQuery=Resolved")
+        assertContains(buttonRecord, "inputAlias=i1")
+        assertContains(buttonRecord, "descriptorAlias=s1")
+        assertContains(buttonRecord, "repeat=2")
+        assertContains(buttonRecord, "longPress=true")
+        assertContains(buttonRecord, "heldMillis=50")
         assertFalse("private-descriptor" in fixture.rows.joinToString())
         assertFalse("private-descriptor" in fixture.current.joinToString())
     }
