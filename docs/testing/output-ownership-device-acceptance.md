@@ -60,8 +60,8 @@ forced combined verification, exact CI and review still precede the APK; physica
 ## Candidate and setup
 
 The combined branch `codex/289-ownership-device-test-0c966ed6` contains playback source
-`9e929d456e27df7ed05d909d040825e8e5b0bccd` and separate auth #296 source
-`9379a828c504eb56b0122d876d3f2669beb2363a`, integrated locally at `46aad8af8e7d3e6fca1e1f045940460121f38afd`.
+`e2d35c37f54abfb2b36f9357d08000d38d2d3c2a` and separate auth #296 source
+`9379a828c504eb56b0122d876d3f2669beb2363a`, integrated locally at `cebdfdc3ecf4da70f0e427b3574511f8454e027f`.
 The already-identical Windows recorder-test compatibility change is not duplicated. No GitHub PR was
 merged, and main is unchanged. The exact final source/tree, forced local verification, normal CI,
 independent review and signed APK identity are maintained in
