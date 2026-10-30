@@ -48,6 +48,13 @@ No endpoint, schema, permission or newly tested server version is introduced. Th
 
 ## Server versions tested
 
+The 2026-10-30 opt-in input-capability diagnostic extension uses public Android InputManager and
+existing Media3/AudioTrack observations. It exports capture-local input aliases, software-controller
+metadata and scoped route evidence through the existing local JSON report. Audiobookshelf endpoints,
+response fixtures, account authorization, Room schemas and tested server versions are unchanged.
+[Platform research and device acceptance limits](architecture/playback-input-capability-research.md)
+remain separate from server compatibility and genuine #288 expired-token acceptance.
+
 The 2026-10-28 draft output-ownership command boundary (#300, ADR-0034) changes local Media3 activation
 ordering only. It shares existing output protection across loaded controller Play/Prepare, retry, accepted
 installation and car continuity. It adds no Audiobookshelf endpoint, response field, permission or Room

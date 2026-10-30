@@ -7,6 +7,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.playback.AudioOutput
@@ -15,6 +16,7 @@ import com.example.shelfplayer.core.testing.TestAppClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Test
@@ -35,6 +37,21 @@ import kotlin.test.assertTrue
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class PlaybackServiceMediaButtonReceiverTest {
+    @Test
+    fun `receiver start is captured before cold suppression and capture never changes the rejection`() {
+        val fixture = Fixture()
+        try {
+            fixture.lab.start()
+            assertNull(fixture.service.onGetSession(fixture.receiverInfo(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)))
+            val key = fixture.lab.state.value.entries.single { "input-key" in it }
+            assertTrue("entry=ReceiverStart" in key)
+            assertTrue("keyInputId=-1" in key)
+            assertTrue("association=Unproven" in key)
+        } finally {
+            fixture.close()
+        }
+    }
+
     @Test
     fun `cold virtual toggle rejects receiver start once and permits a toggle after service recreation`() {
         val gate = ColdStartToggleGate()
@@ -174,14 +191,16 @@ class PlaybackServiceMediaButtonReceiverTest {
         private val clock = TestAppClock()
         private val dispatcher = StandardTestDispatcher()
         private val player = ExoPlayer.Builder(context).build()
+        private val scope = CoroutineScope(SupervisorJob() + dispatcher)
         private val router = AudioOutputRouter(
             context,
             logger,
-            CoroutineScope(SupervisorJob() + dispatcher),
+            scope,
             dispatcher,
             volumeEffects = volumeEffectsForTest(dispatcher, clock),
         )
         val service = PlaybackService()
+        val lab = AudioRouteLab(context, EventLog(clock), clock, router, scope, dispatcher)
         val carConnections = CarConnections(clock)
         val session = MediaLibraryService.MediaLibrarySession.Builder(
             context,
@@ -197,6 +216,7 @@ class PlaybackServiceMediaButtonReceiverTest {
                 ).value =
                 listOf(AudioOutput(outputId, "test", DeviceKind.Bluetooth))
             service.audioOutputs = router
+            service.audioRouteLab = lab
             service.clock = clock
             service.carConnections = carConnections
             service.coldStartToggleGate = gate
@@ -225,8 +245,10 @@ class PlaybackServiceMediaButtonReceiverTest {
         }
 
         override fun close() {
+            lab.stop()
             session.release()
             player.release()
+            scope.cancel()
         }
 
         private fun Any.setField(name: String, value: Any?) {

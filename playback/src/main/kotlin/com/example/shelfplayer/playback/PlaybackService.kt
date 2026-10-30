@@ -497,6 +497,9 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun logControllerTransportRequest(requestedPlay: Boolean, mediaPlayer: ExoPlayer) {
         val requestingController = session?.controllerForCurrentRequest
+        if (audioRouteLab.state.value.recording) {
+            audioRouteLab.controllerTransport(requestedPlay, mediaInputController(requestingController))
+        }
         autoTraces.log(
             "MediaSession transport request observed",
             fields = buildList {
@@ -661,8 +664,18 @@ class PlaybackService : MediaLibraryService() {
         val extras = hints.getBundle(MediaLibraryService.CONNECTION_HINT_KEY_INTENT_EXTRAS) ?: return false
         val intent = Intent(Intent.ACTION_MEDIA_BUTTON).putExtras(extras)
         val keyEvent = mediaButtonKeyEvent(intent) ?: return false
+        if (audioRouteLab.state.value.recording) {
+            audioRouteLab.mediaButtonInput(
+                keyEvent,
+                mediaInputController(controllerInfo),
+                MediaInputEntry.ReceiverStart,
+            )
+        }
         return shouldConsumeColdStartToggle(keyEvent, controllerInfo.packageName)
     }
+
+    private fun mediaInputController(controller: MediaSession.ControllerInfo?): MediaInputController =
+        MediaInputController.capture(controller, Process.myUid(), CAR_PACKAGES)
 
     private fun isMediaButtonReceiver(controllerInfo: MediaSession.ControllerInfo): Boolean =
         controllerInfo.connectionHints.getString(MediaLibraryService.CONNECTION_HINT_KEY_CONTROLLER_INFO_TYPE) ==
@@ -2995,6 +3008,13 @@ class PlaybackService : MediaLibraryService() {
             intent: Intent,
         ): Boolean {
             val keyEvent = mediaButtonKeyEvent(intent)
+            if (audioRouteLab.state.value.recording) {
+                audioRouteLab.mediaButtonInput(
+                    keyEvent,
+                    mediaInputController(controllerInfo),
+                    MediaInputEntry.SessionCallback,
+                )
+            }
             val inputDevice = keyEvent?.device
             val inputEvidence = MediaButtonInputEvidence.classify(
                 deviceId = keyEvent?.deviceId,

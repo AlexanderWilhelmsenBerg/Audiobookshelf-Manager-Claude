@@ -72,7 +72,7 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
     ).single()
     private val headset = endpoint.output.copy(id = endpoint.id, isActive = true)
     val endpointId: String get() = endpoint.id
-    private val service = PlaybackService()
+    val service = PlaybackService()
     val commands: PlaybackCommands get() = service.playbackCommandEffects
     var rawPlayCalls = 0
         private set
@@ -210,10 +210,12 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
         service.applicationScope = scope.backgroundScope
         service.mainDispatcher = dispatcher
         service.audioOutputs = router
+        service.audioRouteLab =
+            AudioRouteLab(context, EventLog(clock), clock, router, scope.backgroundScope, dispatcher)
         service.volumeEffects = volumeEffects
         service.audioTrackRouteMonitor = AudioTrackRouteMonitor(
             context,
-            AudioRouteLab(context, EventLog(clock), clock, router, scope.backgroundScope, dispatcher),
+            service.audioRouteLab,
             registry,
         )
         service.setPlaybackField("activeProfileGeneration", { 0L })

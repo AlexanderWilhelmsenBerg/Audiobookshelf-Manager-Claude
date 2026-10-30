@@ -21,14 +21,23 @@ internal object AudioRouteLabEvidence {
         "Playback was asked to change playWhenReady" to "playback-intent",
         "The audio output was set" to "preferred-output-request",
         "The car output actions were recomputed" to "route-policy-updated",
+        "A car controller disconnected from the media session" to "car-controller-unbound",
+        "Android Auto Play selected the car audio route" to "car-route-intent",
+        "MediaSession controller transport batch completed" to "transport-batch",
+        "Muted output route proof completed" to "output-proof",
+        "Muted output position compensated" to "position-compensation",
+        "Muted output verification refused excessive post-seek clock movement" to "position-refusal",
     )
     private val safeFields = setOf(
         "keyCode", "keyAction", "keyInputId", "keyInputSource", "inputOrigin",
         "headsetNameMatches", "requested", "controllerKind", "reason", "phase",
         "status", "kind", "event", "source", "projection", "isPlaying", "playWhenReady",
         "routeKnown", "onHeadset", "onCar", "carBound", "routedTo", "honoured",
+        "generation", "selectionSequence", "commandGeneration", "confirmation", "destination", "advance",
+        "finalDeparture", "carStillConnected", "controllerIsCar",
+        "proofEpoch", "requestGeneration", "requestSelection",
     )
-    private const val MAX_SAFE_FIELDS = 14
+    private const val MAX_SAFE_FIELDS = 20
     private const val FUTURE_SKEW_SECONDS = 60L
 
     private val token = Regex("""\b([a-zA-Z][a-zA-Z0-9]*)=([a-zA-Z0-9_-]+)\b""")
