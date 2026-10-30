@@ -74,7 +74,8 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
                     return@withTimeoutOrNull null
                 }
 
-                val ready = if (applied && selectedId.value == target.outputId) {
+                val targetApplied = applied && selectedId.value == target.outputId
+                val ready = if (targetApplied) {
                     readiness(target.outputId, measured, canProbe)
                 } else {
                     null
@@ -83,7 +84,7 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
                     onEvent(ready)
                     return@withTimeoutOrNull target.outputId
                 }
-                reportUnsecured(applied, target.outputId, outputs.value, selectedId.value, onEvent)
+                reportUnsecured(targetApplied, outputs.value, onEvent)
                 // An inventory/route publication wakes recovery immediately. The retry bound is only
                 // a fallback for platforms that do not publish a change; elapsed time is never proof.
                 val snapshot = outputs.value to selectedId.value
@@ -116,14 +117,8 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
         else -> null
     }
 
-    private fun reportUnsecured(
-        applied: Boolean,
-        id: String,
-        outputs: List<AudioOutput>,
-        selected: String?,
-        onEvent: (Event) -> Unit,
-    ) {
-        if (applied && selected == id) {
+    private fun reportUnsecured(targetApplied: Boolean, outputs: List<AudioOutput>, onEvent: (Event) -> Unit) {
+        if (targetApplied) {
             onEvent(if (outputs.any(AudioOutput::isActive)) Event.RouteCompeting else Event.RouteUnknown)
         }
         onEvent(Event.PreferenceLost)
