@@ -26,6 +26,8 @@ internal object AudioRouteLabEvidence {
         "MediaSession controller transport batch completed" to "transport-batch",
         "Muted output route proof completed" to "output-proof",
         "Muted output position compensated" to "position-compensation",
+        "Muted output proof preparation completed" to "proof-prepared",
+        "A paused Car destination expired after projection disconnection" to "car-intent-retired",
         "Muted output verification refused excessive post-seek clock movement" to "position-refusal",
     )
     private val safeFields = setOf(
@@ -36,6 +38,7 @@ internal object AudioRouteLabEvidence {
         "generation", "selectionSequence", "commandGeneration", "confirmation", "destination", "advance",
         "finalDeparture", "carStillConnected", "controllerIsCar",
         "proofEpoch", "requestGeneration", "requestSelection",
+        "stage", "bufferedSeek",
     )
     private const val MAX_SAFE_FIELDS = 20
     private const val FUTURE_SKEW_SECONDS = 60L

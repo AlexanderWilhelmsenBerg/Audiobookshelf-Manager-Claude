@@ -404,6 +404,10 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   Shared position reads remain held during verification. At final validation a successful transfer permits
   at most 50ms of normal post-seek media-clock settling; larger or backward movement restores and pauses.
   Newer command/selection/book/profile/attachment wins; rollback requires fresh unique original-route proof.
+- A confirmed physical car-projection departure with no recoverable Car playback may retire only the exact
+  unlocked Car choice while PlayWhenReady is false. It leaves playback paused and sets no output-release
+  suppression; later intentional Play follows normal Automatic policy. Unknown projection, controller churn,
+  pending Play, accepted recovery, newer choices and retained explicit output locks are preserved.
 
 ### PLAY-003 Playback queue and tracks
 

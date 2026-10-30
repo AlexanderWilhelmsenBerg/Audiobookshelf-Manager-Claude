@@ -56,6 +56,8 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         fun onSettlingRefused(advance: Duration) = Unit
 
         fun onCompensated(advance: Duration) = Unit
+
+        fun onPrepared(probe: HeadsetRouteGuard.Probe, finalStage: Boolean, bufferedSeek: Boolean) = Unit
     }
 
     private var compensation: HeadsetRouteGuard.Probe? = null
@@ -266,25 +268,53 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
     private suspend fun completeCurrent(probe: HeadsetRouteGuard.Probe): MutedProbeCompletion {
         val held = probe.positionCheckpoint ?: return MutedProbeCompletion.Refused
         if (!probe.player.playWhenReady) return refusal(probe, held)
-        if (!prepareProof(probe, held)) return refusal(probe, held)
-        return awaitProof(probe, held)
+        val preparation = prepareProof(probe, held) ?: return refusal(probe, held)
+        source.onPrepared(probe, finalStage = false, preparation.bufferedSeek)
+        return awaitProof(probe, held, preparation)
     }
 
-    private suspend fun prepareProof(probe: HeadsetRouteGuard.Probe, held: MutedPositionCheckpoint): Boolean {
-        if (!restore(probe, held)) return false
-        if (probe.requiresPlaybackBarrier && !playbackBarrier(probe.player)) return false
-        if (!authorized(probe, held)) return false
-        probe.requiresPlaybackBarrier = false
-        return true
+    private data class ProofPreparation(val bufferedSeek: Boolean)
+
+    private suspend fun prepareProof(
+        probe: HeadsetRouteGuard.Probe,
+        held: MutedPositionCheckpoint,
+    ): ProofPreparation? {
+        if (!authorized(probe, held)) return null
+        val current = probe.player
+        val seekingFromReady = current.bookPosition() != held.position && current.playbackState == Player.STATE_READY
+        var bufferedSeek = false
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (seekingFromReady && playbackState == Player.STATE_BUFFERING && authorized(probe, held)) {
+                    bufferedSeek = true
+                }
+            }
+        }
+        current.addListener(listener)
+        try {
+            if (!restore(probe, held)) return null
+            bufferedSeek = bufferedSeek || (seekingFromReady && current.playbackState == Player.STATE_BUFFERING)
+            val acknowledged = !probe.requiresPlaybackBarrier || playbackBarrier(current)
+            if (!acknowledged || !authorized(probe, held)) return null
+            probe.requiresPlaybackBarrier = false
+            return ProofPreparation(bufferedSeek)
+        } finally {
+            current.removeListener(listener)
+        }
     }
 
     private suspend fun awaitProof(
         probe: HeadsetRouteGuard.Probe,
         held: MutedPositionCheckpoint,
+        preparation: ProofPreparation,
     ): MutedProbeCompletion = withTimeoutOrNull(1.seconds) {
         var proof = awaitPlayingProof(probe, held)
-        if (proof.waitedWhilePlaying && proof.completion.permitsAudio) {
-            if (!prepareProof(probe, held)) return@withTimeoutOrNull refusal(probe, held)
+        val lateBufferedProof = proof.completion.permitsAudio && preparation.bufferedSeek &&
+            probe.player.bookPosition() - held.position > MAX_SETTLING_ADVANCE
+        val needsFinalCorrection = proof.completion.permitsAudio && (proof.waitedWhilePlaying || lateBufferedProof)
+        if (needsFinalCorrection) {
+            val finalPreparation = prepareProof(probe, held) ?: return@withTimeoutOrNull refusal(probe, held)
+            source.onPrepared(probe, finalStage = true, finalPreparation.bufferedSeek)
             // This second stage cannot schedule another correction, even if its route remains unknown.
             proof = awaitPlayingProof(probe, held)
         }
