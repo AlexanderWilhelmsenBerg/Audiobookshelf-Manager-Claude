@@ -165,7 +165,7 @@ class MutedPositionEffectsTest {
     }
 
     @Test
-    fun `route proof arriving after a silent wait compensates the additional elapsed tail`() = runTest {
+    fun `route proof delayed after restoration refuses further unheard advancement`() = runTest {
         val fixture = Fixture(this)
         fixture.start()
         fixture.rawPosition = 25_000L
@@ -181,13 +181,11 @@ class MutedPositionEffectsTest {
         fixture.prove()
         runCurrent()
 
-        assertEquals(12_000L, fixture.rawPosition, "later successful proof cannot skip a second unheard interval")
-        assertEquals(0f, fixture.volume, "the second compensation needs its own post-seek playback barrier")
-        assertEquals(2, fixture.messages.size)
-        fixture.deliver(1)
-        runCurrent()
+        assertEquals(12_000L, fixture.rawPosition, "late proof cannot skip unheard media")
+        assertFalse(fixture.playWhenReady)
+        assertNull(fixture.activeProbe())
+        assertEquals(1, fixture.messages.size, "failure must not start another live verification seek")
         assertEquals(1f, fixture.volume)
-        assertEquals(12_000L, fixture.rawPosition)
     }
 
     @Test

@@ -27,9 +27,13 @@ Missing original endpoints wait on inventory publication; unresolved attempts ca
 before the bounded retry. None of those events or timers authorizes audible release.
 
 Actual target proof, the current transfer/probe claim and the existing held-position protocol still govern
-unmute. Final 0–50ms settling, the two-correction limit, wrong/unknown/multiple-route refusal, cancellation,
+unmute. Final 0–50ms settling, the single-restoration transaction, wrong/unknown/multiple-route refusal, cancellation,
 rollback, Media3 focus and progress/history/profile/sleep semantics remain in force. A replacement endpoint
 cannot inherit identity by name. Virtual keys remain unattributed.
+
+The [transaction redesign](../architecture/output-handoff-transaction.md) supersedes the earlier
+two-correction completion algorithm after APK2246 failed physical acceptance. Historical green software
+gates below do not verify this new source or prove distortion is fixed.
 
 ## Software evidence
 

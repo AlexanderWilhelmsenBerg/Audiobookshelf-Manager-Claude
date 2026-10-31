@@ -27,6 +27,8 @@ internal object AudioRouteLabEvidence {
         "Muted output route proof completed" to "output-proof",
         "Muted output position compensated" to "position-compensation",
         "Muted output proof preparation completed" to "proof-prepared",
+        "Output transfer stage" to "transfer-stage",
+        "Media3 playback parameters changed" to "playback-parameters",
         "A paused Car destination expired after projection disconnection" to "car-intent-retired",
         "Muted output verification refused excessive post-seek clock movement" to "position-refusal",
     )
@@ -38,7 +40,7 @@ internal object AudioRouteLabEvidence {
         "generation", "selectionSequence", "commandGeneration", "confirmation", "destination", "advance",
         "finalDeparture", "carStillConnected", "controllerIsCar",
         "proofEpoch", "requestGeneration", "requestSelection",
-        "stage", "bufferedSeek",
+        "stage", "bufferedSeek", "speedMilli", "pitchMilli",
     )
     private const val MAX_SAFE_FIELDS = 20
     private const val FUTURE_SKEW_SECONDS = 60L

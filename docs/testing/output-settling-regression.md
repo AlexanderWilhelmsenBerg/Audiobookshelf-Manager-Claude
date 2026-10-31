@@ -18,7 +18,7 @@ proxy kept Ready and its position exact after every seek, so it missed the feedb
 The pinned real Media3 service tests remain required for ordinary synchronous seek provenance and later
 genuine user seeks; delayed SEEK_ADJUSTMENT is not established as the observed cause.
 
-The correction follows ADR-0035: buffering does not trigger another seek, a truly playing unknown-route
+The historical 2242 correction followed ADR-0035: buffering does not trigger another seek, a truly playing unknown-route
 interval gets at most one extra compensation, and a final fresh target proof permits at most 50ms of
 normal media movement. Larger/backward movement restores and pauses. The bound is rechecked after
 success publication with the prior lock still available. Tests cover the inclusive boundary, a late second
@@ -49,3 +49,13 @@ Auto arrival, explicit Headset/Car transfer, pause/resume, repeated connect, gen
 position/history/progress, sleep, and foreground/background/cold entry. The diagnostic's initial real
 endpoint loss may still require a safe pause; this software correction does not promise audio through an
 absent route or automatically infer a headset from a virtual transport event.
+
+## Superseding transaction candidate
+
+The 2246 report reproduced distortion with only one recorded correction and three track attachments in
+the complete capture, so repeated compensation is not established as its native cause. The current
+[transaction design](../architecture/output-handoff-transaction.md) waits for the destination before one
+restoration, then proves the resulting output. It never spends a second live correction. Buffering/late
+proof outside 0–50ms pauses before failure restoration. Existing tests now enforce that stricter behavior.
+Bounded opt-in native timing plus Media3 speed/pitch evidence supports the next physical investigation;
+no new clock-health heuristic or physical headset-key attribution is introduced.

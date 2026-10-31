@@ -15,6 +15,7 @@ import androidx.media3.exoplayer.audio.AudioOutputProvider
 import androidx.media3.exoplayer.audio.AudioTrackAudioOutput
 import androidx.media3.exoplayer.audio.AudioTrackAudioOutputProvider
 import androidx.media3.exoplayer.audio.ForwardingAudioOutputProvider
+import com.example.shelfplayer.core.common.time.AppClock
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
@@ -69,6 +70,7 @@ internal object AudioTrackRouteTypes {
 internal class AudioTrackRouteMonitor @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val lab: AudioRouteLab,
+    private val clock: AppClock,
     private val endpointRegistry: LiveOutputEndpointRegistry = LiveOutputEndpointRegistry(),
 ) {
     @Volatile
@@ -76,6 +78,9 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     private var listener: AudioRouting.OnRoutingChangedListener? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val epoch = AudioTrackObserverEpoch()
+    private val timing = AudioTrackTimingCapture(mainHandler, { lab.state.value.recording }, lab::trackTiming) {
+        clock.elapsed().inWholeMilliseconds
+    }
     private var lastEvidence: String? = null
     private var lastPlaying = false
 
@@ -173,6 +178,9 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         val track = active ?: return
         val token = epoch.nextSnapshot()
         if (!lab.state.value.recording) return
+        timing.request(token, { epoch.isCurrent(token) && active === track }) {
+            AudioTrackTimingSample.read(track, token, clock.elapsed().inWholeNanoseconds)
+        }
         val result = runCatching { routeEvidence(track) }.getOrElse { "route-query-unavailable" }
         // A query can race with another track's release. Never publish it against the successor.
         if (!epoch.isCurrent(token) || active !== track) return
@@ -237,6 +245,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
 
     private fun forget() {
         val previous = active
+        timing.retire(epoch.nextSnapshot())
         val callback = listener
         active = null
         listener = null

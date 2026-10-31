@@ -15,6 +15,8 @@ internal class OutputHandoffEffects(private val source: Source) {
         val positions: PositionCheckpointEffects?
         fun player(): ExoPlayer?
         fun observation(): AudioTrackObservation?
+        fun endpointRoutes(): Set<String>?
+        fun stage(probe: HeadsetRouteGuard.Probe, stage: OutputTransferStage)
         fun targets(): OutputProofTargets
         fun selected(selection: OutputIntentOwner.Selection)
         fun releasedRouteId(): String?
@@ -167,6 +169,11 @@ internal class OutputHandoffEffects(private val source: Source) {
     }
 
     private fun startLoaded(prepared: OutputIntentOwner.PreparedTransfer, claim: Claim, forPlay: Boolean): Boolean {
+        val preserved = if (forPlay) null else preserveCurrentOutput(prepared, claim)
+        return preserved ?: startMuted(prepared, claim, forPlay)
+    }
+
+    private fun startMuted(prepared: OutputIntentOwner.PreparedTransfer, claim: Claim, forPlay: Boolean): Boolean {
         val verify = forPlay || claim.player.playWhenReady
         val accepted = source.guard.beginTransfer(prepared.request, claim.player) { active ->
             playbackMatches(claim) && source.owner.publishTransfer(prepared, OutputIntentOwner.TransferPhase.Waiting) &&
@@ -179,6 +186,51 @@ internal class OutputHandoffEffects(private val source: Source) {
         enqueuePreference(claim, verify)
         if (!verify) source.guard.cancelProbe(active)
         return true
+    }
+
+    /** New listener intent need not perturb an already measured output. No pending mute may be bypassed. */
+    private fun preserveCurrentOutput(prepared: OutputIntentOwner.PreparedTransfer, claim: Claim): Boolean? {
+        if (claim.request.bookGeneration == null || source.guard.preservablePlayer !== claim.player ||
+            !claim.player.isPlaying
+        ) {
+            return null
+        }
+        val measured = measureProof(claim.request)?.takeIf { it.permitsAudio } ?: return null
+        if (!playbackMatches(claim) || !source.preferences.isCurrent(claim.request.effectEpoch)) return false
+        return publishPreservation(prepared, claim, measured)
+    }
+
+    private fun publishPreservation(
+        prepared: OutputIntentOwner.PreparedTransfer,
+        claim: Claim,
+        measured: MutedProbeCompletion,
+    ): Boolean {
+        val previousLock = prepared.expected.lock
+        if (!source.owner.publishTransfer(prepared, OutputIntentOwner.TransferPhase.Verifying)) return false
+        source.selected(claim.request.selection)
+        if (!isCurrent(claim)) return false
+        if (measureProof(claim.request) != measured || !isCurrent(claim)) {
+            return refusePreservation(claim, previousLock)
+        }
+        val phase = if (measured == MutedProbeCompletion.Delegated) {
+            OutputIntentOwner.TransferPhase.Delegated
+        } else {
+            OutputIntentOwner.TransferPhase.Verified
+        }
+        val published = source.owner.transitionTransfer(claim.request, phase) && isCurrent(claim)
+        return if (published && measureProof(claim.request) == measured && isCurrent(claim)) {
+            true
+        } else {
+            refusePreservation(claim, previousLock)
+        }
+    }
+
+    private fun refusePreservation(claim: Claim, previousLock: OutputIntentOwner.Lock?): Boolean {
+        if (isCurrent(claim)) source.guard.pauseForSafety(claim.player)
+        if (isCurrent(claim)) {
+            source.owner.transitionTransfer(claim.request, OutputIntentOwner.TransferPhase.Failed, previousLock)
+        }
+        return false
     }
 
     private fun publishUnloaded(prepared: OutputIntentOwner.PreparedTransfer): Boolean {
@@ -232,13 +284,52 @@ internal class OutputHandoffEffects(private val source: Source) {
     }
 
     fun proof(probe: HeadsetRouteGuard.Probe): MutedProbeCompletion? {
-        val request = probe.transferRequest ?: return MutedProbeCompletion.Refused
+        if (!source.guard.isCurrentProbe(probe)) return MutedProbeCompletion.Superseded
+        val request = probe.transferRequest ?: return endpointProof(probe)
         if (!currentRequest(request)) return MutedProbeCompletion.Superseded
         return if (source.owner.state.value.transfer?.phase == OutputIntentOwner.TransferPhase.Verifying) {
             measureProof(request)
         } else {
             null
         }
+    }
+
+    suspend fun complete(probe: HeadsetRouteGuard.Probe, verified: Boolean): MutedProbeCompletion {
+        if (!verified) return refuseProbe(probe)
+        val positions = source.positions ?: return MutedProbeCompletion.Refused
+        return OutputTransferTransaction(probe, positions, ::proof, ::refuseProbe, source::stage).complete()
+    }
+
+    private fun endpointProof(probe: HeadsetRouteGuard.Probe): MutedProbeCompletion? {
+        val first = source.endpointRoutes()
+        val second = source.endpointRoutes()
+        if (!source.guard.isCurrentProbe(probe) || source.positions?.isAuthorized(probe) != true) {
+            return MutedProbeCompletion.Superseded
+        }
+        return when {
+            first == setOf(probe.endpointId) && second == first && probe.endpointId in source.targets().eligible ->
+                MutedProbeCompletion.Verified
+
+            !first.isNullOrEmpty() || !second.isNullOrEmpty() -> MutedProbeCompletion.Refused
+
+            else -> null
+        }
+    }
+
+    private fun refuseProbe(probe: HeadsetRouteGuard.Probe): MutedProbeCompletion {
+        val positions = source.positions ?: return MutedProbeCompletion.Refused
+        if (!source.guard.isCurrentProbe(probe) ||
+            !positions.isAuthorized(probe)
+        ) {
+            return MutedProbeCompletion.Superseded
+        }
+        rollback(probe)
+        if (!source.guard.isCurrentProbe(probe) || !positions.isAuthorized(probe) ||
+            !source.guard.pauseForSafety(probe.player)
+        ) {
+            return MutedProbeCompletion.Superseded
+        }
+        return if (positions.restoreCurrent(probe)) MutedProbeCompletion.Refused else MutedProbeCompletion.Superseded
     }
 
     private fun measureProof(request: OutputIntentOwner.TransferRequest): MutedProbeCompletion? {

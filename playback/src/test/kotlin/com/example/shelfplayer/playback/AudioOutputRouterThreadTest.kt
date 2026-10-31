@@ -475,6 +475,7 @@ class AudioOutputRouterThreadTest {
 
         // A subsequent unmeasured Play must also remain guarded.
         fixture.measuredRoutes { null }
+        fixture.player.play()
         fixture.safetyListener().onIsPlayingChanged(true)
         runCurrent()
         assertEquals(2, fixture.pauseThreads.size)
@@ -560,6 +561,7 @@ class AudioOutputRouterThreadTest {
         // Physical headset media keys typically appear as virtual/system input (-1). The route
         // guard must still be active when Media3 moves back into its playing state.
         val safety = requireNotNull(fixture.guardOwner().currentPlayerListener)
+        fixture.player.play()
         safety.onIsPlayingChanged(true)
         runCurrent()
         assertTrue(fixture.pauseThreads.size >= 2, "post-expiry Play must be paused on an unknown route")
@@ -665,6 +667,7 @@ private fun threadCheckedPlayer(
     preferredRequests: MutableList<Any?>,
 ): ExoPlayer {
     val owningThread = Thread.currentThread()
+    var playWhenReady = true
     return Proxy.newProxyInstance(
         ExoPlayer::class.java.classLoader,
         arrayOf(ExoPlayer::class.java),
@@ -675,15 +678,17 @@ private fun threadCheckedPlayer(
                 MediaItem.EMPTY
             }
 
+            "getPlaybackState" -> androidx.media3.common.Player.STATE_READY
+
             "getPlayWhenReady" -> {
                 check(Thread.currentThread() == owningThread) { "playWhenReady on the wrong Media3 thread" }
-                true
+                playWhenReady
             }
 
             "isPlaying" -> {
                 check(Thread.currentThread() == owningThread) { "ExoPlayer isPlaying on the wrong thread" }
                 reads.add(Thread.currentThread())
-                true
+                playWhenReady
             }
 
             "setPreferredAudioDevice" -> {
@@ -705,9 +710,16 @@ private fun threadCheckedPlayer(
                 null
             }
 
+            "play" -> {
+                check(Thread.currentThread() == owningThread)
+                playWhenReady = true
+                null
+            }
+
             "pause" -> {
                 check(Thread.currentThread() == owningThread) { "ExoPlayer pause on the wrong thread" }
                 pauses.add(Thread.currentThread())
+                playWhenReady = false
                 null
             }
 
@@ -888,8 +900,12 @@ class AudioOutputRouterQueuedSafetyTest {
         )
         runCurrent()
 
-        assertEquals(listOf(0f, 1f), fixture.volumeChanges, "the old silent probe must clean up its own volume")
+        assertEquals(listOf(0f), fixture.volumeChanges, "the new Car transaction keeps mute until its own proof")
         assertTrue(fixture.pauseThreads.isEmpty(), "stale timeout must not pause after explicit Car intent")
+        fixture.router.select(null)
+        runCurrent()
+        assertEquals(listOf(0f, 1f), fixture.volumeChanges, "explicit release cleans up the remaining claim")
+        assertEquals(1, fixture.pauseThreads.size, "Automatic release safely pauses an unproven pending transfer")
     }
 
     @Test

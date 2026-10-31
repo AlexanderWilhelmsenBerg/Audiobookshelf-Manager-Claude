@@ -23,7 +23,7 @@ import kotlin.test.assertTrue
 @Config(sdk = [34])
 class MutedPositionBufferRecoveryTest {
     @Test
-    fun `buffering after seek returns is retained when Ready precedes the barrier acknowledgement`() = runTest {
+    fun `delayed buffering and overshoot before barrier acknowledgement refuse without retry`() = runTest {
         val fixture = MutedPositionEffectsTest.Fixture(this)
         fixture.start()
         fixture.rawPosition = 25_000L
@@ -35,96 +35,76 @@ class MutedPositionBufferRecoveryTest {
         fixture.reportPlaybackState(Player.STATE_READY)
         fixture.deliver(0)
         runCurrent()
-        assertEquals(2, fixture.messages.size)
+        assertEquals(1, fixture.messages.size)
         assertEquals(12_000L, fixture.rawPosition)
-        fixture.rawPosition = 12_010L
-        fixture.deliver(1)
-        runCurrent()
-
         assertNull(fixture.activeProbe())
-        assertTrue(fixture.playWhenReady)
+        assertFalse(fixture.playWhenReady)
         assertEquals(1f, fixture.volume)
         assertEquals(baselineListeners, fixture.playbackListeners.size, "temporary observer must be removed")
     }
 
     @Test
-    fun `buffered Car to Headset transfer compensates delayed ready proof once in either callback order`() = runTest {
+    fun `buffered Car to Headset accepts only bounded settling in either callback order`() = runTest {
         for (readyBeforeBarrier in listOf(false, true)) {
-            val fixture = bufferedTransfer()
-            firstReady(fixture, readyBeforeBarrier)
-            assertEquals(2, fixture.messages.size, "late ready proof needs the one remaining correction")
-            assertEquals(12_000L, fixture.rawPosition)
-            assertEquals(0f, fixture.volume)
-            assertTrue(fixture.playWhenReady)
-
-            fixture.deliver(1)
-            runCurrent()
-            fixture.rawPosition = 12_020L
-            fixture.playbackState = Player.STATE_READY
-            fixture.report(AudioTrackPath.Endpoint(fixture.outputId))
-            runCurrent()
-
-            assertNull(fixture.activeProbe())
-            assertEquals(
-                OutputIntentOwner.TransferPhase.Verified,
-                fixture.router.outputIntentOwner.state.value.transfer?.phase,
-            )
-            assertEquals(12_020L, fixture.rawPosition)
-            assertEquals(1f, fixture.volume)
-            assertTrue(fixture.playWhenReady)
-            assertEquals(0, fixture.plays)
-            assertEquals(2, fixture.messages.size)
+            for (advance in listOf(20L, 50L, 116L)) {
+                val fixture = bufferedTransfer()
+                firstReady(fixture, readyBeforeBarrier, advance)
+                assertEquals(1, fixture.messages.size, "there is only one correction and barrier")
+                assertNull(fixture.activeProbe())
+                assertEquals(advance <= 50L, fixture.playWhenReady)
+                assertEquals(if (advance <= 50L) 12_000L + advance else 12_000L, fixture.rawPosition)
+                assertEquals(
+                    if (advance <=
+                        50L
+                    ) {
+                        OutputIntentOwner.TransferPhase.Verified
+                    } else {
+                        OutputIntentOwner.TransferPhase.Failed
+                    },
+                    fixture.router.outputIntentOwner.state.value.transfer?.phase,
+                )
+                assertEquals(1f, fixture.volume)
+                assertEquals(0, fixture.plays)
+            }
         }
     }
 
     @Test
-    fun `a second buffered overshoot or backward movement still restores and pauses without another barrier`() =
-        runTest {
-            for (advance in listOf(51L, -1L)) {
-                val fixture = bufferedTransfer()
-                firstReady(fixture, readyBeforeBarrier = false)
-                assertEquals(2, fixture.messages.size)
-                fixture.deliver(1)
-                runCurrent()
-                fixture.rawPosition = 12_000L + advance
-                fixture.playbackState = Player.STATE_READY
-                fixture.report(AudioTrackPath.Endpoint(fixture.outputId))
-                runCurrent()
-
-                assertNull(fixture.activeProbe())
-                assertFalse(fixture.playWhenReady)
-                assertEquals(12_000L, fixture.rawPosition)
-                assertEquals(
-                    OutputIntentOwner.TransferPhase.Failed,
-                    fixture.router.outputIntentOwner.state.value.transfer?.phase,
-                )
-                assertEquals(2, fixture.messages.size, "buffering cannot restart the two-stage protocol")
-                assertEquals(0, fixture.plays)
-            }
+    fun `buffered overshoot and backward movement restore while paused without another barrier`() = runTest {
+        for (advance in listOf(51L, -1L)) {
+            val fixture = bufferedTransfer()
+            firstReady(fixture, readyBeforeBarrier = false, advance = advance)
+            assertNull(fixture.activeProbe())
+            assertFalse(fixture.playWhenReady)
+            assertEquals(12_000L, fixture.rawPosition)
+            assertEquals(
+                OutputIntentOwner.TransferPhase.Failed,
+                fixture.router.outputIntentOwner.state.value.transfer?.phase,
+            )
+            assertEquals(1, fixture.messages.size)
+            assertEquals(0, fixture.plays)
         }
+    }
 
     @Test
-    fun `Pause during buffered second correction cancels its late acknowledgement`() = runTest {
+    fun `Pause during buffered correction cancels its late acknowledgement`() = runTest {
         val fixture = bufferedTransfer()
-        firstReady(fixture, readyBeforeBarrier = false)
-        assertEquals(2, fixture.messages.size)
+        assertEquals(1, fixture.messages.size)
         val finished = assertNotNull(fixture.effects.before(PlaybackMovement.Pause))
         fixture.command++
         fixture.media.pause()
         finished()
         runCurrent()
-        assertTrue(fixture.messages[1].isCanceled)
-
+        assertTrue(fixture.messages[0].isCanceled)
         fixture.rawPosition = 12_010L
         fixture.playbackState = Player.STATE_READY
-        fixture.deliver(1)
+        fixture.deliver(0)
         fixture.report(AudioTrackPath.Endpoint(fixture.outputId))
         runCurrent()
-
         assertNull(fixture.activeProbe())
         assertFalse(fixture.playWhenReady)
         assertEquals(0, fixture.plays)
-        assertEquals(2, fixture.messages.size)
+        assertEquals(1, fixture.messages.size)
     }
 
     private fun TestScope.bufferedTransfer(): MutedPositionEffectsTest.Fixture {
@@ -149,12 +129,16 @@ class MutedPositionBufferRecoveryTest {
         return fixture
     }
 
-    private fun TestScope.firstReady(fixture: MutedPositionEffectsTest.Fixture, readyBeforeBarrier: Boolean) {
+    private fun TestScope.firstReady(
+        fixture: MutedPositionEffectsTest.Fixture,
+        readyBeforeBarrier: Boolean,
+        advance: Long,
+    ) {
         if (!readyBeforeBarrier) {
             fixture.deliver(0)
             runCurrent()
         }
-        fixture.rawPosition = 12_116L
+        fixture.rawPosition = 12_000L + advance
         fixture.playbackState = Player.STATE_READY
         fixture.report(AudioTrackPath.Endpoint(fixture.outputId))
         if (readyBeforeBarrier) fixture.deliver(0)

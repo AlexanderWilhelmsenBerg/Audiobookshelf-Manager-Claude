@@ -154,7 +154,7 @@ class AudioRouteLabRecorderTest {
                 volumeEffects = volumeEffectsForTest(dispatcher),
             )
         val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
-        val monitor = AudioTrackRouteMonitor(context, lab)
+        val monitor = AudioTrackRouteMonitor(context, lab, clock)
 
         // Passive route verification is always installed, but recording is opt-in.
         val provider = requireNotNull(monitor.providerForPlayer())
@@ -193,7 +193,7 @@ class AudioRouteLabRecorderTest {
                 volumeEffects = volumeEffectsForTest(dispatcher),
             )
         val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
-        val monitor = AudioTrackRouteMonitor(context, lab)
+        val monitor = AudioTrackRouteMonitor(context, lab, clock)
 
         // The in-memory safety observer is present, even though diagnostic capture is off.
         val firstProvider = requireNotNull(monitor.providerForPlayer())

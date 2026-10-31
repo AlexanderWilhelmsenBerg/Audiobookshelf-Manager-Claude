@@ -120,7 +120,10 @@ class CarContinuityResumeTransactionTest {
 
         assertTrue(measuredDuringInvalidation, "the stale-probe route must be measured before intent changes")
         assertFalse(fixture.current.operations.contains("pause"), "the superseded callback must not pause")
-        assertEquals(1f, fixture.current.volume, "the newer explicit choice owns final probe cleanup")
+        assertEquals(0f, fixture.current.volume, "the newer Car choice still needs its own output proof")
+        fixture.router.select(null)
+        runCurrent()
+        assertEquals(1f, fixture.current.volume, "explicit release retires the remaining mute claim")
     }
 
     @Test
@@ -418,6 +421,8 @@ class CarContinuityResumeTransactionTest {
             check(Thread.currentThread() == thread) { "Media3 call off its application dispatcher" }
             when (method.name) {
                 "addListener", "removeListener" -> null
+
+                "getPlaybackState" -> androidx.media3.common.Player.STATE_READY
 
                 "getPlayWhenReady" -> playWhenReady
 

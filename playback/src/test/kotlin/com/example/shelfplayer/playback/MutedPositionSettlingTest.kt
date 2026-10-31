@@ -149,37 +149,31 @@ class MutedPositionSettlingTest {
     }
 
     @Test
-    fun `late route proof compensates its wait once and then tolerates the running clock`() = runTest {
+    fun `late initial destination proof restores its whole wait once`() = runTest {
         val fixture = MutedPositionEffectsTest.Fixture(this)
         fixture.start()
-        fixture.rawPosition = 25_000L
-        fixture.prove()
-        runCurrent()
         fixture.routes = null
-        fixture.deliver(0)
-        runCurrent()
-        fixture.rawPosition = 20_000L
+        fixture.rawPosition = 25_000L
         repeat(5) { fixture.prove() }
         runCurrent()
-        assertEquals(1, fixture.messages.size, "unknown callbacks must not repeatedly compensate")
+        assertTrue(fixture.messages.isEmpty(), "the old output is not sought during discovery")
         fixture.routes = setOf(fixture.outputId)
         fixture.prove()
         runCurrent()
-        assertEquals(12_000L, fixture.rawPosition, "the unknown-route interval remains unheard")
-        assertEquals(2, fixture.messages.size)
-
+        assertEquals(12_000L, fixture.rawPosition)
+        assertEquals(1, fixture.messages.size)
         fixture.rawPosition = 12_040L
-        fixture.deliver(1)
+        fixture.deliver(0)
         runCurrent()
-
         assertNull(fixture.activeProbe())
+        assertTrue(fixture.playWhenReady)
         assertEquals(1f, fixture.volume)
-        assertEquals(2, fixture.messages.size, "settling must not start a third seek")
+        assertEquals(1, fixture.messages.size)
         assertEquals(0, fixture.plays)
     }
 
     @Test
-    fun `a second long unknown interval refuses without a third seek barrier`() = runTest {
+    fun `long unknown interval after restoration refuses without a second seek barrier`() = runTest {
         val fixture = MutedPositionEffectsTest.Fixture(this)
         fixture.start()
         fixture.rawPosition = 25_000L
@@ -189,39 +183,27 @@ class MutedPositionSettlingTest {
         fixture.deliver(0)
         runCurrent()
         fixture.rawPosition = 20_000L
-        fixture.routes = setOf(fixture.outputId)
-        fixture.prove()
-        runCurrent()
-        fixture.routes = null
-        fixture.deliver(1)
-        runCurrent()
-        fixture.rawPosition = 20_000L
         repeat(5) { fixture.prove() }
         runCurrent()
         fixture.routes = setOf(fixture.outputId)
         fixture.prove()
         runCurrent()
-
         assertNull(fixture.activeProbe())
         assertFalse(fixture.playWhenReady)
         assertEquals(12_000L, fixture.rawPosition)
-        assertEquals(2, fixture.messages.size)
+        assertEquals(1, fixture.messages.size)
+        repeat(5) { fixture.prove() }
+        runCurrent()
+        assertEquals(1, fixture.messages.size)
         assertEquals(1f, fixture.volume)
         assertEquals(0, fixture.plays)
     }
 
     @Test
-    fun `listener Pause cancels the second barrier and its late delivery cannot restart audio`() = runTest {
+    fun `listener Pause cancels the only barrier and its late delivery cannot restart audio`() = runTest {
         val fixture = MutedPositionEffectsTest.Fixture(this)
         fixture.start()
         fixture.rawPosition = 25_000L
-        fixture.prove()
-        runCurrent()
-        fixture.routes = null
-        fixture.deliver(0)
-        runCurrent()
-        fixture.rawPosition = 20_000L
-        fixture.routes = setOf(fixture.outputId)
         fixture.prove()
         runCurrent()
         val finished = assertNotNull(fixture.effects.before(PlaybackMovement.Pause))
@@ -229,15 +211,13 @@ class MutedPositionSettlingTest {
         fixture.media.pause()
         finished()
         runCurrent()
-        assertTrue(fixture.messages[1].isCanceled)
-
-        fixture.deliver(1)
+        assertTrue(fixture.messages[0].isCanceled)
+        fixture.deliver(0)
         runCurrent()
-
         assertNull(fixture.activeProbe())
         assertFalse(fixture.playWhenReady)
         assertEquals(12_000L, fixture.rawPosition)
-        assertEquals(2, fixture.messages.size)
+        assertEquals(1, fixture.messages.size)
         assertEquals(1f, fixture.volume)
         assertEquals(0, fixture.plays)
     }
