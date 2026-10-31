@@ -39,6 +39,31 @@ Capability provenance and pending physical checks are in
 [`../architecture/playback-output-capabilities.md`](../architecture/playback-output-capabilities.md).
 The rest of this ledger remains the baseline scenario inventory.
 
+The #300 command-boundary continuation adds actual-service regressions for fresh-start controller Play,
+retained-intent controller Prepare and deferred accepted installation on a denied output. Continuity's
+synchronous raw-Play callback can issue a newer forwarding Stop without resurrecting the old awaited target;
+the test observes Stop's idle state and controller generation, because Media3 may retain PlayWhenReady.
+Post-connect tests cover Arm with inherited Play intent and same-item installation without an assumed item
+generation increment. These supplement S08/S12/S13/S15/S18/S19; their physical acceptance columns are unchanged.
+
+The subsequent position candidate supplements S08/S12/S13/S15/S18/S20. `MutedPositionEffectsTest` controls
+Media3 PlayerMessage delivery around the production position component to test compensation, fresh proof,
+wrong/unknown/multiple sinks, repeated callbacks, timeout cleanup, newer Play and a genuine seek during a
+suspended barrier. `PlaybackServiceCommandContinuityTest` uses a real ExoPlayer and the service's actual
+seek callback to exclude compensation persistence while preserving nested and later user seeks. A newer seek
+inside the compensation callback keeps its own position/write and refuses the superseded outer Pause. It also holds zero
+and nonzero journal points, including a reentrant mute-listener read, and exercises real forwarded Pause/Stop.
+`SessionSyncCoordinatorTest` queues an old pause behind a new session's mutex-held durable open; the old
+command must not snapshot or upload the successor. `AutoRewindOwnershipTest` retains source profile and
+event time through a replacement book before asynchronous history persistence. These remain software
+assertions; the physical acceptance columns are unchanged.
+
+Current-item activation regressions additionally observe the raw singular/plural queue overloads selected by
+pinned Media3. Guarded Set/Replace/Remove of the current item and first-item insertion must reach that mutation
+with PlayWhenReady cleared even without an active muted probe. Future-only edits and unguarded replacement
+retain normal transport. A synchronous newer seek during the safety Pause refuses the older raw setter and
+keeps the original item at the newer position. These supplement S12/S13/S15 without claiming physical output.
+
 <!-- Updated against merged GitHub main acce406c8ffe and scenario PR #290; 2026-10-21. -->
 
 This ledger connects the 22 product scenarios to **executable production-policy tests**, existing
@@ -253,3 +278,30 @@ behavior, and audible outcomes remain pending under the separate device acceptan
 does not implement #277's explicit verified destination transfer/rollback. Physical headset-key attribution
 remains unsupported when Android supplies only a virtual key. Use the
 [device acceptance guide](output-ownership-device-acceptance.md) for audible routing and lifecycle results.
+
+## #277 verified-transfer software checkpoint
+
+The current handoff candidate reserves mute and held position before publishing a destination or issuing
+its preferred-device request. `OutputIntentOwner` retains the prior lock until current target-specific proof;
+`OutputHandoffEffects` orchestrates the existing owner, guard and preference dispatcher without another
+transaction counter or executor. Endpoint confirmation and Auto projection delegation remain distinct.
+
+`OutputHandoffEffectsTest` drives the actual router, guard, position effects and controlled Media3
+PlayerMessage delivery through Car/Headset/Car, paused choice, old route, exact target, speaker mismatch,
+unknown/multiple paths, rollback, repeated callbacks, newer choice/book and success-publication reentrancy.
+Separate valid failing regressions establish late silent-tail compensation, Automatic retirement losing
+newer intent, direct non-controller Pause losing held progress, and policy reassertion retiring explicit
+proof or overriding Car intent. Additional regressions catch path loss and in-place seek/lock loss during
+synchronous success publication. API26/32 cases use the production command boundary with controlled
+positive projection-path evidence, absent projection and unknown paths; they do not certify OEM capability.
+
+The full strict repository gate passes 2,748 tests /322 suites, including 932 playback tests, with no
+failures, errors or skips. Initial structural findings were corrected with cohesive proof/mode splits;
+SDK-specific fixture setup is checked without suppressing rules or skipping tests. Player doubles retain
+dispatcher checks. A real service test checks successor Car mute ownership and eventual safe timeout
+cleanup. Removing the queued policy epoch guard reproduces the intended stale-pause failure; exact
+source bytes were restored. Committed source and normal exact-head CI are recorded in #300 and the checkpoint.
+
+S01–S22 physical and inconclusive results remain unchanged. API36 multiple-sink classification has direct
+software coverage; this Robolectric runtime cannot execute the API36 platform adapter. The device tier,
+actual audible routing, startup deadlines and real-token recovery remain pending.

@@ -15,6 +15,7 @@ import androidx.media3.exoplayer.audio.AudioOutputProvider
 import androidx.media3.exoplayer.audio.AudioTrackAudioOutput
 import androidx.media3.exoplayer.audio.AudioTrackAudioOutputProvider
 import androidx.media3.exoplayer.audio.ForwardingAudioOutputProvider
+import com.example.shelfplayer.core.common.time.AppClock
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
@@ -69,6 +70,7 @@ internal object AudioTrackRouteTypes {
 internal class AudioTrackRouteMonitor @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val lab: AudioRouteLab,
+    private val clock: AppClock,
     private val endpointRegistry: LiveOutputEndpointRegistry = LiveOutputEndpointRegistry(),
 ) {
     @Volatile
@@ -76,14 +78,22 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     private var listener: AudioRouting.OnRoutingChangedListener? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val epoch = AudioTrackObserverEpoch()
+    private val timing = AudioTrackTimingCapture(mainHandler, { lab.state.value.recording }, lab::trackTiming) {
+        clock.elapsed().inWholeMilliseconds
+    }
     private var lastEvidence: String? = null
     private var lastPlaying = false
 
     /** Used only in memory by the route safety guard. Never exported without diagnostic opt-in. */
     var onRouteChanged: (() -> Unit)? = null
 
-    /** This AudioTrack's physical sinks, or null if there is no measurable playing track. */
-    fun currentRouteIds(): Set<String>? {
+    /** Mapped sinks only; an unregistered path is never turned into an endpoint identity. */
+    fun currentRouteIds(): Set<String>? = currentRouteObservation()?.path?.let { path ->
+        if (path is AudioTrackPath.Endpoint) setOf(path.id) else emptySet()
+    }
+
+    /** A fresh, type-only observation authenticated by the existing current-track observer epoch. */
+    fun currentRouteObservation(): AudioTrackObservation? {
         val token = epoch.nextSnapshot()
         val track = active ?: return null
         val measured = runCatching {
@@ -95,18 +105,27 @@ internal class AudioTrackRouteMonitor @Inject constructor(
             } else {
                 listOfNotNull(track.routedDevice)
             }
-            // Multiple physical sinks cannot be collapsed into a single name-based identity.
-            if (routed.size != 1) {
-                emptySet()
-            } else {
-                val route = routed.single()
-                val matched = endpointRegistry.find(route.id, route.type, route.productName?.toString())
-                if (matched == null) emptySet() else setOf(matched.id)
-            }
-        }.getOrNull()
+            observedPath(routed)
+        }.getOrNull() ?: return null
         // Media3 may replace/release the output while the platform route query is in progress.
         // Even an identical endpoint cannot authenticate the successor's playing AudioTrack.
-        return measured.takeIf { epoch.isCurrent(token) && active === track }
+        return AudioTrackObservation(token, measured).takeIf { isCurrent(track, token) }
+    }
+
+    private fun isCurrent(track: AudioTrack, token: Long): Boolean = epoch.isCurrent(token) && active === track
+
+    private fun observedPath(routes: List<AudioDeviceInfo>): AudioTrackPath = when {
+        routes.isEmpty() -> AudioTrackPath.Unresolved
+
+        routes.size > 1 -> AudioTrackPath.Multiple
+
+        routes.single().type == AudioDeviceInfo.TYPE_REMOTE_SUBMIX -> AudioTrackPath.RemoteSubmix
+
+        else -> {
+            val route = routes.single()
+            val matched = endpointRegistry.find(route)
+            matched?.let { AudioTrackPath.Endpoint(it.id) } ?: AudioTrackPath.Unresolved
+        }
     }
 
     fun providerForPlayer(): AudioOutputProvider? {
@@ -161,9 +180,12 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         val track = active ?: return
         val token = epoch.nextSnapshot()
         if (!lab.state.value.recording) return
+        timing.request(token, { isCurrent(track, token) }) {
+            AudioTrackTimingSample.read(track, token, clock.elapsed().inWholeNanoseconds)
+        }
         val result = runCatching { routeEvidence(track) }.getOrElse { "route-query-unavailable" }
         // A query can race with another track's release. Never publish it against the successor.
-        if (!epoch.isCurrent(token) || active !== track) return
+        if (!isCurrent(track, token)) return
         val playing = result == "playing-route-unknown" || result.startsWith("playing-to=")
         if (playing && !lastPlaying) lab.trackLifecycle("audio-track-playing")
         lastPlaying = playing
@@ -206,7 +228,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         val token = epoch.next()
         active = track
         val callback = AudioRouting.OnRoutingChangedListener {
-            if (epoch.isCurrent(token) && active === track) {
+            if (isCurrent(track, token)) {
                 if (lab.state.value.recording) {
                     lab.trackLifecycle("audio-track-route-changed")
                     sample()
@@ -225,6 +247,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
 
     private fun forget() {
         val previous = active
+        timing.retire(epoch.nextSnapshot())
         val callback = listener
         active = null
         listener = null

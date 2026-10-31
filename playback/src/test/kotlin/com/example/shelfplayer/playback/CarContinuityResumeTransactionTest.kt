@@ -120,7 +120,10 @@ class CarContinuityResumeTransactionTest {
 
         assertTrue(measuredDuringInvalidation, "the stale-probe route must be measured before intent changes")
         assertFalse(fixture.current.operations.contains("pause"), "the superseded callback must not pause")
-        assertEquals(1f, fixture.current.volume, "the newer explicit choice owns final probe cleanup")
+        assertEquals(0f, fixture.current.volume, "the newer Car choice still needs its own output proof")
+        fixture.router.select(null)
+        runCurrent()
+        assertEquals(1f, fixture.current.volume, "explicit release retires the remaining mute claim")
     }
 
     @Test
@@ -294,8 +297,14 @@ class CarContinuityResumeTransactionTest {
         assertEquals(0, fixture.timerResumes)
     }
 
-    private class Fixture(scope: TestScope, available: Boolean = true, immediate: Boolean = false) {
-        private val dispatcher = StandardTestDispatcher(scope.testScheduler)
+    internal class Fixture(scope: TestScope, available: Boolean = true, immediate: Boolean = false) {
+        private val dispatcher = if (immediate) {
+            UnconfinedTestDispatcher(
+                scope.testScheduler,
+            )
+        } else {
+            StandardTestDispatcher(scope.testScheduler)
+        }
         val volumeEffects = volumeEffectsForTest(dispatcher)
         private val registry = LiveOutputEndpointRegistry()
         private val device = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP).build()
@@ -340,6 +349,7 @@ class CarContinuityResumeTransactionTest {
         val effects: CarContinuityResumeEffects
 
         init {
+            router.positions.bind(routingOnlyPositionEffects())
             volumeEffects.attach(current.player)
             router.setField("player", current.player)
             router.setField("live", if (available) mapOf(headset.id to device) else emptyMap())
@@ -352,7 +362,16 @@ class CarContinuityResumeTransactionTest {
             target = requireNotNull(recovery.carArrival(11.seconds, owner.currentGeneration, 0).target)
             effects = CarContinuityResumeEffects(
                 recovery, router, owner, { _, _ -> }, { current.player }, { 0 }, { emptyList() },
-                onServiceResumeIntent = { timerResumes++ },
+                resumePlayer = { current, authorized, beforeRawPlay ->
+                    if (!authorized()) {
+                        false
+                    } else {
+                        timerResumes++
+                        beforeRawPlay()
+                        current.play()
+                        true
+                    }
+                },
                 scope = workScope,
                 synchronizeOutputIntent = { synchronizeIntent() },
                 onOutputsChanged = {},
@@ -385,7 +404,7 @@ class CarContinuityResumeTransactionTest {
         )
     }
 
-    private class RecordingPlayer {
+    internal class RecordingPlayer {
         var playing = false
         var playWhenReady = false
         var volume = 1f
@@ -403,9 +422,13 @@ class CarContinuityResumeTransactionTest {
             when (method.name) {
                 "addListener", "removeListener" -> null
 
+                "getPlaybackState" -> androidx.media3.common.Player.STATE_READY
+
                 "getPlayWhenReady" -> playWhenReady
 
                 "getMediaItemCount" -> 1
+
+                "getCurrentMediaItem" -> androidx.media3.common.MediaItem.EMPTY
 
                 "isPlaying" -> playing
 
@@ -478,7 +501,8 @@ class CarContinuityResumeTransactionTest {
                 if (value == null) owner.release() else owner.protect(value as String)
                 return
             }
-            AudioOutputRouter::class.java.getDeclaredField(name).apply { isAccessible = true }.set(this, value)
+            val target: Any = if (name == "live") localOutputs else this
+            target.javaClass.getDeclaredField(name).apply { isAccessible = true }.set(target, value)
         }
     }
 }

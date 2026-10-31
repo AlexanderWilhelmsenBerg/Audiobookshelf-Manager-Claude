@@ -75,16 +75,11 @@ internal class RouteHeardOwnership(internal val intentOwner: OutputIntentOwner) 
      * and temporarily refuses the just-released route, so phone and Android Auto selection paths cannot drift.
      */
     fun onExplicitSelection(
-        outputId: String?,
+        selection: OutputIntentOwner.Selection,
         outputs: List<AudioOutput>,
-        isPlaying: Boolean,
-        selectionSequence: Long? = null,
-        destination: OutputIntentOwner.Destination? = null,
+        isAudible: Boolean,
     ): Boolean {
-        val selection = intentOwner.state.value.selection ?: return false
-        val sameSelection = selection.sequence == selectionSequence && selection.outputId == outputId
-        val sameDestination = destination == null || selection.destination == destination
-        if (!sameSelection || !sameDestination || selection.sequence <= lastConsumedSelectionSequence) {
+        if (intentOwner.state.value.selection != selection || selection.sequence <= lastConsumedSelectionSequence) {
             return false
         }
         lastConsumedSelectionSequence = selection.sequence
@@ -92,16 +87,16 @@ internal class RouteHeardOwnership(internal val intentOwner: OutputIntentOwner) 
         val generation = activeGeneration
         val previous = heardRoute?.takeIf { it.generation == generation }
 
-        if (outputId == null) {
+        if (selection.outputId == null) {
             heardRoute = null
-            if (isPlaying) observeRouteWhilePlaying(outputs)
+            if (isAudible) observeRouteWhilePlaying(outputs)
             return true
         }
 
-        val chosen = outputs.firstOrNull { it.id == outputId }
-        heardRoute = previous?.takeIf { it.outputId == outputId && chosen != null }
+        val chosen = outputs.firstOrNull { it.id == selection.outputId }
+        heardRoute = previous?.takeIf { it.outputId == selection.outputId && chosen != null }
 
-        if (isPlaying && generation != null && chosen != null) {
+        if (isAudible && generation != null && chosen != null) {
             heardRoute = chosen.asHeard(generation, RouteHeardEvidence.ListenerSelectionWhilePlaying)
         }
         return true

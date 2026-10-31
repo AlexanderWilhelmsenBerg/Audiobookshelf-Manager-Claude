@@ -55,8 +55,8 @@ internal class CarContinuityResumeEffectsTest {
             registry,
             volumeEffects = volumeEffectsForTest(StandardTestDispatcher(testScheduler)),
         )
-        AudioOutputRouter::class.java.getDeclaredField("live").apply { isAccessible = true }
-            .set(router, mapOf(endpoint.id to device))
+        AndroidLocalOutputAdapter::class.java.getDeclaredField("live").apply { isAccessible = true }
+            .set(router.localOutputs, mapOf(endpoint.id to device))
         AudioOutputRouter::class.java.getDeclaredField("currentTrackRoutes").apply { isAccessible = true }
             .set(router, { setOf(endpoint.id) })
         val owner = RouteHeardOwnership(router.outputIntentOwner).apply { onBookChanged(true) }
@@ -71,16 +71,14 @@ internal class CarContinuityResumeEffectsTest {
             currentPlayer = { player },
             selectionSequence = { requireNotNull(router.explicitSelection.value).sequence },
             snapshot = { emptyList() },
-            onServiceResumeIntent = { error("Rebind must not create Play intent") },
+            resumePlayer = { _, _, _ -> error("Rebind must not create Play intent") },
             scope = backgroundScope,
             synchronizeOutputIntent = {
                 val selection = requireNotNull(router.explicitSelection.value)
                 owner.onExplicitSelection(
-                    selection.outputId,
+                    selection,
                     router.outputs.value,
-                    true,
-                    selection.sequence,
-                    selection.destination,
+                    isAudible = true,
                 )
             },
         )
@@ -119,7 +117,7 @@ internal class CarContinuityResumeEffectsTest {
             outputs = AudioOutputRouter(
                 context = RuntimeEnvironment.getApplication(),
                 logger = logger,
-                applicationScope = this,
+                applicationScope = backgroundScope,
                 mainDispatcher = StandardTestDispatcher(testScheduler),
                 volumeEffects = volumeEffectsForTest(StandardTestDispatcher(testScheduler)),
             ),
@@ -128,7 +126,7 @@ internal class CarContinuityResumeEffectsTest {
             currentPlayer = { player },
             selectionSequence = { 0 },
             snapshot = { emptyList() },
-            onServiceResumeIntent = { error("Active playback must not ask the sleep timer to resume") },
+            resumePlayer = { _, _, _ -> error("Active playback must not ask the sleep timer to resume") },
             scope = this,
         )
         effects.recoverAndResume(
@@ -157,7 +155,7 @@ internal class CarContinuityResumeEffectsTest {
             outputs = AudioOutputRouter(
                 context = RuntimeEnvironment.getApplication(),
                 logger = logger,
-                applicationScope = this,
+                applicationScope = backgroundScope,
                 mainDispatcher = StandardTestDispatcher(testScheduler),
                 volumeEffects = volumeEffectsForTest(StandardTestDispatcher(testScheduler)),
             ),
@@ -166,7 +164,7 @@ internal class CarContinuityResumeEffectsTest {
             currentPlayer = { null },
             selectionSequence = { 0 },
             snapshot = { emptyList() },
-            onServiceResumeIntent = {},
+            resumePlayer = { _, _, _ -> true },
             scope = this,
         )
         effects.logHeldHeadset("bluetooth:private-fixture-id")
@@ -210,7 +208,7 @@ internal class CarContinuityResumeEffectsTest {
                 outputs = AudioOutputRouter(
                     context = RuntimeEnvironment.getApplication(),
                     logger = logger,
-                    applicationScope = this,
+                    applicationScope = backgroundScope,
                     mainDispatcher = StandardTestDispatcher(testScheduler),
                     volumeEffects = volumeEffectsForTest(StandardTestDispatcher(testScheduler)),
                 ),
@@ -219,7 +217,7 @@ internal class CarContinuityResumeEffectsTest {
                 currentPlayer = { player },
                 selectionSequence = { selection },
                 snapshot = { emptyList() },
-                onServiceResumeIntent = { error("Stale recovery must not resume the timer") },
+                resumePlayer = { _, _, _ -> error("Stale recovery must not resume the timer") },
                 scope = this,
             )
 

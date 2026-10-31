@@ -91,8 +91,10 @@ class CrashReportStoreTest {
             assertEquals(1234, reopened.handledExitTimestamp())
 
             assertTrue(reopened.clearReport())
-            assertNull(CrashReportFile(directory).read())
-            assertEquals(1234, CrashReportFile(directory).handledExitTimestamp())
+            val afterClear = CrashReportFile(directory)
+            assertNull(afterClear.read())
+            // Clearing diagnostics must not make Android's same historical exit eligible for re-import.
+            assertEquals(1234, afterClear.handledExitTimestamp())
         } finally {
             directory.deleteRecursively()
         }

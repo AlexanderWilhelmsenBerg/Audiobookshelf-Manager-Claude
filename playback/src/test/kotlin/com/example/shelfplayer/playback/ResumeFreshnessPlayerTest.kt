@@ -25,9 +25,11 @@ class ResumeFreshnessPlayerTest {
         val delegate = RecordingDelegate(mediaItemCount = 1, playWhenReady = false)
         var preparations = 0
         var freshStarts = 0
+        var bypass = false
         val player = forwarding(
             delegate = delegate,
             prepare = { preparations += 1 },
+            onBypass = { bypass = it },
             consumeFreshStart = {
                 freshStarts += 1
                 true
@@ -38,7 +40,8 @@ class ResumeFreshnessPlayerTest {
 
         assertEquals(0, preparations)
         assertEquals(1, freshStarts)
-        assertEquals(listOf("delegate:play=true"), delegate.events)
+        assertTrue(bypass, "the service handles the first Play locally while retaining the guard")
+        assertEquals(listOf("delegate:play=true"), delegate.events, "the service callback still issues the first Play")
     }
 
     @Test
@@ -112,13 +115,16 @@ class ResumeFreshnessPlayerTest {
         var graceResumeAttempts = 0
         val player = ResumeFreshnessPlayer(
             delegate = delegate.player,
-            preparePlay = { preparation },
+            preparePlay = { _ -> preparation },
             consumeFreshStart = { false },
-            invalidate = {},
+            invalidate = { true },
             onPlayWhenReadyRequest = { requested ->
                 if (requested) graceAuthorized = false
+                true
             },
             skipIntervals = { SkipIntervals(back = 30.seconds, forward = 30.seconds) },
+            prepareCurrentOutput = { Futures.immediateVoidFuture() },
+            movementEffects = unprotectedMovementEffects(delegate.player),
         )
 
         val play = player.handleSetPlayWhenReady(true)
@@ -297,20 +303,34 @@ class ResumeFreshnessPlayerTest {
     private fun forwarding(
         delegate: RecordingDelegate,
         prepare: () -> Unit = {},
+        onBypass: (Boolean) -> Unit = {},
         consumeFreshStart: () -> Boolean = { false },
         invalidate: (ResumeInvalidation) -> Unit = {},
         onPlayWhenReadyRequest: (Boolean) -> Unit = {},
         skipIntervals: () -> SkipIntervals = { SkipIntervals(back = 30.seconds, forward = 30.seconds) },
     ) = ResumeFreshnessPlayer(
         delegate = delegate.player,
-        preparePlay = {
-            prepare()
+        preparePlay = { bypass ->
+            onBypass(bypass)
+            if (bypass) {
+                delegate.player.playWhenReady = true
+            } else {
+                prepare()
+            }
             Futures.immediateFuture(Unit)
         },
         consumeFreshStart = consumeFreshStart,
-        invalidate = invalidate,
-        onPlayWhenReadyRequest = onPlayWhenReadyRequest,
+        invalidate = {
+            invalidate(it)
+            true
+        },
+        onPlayWhenReadyRequest = {
+            onPlayWhenReadyRequest(it)
+            true
+        },
         skipIntervals = skipIntervals,
+        prepareCurrentOutput = { Futures.immediateVoidFuture() },
+        movementEffects = unprotectedMovementEffects(delegate.player),
     )
 
     private fun await(future: ListenableFuture<*>) {

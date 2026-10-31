@@ -251,6 +251,18 @@
     <string name="player_collapse">Lukk spilleren</string>
     <string name="player_output_current">Lydutgang: %1$s</string>
     <string name="player_output_automatic">Automatisk</string>
+    <string name="player_output_car">Android Auto</string>
+    <string name="player_output_selected_device">Valgt lydutgang</string>
+    <string name="player_output_previous_retained">Forrige valg av lydutgang beholdes</string>
+    <string name="player_output_unavailable">Lydutgang måles ikke nå</string>
+    <string name="player_output_remote_submix">Ekstern lydrute målt; fysisk lydutgang er ikke bekreftet</string>
+    <string name="player_output_unresolved">Målt lydutgang er ukjent</string>
+    <string name="player_output_multiple">Flere målte lydutganger; målet er tvetydig</string>
+    <string name="player_output_transfer_waiting">Venter på bekreftelse av lydutgang</string>
+    <string name="player_output_transfer_verifying">Bekrefter valgt lydutgang</string>
+    <string name="player_output_transfer_verified">Valgt lydutgang bekreftet</string>
+    <string name="player_output_delegated">Overført til Auto — fysisk lydutgang er ikke bekreftet</string>
+    <string name="player_output_transfer_failed">Overføring av lydutgang mislyktes</string>
     <string name="player_output_keep_here">Behold lyden her</string>
     <string name="player_output_lock_refused">Kan ikke bekrefte gjeldende lydutgang. Prøv igjen mens lyden spilles av.</string>
     <string name="player_output_kept_here">Lyden beholdes her</string>
@@ -258,7 +270,7 @@
     <string name="player_output_unverified_here">Lydutgangen må bekreftes</string>
     <string name="player_output_release_lock">Opphev lås på lydutgang</string>
     <string name="player_output_selected">Valgt</string>
-    <string name="player_output_playing_here">%1$s — spilles her</string>
+    <string name="player_output_playing_here">%1$s — målt lydutgang</string>
     <string name="player_remaining">−%1$s</string>
     <string name="player_book_position">Bok · %1$s</string>
     <string name="player_book_progress">Bokposisjon: %1$s avspilt, %2$s gjenstår</string>

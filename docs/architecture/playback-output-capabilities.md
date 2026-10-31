@@ -8,6 +8,13 @@ The ownership/lock/handoff execution plan is recorded in
 This document distinguishes capabilities used by the first route-loss safety slice from capabilities
 that still require device investigation. It does not certify physical output or button attribution.
 
+The owner-approved [adapter continuation](playback-output-adapter-plan.md) extracts Android inventory,
+platform handles and preferred-device access into `AndroidLocalOutputAdapter`. The existing registry
+retains appearance identity; actual-track measurement and Auto projection remain distinct inputs.
+Recovery now requires an explicit actual-measurement port, and `ProbeReady` permits only the existing
+silent verification path. It is not successful routing. The delayed fallback refresh does not block
+recovery. See the [implementation and acceptance record](../testing/output-adapter-continuity.md).
+
 ## Capabilities available in production
 
 | Observation or request | What it establishes | What it cannot establish |
@@ -98,7 +105,59 @@ or identify a physical controller. A regression using real pinned Media3 callbac
 actual `PlayerEvents` verifies scope delivery, cleanup and a later ordinary listener pause. That test
 must remain part of any Media3 upgrade; this is not an unbounded pending-origin flag.
 
+## Read-only phone presentation
+
+`AudioOutputPresentation` is an immutable platform-free projection exposed by the existing router,
+controller and player ViewModel. The router reads the existing intent snapshot, fresh track observation,
+unique collision-free live inventory and projection state on `MainImmediate`. Owner changes, actual-route
+notifications, inventory publication, projection lifecycle and detach refresh it. It creates no intent,
+route preference, retry or player authority.
+
+`OutputPresentationPublisher` confines projection reads and derived-flow publication to that dispatcher.
+`OutputActivityProjection` classifies one captured inventory publication as track measurement, framework
+prediction or preference. Neither chooses a route. The router retains its existing physical inventory,
+selection and effect owners, and the controller extends its existing selection command with a typed
+destination rather than adding another command façade. The chooser groups destination, measurement,
+transfer, endpoint and lock controls into focused presentation functions.
+
+The chooser distinguishes requested Automatic, Car and endpoint even when Car and Automatic both have
+no endpoint ID. Only a current uniquely mapped track path labels a measured row. Framework prediction
+and selected preference cannot produce that label. Missing observation says unmeasured; unresolved,
+multiple and RemoteSubmix paths retain their distinct explanations. Current transfer success reuses
+`OutputTargetProof` and requires the same selection/book scope; stale evidence becomes Waiting.
+Delegated means a current Auto projection path, never proof of a physical car speaker.
+
+A previous lock retained during transfer is recovery context, rather than the newly selected destination.
+The read model exposes that distinction without changing the lock owner. The chooser describes the
+retained choice and preserves the existing Automatic/release command. Selected rows expose explicit
+selection semantics; status text has readable contrast and transfer updates use polite announcements.
+
+The existing full-player caller reaches this projection and the same destination commands. The
+mini-player has no output chooser. English/Norwegian, empty-inventory controls, transfer states, large
+text and a simulated landscape configuration update have component coverage. See the
+[rendered chooser review](../testing/output-presentation-review.md). This does not claim full Activity
+recreation, physical routing or Android Auto screen acceptance.
+
 ## Investigation and physical acceptance still required
+
+Manual service resume distinguishes `NoGuard`, `MutedAllowed` and `Denied`. A missing guard never releases
+an existing logical lock. Unsupported guarded preparation, missing selection/live endpoint, conflicting lock
+or colliding identity returns Denied before the service's raw Play. Both local and adopted resumes use one
+final Play gate, rechecking player, existing item generation and request authorization after synchronous mute
+notifications. Ordinary unguarded resume remains available on API 32; guarded support is conservative and
+does not imply hardware acceptance. Retained Play intent is checked before local preparation too. Adopted
+position preparation holds the player paused until seek confirmation; a refused preparation cannot seek or
+Play and cannot claim a remote-progress history event. Safety pauses retain guard provenance and do not add
+listener Pause history. A guard reserves its probe identity before synchronous mute callbacks, rejects nested
+acquisition, and revalidates existing preference epoch, attachment and target after those callbacks.
+
+Fresh-start/duplicate loaded forwarding Play, controller Prepare, deferred queue installs/retry, post-connect
+commands and continuity now reach the same service-owned output preparation/Play boundary in the #300
+candidate. [ADR-0034](../adr/0034-one-guarded-playback-command-boundary.md) records its attachment and originating
+command/profile checks, retained-intent handling and synchronous Stop invalidation. The probe-owned
+[muted-position checkpoint](../adr/0035-muted-verification-holds-heard-position.md) is published at `84f192d4`.
+The [explicit verified-transfer continuation](../adr/0036-explicit-output-transfer-requires-current-track-proof.md)
+is under verification. Neither software component establishes physical output acceptance.
 
 | Case | Current evidence | Required check |
 | --- | --- | --- |

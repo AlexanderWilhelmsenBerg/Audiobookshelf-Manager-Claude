@@ -46,9 +46,64 @@ clipboard report. No remote uploads, raw Bluetooth identities, server URLs, or m
   for at most 24 hours; classifier is process local; race capture is bounded.
 - Structured JSON includes raw diagnostic lines **as strings within arrays**, not as
   executable JSON. Do not treat a guessed source as verified.
+- The optional additive `audioRouteLab.inputStatus` and `inputDevices` fields retain the latest
+  input-capability inventory, including after Stop. `input-key`, `input-transport` and input lifecycle
+  rows are in the existing bounded Route Lab events. Schema version1 remains compatible; older reports
+  omit these new fields. Device IDs are runtime input handles; descriptor ordinals are local to the
+  accompanying `inputCapture`, never a Bluetooth identity or audio-output mapping.
 - Restart loses the old process's in-memory event-log buffer and classifier history.
   Recording begins again at the new process boundary; old bounded Audio Route Lab file
   may be recovered. Never merge times from different process runs without checking timestamps.
+
+## Input and Auto capability capture
+
+Start unified diagnostics and perform the explicit restart above for complete AudioTrack coverage.
+Input observation itself needs no player recreation or new permission. Confirm that exported
+`audioRouteLab.inputStatus` says input callbacks are being watched, or record its explicit unavailable
+status. `inputDevices` contains at most64 entries. Do not infer physical identity from an empty list.
+Note the phone Android version, Android Auto app version and wired/wireless connection in the test
+notes. `controllerVersion` in this export is the Media3/legacy controller-library version, not the
+installed Android Auto app version.
+
+Perform one action at a time with a stationary car and note the heard destination:
+
+1. Without Auto, mark ButtonA and press headset Pause/Play. Record heard HeadsetA, Car, Phone or Silence.
+2. Connect Auto without touching controls. Mark AndroidAuto and record any pause and destination.
+3. Repeat the marked headset buttons; then mark CarPlay and use the dashboard Pause/Play controls.
+4. With Car selected, repeat ButtonA/headset Pause/Play, then the explicit Headset action. Compare sound,
+   not just dashboard state. Repeat the explicit Car action and steering-wheel controls separately.
+5. Note a timed phone/notification Pause/Play control as a comparison. These can also produce generic
+   session commands. User markers and time adjacency are temporal evidence only.
+6. Pause, turn off/disconnect the car, and confirm no unwanted resume. Repeat reconnect and, where
+   available, a second headset, including one with the same display name. Test notification/background
+   entry and cold receiver entry separately. Capture unsupported/permission-denied outcomes honestly.
+7. Stop diagnostics and save the complete JSON. Check exact build/source against issue #289. Clear
+   removes the retained lab capture; a later capture's aliases must not be joined to the old ones.
+
+Interpret `entry=ReceiverStart` separately from `SessionCallback`; these may be two deliveries of one
+key. `keyFlags`, `repeat`, `heldMillis`, `deviceQuery`, `virtual`, `external`, `deviceSources` and
+`descriptorMatches` describe capabilities and transformations. A shared descriptor can represent
+indistinguishable devices or separate collections. `association=Unproven` stays authoritative.
+`caller=BluetoothService` identifies software forwarding; `caller=AndroidAuto` does not establish a
+physical dashboard gesture. `packageVerified` records whether Media3 verified the reported package;
+controller trust is a separate software-access property. Controller/interface versions distinguish
+legacy/platform adapters. None of these fields establish a physical input-to-output association.
+
+Match `actual-track` output aliases with classifier `trackAlias`, including RemoteSubmix. A mix remains
+an observed system route rather than proof of the final car speaker. Use durable `output-proof`,
+`car-route-intent`, `car-controller-unbound`, generation/selection and position-correction rows to
+correlate effect ordering. `proofEpoch`, `requestGeneration` and `requestSelection` describe the proof's
+captured preference/transfer scope; `none` means no transfer request was present. Raw identifiers,
+descriptors and names are never needed in a public report.
+
+`proof-prepared` distinguishes Initial/Final compensation stages and records `bufferedSeek` with
+captured proof/request scope. `car-intent-retired` records the departed Car request and replacement
+selection sequence. A final-stage overshoot still fails closed. These rows diagnose timing and state
+retirement; they do not establish physical button identity or human-heard audio.
+
+See [platform/related-issue research](../architecture/playback-input-capability-research.md). If the
+app still receives only virtual events, an immediately collected **private** Android bug report may
+help locate where origin is lost; it does not guarantee an app-accessible physical source.
 
 ## Cold-start virtual toggle guard (#273)
 

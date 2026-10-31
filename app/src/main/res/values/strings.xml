@@ -307,10 +307,22 @@
     -->
     <string name="player_output_current">Audio output: %1$s</string>
     <string name="player_output_automatic">Automatic</string>
+    <string name="player_output_car">Android Auto</string>
+    <string name="player_output_selected_device">Selected output</string>
+    <string name="player_output_previous_retained">Previous output choice retained</string>
+    <string name="player_output_unavailable">Output not currently measured</string>
+    <string name="player_output_remote_submix">Remote audio path measured; physical output unverified</string>
+    <string name="player_output_unresolved">Measured output is unknown</string>
+    <string name="player_output_multiple">Multiple measured outputs; destination is ambiguous</string>
+    <string name="player_output_transfer_waiting">Waiting for output verification</string>
+    <string name="player_output_transfer_verifying">Verifying requested output</string>
+    <string name="player_output_transfer_verified">Requested output verified</string>
+    <string name="player_output_delegated">Delegated to Auto — physical output unverified</string>
+    <string name="player_output_transfer_failed">Output transfer failed</string>
     <string name="player_output_selected">Selected</string>
     <!-- PLAY-002 — where the platform says the audio actually went, which is not always what was
          asked for. %1$s is the device name. -->
-    <string name="player_output_playing_here">%1$s — playing here</string>
+    <string name="player_output_playing_here">%1$s — measured output</string>
     <string name="player_output_keep_here">Keep audio here</string>
     <string name="player_output_lock_refused">The current audio output could not be verified. Try again while audio is playing.</string>
     <string name="player_output_kept_here">Keeping audio here</string>

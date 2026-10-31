@@ -95,7 +95,7 @@ class BookChangesServerEvidenceTest {
         try {
             val old = session("old")
             player.setMediaItem(MediaItems.queueFor(old).item, START.inWholeMilliseconds)
-            boundary.sync.attach(player)
+            boundary.sync.attach(player) { it.bookPosition() }
             boundary.timer.attach(object : ForwardingPlayer(player) {
                 // Model audible playback; this case verifies commit ordering rather than decoding.
                 override fun isPlaying(): Boolean = true
@@ -125,7 +125,7 @@ class BookChangesServerEvidenceTest {
             assertEquals(0, sessions.closed)
         } finally {
             boundary.timer.attach(null)
-            boundary.sync.attach(null)
+            boundary.sync.detach()
             player.release()
         }
     }

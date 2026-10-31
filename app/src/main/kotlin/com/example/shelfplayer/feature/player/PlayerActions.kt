@@ -3,6 +3,7 @@ package com.example.shelfplayer.feature.player
 import androidx.compose.runtime.Immutable
 import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.AudioOutputLockStatus
+import com.example.shelfplayer.core.model.playback.AudioOutputPresentation
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import kotlin.time.Duration
 
@@ -31,13 +32,10 @@ data class SkipControls(val intervals: SkipIntervals, val onBack: () -> Unit, va
 data class OutputControls(
     val outputs: List<AudioOutput>,
     /**
-     * PRODUCT_SPEC PLAY-002 — the id the listener *chose*, or `null` for *Automatic*.
+     * PRODUCT_SPEC PLAY-002 — the chosen endpoint id. Car and Automatic both have `null` ids.
      *
-     * Separate from [AudioOutput.isActive], which is where the platform says the audio actually went. They
-     * are two facts and a device run proved they can disagree: choosing the phone speaker while a headset
-     * is connected leaves the sound in the headset on some devices, and the app has no way to force it. The
-     * menu ticks the choice and labels the route, so the disagreement is visible rather than a tick that
-     * quietly lies.
+     * [presentation] distinguishes Car from Automatic and supplies the measured route. This legacy id
+     * remains for older consumers and previews.
      */
     val selectedId: String?,
     val onSelect: (String?) -> Unit,
@@ -45,6 +43,8 @@ data class OutputControls(
     val canKeepAudioHere: Boolean = false,
     val onKeepAudioHere: () -> Boolean = { false },
     val onReleaseLock: () -> Unit = {},
+    val presentation: AudioOutputPresentation? = null,
+    val onSelectCar: () -> Unit = {},
 ) {
     companion object {
         /** For a preview, or a test not exercising the chooser. */

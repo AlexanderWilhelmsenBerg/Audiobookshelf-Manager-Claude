@@ -35,6 +35,11 @@ release the runtime lock. Runtime endpoint IDs are not persisted.
 Release is represented by absence of a lock after the newer explicit Automatic/Car/output choice or the
 runtime boundary. There is no separate mutable Released flag alongside that authoritative choice.
 
+[ADR-0036](0036-explicit-output-transfer-requires-current-track-proof.md) refines the explicit-transfer
+commit boundary: Automatic releases immediately; Car/another output supersedes desired intent while
+retaining the prior lock only as recovery context until current proof succeeds. Failure retains it Waiting.
+The retained prior lock never authorizes an old recovery to override the newer desired destination.
+
 Automatic routing, generic transport, and Android Auto controller binding cannot steal or release the lock.
 An explicit Automatic, Car action, or another confirmed output supersedes it. Loss, unknown route, or
 mismatch fails closed and retains the logical target; a new endpoint appearance cannot rebind by name or
@@ -49,7 +54,7 @@ output selection can make that endpoint eligible again.
 One Media3 player/session/focus owner remains. Existing `RoutePreferenceEffects` and `HeadsetRouteGuard` own
 serialized platform effects and call-scoped safety-pause provenance; route evidence and car recovery retain
 their current scopes. This decision does not add automatic headset-key destination handoff; #277 owns the
-later explicit verified transfer and rollback transaction.
+explicit verified transfer and rollback transaction, defined in ADR-0036.
 
 ## Consequences
 

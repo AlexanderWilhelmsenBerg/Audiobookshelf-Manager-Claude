@@ -20,6 +20,8 @@ import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.AudioOutputLockStatus
+import com.example.shelfplayer.core.model.playback.AudioOutputPresentation
+import com.example.shelfplayer.core.model.playback.OutputDestination
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.domain.playback.GlobalTimeline
@@ -92,12 +94,13 @@ class PlaybackController @Inject constructor(
      * second object in the view model would be a second place for the two to disagree.
      */
     val outputs: StateFlow<List<AudioOutput>> = audioOutputs.outputs
+    val outputPresentation: StateFlow<AudioOutputPresentation> = audioOutputs.presentation
 
     /**
      * PRODUCT_SPEC PLAY-002 — the output the listener *chose*, or `null` for *Automatic*.
      *
-     * Not the same question as [AudioOutput.isActive], which is where the platform says the audio went. The
-     * chooser shows both because they can disagree — see `AudioOutputRouter`.
+     * An endpoint id only; explicit Car intent also has a null id. The chooser uses
+     * [outputPresentation] to distinguish Car from Automatic and to show measured track output.
      */
     val selectedOutput: StateFlow<String?> = audioOutputs.selectedId
 
@@ -106,7 +109,14 @@ class PlaybackController @Inject constructor(
     val canKeepAudioHere: StateFlow<Boolean> = audioOutputs.canKeepAudioHere
 
     /** PRODUCT_SPEC PLAY-002 — chooses an output, or `null` for *Automatic*. Not remembered (ADR-0027). */
-    fun selectOutput(id: String?) = audioOutputs.select(id)
+    fun selectOutput(
+        id: String?,
+        destination: OutputDestination = if (id == null) OutputDestination.Automatic else OutputDestination.Output,
+    ) = when (destination) {
+        OutputDestination.Automatic -> audioOutputs.select(null)
+        OutputDestination.Car -> audioOutputs.selectCar()
+        OutputDestination.Output -> if (id != null) audioOutputs.select(id) else Unit
+    }
 
     fun keepAudioHere(): Boolean = audioOutputs.keepAudioHere()
 
@@ -372,7 +382,7 @@ class PlaybackController @Inject constructor(
             if (media.mediaItemCount == 0) return@launch
             val bookId = media.currentMediaItem?.let(MediaItems::bookIdOf)
             val owner = media.currentMediaItem?.let(MediaItems::ownerOf)
-            val from = media.bookPosition()
+            val from = audioOutputs.positions.effectivePosition(media)
             // ADR-0016 — a book position *is* a player position. The clamp that `GlobalTimeline.cursorFor`
             // used to apply is now Media3's own: it refuses a seek past the window's duration.
             val to = position.coerceAtLeast(Duration.ZERO)
@@ -452,7 +462,7 @@ class PlaybackController @Inject constructor(
     private fun currentPosition(): Duration? {
         val media = controller ?: return null
         media.currentMediaItem ?: return null
-        return media.bookPosition()
+        return audioOutputs.positions.effectivePosition(media)
     }
 
     /**
@@ -466,7 +476,7 @@ class PlaybackController @Inject constructor(
         applicationScope.launch(mainDispatcher) {
             val media = controller ?: return@launch
             media.currentMediaItem ?: return@launch
-            seekTo(media.bookPosition() + delta, PlaybackEvent.Skip)
+            seekTo(audioOutputs.positions.effectivePosition(media) + delta, PlaybackEvent.Skip)
         }
     }
 
@@ -541,7 +551,7 @@ class PlaybackController @Inject constructor(
             // there is to be here when it finishes.
             playbackRepository.recordPosition(
                 bookId = MediaItems.bookIdOf(item),
-                position = media.bookPosition(),
+                position = audioOutputs.positions.effectivePosition(media),
                 duration = media.bookDuration(),
                 // The outgoing profile by name, not by lookup: `setActiveProfile` may already be queued
                 // behind this call, and the item's own owner is the same answer read a different way.
@@ -685,7 +695,7 @@ class PlaybackController @Inject constructor(
     }
 
     private fun publish(media: MediaController) {
-        val next = media.playbackUiState(chapters)
+        val next = media.playbackUiState(chapters, audioOutputs.positions.effectivePosition(media))
         if (hasCrossedInto(next.currentChapter)) bookChanges.onChapterCrossed()
         lastChapter = next.currentChapter
         _state.value = next
@@ -730,9 +740,12 @@ class PlaybackController @Inject constructor(
  * service must immediately produce the same [PlaybackUiState] as a controller that started the book itself.
  * The source remains the session: this function stores nothing and issues no player command.
  */
-internal fun Player.playbackUiState(chapters: List<Chapter> = emptyList()): PlaybackUiState {
+internal fun Player.playbackUiState(
+    chapters: List<Chapter> = emptyList(),
+    effectivePosition: Duration = bookPosition(),
+): PlaybackUiState {
     val item: MediaItem? = currentMediaItem
-    val position = if (item == null) Duration.ZERO else bookPosition()
+    val position = if (item == null) Duration.ZERO else effectivePosition
     val chapter = if (item == null) null else GlobalTimeline.chapterAt(chapters, position)
     return PlaybackUiState(
         bookId = item?.let(MediaItems::bookIdOf),

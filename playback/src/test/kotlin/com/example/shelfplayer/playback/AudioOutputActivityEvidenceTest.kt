@@ -139,6 +139,10 @@ class AudioOutputActivityEvidenceTest {
 
                     "getVolume" -> playerVolume
 
+                    "getCurrentMediaItem" -> null
+
+                    "getPlayWhenReady" -> false
+
                     "setVolume" -> {
                         playerVolume = args!![0] as Float
                         null
@@ -147,6 +151,7 @@ class AudioOutputActivityEvidenceTest {
                     else -> error("Unexpected player call: ${method.name}")
                 }
             } as ExoPlayer
+            router.positions.bind(routingOnlyPositionEffects())
             router.attach(player) {
                 reads++
                 measured

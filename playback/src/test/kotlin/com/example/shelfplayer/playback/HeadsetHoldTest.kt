@@ -22,7 +22,7 @@ class HeadsetHoldTest {
         val active = listOf(budsA.copy(isActive = true, activitySource = AudioOutputActivitySource.PlayingAudioTrack))
         owner.onPlaybackObserved(active)
         val car = intent.select(null, OutputIntentOwner.Destination.Car)
-        owner.onExplicitSelection(null, active, true, car.sequence, car.destination)
+        owner.onExplicitSelection(car, active, isAudible = true)
         owner.onOutputsChanged(active, isPlaying = true)
 
         assertEquals(budsA.id, owner.heardRoute?.outputId, "actual evidence remains truthful")
@@ -30,7 +30,7 @@ class HeadsetHoldTest {
         assertNull(owner.measuredPlayingHeadsetForContinuity(active))
 
         val headset = intent.select(budsA.id, OutputIntentOwner.Destination.Output)
-        owner.onExplicitSelection(budsA.id, active, true, headset.sequence, headset.destination)
+        owner.onExplicitSelection(headset, active, isAudible = true)
         assertEquals(budsA.id, owner.headsetForCar(active))
     }
 
@@ -377,11 +377,9 @@ class HeadsetHoldTest {
             current
         }
         return onExplicitSelection(
-            outputId = outputId,
+            selection = selection,
             outputs = outputs,
-            isPlaying = isPlaying,
-            selectionSequence = selection.sequence,
-            destination = selection.destination,
+            isAudible = isPlaying,
         )
     }
 

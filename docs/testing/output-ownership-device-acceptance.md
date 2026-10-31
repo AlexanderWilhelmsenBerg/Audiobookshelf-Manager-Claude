@@ -1,13 +1,49 @@
 # Output ownership and handoff device acceptance
 
-**Status:** acceptance procedure; no device results recorded. 27 October 2026.
+**Status:** acceptance procedure; no device results recorded. Updated 29 October 2026.
 **Requirements:** PLAY-002/004/005/008/009, ROUTE-001/002/003.
 
 Use this procedure for the combined candidate described in
 [the execution plan](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/289#issuecomment-6445791504).
 PR #297 supplies transient route-loss protection. The dependent #276 lock and #277 verified-handoff
-work must be implemented and verified before this procedure can accept the complete feature. A green
+software is implemented in the dependent drafts; final selection/UI/auth integration and software gates
+are still required before this procedure can accept the complete feature. A green
 build or an earlier smoke test does not fill in these results.
+
+The #300 command-boundary checkpoint covers loaded fresh-start/duplicate controller Play, controller Prepare,
+retained-intent retry, accepted deferred/post-connect installs and continuity through one service guard. Its
+software tests are extended by the position and explicit-transfer checkpoints below. The final combined
+candidate must include all remaining integration slices before the complete-feature rows can be accepted.
+
+The following position candidate adds a probe-owned checkpoint and shared heard-position reads. Its
+software checks include elapsed advancement, pre-return mute callbacks, nested/later real service seek provenance,
+Pause/Stop retirement, a queued old pause crossing the session mutex, and controlled barrier/proof delivery.
+These do not fill any physical row below.
+Guarded current-item replacement and first-item insertion also clear inherited Play intent before mutation;
+future-only queue edits preserve transport. Newer synchronous Seek/Car intent refuses the old raw setter.
+The transfer checkpoint adds current target proof, retained prior lock, safe rollback/failure, callback
+supersession and API26/32 production-command cases. Its full strict local repository gate passes 2,748
+tests /322 suites, including 932 playback tests, with no failures, errors or skips. Exact-head CI and the
+source SHA are recorded in #300 and the execution checkpoint. No new APK is claimed here.
+
+The selection-scope checkpoint extends the strict local gate to 2,759 tests /325 suites, including
+943 playback tests, with no failures, errors or skips. Pending controller queues, accepted-connect
+restoration, retry, Prepare and Play lose authority to a newer output choice; captured pause writes
+retain their original profile/book/position. A real Media3 cold-callback regression proves that a
+cancelled old selection cannot install or fallback Play over the current item. Muted heard-route,
+presentation and final auth integration are still pending; this does not fill any physical row.
+
+The heard-route checkpoint adds typed selection and one service audible observer, with strict local
+verification passing 2,765 tests /326 suites /949 playback, no failures, errors or skips. Actual service
+callbacks under route mute cannot create heard evidence or consume recovery. Successful current-player
+unmute, paused release, player replacement and listener removal during dispatch are covered. Output
+presentation and final auth integration still precede the combined APK; no physical row is filled.
+
+The phone presentation checkpoint passes the strict repository gate at 2,784 tests /327 suites /
+960 playback, no failures, errors or skips. It distinguishes requested, measured, unknown and delegated
+paths plus retained previous choice; selected semantics, full-contrast status and actual doubled-font
+rendering are covered. The controller keeps one typed selection command. Final auth integration,
+forced combined verification, exact CI and review still precede the APK; physical rows remain pending.
 
 ## Candidate and setup
 

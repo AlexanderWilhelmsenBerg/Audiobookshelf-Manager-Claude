@@ -8,7 +8,9 @@ import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.LogLevel
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.time.AppClock
+import com.example.shelfplayer.core.testing.TestAppClock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -40,6 +42,36 @@ class AudioRouteLabRecorderTest {
         context.getSharedPreferences("audio-route-lab", Context.MODE_PRIVATE).edit { clear() }
         File(context.noBackupFilesDir, "audio-route-lab.txt").delete()
         File(context.noBackupFilesDir, "audio-route-lab.txt.bak").delete()
+    }
+
+    @Test
+    fun `input bursts keep every retained event without queuing one disk writer per callback`() = runTest {
+        val clock = TestAppClock()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val logger = object : Logger {
+            override fun log(event: LogEvent) = Unit
+        }
+        val router = AudioOutputRouter(
+            context,
+            logger,
+            backgroundScope,
+            dispatcher,
+            volumeEffects = volumeEffectsForTest(dispatcher),
+        )
+        val recorder = AudioRouteLab(context, EventLog(clock), clock, router, backgroundScope, dispatcher)
+        recorder.start()
+        val parent = requireNotNull(backgroundScope.coroutineContext[Job])
+        val before = parent.children.count()
+        repeat(200) {
+            recorder.mediaButtonInput(null, MediaInputController(), MediaInputEntry.SessionCallback)
+        }
+        assertEquals(before, parent.children.count(), "disk work must remain bounded while IO is suspended")
+        assertEquals(200, recorder.state.value.entries.count { "input-key" in it })
+        recorder.stop()
+        runCurrent()
+        val persisted = File(context.noBackupFilesDir, "audio-route-lab.txt").readText()
+        assertEquals(200, persisted.lineSequence().count { "input-key" in it })
+        assertTrue("diagnostic-stop" in persisted)
     }
 
     @Test
@@ -96,10 +128,46 @@ class AudioRouteLabRecorderTest {
         assertEquals(28, restored.state.value.entries.count { it.contains("transport-intent") })
         assertTrue(restored.report("same-build").contains("diagnostic-stop"))
 
-        restored.clear()
-        runCurrent()
+        restored.clearAndAwait()
         assertFalse(File(context.noBackupFilesDir, "audio-route-lab.txt").exists())
         assertTrue(restored.state.value.entries.isEmpty())
+        val afterClear = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
+        assertTrue(afterClear.state.value.entries.isEmpty(), "a process restart must not restore cleared evidence")
+    }
+
+    @Test
+    fun `clear reservation rejects duplicate clears and starts until reset finishes`() = runTest {
+        context.getSharedPreferences("unified-diagnostics", Context.MODE_PRIVATE).edit { clear() }
+        val clock = TestAppClock()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val logger = object : Logger {
+            override fun log(event: LogEvent) = Unit
+        }
+        val log = EventLog(clock)
+        val router = AudioOutputRouter(
+            context,
+            logger,
+            backgroundScope,
+            dispatcher,
+            volumeEffects = volumeEffectsForTest(dispatcher),
+        )
+        val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
+        val classifier = OutputClassifier(context, lab)
+        val capture = UnifiedDiagnosticsCapture(context, lab, classifier, log, PlaybackMetricsRecorder(clock))
+
+        assertTrue(capture.beginClear())
+        assertFalse(capture.beginClear(), "only one clear may own the persisted diagnostics")
+        capture.start()
+        assertFalse(capture.active.value, "capture must not restart before clear releases its reservation")
+        assertFalse(
+            context.getSharedPreferences("unified-diagnostics", Context.MODE_PRIVATE).getBoolean("active", false),
+        )
+
+        capture.finishClear()
+        capture.start()
+        assertTrue(capture.active.value, "capture can start again after clear completion")
+        capture.stop()
+        runCurrent()
     }
 
     @Test
@@ -122,7 +190,7 @@ class AudioRouteLabRecorderTest {
                 volumeEffects = volumeEffectsForTest(dispatcher),
             )
         val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
-        val monitor = AudioTrackRouteMonitor(context, lab)
+        val monitor = AudioTrackRouteMonitor(context, lab, clock)
 
         // Passive route verification is always installed, but recording is opt-in.
         val provider = requireNotNull(monitor.providerForPlayer())
@@ -161,7 +229,7 @@ class AudioRouteLabRecorderTest {
                 volumeEffects = volumeEffectsForTest(dispatcher),
             )
         val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
-        val monitor = AudioTrackRouteMonitor(context, lab)
+        val monitor = AudioTrackRouteMonitor(context, lab, clock)
 
         // The in-memory safety observer is present, even though diagnostic capture is off.
         val firstProvider = requireNotNull(monitor.providerForPlayer())

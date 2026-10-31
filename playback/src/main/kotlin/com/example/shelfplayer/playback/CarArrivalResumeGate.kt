@@ -77,6 +77,18 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     private var arrivalRecorded = false
     private var activeRecovery: Target? = null
     private var requiresFreshPlaybackEvidence = false
+    private var safetyPausedAt: Duration? = null
+
+    /** Retain this interruption's evidence, without extending it on repeated safety callbacks. */
+    fun onRouteSafetyPause(at: Duration) {
+        if (safetyPausedAt == null) safetyPausedAt = at
+    }
+
+    private fun expireSafetyPause(at: Duration): Boolean {
+        val expired = safetyPausedAt?.let { at - it !in Duration.ZERO..pairingWindow } == true
+        if (expired) cancelAll()
+        return expired
+    }
 
     /**
      * Last headset positively heard while playback was actually active.
@@ -97,6 +109,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         // This method is invoked only after the service positively observes current playback.
         // A previous Pause cannot authorize automatic recovery until audio has genuinely played again.
         requiresFreshPlaybackEvidence = false
+        safetyPausedAt = null
         val identity = identityOf(
             heardRoute = heardRoute,
             headsetId = headsetId,
@@ -124,11 +137,12 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         explicitSelectionSequence: Long,
         carConnected: Boolean,
     ): Decision {
+        val expired = expireSafetyPause(at)
         if (requiresFreshPlaybackEvidence) {
             return Decision(
                 phase = if (carConnected) Phase.Departure else Phase.Arrival,
                 status = Status.Rejected,
-                reason = Reason.NoFreshPlaybackAfterIntentReset,
+                reason = if (expired) Reason.OutsidePairingWindow else Reason.NoFreshPlaybackAfterIntentReset,
             )
         }
         return onEligibleAudioFocusLoss(
@@ -222,7 +236,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
             )
         }
 
-        focusCandidate = FocusCandidate(at = at, phase = phase, identity = identity)
+        focusCandidate = FocusCandidate(at = safetyPausedAt ?: at, phase = phase, identity = identity)
         activeRecovery = null
         return Decision(
             phase = phase,
@@ -234,6 +248,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
 
     /** Pairs arrival focus with only the first controller/projection boundary of this car session. */
     fun onCarArrival(arrivedAt: Duration, currentGeneration: Long?, explicitSelectionSequence: Long): Decision {
+        expireSafetyPause(arrivedAt)
         projectionDeparture = null
         if (arrivalRecorded) return Decision(Phase.Arrival, Status.Rejected, Reason.NoPendingFocusLoss)
         arrivalRecorded = true
@@ -338,6 +353,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         currentGeneration: Long?,
         explicitSelectionSequence: Long,
     ): Decision {
+        expireSafetyPause(departedAt)
         firstArrival = null
         arrivalRecorded = false
         val candidate = focusCandidate
@@ -439,6 +455,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     /** A deliberate/non-focus pause or book/session boundary invalidates every continuity fact. */
     fun cancelAll() {
         cancelPending()
+        safetyPausedAt = null
         requiresFreshPlaybackEvidence = true
         playingHeadset = null
     }

@@ -60,6 +60,14 @@ class AtomicResumeTest {
         assertEquals(listOf("prepare", "seekTo(37142000)", "awaited", "play"), player.commands)
     }
 
+    @Test
+    fun `refused preparation cannot seek or Play an adopted position`() = runTest {
+        val player = FakeTarget(loaded = BOOK, landsAt = MOVED_TO, needsPreparing = true, prepareAllowed = false)
+
+        assertEquals(ResumeOutcome.PreparationRefused, player.resume(MOVED_TO))
+        assertEquals(listOf("prepare"), player.commands)
+    }
+
     // ------------------------------------------- the three refusals, and none of them plays
 
     /**
@@ -185,6 +193,7 @@ class AtomicResumeTest {
         private val landsAt: Duration?,
         private val needsPreparing: Boolean = false,
         private val beforeLanding: suspend () -> Unit = {},
+        private val prepareAllowed: Boolean = true,
     ) : ResumeTarget {
         val commands = mutableListOf<String>()
         var mayPlay: Boolean = true
@@ -193,8 +202,9 @@ class AtomicResumeTest {
 
         override fun needsPreparing(): Boolean = needsPreparing
 
-        override fun prepare() {
+        override fun prepare(): Boolean {
             commands += "prepare"
+            return prepareAllowed
         }
 
         override suspend fun seekAndAwait(position: Duration, timeout: Duration): Duration? {

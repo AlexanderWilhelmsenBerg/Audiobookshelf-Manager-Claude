@@ -30,7 +30,8 @@ internal object UnifiedDiagnosticsJson {
         put("build", build)
         put(
             "privacy",
-            "Opt-in. Redacted logs, session-only output aliases. No raw device names, addresses or book data.",
+            "Opt-in. Redacted logs, session-only output and capture-local input aliases. " +
+                "No raw device names, addresses, descriptors or book data.",
         )
         put(
             "recording",
@@ -45,6 +46,8 @@ internal object UnifiedDiagnosticsJson {
             JSONObject()
                 .put("routePolicy", lab.route)
                 .put("actualTrack", lab.reportStatus)
+                .put("inputStatus", lab.inputStatus)
+                .put("inputDevices", JSONArray(lab.inputDevices))
                 .put("events", JSONArray(lab.entries)),
         )
         put(
@@ -70,16 +73,18 @@ internal object UnifiedDiagnosticsJson {
         )
         put("playbackRace", JSONArray(race.lines))
         put("debugConsole", debugConsole)
-        put(
-            "limitations",
-            JSONArray(
-                listOf(
-                    "Android route prediction does not prove human-heard audio.",
-                    "Input device -1 cannot identify headset A or B.",
-                    "AudioTrack observation requires recording before Media3 player creation.",
-                    "Event log and classifier are bounded/session-local; route lab retains at most 24 hours.",
-                ),
-            ),
-        )
+        put("limitations", limitations())
     }.toString(2)
+
+    private fun limitations(): JSONArray = JSONArray(
+        listOf(
+            "Android route prediction does not prove human-heard audio.",
+            "Input device -1 cannot identify headset A or B.",
+            "Input descriptor aliases apply only within one opt-in capture; " +
+                "they do not identify an audio output.",
+            "Controller software identity and RemoteSubmix do not prove a physical button or car speaker.",
+            "AudioTrack observation requires recording before Media3 player creation.",
+            "Event log and classifier are bounded/session-local; route lab retains at most 24 hours.",
+        ),
+    )
 }

@@ -50,6 +50,24 @@ activity provenance retains the distinction between track proof, policy and
 preference. See [the completion checklist](playback-phase3-completion.md) and
 [ADR-0031](../adr/0031-controller-requests-have-scoped-acceptance.md).
 
+### Audible route observations
+
+`PlaybackRouteObservationEffects` owns the service's exact mute-listener registration and common
+current-player/audible check. Player events, media transitions, output inventory updates and car binding
+use that gate before creating positive route evidence or confirming awaiting recovery. Raw Media3
+`isPlaying` during route verification mute does not prove audible playback. Successful unmute observes
+the same current still-playing player; a paused release does not create evidence or consume recovery.
+
+Explicit selection still synchronizes while muted, using the immutable `OutputIntentOwner.Selection`
+and the route owner's consumer watermark. Selection, book generation and recovery state stay with
+their existing owners. The service removes its observer before teardown can release a mute; volume
+dispatch rechecks the existing listener set so a removed callback cannot run from an earlier snapshot.
+The audible gate also rechecks current player identity after reading player state.
+
+Production-component and actual service-callback regressions cover these paths. Removing the audible,
+identity and listener-membership guards produced five intended failures; exact source bytes were restored.
+This is software evidence, not a claim that Android or a person heard a particular physical output.
+
 ## 2026-10-21 extended hardware regression and safety stabilization
 
 The initial physical PASS of build 2237 was superseded by a second Android Auto

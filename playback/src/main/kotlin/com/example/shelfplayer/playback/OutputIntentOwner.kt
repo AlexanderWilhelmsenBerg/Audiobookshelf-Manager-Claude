@@ -15,8 +15,21 @@ import kotlinx.coroutines.flow.map
 internal class OutputIntentOwner {
     internal enum class Destination { Automatic, Car, Output }
     internal enum class LockPhase { Active, Waiting, Unverified }
+    internal enum class TransferPhase { Waiting, Verifying, Verified, Delegated, Failed }
 
     internal data class Selection(val sequence: Long, val outputId: String?, val destination: Destination)
+
+    /** Immutable request claim; the current selection and transfer state are owned only by [Snapshot]. */
+    internal data class TransferRequest(
+        val selection: Selection,
+        val effectEpoch: Long,
+        val bookGeneration: Long?,
+        val originalPath: AudioTrackPath?,
+    )
+
+    internal data class Transfer(val request: TransferRequest, val phase: TransferPhase)
+
+    internal data class PreparedTransfer(val expected: Snapshot, val request: TransferRequest, val reservation: Long)
 
     internal data class Lock(
         val phase: LockPhase,
@@ -31,6 +44,7 @@ internal class OutputIntentOwner {
         val lock: Lock?,
         val releasedRouteId: String? = null,
         val activeBookGeneration: Long? = null,
+        val transfer: Transfer? = null,
     )
 
     private var nextSequence = 0L
@@ -72,6 +86,7 @@ internal class OutputIntentOwner {
             selection = selection,
             lock = lock,
             releasedRouteId = if (destination == Destination.Automatic) releasedRouteId else null,
+            transfer = null,
         )
         return selection
     }
@@ -81,6 +96,75 @@ internal class OutputIntentOwner {
         val lock = Lock(LockPhase.Active, outputId, generation, nextSequence + 1, effectEpoch)
         selectAndLock(outputId, Destination.Output, lock)
         return lock
+    }
+
+    /** Reserve the existing sequence without publication: mute/checkpoint must precede listener callbacks. */
+    fun prepareTransfer(
+        outputId: String?,
+        destination: Destination,
+        effectEpoch: Long,
+        originalPath: AudioTrackPath?,
+    ): PreparedTransfer {
+        require(destination != Destination.Automatic)
+        require(destination != Destination.Output || !outputId.isNullOrBlank())
+        val current = _state.value
+        val selection = Selection(++nextSequence, outputId, destination)
+        return PreparedTransfer(
+            current,
+            TransferRequest(selection, effectEpoch, current.activeBookGeneration, originalPath),
+            nextSequence,
+        )
+    }
+
+    /** Later deliberate Play revalidates the existing choice; it is not another listener selection. */
+    fun prepareExistingTransfer(effectEpoch: Long, originalPath: AudioTrackPath?): PreparedTransfer? {
+        val current = _state.value
+        val selection = current.selection?.takeUnless { it.destination == Destination.Automatic } ?: return null
+        return PreparedTransfer(
+            current,
+            TransferRequest(selection, effectEpoch, current.activeBookGeneration, originalPath),
+            nextSequence,
+        )
+    }
+
+    fun publishTransfer(prepared: PreparedTransfer, phase: TransferPhase): Boolean {
+        require(phase == TransferPhase.Waiting || phase == TransferPhase.Verifying)
+        if (_state.value !== prepared.expected || nextSequence != prepared.reservation) return false
+        val request = prepared.request
+        _state.value = prepared.expected.copy(
+            selection = request.selection,
+            transfer = Transfer(request, phase),
+            releasedRouteId = null,
+        )
+        return _state.value.selection == request.selection && _state.value.transfer?.request == request
+    }
+
+    /** A failed attempt keeps the prior lock; proof may commit only from the current Verifying phase. */
+    fun transitionTransfer(expected: TransferRequest, phase: TransferPhase, retainedLock: Lock? = null): Boolean {
+        val current = _state.value
+        val transfer = current.transfer?.takeIf { it.request == expected } ?: return false
+        if (current.selection != expected.selection ||
+            current.activeBookGeneration != expected.bookGeneration
+        ) {
+            return false
+        }
+        val verified = phase == TransferPhase.Verified || phase == TransferPhase.Delegated
+        if (verified && (transfer.phase != TransferPhase.Verifying || expected.bookGeneration == null)) return false
+        val lock = when {
+            verified -> current.lock?.takeIf {
+                it.selectionSequence == expected.selection.sequence && it.outputId == expected.selection.outputId
+            }?.copy(
+                phase = LockPhase.Active,
+                bookGeneration = expected.bookGeneration,
+                effectEpoch = expected.effectEpoch,
+            )
+
+            phase == TransferPhase.Failed -> (current.lock ?: retainedLock)?.copy(phase = LockPhase.Waiting)
+
+            else -> current.lock ?: retainedLock
+        }
+        _state.value = current.copy(lock = lock, transfer = transfer.copy(phase = phase))
+        return _state.value.transfer == transfer.copy(phase = phase)
     }
 
     fun markWaiting(expected: Lock) = updateLock(expected) { it.copy(phase = LockPhase.Waiting) }
@@ -96,11 +180,12 @@ internal class OutputIntentOwner {
 
     /** Stop may retain Media3's loaded queue, so it releases the lock without inventing a book change. */
     fun onPlaybackStopped() {
-        _state.value = _state.value.copy(lock = null)
+        val current = _state.value
+        _state.value = current.copy(lock = null, transfer = current.transfer?.copy(phase = TransferPhase.Waiting))
     }
 
     fun releaseRuntime() = _state.value.let { current ->
-        _state.value = current.copy(lock = null, releasedRouteId = null, activeBookGeneration = null)
+        _state.value = current.copy(lock = null, releasedRouteId = null, activeBookGeneration = null, transfer = null)
     }
 
     fun isReleasedRoute(outputId: String): Boolean = _state.value.releasedRouteId == outputId
@@ -128,6 +213,7 @@ internal class OutputIntentOwner {
                 releasedRouteId = null,
                 activeBookGeneration = null,
                 lock = null,
+                transfer = null,
             )
             return
         }
@@ -138,6 +224,9 @@ internal class OutputIntentOwner {
                 phase = LockPhase.Waiting,
                 bookGeneration = null,
             ),
+            transfer = current.transfer?.let {
+                Transfer(it.request.copy(bookGeneration = generation), TransferPhase.Waiting)
+            },
         )
     }
 

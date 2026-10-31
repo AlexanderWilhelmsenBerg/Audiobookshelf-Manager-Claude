@@ -48,6 +48,7 @@ class DeferredPlaybackWorkTest {
     private var command = 0L
     private var itemVersion = 0L
     private var profile = 0L
+    private var selectionSequence = 0L
     private var commits = 0
     private var beforeAccept: suspend () -> Unit = {}
 
@@ -57,6 +58,8 @@ class DeferredPlaybackWorkTest {
             commandGeneration = { command },
             itemGeneration = { itemVersion },
             profileGeneration = { profile },
+            explicitSelectionSequence = { selectionSequence },
+            commands = UnprotectedPlaybackCommands(),
             acceptPrepared = { _, authorized, install ->
                 beforeAccept()
                 if (authorized()) {
@@ -189,6 +192,32 @@ class DeferredPlaybackWorkTest {
     }
 
     @Test
+    fun `output selection during suspended install revokes only the player mutation`() = runTest {
+        player.setMediaItem(item("finished"))
+        val claim = requireNotNull(work.capture())
+        val persistenceAuthorization = { work.isCurrent(claim) }
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        beforeAccept = {
+            entered.complete(Unit)
+            release.await()
+        }
+        val pending = launch(start = CoroutineStart.UNDISPATCHED) {
+            work.installIfCurrent(claim, prepared(), startPlaying = true, condition = { true })
+        }
+        entered.await()
+        selectionSequence += 1
+        release.complete(Unit)
+        pending.join()
+
+        assertEquals("finished", player.currentMediaItem?.mediaId)
+        assertFalse(player.playWhenReady)
+        assertEquals(0, commits)
+        assertTrue(persistenceAuthorization(), "the captured persistence owner remains current")
+        assertFalse(work.isMutationCurrent(claim), "new output intent revokes the stale install")
+    }
+
+    @Test
     fun `a new item during suspended profile authorization cannot pass the final guard`() = runTest {
         player.setMediaItem(item("finished"))
         val claim = requireNotNull(work.capture())
@@ -297,6 +326,8 @@ class DeferredPlaybackWorkTest {
             commandGeneration = { generation },
             itemGeneration = { 0L },
             profileGeneration = { 0L },
+            explicitSelectionSequence = { 0L },
+            commands = UnprotectedPlaybackCommands(),
             acceptPrepared = { _, _, _ -> error("unused") },
         )
         val claim = requireNotNull(retry.capture())
@@ -313,6 +344,33 @@ class DeferredPlaybackWorkTest {
     }
 
     @Test
+    fun `output selection during retry delay blocks reprepare`() = runTest {
+        val fake = FailedPlayer()
+        var selection = 0L
+        val retry = DeferredPlaybackWork(
+            currentPlayer = { fake.player },
+            commandGeneration = { 0L },
+            itemGeneration = { 0L },
+            profileGeneration = { 0L },
+            explicitSelectionSequence = { selection },
+            commands = UnprotectedPlaybackCommands(),
+            acceptPrepared = { _, _, _ -> error("unused") },
+        )
+        val claim = requireNotNull(retry.capture())
+        val delayed = launch { retry.retryIfCurrent(claim, 1.seconds) }
+        runCurrent()
+
+        selection += 1
+        advanceTimeBy(1_000)
+        runCurrent()
+        delayed.join()
+
+        assertEquals(0, fake.prepares)
+        assertTrue(retry.isCurrent(claim), "bookkeeping freshness ignores output selection")
+        assertFalse(retry.isMutationCurrent(claim))
+    }
+
+    @Test
     fun `the same failed idle item is still eligible for its bounded retry`() = runTest {
         val fake = FailedPlayer()
         val retry = DeferredPlaybackWork(
@@ -320,6 +378,8 @@ class DeferredPlaybackWorkTest {
             commandGeneration = { 0L },
             itemGeneration = { 0L },
             profileGeneration = { 0L },
+            explicitSelectionSequence = { 0L },
+            commands = UnprotectedPlaybackCommands(),
             acceptPrepared = { _, _, _ -> error("unused") },
         )
         val claim = requireNotNull(retry.capture())
