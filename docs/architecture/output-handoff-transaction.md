@@ -91,7 +91,7 @@ clocks, speaker output or the reported distortion.
 ## Local software checkpoint
 
 Formatter and strict `verifyDebug --continue -x assembleDebug -Pshelfplayer.warningsAsErrors=true`
-pass: 2,841.0 tests across 343.0 suites, including 1,017 playback tests, with zero
+pass: 2,841 tests across 343 suites, including 1,017 playback tests, with zero
 failures/errors/skips; lint, Detekt and coverage pass. No dependency/classpath change was made. The
 initial full run passed runtime tests but exposed typed diagnostic lint findings; injecting AppClock
 and explicitly rendering unavailable numeric values resolved them without suppression.

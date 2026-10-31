@@ -109,8 +109,10 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         }.getOrNull() ?: return null
         // Media3 may replace/release the output while the platform route query is in progress.
         // Even an identical endpoint cannot authenticate the successor's playing AudioTrack.
-        return AudioTrackObservation(token, measured).takeIf { epoch.isCurrent(token) && active === track }
+        return AudioTrackObservation(token, measured).takeIf { isCurrent(track, token) }
     }
+
+    private fun isCurrent(track: AudioTrack, token: Long): Boolean = epoch.isCurrent(token) && active === track
 
     private fun observedPath(routes: List<AudioDeviceInfo>): AudioTrackPath = when {
         routes.isEmpty() -> AudioTrackPath.Unresolved
@@ -178,12 +180,12 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         val track = active ?: return
         val token = epoch.nextSnapshot()
         if (!lab.state.value.recording) return
-        timing.request(token, { epoch.isCurrent(token) && active === track }) {
+        timing.request(token, { isCurrent(track, token) }) {
             AudioTrackTimingSample.read(track, token, clock.elapsed().inWholeNanoseconds)
         }
         val result = runCatching { routeEvidence(track) }.getOrElse { "route-query-unavailable" }
         // A query can race with another track's release. Never publish it against the successor.
-        if (!epoch.isCurrent(token) || active !== track) return
+        if (!isCurrent(track, token)) return
         val playing = result == "playing-route-unknown" || result.startsWith("playing-to=")
         if (playing && !lastPlaying) lab.trackLifecycle("audio-track-playing")
         lastPlaying = playing
@@ -226,7 +228,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         val token = epoch.next()
         active = track
         val callback = AudioRouting.OnRoutingChangedListener {
-            if (epoch.isCurrent(token) && active === track) {
+            if (isCurrent(track, token)) {
                 if (lab.state.value.recording) {
                     lab.trackLifecycle("audio-track-route-changed")
                     sample()

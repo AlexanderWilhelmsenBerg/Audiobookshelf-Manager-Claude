@@ -209,7 +209,7 @@ internal class OutputHandoffEffects(private val source: Source) {
         if (!source.owner.publishTransfer(prepared, OutputIntentOwner.TransferPhase.Verifying)) return false
         source.selected(claim.request.selection)
         if (!isCurrent(claim)) return false
-        if (measureProof(claim.request) != measured || !isCurrent(claim)) {
+        if (!confirmsPreservedOutput(claim, measured)) {
             return refusePreservation(claim, previousLock)
         }
         val phase = if (measured == MutedProbeCompletion.Delegated) {
@@ -217,13 +217,16 @@ internal class OutputHandoffEffects(private val source: Source) {
         } else {
             OutputIntentOwner.TransferPhase.Verified
         }
-        val published = source.owner.transitionTransfer(claim.request, phase) && isCurrent(claim)
-        return if (published && measureProof(claim.request) == measured && isCurrent(claim)) {
+        val published = source.owner.transitionTransfer(claim.request, phase)
+        return if (published && confirmsPreservedOutput(claim, measured)) {
             true
         } else {
             refusePreservation(claim, previousLock)
         }
     }
+
+    private fun confirmsPreservedOutput(claim: Claim, measured: MutedProbeCompletion): Boolean =
+        isCurrent(claim) && measureProof(claim.request) == measured && isCurrent(claim)
 
     private fun refusePreservation(claim: Claim, previousLock: OutputIntentOwner.Lock?): Boolean {
         if (isCurrent(claim)) source.guard.pauseForSafety(claim.player)
