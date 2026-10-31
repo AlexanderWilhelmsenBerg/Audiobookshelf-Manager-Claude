@@ -280,9 +280,7 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
             if (!acknowledged || !authorized(probe, held)) return false
             probe.requiresPlaybackBarrier = false
             source.onPrepared(probe, bufferedSeek)
-            return authorized(probe, held) &&
-                (start == held.position || OutputHandoffPreparation.awaitHeldPosition(current, start, held.position)) &&
-                authorized(probe, held)
+            return OutputHandoffPreparation.awaitHeldPosition(current, start, held.position) { authorized(probe, held) }
         } finally {
             current.removeListener(listener)
         }

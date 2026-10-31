@@ -21,10 +21,21 @@ internal object OutputHandoffPreparation {
         return (held - runway).coerceAtLeast(Duration.ZERO)
     }
 
-    suspend fun awaitHeldPosition(player: ExoPlayer, start: Duration, held: Duration): Boolean {
+    suspend fun awaitHeldPosition(
+        player: ExoPlayer,
+        start: Duration,
+        held: Duration,
+        isCurrent: () -> Boolean,
+    ): Boolean {
+        if (!isCurrent()) return false
         val position = player.bookPosition()
-        if (position < start) return false
-        return position >= held || awaitMessage(player, held.inWholeMilliseconds)
+        val prepared = when {
+            start == held -> true
+            position < start -> false
+            position >= held -> true
+            else -> awaitMessage(player, held.inWholeMilliseconds)
+        }
+        return prepared && isCurrent()
     }
 
     suspend fun awaitMessage(player: ExoPlayer, positionMs: Long? = null): Boolean = withTimeoutOrNull(1.seconds) {
