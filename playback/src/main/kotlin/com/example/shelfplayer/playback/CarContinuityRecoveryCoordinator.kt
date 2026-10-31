@@ -88,6 +88,11 @@ internal class CarContinuityRecoveryCoordinator(
         awaiting = null
     }
 
+    fun routeSafetyPause(at: Duration) {
+        gate.onRouteSafetyPause(at)
+        awaiting = null
+    }
+
     fun playbackBecameActive(generation: Long?, selectionSequence: Long): CarArrivalResumeGate.Target? {
         val candidate = awaiting
         awaiting = null

@@ -31,6 +31,9 @@ internal class AndroidLocalOutputAdapter(
 
     @Volatile private var callback: AudioDeviceCallback? = null
     val endpointIds: Set<String> get() = live.keys
+
+    /** Privacy-safe capability count; no identity material leaves this adapter. */
+    val identifiedEndpointCount: Int get() = live.values.count { registry.find(it)?.identity != null }
     var collidingOutputIds: Set<String> = emptySet()
         private set
 
@@ -66,7 +69,7 @@ internal class AndroidLocalOutputAdapter(
         val manager = context.getSystemService(AudioManager::class.java) ?: return
         val devices = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).orEmpty()
         val entries = registry.reconcile(
-            devices.map { LiveOutputEndpointRegistry.Observation(it.id, it.type, it.productName?.toString()) },
+            devices.map(registry::observationOf),
         )
         val byHandle = devices.associateBy(AudioDeviceInfo::getId)
         live = entries.mapNotNull { endpoint -> byHandle[endpoint.platformId]?.let { endpoint.id to it } }.toMap()
@@ -75,7 +78,7 @@ internal class AndroidLocalOutputAdapter(
     }
 
     fun outputs(): List<AudioOutput> = live.mapNotNull { (id, info) ->
-        registry.find(info.id, info.type, info.productName?.toString())?.output?.copy(id = id)
+        registry.find(info)?.output?.copy(id = id)
     }
 
     /** A preference request is never actual-track evidence. Missing explicit targets fail closed. */
@@ -95,7 +98,7 @@ internal class AndroidLocalOutputAdapter(
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .build()
         return manager.getAudioDevicesForAttributes(attributes).mapNotNull { info ->
-            registry.find(info.id, info.type, info.productName?.toString())?.id
+            registry.find(info)?.id
         }.toSet()
     }
 }

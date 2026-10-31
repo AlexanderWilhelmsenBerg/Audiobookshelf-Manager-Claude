@@ -8,11 +8,15 @@ transport/category and product name. Two different A2DP endpoints named "Buds" w
 therefore collapsed by `putIfAbsent` even though Android exposed two live handles.
 
 `LiveOutputEndpointRegistry` now assigns each connected Android output an opaque,
-process-scoped and appearance-scoped endpoint ID. It:
+process-scoped endpoint ID. Unidentified devices remain appearance-scoped. It:
 
 - keeps distinct same-name A2DP outputs available to routing and the chooser;
-- generates new IDs when a platform handle disappears and later returns, even if the
-  OS recycles that handle;
+- generates new IDs for unidentified appearances, even when Android recycles a handle;
+- correlates A2DP handle changes only when Android supplies the same unique, valid unicast Bluetooth
+  address. `BluetoothEndpointIdentity` salts its digest with a random process-private value; neither
+  the address nor digest is persisted or logged. A bounded registry cache retains at most 32 logical
+  tokens. Blank/malformed/placeholder addresses and other transports keep per-appearance behavior;
+- revokes retained correlation on duplicate physical identities. Name/type never substitutes for identity;
 - uses a random per-process namespace, preventing cold-start alias reuse;
 - retains the original name-based `knownDeviceId` only as *legacy saved policy identity*;
 - declines to match an unknown platform handle using just a reported name;
@@ -23,6 +27,20 @@ The same registry is injected into `AudioOutputRouter` and
 currently observed exact endpoint. A route that cannot be resolved has no
 trusted endpoint ID. Android's media-policy prediction is still available for
 display and safety evaluation but is **not** physical AudioTrack proof.
+
+Identity correlation preserves destination intent, not an old measurement. Actual-route lookup requires
+the current handle, type, name and identity; an old AudioTrack handle cannot resolve a replacement even
+when both represent the same physical device. An inventory gap remains unavailable. Manual/car recovery
+must obtain fresh muted proof after a gap. A continuously measured healthy same-device route survives
+handle churn without a preference reset, seek or pause. Return callbacks use that same healthy-route
+check rather than blindly reasserting a preference. No fixed settling wait is added.
+
+An internal route-safety pause cancels suspended recovery effects but does not clear prior heard evidence
+in the existing continuity gate. It does not arm recovery by itself: the existing focus/noisy event,
+car-specific boundary, six-second correlation window and generation/selection checks still apply. The
+window begins at the earliest internal safety pause when one precedes the platform event; duplicate
+safety callbacks cannot extend it. Fresh audible playback clears that interruption timestamp.
+Real Pause, newer context and explicit Car/another output retain their existing invalidation rules.
 
 ## Trust and safety
 
@@ -47,6 +65,11 @@ Nothing in this change attributes a physical headset to a Media3 media-button
 request, adds headset lock or controlled handoff, changes Media3 output creation,
 stores a device address, or logs new identifying hardware information.
 
+The address is read through public [AudioDeviceInfo.getAddress()](https://developer.android.com/reference/android/media/AudioDeviceInfo#getAddress()) on API28+, with unavailable/failed
+reads treated as unidentified. API26–27 retain appearance identity. No new Bluetooth permission or
+scan is requested. OEM address availability and handle churn need hardware acceptance; correlation is
+not a promise that Android will keep the transport or audio focus alive.
+
 ## Acceptance and tests
 
 `LiveOutputEndpointRegistryTest` exercises two identically named A2DP endpoints,
@@ -54,6 +77,11 @@ stable identity within one connection, disconnect/reconnect with recycled OS
 handles, process recreation, missing names, duplicate/unknown platform handles,
 and strict route-provenance decisions. `UnverifiedDevicePolicyTest` exercises
 stored AutoPlay downgrade and category-wide policy exceptions.
+
+`BluetoothEndpointContinuityTest` exercises production inventory/guard integration through handle
+changes, gaps and identity collisions. `BluetoothEndpointIdentityTest` checks process-private identity,
+current-handle authentication and stale/recycled-handle rejection. `PlaybackRouteSafetyContinuityTest`
+uses the real service PlayerEvents callback to distinguish internal safety pause from listener Pause.
 
 The existing `verifyDebug` suite includes Robolectric `AudioOutputRouterThreadTest`,
 route safety, car-arrival, focus/noisy, stale-intent, lifecycle and Media3 policy

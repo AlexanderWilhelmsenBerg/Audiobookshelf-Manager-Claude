@@ -292,7 +292,7 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
         service.playbackCall("observeCarContinuityHeadset", List::class.java, listOf(measured))
     }
 
-    fun checkRouteSafetyPauseReason() {
+    fun checkRouteSafetyPauseReason(afterSafetyPause: () -> Unit = {}, afterListenerPause: () -> Unit = {}) {
         var recordedEvents = 0
         service.history = playbackDependencyProxy<PlaybackHistoryRepository> { method ->
             check(method.substringBefore('-') == "record") { "Unexpected history call: $method" }
@@ -334,6 +334,7 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
         assertNull(service.autoRewind.playbackField<Any?>("pausedAt"), "a safety pause must not prime auto-rewind")
         assertFalse(router.isRouteSafetyPause(player), "effect provenance must not outlive the pause call")
         assertEquals(beforeSafetyPause, recordedEvents, "route safety must not fabricate listener Pause history")
+        afterSafetyPause()
         player.playWhenReady = true
         player.pause()
         scope.runCurrent()
@@ -343,6 +344,7 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
         )
         assertFalse(callbackWasSafetyPause, "the later listener pause must have no safety-effect provenance")
         assertEquals(beforeSafetyPause + 2, recordedEvents, "the later real Play and Pause remain in history")
+        afterListenerPause()
         player.removeListener(originListener)
         player.removeListener(listener)
     }
