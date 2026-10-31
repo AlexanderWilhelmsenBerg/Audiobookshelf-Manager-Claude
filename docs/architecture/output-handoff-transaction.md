@@ -1,6 +1,7 @@
 # Output handoff transaction redesign
 
-**Status:** Implemented candidate; exact-head gates are tracked in #289/#300. Hardware acceptance failed on APK2246.
+**Status:** Implemented candidate; exact-head gates are tracked in #289/#300. APK2248 has partial improvement;
+arrival retention and one Car transfer still failed physical acceptance. The latest corrective slice is unaccepted.
 **Requirements:** PLAY-002/004/008/009, ROUTE-001/002; retain S01–S22.
 **Baseline:** PR300 b30ba552, combined PR301 6a56e907. GitHub is authoritative.
 
@@ -75,6 +76,12 @@ last-trustworthy-position handling; arbitrary thresholds must not corrupt progre
   diagnostics off/on and current progress after Pause. Retain the under-one-second interruption target.
 
 The broader review and exact CI/device checkpoints are in GitHub issue #289.
+
+APK2248 verified two explicit Headset transfers, but one Car transfer exceeded the final bound by 177ms
+and correctly paused/restored. The capture does not distinguish timed-message delivery from application
+dispatcher delay or output-clock behavior. A production transaction regression now delivers the held-point
+message and delays its continuation by that amount; it must refuse without an additional proof/seek loop.
+The limit remains 50ms. Do not label this timing case fixed or relax it based on a successful earlier transfer.
 
 ## Diagnostic compatibility and limits
 

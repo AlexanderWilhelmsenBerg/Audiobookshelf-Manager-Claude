@@ -582,13 +582,14 @@ class AudioOutputRouter @Inject constructor(
     }
 
     private fun onGuardedHeadsetReappeared(chosen: String) {
-        // The old exact headset returned during the grace. Reapply its preference
-        // without issuing Play; a newer listener selection can still supersede it.
+        // Exact identity returned. Preserve a freshly measured healthy route; otherwise reassert
+        // without issuing Play. A newer listener selection still supersedes this work.
         headsetGuard.endpointReturned()
-        val epoch = preferenceEffects.supersede()
+        val attached = player ?: return
+        val epoch = preferenceEffects.snapshot()
         applicationScope.launch {
-            if (_selectedId.value == chosen && headsetGuard.endpointId == chosen && chosen in live) {
-                apply(chosen, epoch)
+            if (isCurrentGuard(epoch, attached, chosen) && chosen in live) {
+                reassert(chosen)
             }
         }
     }
@@ -630,7 +631,7 @@ class AudioOutputRouter @Inject constructor(
                 else -> protection
             }
         }
-    }
+    }.also { it.reportDenial(logger, this, expectedPlayer) }
 
     private fun pauseForSafety(expectedPlayer: Player): Boolean {
         val current = player as? ExoPlayer ?: return false
@@ -954,9 +955,6 @@ private fun statusFor(lock: OutputIntentOwner.Lock?): AudioOutputLockStatus? = w
     OutputIntentOwner.LockPhase.Unverified -> AudioOutputLockStatus.Unverified
     null -> null
 }
-
-/** No guard is distinct from a guard that cannot safely prepare this Play. */
-internal enum class ManualPlayProtection { NoGuard, MutedAllowed, Denied }
 
 internal fun shouldSuspendGuardedPlayback(
     guardedHeadsetId: String?,

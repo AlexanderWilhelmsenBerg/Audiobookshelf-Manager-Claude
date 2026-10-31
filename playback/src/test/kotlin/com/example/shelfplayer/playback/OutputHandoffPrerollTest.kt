@@ -21,6 +21,39 @@ import kotlin.test.assertTrue
 @Config(sdk = [34])
 class OutputHandoffPrerollTest {
     @Test
+    fun `delayed application continuation after held-point delivery refuses without live retry`() = runTest {
+        val fixture = MutedPositionEffectsTest.Fixture(this)
+        val unmutedWhilePlaying = mutableListOf<Boolean>()
+        fixture.gains.addMuteListener { change ->
+            if (!change.muted) unmutedWhilePlaying += fixture.playWhenReady
+        }
+        fixture.report(AudioTrackPath.RemoteSubmix)
+        fixture.router.select(fixture.outputId)
+        fixture.rawPosition += 307L
+        fixture.report(AudioTrackPath.Endpoint(fixture.outputId))
+        runCurrent()
+        fixture.deliver(0)
+        runCurrent()
+        assertEquals(11_750L, fixture.rawPosition)
+        assertEquals(12_000L, fixture.messages.last().positionMs)
+
+        // Deliver at the held point on Media3's playback thread, then model 177ms of progress before
+        // the suspended MainImmediate continuation gets a turn.
+        fixture.rawPosition = 12_000L
+        fixture.deliver(1)
+        fixture.rawPosition = 12_177L
+        runCurrent()
+
+        assertFalse(fixture.playWhenReady)
+        assertEquals(12_000L, fixture.rawPosition, "failure restores the held position after pausing")
+        assertEquals(1f, fixture.volume, "mute releases only after playback is paused")
+        assertEquals(listOf(false), unmutedWhilePlaying)
+        assertNull(fixture.activeProbe())
+        assertEquals(2, fixture.messages.size, "failure must not launch a new timed proof or seek")
+        assertEquals(listOf(true, true), fixture.compensationOrigins)
+    }
+
+    @Test
     fun `preparation handles faster playback and a checkpoint near the book start without a negative seek`() = runTest {
         for ((held, speed, start) in listOf(
             Triple(12_000L, 2f, 11_500L),

@@ -90,6 +90,12 @@ profiles or listening progress. Previously copied/saved files remain separate ex
    must remain muted, end near the held narration without jumbling, and preserve the chosen speed. Repeat
    Pause or a newer output choice during preparation; no old message may resume or unmute it. Late or
    wrong-route proof must stay paused. Report first-attempt success as well as failures requiring another press.
+7. During Auto arrival, distinguish a continuous measured headset route from an actual transport/focus
+   interruption. Exact-address handle changes should preserve the healthy route without resetting it.
+   After a real gap, the same exact identity can retain destination intent but must obtain fresh route proof.
+   Repeat with two same-name headsets and unavailable/duplicate identity: no guessed destination or speaker
+   spill is allowed. A deliberate Pause during arrival must remain paused. Device evidence is needed to
+   establish whether the OEM exposes a usable address; generic headset keys still do not identify a device.
 
 Measure the interval from the last audible headset sample to resumed audible headset audio. Diagnostic
 timestamps locate focus loss, endpoint publication, ProbeReady, proof preparation and completion, but do not

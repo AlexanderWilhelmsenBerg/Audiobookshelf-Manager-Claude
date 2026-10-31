@@ -1454,8 +1454,11 @@ class PlaybackService : MediaLibraryService() {
             val interruption = input.interruptionReason
             if (interruption != null) {
                 onCarPlatformInterruption(interruption)
+            } else if (routeSafetyPause) {
+                carRecovery.routeSafetyPause(clock.elapsed())
             } else {
-                // Deliberate pause, end-of-item or unknown causes invalidate recovery evidence.
+                // An internal safety pause preserves prior heard intent for a later platform/car boundary.
+                // It grants no Play. Deliberate pause, end-of-item and unknown causes still revoke evidence.
                 carRecovery.cancelAll()
                 carRecovery.clearAwaiting()
             }

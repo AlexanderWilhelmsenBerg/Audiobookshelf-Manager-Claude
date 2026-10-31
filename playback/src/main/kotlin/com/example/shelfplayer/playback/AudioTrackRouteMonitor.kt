@@ -123,7 +123,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
 
         else -> {
             val route = routes.single()
-            val matched = endpointRegistry.find(route.id, route.type, route.productName?.toString())
+            val matched = endpointRegistry.find(route)
             matched?.let { AudioTrackPath.Endpoint(it.id) } ?: AudioTrackPath.Unresolved
         }
     }
