@@ -220,6 +220,7 @@ class MutedPositionEffectsTest {
         var playWhenReady = true
         var playbackState = Player.STATE_READY
         var bufferOnSeek = false
+        var playbackSpeed = 1f
         var command = 0L
         var pauses = 0
         var plays = 0
@@ -272,6 +273,8 @@ class MutedPositionEffectsTest {
                 "isPlaying" -> playWhenReady && playbackState == Player.STATE_READY
 
                 "getPlaybackState" -> playbackState
+
+                "getPlaybackParameters" -> androidx.media3.common.PlaybackParameters(playbackSpeed)
 
                 "setPreferredAudioDevice" -> {
                     check(!failPreference) { "synthetic preference failure" }

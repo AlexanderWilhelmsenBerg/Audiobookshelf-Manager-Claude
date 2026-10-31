@@ -128,10 +128,46 @@ class AudioRouteLabRecorderTest {
         assertEquals(28, restored.state.value.entries.count { it.contains("transport-intent") })
         assertTrue(restored.report("same-build").contains("diagnostic-stop"))
 
-        restored.clear()
-        runCurrent()
+        restored.clearAndAwait()
         assertFalse(File(context.noBackupFilesDir, "audio-route-lab.txt").exists())
         assertTrue(restored.state.value.entries.isEmpty())
+        val afterClear = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
+        assertTrue(afterClear.state.value.entries.isEmpty(), "a process restart must not restore cleared evidence")
+    }
+
+    @Test
+    fun `clear reservation rejects duplicate clears and starts until reset finishes`() = runTest {
+        context.getSharedPreferences("unified-diagnostics", Context.MODE_PRIVATE).edit { clear() }
+        val clock = TestAppClock()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val logger = object : Logger {
+            override fun log(event: LogEvent) = Unit
+        }
+        val log = EventLog(clock)
+        val router = AudioOutputRouter(
+            context,
+            logger,
+            backgroundScope,
+            dispatcher,
+            volumeEffects = volumeEffectsForTest(dispatcher),
+        )
+        val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
+        val classifier = OutputClassifier(context, lab)
+        val capture = UnifiedDiagnosticsCapture(context, lab, classifier, log, PlaybackMetricsRecorder(clock))
+
+        assertTrue(capture.beginClear())
+        assertFalse(capture.beginClear(), "only one clear may own the persisted diagnostics")
+        capture.start()
+        assertFalse(capture.active.value, "capture must not restart before clear releases its reservation")
+        assertFalse(
+            context.getSharedPreferences("unified-diagnostics", Context.MODE_PRIVATE).getBoolean("active", false),
+        )
+
+        capture.finishClear()
+        capture.start()
+        assertTrue(capture.active.value, "capture can start again after clear completion")
+        capture.stop()
+        runCurrent()
     }
 
     @Test

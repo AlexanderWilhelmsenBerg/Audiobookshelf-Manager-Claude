@@ -71,6 +71,13 @@ be taken from the current issue checkpoint. This document does not predeclare th
 Use the single combined signed candidate after its exact-head verification passes. Retain APK version/source
 with each capture. Run stationary, recording audible destination separately from dashboard state:
 
+Before a new test, use unified diagnostics **Clear all** and wait for clearing to finish, then **Start
+diagnostics**. Clearing stops capture and removes retained events, route/classifier/race evidence and
+the saved crash report, and resets playback diagnostic counters. Confirm an immediate export has no
+previous crash or old test events, including
+after restarting the app. A later real crash must still appear. Clearing does not erase books, history,
+profiles or listening progress. Previously copied/saved files remain separate exports.
+
 1. Start audible headset playback, connect Auto, and repeat arrival at least five times. Target no interruption;
    any interruption must be less than one second. Check for no speaker/car spill or skipped/repeated narration.
 2. Pause/Play on the headset while it owns output. Use explicit Car, then explicit Headset, then Car again.
@@ -79,6 +86,10 @@ with each capture. Run stationary, recording audible destination separately from
 4. Exercise endpoint loss/replacement, a competing output, and a focus interruption. Unverifiable output must
    fail closed; a deadline or guessed identity must never restore volume.
 5. Repeat relevant cases with diagnostics off, and include background/service recreation in the wider matrix.
+6. Exercise explicit Car→Headset near the book start and at 1x and a supported faster speed. Preparation
+   must remain muted, end near the held narration without jumbling, and preserve the chosen speed. Repeat
+   Pause or a newer output choice during preparation; no old message may resume or unmute it. Late or
+   wrong-route proof must stay paused. Report first-attempt success as well as failures requiring another press.
 
 Measure the interval from the last audible headset sample to resumed audible headset audio. Diagnostic
 timestamps locate focus loss, endpoint publication, ProbeReady, proof preparation and completion, but do not

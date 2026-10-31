@@ -49,7 +49,7 @@ class MutedPositionBufferRecoveryTest {
             for (advance in listOf(20L, 50L, 116L)) {
                 val fixture = bufferedTransfer()
                 firstReady(fixture, readyBeforeBarrier, advance)
-                assertEquals(1, fixture.messages.size, "there is only one correction and barrier")
+                assertEquals(1, fixture.messages.count { it.positionMs == androidx.media3.common.C.TIME_UNSET })
                 assertNull(fixture.activeProbe())
                 assertEquals(advance <= 50L, fixture.playWhenReady)
                 assertEquals(if (advance <= 50L) 12_000L + advance else 12_000L, fixture.rawPosition)
@@ -81,7 +81,7 @@ class MutedPositionBufferRecoveryTest {
                 OutputIntentOwner.TransferPhase.Failed,
                 fixture.router.outputIntentOwner.state.value.transfer?.phase,
             )
-            assertEquals(1, fixture.messages.size)
+            assertEquals(1, fixture.messages.count { it.positionMs == androidx.media3.common.C.TIME_UNSET })
             assertEquals(0, fixture.plays)
         }
     }
@@ -125,7 +125,7 @@ class MutedPositionBufferRecoveryTest {
         runCurrent()
         assertEquals(Player.STATE_BUFFERING, fixture.playbackState)
         assertEquals(1, fixture.messages.size)
-        assertEquals(12_000L, fixture.rawPosition)
+        assertEquals(11_750L, fixture.rawPosition, "replacement prepares before the held narration")
         return fixture
     }
 
@@ -143,5 +143,9 @@ class MutedPositionBufferRecoveryTest {
         fixture.report(AudioTrackPath.Endpoint(fixture.outputId))
         if (readyBeforeBarrier) fixture.deliver(0)
         runCurrent()
+        if (fixture.messages.size == 2) {
+            fixture.deliver(1)
+            runCurrent()
+        }
     }
 }
