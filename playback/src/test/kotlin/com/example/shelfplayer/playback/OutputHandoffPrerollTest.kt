@@ -22,7 +22,11 @@ import kotlin.test.assertTrue
 class OutputHandoffPrerollTest {
     @Test
     fun `preparation handles faster playback and a checkpoint near the book start without a negative seek`() = runTest {
-        for ((held, speed, start) in listOf(Triple(12_000L, 2f, 11_500L), Triple(100L, 1f, 0L))) {
+        for ((held, speed, start) in listOf(
+            Triple(12_000L, 2f, 11_500L),
+            Triple(12_000L, 1.25f, 11_687L),
+            Triple(100L, 1f, 0L),
+        )) {
             val fixture = MutedPositionEffectsTest.Fixture(this)
             fixture.rawPosition = held
             fixture.playbackSpeed = speed
