@@ -36,8 +36,12 @@ class OutputTransferTransactionTest {
         fixture.report(AudioTrackPath.Endpoint(fixture.outputId), epoch = 2)
         fixture.deliver(0)
         runCurrent()
+        assertEquals(0f, fixture.volume)
+        fixture.rawPosition = 12_000L
+        fixture.deliver(1)
+        runCurrent()
         assertNull(fixture.activeProbe())
-        assertEquals(1, fixture.messages.size)
+        assertEquals(2, fixture.messages.size)
         assertEquals(1f, fixture.volume)
         assertEquals(12_000L, fixture.rawPosition)
         assertEquals(0, fixture.plays)
@@ -59,11 +63,12 @@ class OutputTransferTransactionTest {
             fixture.rawPosition = 12_051L
             fixture.reportPlaybackState(Player.STATE_READY)
             fixture.report(AudioTrackPath.Endpoint(fixture.outputId), epoch = 2)
+            fixture.deliver(1)
             runCurrent()
             assertNull(fixture.activeProbe())
             assertFalse(fixture.playWhenReady)
             assertEquals(12_000L, fixture.rawPosition)
-            assertEquals(1, fixture.messages.size, "failure restoration must not launch another live proof")
+            assertEquals(2, fixture.messages.size, "barrier and held-point message; no repeated live proof")
             assertEquals(0, fixture.plays)
         }
 

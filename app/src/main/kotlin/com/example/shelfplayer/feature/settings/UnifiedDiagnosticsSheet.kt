@@ -70,7 +70,7 @@ fun UnifiedDiagnosticsSheet(
     val state by settings.uiState.collectAsStateWithLifecycle()
     val metrics by settings.playbackMetrics.collectAsStateWithLifecycle()
     val events by logs.events.collectAsStateWithLifecycle()
-    val crash by crashes.report.collectAsStateWithLifecycle()
+    val clearing by capture.clearing.collectAsStateWithLifecycle()
     val clipboard = LocalClipboard.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -94,8 +94,8 @@ fun UnifiedDiagnosticsSheet(
         }
     }
     val build = state.versionLabel + " ${BuildConfig.BUILD_TYPE} ${BuildConfig.GIT_COMMIT} ${state.sourceLabel}"
-    val legacy = remember(state, metrics, events, crash) {
-        DiagnosticsReport.of(build, state, metrics, events, Instant.now(), crash)
+    val currentDebugConsoleReport = {
+        DiagnosticsReport.of(build, state, metrics, logs.events.value, Instant.now(), crashes.report.value)
     }
 
     ModalBottomSheet(
@@ -120,9 +120,16 @@ fun UnifiedDiagnosticsSheet(
                 },
                 style = MaterialTheme.typography.labelLarge,
             )
+            if (clearing) {
+                Text(
+                    stringResource(R.string.unified_diag_clearing),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             Text(lab.reportStatus, style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(
+                    enabled = !clearing,
                     onClick = {
                         if (active) {
                             capture.stop()
@@ -141,13 +148,20 @@ fun UnifiedDiagnosticsSheet(
                         },
                     )
                 }
-                TextButton(onClick = capture::clear) { Text(stringResource(R.string.unified_diag_clear)) }
+                TextButton(
+                    enabled = !clearing,
+                    onClick = {
+                        pendingExport = null
+                        capture.clear()
+                    },
+                ) { Text(stringResource(R.string.unified_diag_clear)) }
             }
             Text(stringResource(R.string.unified_diag_export_help), style = MaterialTheme.typography.bodySmall)
             TextButton(
+                enabled = !clearing,
                 modifier = Modifier.testTag(UNIFIED_DIAGNOSTICS_COPY),
                 onClick = {
-                    val report = capture.jsonReport(build, legacy)
+                    val report = capture.jsonReport(build, currentDebugConsoleReport())
                     scope.launch {
                         clipboard.setClipEntry(
                             ClipEntry(ClipData.newPlainText("BookWave diagnostics JSON", AnnotatedString(report))),
@@ -156,9 +170,10 @@ fun UnifiedDiagnosticsSheet(
                 },
             ) { Text(stringResource(R.string.unified_diag_copy_json)) }
             TextButton(
+                enabled = !clearing,
                 modifier = Modifier.testTag(UNIFIED_DIAGNOSTICS_SAVE),
                 onClick = {
-                    pendingExport = capture.jsonReport(build, legacy)
+                    pendingExport = capture.jsonReport(build, currentDebugConsoleReport())
                     saveJson.launch(UnifiedDiagnosticsFileExport.filename(Instant.now()))
                 },
             ) { Text(stringResource(R.string.unified_diag_save_json)) }

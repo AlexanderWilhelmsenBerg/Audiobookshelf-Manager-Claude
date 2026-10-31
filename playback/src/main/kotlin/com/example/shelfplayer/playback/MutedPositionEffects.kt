@@ -3,13 +3,8 @@ package com.example.shelfplayer.playback
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.PlayerMessage
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.coroutines.resume
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 
 internal enum class PlaybackMovement { Play, Pause, Stop, Seek, MediaChanged, ReplaceCurrent }
 
@@ -241,15 +236,19 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         outputs.positions.guard.cancelProbe(probe)
     }
 
-    private fun restore(probe: HeadsetRouteGuard.Probe, held: MutedPositionCheckpoint): Boolean {
+    private fun restore(
+        probe: HeadsetRouteGuard.Probe,
+        held: MutedPositionCheckpoint,
+        target: Duration = held.position,
+    ): Boolean {
         if (!authorized(probe, held)) return false
-        val advance = probe.player.bookPosition() - held.position
+        val advance = probe.player.bookPosition() - target
         if (advance == Duration.ZERO) return true
         val previous = compensation
         probe.requiresPlaybackBarrier = true
         compensation = probe
         try {
-            probe.player.seekTo(held.position.inWholeMilliseconds.coerceAtLeast(0L))
+            probe.player.seekTo(target.inWholeMilliseconds.coerceAtLeast(0L))
         } finally {
             compensation = previous
         }
@@ -263,6 +262,7 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
     override suspend fun restoreForProof(probe: HeadsetRouteGuard.Probe): Boolean {
         val held = probe.positionCheckpoint?.takeIf { authorized(probe, it) } ?: return false
         val current = probe.player
+        val start = OutputHandoffPreparation.startPosition(probe, held.position)
         val seekingFromReady = current.bookPosition() != held.position && current.playbackState == Player.STATE_READY
         var bufferedSeek = false
         val listener = object : Player.Listener {
@@ -274,28 +274,19 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         }
         current.addListener(listener)
         try {
-            if (!restore(probe, held)) return false
+            if (!restore(probe, held, start)) return false
             bufferedSeek = bufferedSeek || (seekingFromReady && current.playbackState == Player.STATE_BUFFERING)
-            val acknowledged = !probe.requiresPlaybackBarrier || playbackBarrier(current)
+            val acknowledged = !probe.requiresPlaybackBarrier || OutputHandoffPreparation.awaitMessage(current)
             if (!acknowledged || !authorized(probe, held)) return false
             probe.requiresPlaybackBarrier = false
             source.onPrepared(probe, bufferedSeek)
-            return authorized(probe, held)
+            return authorized(probe, held) &&
+                (start == held.position || OutputHandoffPreparation.awaitHeldPosition(current, start, held.position)) &&
+                authorized(probe, held)
         } finally {
             current.removeListener(listener)
         }
     }
-
-    private suspend fun playbackBarrier(current: ExoPlayer): Boolean = withTimeoutOrNull(1.seconds) {
-        suspendCancellableCoroutine { continuation ->
-            val message = current.createMessage(
-                PlayerMessage.Target { _, _ ->
-                    if (continuation.isActive) continuation.resume(Unit)
-                },
-            ).send()
-            continuation.invokeOnCancellation { message.cancel() }
-        }
-    } != null
 
     private companion object {
         // A bound on unheard media, not a wall-clock or route-mismatch tolerance. Target proof stays exact.

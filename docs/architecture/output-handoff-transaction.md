@@ -17,8 +17,12 @@ For a real destination change:
 1. Reserve and capture the current position before acquiring mute or publishing intent.
 2. Apply the current request once. While muted, await fresh target-specific playing-route evidence.
    Do not seek the original output merely because it is still playing.
-3. Restore the held position once and await the playback-thread acknowledgement. This may replace
-   the AudioTrack; the acknowledgement itself proves neither its route nor its clock health.
+3. Restore once and await the playback-thread acknowledgement. An advancing explicit transfer seeks
+   up to 250ms of playback time before the held point, scaled by the current speed and clamped at zero.
+   It stays muted until a cancellable Media3 position message reaches the held point; shared progress
+   remains held throughout. This lets the replacement become ready before consuming unheard narration.
+   Implicit probes and transfers without advancement retain their direct restoration. Neither the
+   acknowledgement nor the position message proves the resulting track's route or clock health.
 4. Verify current playing output again and enforce the existing 0–50ms position bound. Never return
    to a live compensation stage. If this fails, pause before restoring the held point and finish
    refused. Failure restoration does not start another verification cycle.
@@ -28,6 +32,14 @@ For a real destination change:
 The same driver serves implicit headset probes and explicit transfers. Paused selection does not
 start playback. An existing authorized Play owns any start; the transaction never manufactures Play.
 Waiting is event-driven with bounded failure deadlines, not a fixed settling delay.
+
+APK2247 confirmed why preparation needs a lead-in: the first explicit Headset request had correct
+destination evidence but became READY 68ms past the held point, exceeding the unchanged 50ms allowance.
+The next explicit request succeeded. Preparation moves startup work before that point; it does not
+enlarge the allowance, retry a rejected transfer, or create a second player. A late position message,
+wrong route, missing message, newer command or cancellation still refuses/invalidates the old work.
+At the beginning of a book the available lead-in may be shorter, so success is not guaranteed. Hardware
+must verify delay, sound, multiple speeds and repeated transfers; software tests do not prove OEM timing.
 
 A loaded, unmuted player already measured on the explicitly requested destination may preserve its
 output. New intent still supersedes older work and receives fresh proof, but does not acquire mute,

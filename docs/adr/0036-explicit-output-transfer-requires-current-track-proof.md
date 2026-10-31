@@ -45,7 +45,11 @@ Binding, names, preferred-device acceptance and a sole ambiguous A2DP endpoint a
 
 `OutputHandoffEffects` orchestrates these effects through the existing owner/probe/preference
 ports. It keeps no other mutable current transaction, counter, player, session, focus owner or retry
-executor. `OutputTransferTransaction` orders destination proof, one restoration/barrier and final proof;
+executor. `OutputTransferTransaction` orders destination proof, one restoration/barrier and final proof.
+For an advancing explicit transfer, that single seek may prepare up to 250ms of playback time before
+the held narration, scaled by speed and clamped at the book start. A cancellable Media3 position message
+keeps preparation muted until the held point; fresh route proof and the original 0–50ms bound still gate
+unmuting. This absorbs replacement-track startup before unheard narration, without a retry or new Play;
 position effects retain ADR-0035's shared held-position reads. A healthy already-measured destination can
 publish new explicit intent without mute, preference effects or seeks. It rechecks proof/scope around
 publication and fails closed on route loss; a pending probe cannot use this preservation path.

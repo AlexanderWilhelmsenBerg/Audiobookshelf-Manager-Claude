@@ -135,6 +135,10 @@ class OutputHandoffEffectsTest {
         assertEquals(0f, fixture.volume, "unknown output remains muted after the old barrier")
         fixture.report(AudioTrackPath.Endpoint(fixture.outputId))
         runCurrent()
+        assertEquals(0f, fixture.volume, "destination proof cannot expose the preparation interval")
+        fixture.rawPosition = 12_000L
+        fixture.deliver(1)
+        runCurrent()
         assertEquals(1f, fixture.volume)
         assertEquals(
             OutputIntentOwner.TransferPhase.Verified,
@@ -181,10 +185,17 @@ class OutputHandoffEffectsTest {
         fixture.rawPosition = 25_000L
         fixture.report(AudioTrackPath.RemoteSubmix)
         runCurrent()
-        assertEquals(12_000L, fixture.rawPosition)
+        assertEquals(11_750L, fixture.rawPosition)
+        assertEquals(12_000L, fixture.effects.positionMs(), "shared progress stays held during preparation")
         assertEquals(0f, fixture.volume)
         assertEquals(1, fixture.messages.size)
         fixture.deliver(0)
+        runCurrent()
+
+        assertEquals(lock, owner.lock.value)
+        assertEquals(0f, fixture.volume)
+        fixture.rawPosition = 12_000L
+        fixture.deliver(1)
         runCurrent()
 
         assertEquals(OutputIntentOwner.TransferPhase.Delegated, owner.state.value.transfer?.phase)

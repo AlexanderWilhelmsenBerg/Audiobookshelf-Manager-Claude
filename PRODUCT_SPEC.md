@@ -405,7 +405,11 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Transfer preserves heard position, queue, speed, history and sleep state, and never manufactures Play.
   Shared position reads remain held during verification. At final validation a successful transfer permits
   at most 50ms of normal post-seek media-clock settling. A transfer waits for its destination before one
-  live position restoration; larger or backward movement then pauses before restoring the held point,
+  live position restoration. An advancing explicit transfer may prepare up to 250ms of playback time
+  before the held point, silently, and await that point through a cancellable Media3 position message.
+  Shared progress remains held; final target proof and the same 0–50ms allowance still apply. This
+  preparation is clamped at the book start and scaled by playback speed, not an extra skip allowance.
+  Larger or backward movement at final validation then pauses before restoring the held point,
   without another live seek/proof cycle.
   Newer command/selection/book/profile/attachment wins; rollback requires fresh unique original-route proof.
 - A confirmed physical car-projection departure with no recoverable Car playback may retire only the exact
@@ -1462,6 +1466,10 @@ Never show stack traces in ordinary UI.
 - Redact authorization, cookies, password fields, tokens in URLs, local filesystem paths, server host, username, media title, and description by default.
 - Debug builds may enable expanded local logging through a developer toggle.
 - Diagnostic export is ZIP/JSON/text with explicit redaction report.
+- Unified diagnostics provides Clear all before a new test: stop recording, clear retained captures,
+  playback diagnostic counters and the saved crash report, and await stored trace deletion before
+  allowing another capture. Clearing must not erase listening progress, history or library data, or
+  cause an already-handled historical Android crash to reappear on restart.
 - No analytics or crash service by default.
 - Any future crash reporting is opt-in and strips private content.
 

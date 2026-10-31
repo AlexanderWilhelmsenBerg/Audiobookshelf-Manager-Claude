@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.time.Instant
@@ -275,13 +276,29 @@ class AudioRouteLab @Inject constructor(
 
     fun clear() {
         stop()
-        val clearGeneration = recordingGeneration.incrementAndGet()
-        _state.value = AudioRouteLabState()
+        val clearGeneration = beginClear()
         scope.launch(io) {
             mutex.withLock {
                 if (recordingGeneration.get() == clearGeneration) atomicIncident.delete()
             }
         }
+    }
+
+    /** Clear persisted evidence before returning, for an operation that promises a clean next capture. */
+    suspend fun clearAndAwait() {
+        stop()
+        val clearGeneration = beginClear()
+        withContext(io) {
+            mutex.withLock {
+                if (recordingGeneration.get() == clearGeneration) atomicIncident.delete()
+            }
+        }
+    }
+
+    private fun beginClear(): Long {
+        val clearGeneration = recordingGeneration.incrementAndGet()
+        _state.value = AudioRouteLabState()
+        return clearGeneration
     }
 
     fun report(version: String): String = buildString {

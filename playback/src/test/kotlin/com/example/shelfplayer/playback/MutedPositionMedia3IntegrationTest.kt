@@ -37,6 +37,32 @@ import kotlin.test.assertTrue
 @LooperMode(LooperMode.Mode.PAUSED)
 class MutedPositionMedia3IntegrationTest {
     @Test
+    fun `real Media3 explicit transfer delivers held position message after muted preparation`() {
+        val fixture = Fixture(Handler(Looper.getMainLooper()).asCoroutineDispatcher().immediate)
+        try {
+            fixture.prepareAndPlay()
+            fixture.await("enough narration for a preparation interval") { fixture.player.currentPosition >= 500L }
+            val held = fixture.beginExplicitTransfer()
+            fixture.await("advance while destination evidence is unavailable") {
+                fixture.player.currentPosition >= held + 100L
+            }
+            fixture.reportHeadset()
+            fixture.await("explicit preparation and fresh destination verification") {
+                fixture.guard.currentProbe ==
+                    null
+            }
+            assertEquals(listOf(MutedProbeCompletion.Verified), fixture.settledCompletions)
+            assertEquals(1, fixture.seekReasons.size)
+            assertEquals(2, fixture.playerMessageCount, "playback barrier and held-position delivery")
+            assertTrue(fixture.player.currentPosition in held..held + 50L)
+            assertTrue(fixture.player.isPlaying)
+            assertEquals(1f, fixture.player.volume)
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
     fun `real Media3 seek and message settle one advancing muted interval`() {
         val fixture = Fixture(Handler(Looper.getMainLooper()).asCoroutineDispatcher().immediate)
         try {
@@ -144,6 +170,18 @@ class MutedPositionMedia3IntegrationTest {
             volumeEffects.attach(player)
             set(router, "player", player)
             set(router, "currentTrackRoutes", { measuredRoute })
+            set(router, "currentTrackObservation", {
+                AudioTrackObservation(
+                    1,
+                    if (measuredRoute ==
+                        setOf(outputId)
+                    ) {
+                        AudioTrackPath.Endpoint(outputId)
+                    } else {
+                        AudioTrackPath.RemoteSubmix
+                    },
+                )
+            })
             set(router.localOutputs, "live", mapOf(outputId to headset))
             set(router.localOutputs, "collidingOutputIds", emptySet<String>())
             field<kotlinx.coroutines.flow.MutableStateFlow<String?>>(router, "_selectedId").value = outputId
@@ -196,6 +234,17 @@ class MutedPositionMedia3IntegrationTest {
             val preferences: RoutePreferenceEffects = field(router, "preferenceEffects")
             assertTrue(guard.beginProbe(outputId, player, preferences.snapshot()))
             return requireNotNull(guard.currentProbe)
+        }
+
+        fun beginExplicitTransfer(): Long {
+            measuredRoute = emptySet()
+            router.select(outputId)
+            return requireNotNull(guard.currentProbe?.positionCheckpoint).position.inWholeMilliseconds
+        }
+
+        fun reportHeadset() {
+            measuredRoute = setOf(outputId)
+            router.onActualTrackRouteChanged()
         }
 
         fun await(description: String, predicate: () -> Boolean) {
