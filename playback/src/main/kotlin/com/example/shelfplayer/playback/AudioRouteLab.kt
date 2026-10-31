@@ -110,6 +110,10 @@ class AudioRouteLab @Inject constructor(
         record("observer-$event")
     }
 
+    internal fun trackTiming(sample: AudioTrackTimingSample) {
+        if (_state.value.recording) record(sample.evidence())
+    }
+
     internal fun deviceAlias(platformId: Int): String = deviceTimeline.aliasFor(platformId)
 
     internal fun mediaButtonInput(event: KeyEvent?, controller: MediaInputController, entry: MediaInputEntry) {

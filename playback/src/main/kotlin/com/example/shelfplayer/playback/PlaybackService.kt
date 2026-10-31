@@ -472,11 +472,25 @@ class PlaybackService : MediaLibraryService() {
                     )
                 }
 
-                override fun onPrepared(probe: HeadsetRouteGuard.Probe, finalStage: Boolean, bufferedSeek: Boolean) {
+                override fun onPrepared(probe: HeadsetRouteGuard.Probe, bufferedSeek: Boolean) {
                     logger.info(
                         LogCategory.Playback,
                         "Muted output proof preparation completed",
-                        LogField.Public("stage", if (finalStage) "Final" else "Initial"),
+                        LogField.Public("stage", "SingleRestore"),
+                        LogField.Public(
+                            "speedMilli",
+                            (
+                                probe.player.playbackParameters.speed *
+                                    PLAYBACK_PARAMETER_SCALE
+                                ).toInt(),
+                        ),
+                        LogField.Public(
+                            "pitchMilli",
+                            (
+                                probe.player.playbackParameters.pitch *
+                                    PLAYBACK_PARAMETER_SCALE
+                                ).toInt(),
+                        ),
                         LogField.Public("bufferedSeek", bufferedSeek),
                         LogField.Public("proofEpoch", probe.preferenceEpoch),
                         LogField.Public(
@@ -1352,6 +1366,16 @@ class PlaybackService : MediaLibraryService() {
      * be torn down.
      */
     private inner class PlayerEvents : Player.Listener {
+        override fun onPlaybackParametersChanged(parameters: androidx.media3.common.PlaybackParameters) {
+            autoTraces.log(
+                "Media3 playback parameters changed",
+                fields = listOf(
+                    LogField.Public("speedMilli", (parameters.speed * PLAYBACK_PARAMETER_SCALE).toInt()),
+                    LogField.Public("pitchMilli", (parameters.pitch * PLAYBACK_PARAMETER_SCALE).toInt()),
+                ),
+            )
+        }
+
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (isPlaying) autoRewind.onResumed()
             audioTrackRouteMonitor.sample()
@@ -3377,6 +3401,8 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private companion object {
+        private const val PLAYBACK_PARAMETER_SCALE = 1_000
+
         /** PRODUCT_SPEC PLAY-004 — "at least every five seconds". */
         const val JOURNAL_INTERVAL_MS = 5_000L
 

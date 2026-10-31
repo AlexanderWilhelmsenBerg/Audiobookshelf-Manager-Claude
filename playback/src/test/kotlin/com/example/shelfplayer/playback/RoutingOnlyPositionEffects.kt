@@ -18,7 +18,9 @@ internal fun routingOnlyPositionEffects(): PositionCheckpointEffects = object : 
         null,
     )
 
-    override suspend fun complete(probe: HeadsetRouteGuard.Probe) = MutedProbeCompletion.Verified
+    override suspend fun restoreForProof(probe: HeadsetRouteGuard.Probe) = true
+
+    override fun restoreCurrent(probe: HeadsetRouteGuard.Probe) = true
 
     override fun position(target: Player): Duration = target.bookPosition()
 

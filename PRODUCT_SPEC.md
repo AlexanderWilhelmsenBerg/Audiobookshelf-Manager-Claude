@@ -403,9 +403,13 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Explicit destination changes mute before preference effects and commit only with current target-specific
   AudioTrack proof. The prior lock remains recovery context until success; failed or unknown output stays
   safely paused. Car projection delegation must be distinguished from proof of a physical car speaker.
+  Selecting an already measured healthy destination may preserve the unmuted output without a preference
+  request or seek; pending probes cannot bypass verification and proof is rechecked around publication.
 - Transfer preserves heard position, queue, speed, history and sleep state, and never manufactures Play.
   Shared position reads remain held during verification. At final validation a successful transfer permits
-  at most 50ms of normal post-seek media-clock settling; larger or backward movement restores and pauses.
+  at most 50ms of normal post-seek media-clock settling. A transfer waits for its destination before one
+  live position restoration; larger or backward movement then pauses before restoring the held point,
+  without another live seek/proof cycle.
   Newer command/selection/book/profile/attachment wins; rollback requires fresh unique original-route proof.
 - A confirmed physical car-projection departure with no recoverable Car playback may retire only the exact
   unlocked Car choice while PlayWhenReady is false. It leaves playback paused and sets no output-release

@@ -78,6 +78,9 @@ internal class HeadsetRouteGuard(
 
     val currentPlayerListener: Player.Listener? get() = attachedListener
 
+    val preservablePlayer: ExoPlayer?
+        get() = attachedPlayer?.takeIf { probe == null && !volumeEffects.isRouteMuted(it) }
+
     internal class Probe(
         val endpointId: String?,
         val player: ExoPlayer,
@@ -102,7 +105,7 @@ internal class HeadsetRouteGuard(
 
     /** The service captures before mute listeners can reenter; the Probe remains the sole owner. */
     internal var captureCheckpoint: ((Probe) -> MutedPositionCheckpoint?)? = null
-    internal var completeVerifiedProbe: (suspend (Probe) -> MutedProbeCompletion)? = null
+    internal var completeVerifiedProbe: (suspend (Probe, Boolean) -> MutedProbeCompletion)? = null
     internal var commitVerifiedProbe: ((Probe, MutedProbeCompletion) -> MutedProbeCompletion)? = null
     internal var onProbeCancelled: ((Probe) -> Unit)? = null
     internal var onProbeSettled: ((Probe, MutedProbeCompletion) -> Unit)? = null
@@ -339,7 +342,7 @@ internal class HeadsetRouteGuard(
         work = scope.launch(playerDispatcher, start = CoroutineStart.LAZY) {
             var completion = MutedProbeCompletion.Refused
             try {
-                completion = completeOrRefuse(active)
+                completion = completeOrRefuse(active, verified)
             } finally {
                 if (probe === active && active.completionJob === work) {
                     finishProbeNow(
@@ -357,8 +360,8 @@ internal class HeadsetRouteGuard(
         if (!work.start() && probe === active) finishProbeNow(active, MutedProbeCompletion.Refused)
     }
 
-    private suspend fun completeOrRefuse(active: Probe): MutedProbeCompletion = try {
-        completeVerifiedProbe?.invoke(active) ?: MutedProbeCompletion.Refused
+    private suspend fun completeOrRefuse(active: Probe, verified: Boolean): MutedProbeCompletion = try {
+        completeVerifiedProbe?.invoke(active, verified) ?: MutedProbeCompletion.Refused
     } catch (cancellation: kotlinx.coroutines.CancellationException) {
         throw cancellation
     } catch (_: IllegalStateException) {
@@ -398,9 +401,8 @@ internal class HeadsetRouteGuard(
         quiesceProbe(active)
         val owned: Boolean
         try {
-            if (!completion.permitsAudio && completion != MutedProbeCompletion.Superseded &&
-                attachedPlayer === active.player
-            ) {
+            val needsPause = !completion.permitsAudio && completion != MutedProbeCompletion.Superseded
+            if (needsPause && attachedPlayer === active.player && active.player.playWhenReady) {
                 pauseForSafety(active.player)
             }
         } finally {

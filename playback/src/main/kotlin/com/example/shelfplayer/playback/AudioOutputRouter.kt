@@ -122,8 +122,8 @@ class AudioOutputRouter @Inject constructor(
         onPlaying = ::pauseUnsafeGuardedPlayback,
     ).also { guard ->
         guard.captureCheckpoint = { probe -> positions.handlers?.capture(probe) }
-        guard.completeVerifiedProbe = { probe ->
-            positions.handlers?.complete(probe) ?: MutedProbeCompletion.Refused
+        guard.completeVerifiedProbe = { probe, verified ->
+            handoffs.complete(probe, verified)
         }
         guard.commitVerifiedProbe = { probe, proof -> handoffs.commit(probe, proof) }
         guard.onProbeCancelled = { probe -> handoffs.cancelled(probe) }
@@ -677,11 +677,6 @@ class AudioOutputRouter @Inject constructor(
             handlers = null
         }
 
-        fun isEligible(probe: HeadsetRouteGuard.Probe): Boolean =
-            probe.endpointId?.let { guard.isCurrentProbe(probe) && it in live && it !in collidingOutputIds } == true
-
-        fun measure(): Set<String>? = currentTrackRoutes()
-
         /** Same live service position for controller/profile-handover reads, on Media3's dispatcher. */
         fun effectivePosition(controller: Player): kotlin.time.Duration {
             val current = player
@@ -903,6 +898,15 @@ class AudioOutputRouter @Inject constructor(
 
         override fun player(): ExoPlayer? = this@AudioOutputRouter.player
         override fun observation(): AudioTrackObservation? = currentTrackObservation()
+        override fun endpointRoutes(): Set<String>? = currentTrackRoutes()
+        override fun stage(probe: HeadsetRouteGuard.Probe, stage: OutputTransferStage) {
+            logger.info(
+                LogCategory.Playback,
+                "Output transfer stage",
+                LogField.Public("stage", stage.name),
+                LogField.Public("proofEpoch", probe.preferenceEpoch),
+            )
+        }
 
         override fun targets(): OutputProofTargets {
             val eligible = live - collidingOutputIds

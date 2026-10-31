@@ -8,6 +8,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.PlayerMessage
 import androidx.media3.exoplayer.source.SilenceMediaSource
+import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.testing.TestAppClock
@@ -71,7 +72,11 @@ class MutedPositionMedia3IntegrationTest {
     private class Fixture(private val dispatcher: CoroutineDispatcher) : AutoCloseable {
         private val context = RuntimeEnvironment.getApplication()
         private val scope = CoroutineScope(SupervisorJob() + dispatcher)
-        private val realPlayer = ExoPlayer.Builder(context).setLooper(Looper.getMainLooper()).build()
+        private val realPlayer by lazy {
+            ExoPlayer.Builder(context).setLooper(Looper.getMainLooper())
+                .setAudioOutputProvider(requireNotNull(monitor.providerForPlayer()))
+                .build()
+        }
         private var insideSeekTo = false
 
         @Volatile
@@ -97,6 +102,8 @@ class MutedPositionMedia3IntegrationTest {
             outputRegistry,
             volumeEffects = volumeEffects,
         )
+        private val lab = AudioRouteLab(context, EventLog(TestAppClock()), TestAppClock(), router, scope, dispatcher)
+        private val monitor = AudioTrackRouteMonitor(context, lab, TestAppClock(), outputRegistry)
         val seekReasons = mutableListOf<Int>()
         val seekCallbacksDuringSeekTo = mutableListOf<Boolean>()
         val compensationSeekResults = mutableListOf<Boolean>()
@@ -133,6 +140,7 @@ class MutedPositionMedia3IntegrationTest {
         val guard: HeadsetRouteGuard = field(router, "headsetGuard")
 
         init {
+            lab.start()
             volumeEffects.attach(player)
             set(router, "player", player)
             set(router, "currentTrackRoutes", { measuredRoute })
@@ -177,6 +185,11 @@ class MutedPositionMedia3IntegrationTest {
             await("real ExoPlayer READY") { player.playbackState == Player.STATE_READY }
             player.play()
             await("real ExoPlayer playing") { player.isPlaying }
+            await("production AudioTrack provider attachment and timing") {
+                lab.state.value.entries.any { "track-timing" in it }
+            }
+            assertTrue(lab.state.value.entries.any { "observer-audio-track-attached" in it })
+            assertTrue(lab.state.value.entries.none { "provider-fallback" in it || "attach-failed" in it })
         }
 
         fun beginProbe(): HeadsetRouteGuard.Probe {
@@ -200,6 +213,7 @@ class MutedPositionMedia3IntegrationTest {
             guard.cancelProbe()
             router.detach()
             player.release()
+            lab.stop()
             scope.cancel()
         }
 

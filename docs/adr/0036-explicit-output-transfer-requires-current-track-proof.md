@@ -1,6 +1,6 @@
 # ADR-0036 — Explicit output transfer commits after current-track proof
 
-**Status:** Implemented in draft #300; full strict local verification passes. Exact source/CI is recorded in
+**Status:** Revised candidate in draft #300; current exact-head gates are tracked in #289. Prior evidence is recorded in
 [the checkpoint](https://github.com/AlexanderWilhelmsenBerg/Audiobookshelf-Manager-Claude/issues/289#issuecomment-6448375926).
 Device acceptance remains pending.
 **Requirements:** PLAY-002/004/005/008/009, ROUTE-002, SYNC-002; issues #276/#277 and the #289 execution plan.
@@ -45,7 +45,10 @@ Binding, names, preferred-device acceptance and a sole ambiguous A2DP endpoint a
 
 `OutputHandoffEffects` orchestrates these effects through the existing owner/probe/preference
 ports. It keeps no other mutable current transaction, counter, player, session, focus owner or retry
-executor. Compensation and bounded playback-thread/route proof retain ADR-0035's shared held-position reads.
+executor. `OutputTransferTransaction` orders destination proof, one restoration/barrier and final proof;
+position effects retain ADR-0035's shared held-position reads. A healthy already-measured destination can
+publish new explicit intent without mute, preference effects or seeks. It rechecks proof/scope around
+publication and fails closed on route loss; a pending probe cannot use this preservation path.
 Actual-track observation uses `AudioTrack.getRoutedDevice`, available before the app's API26 minimum;
 explicit transfer is not artificially restricted to API33's unrelated media-policy prediction API.
 An unavailable observer or unknown path still times out muted and pauses. Car still requires positive

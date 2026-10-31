@@ -2,9 +2,11 @@ package com.example.shelfplayer.playback
 
 import android.media.AudioDeviceInfo
 import android.media.AudioRouting
+import android.media.AudioTimestamp
 import android.media.AudioTrack
 import android.os.Build
 import android.os.Handler
+import android.os.Looper
 import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
@@ -17,6 +19,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
@@ -187,6 +190,29 @@ class AudioTrackRouteQueryTest {
         assertEquals(AudioTrackPath.Multiple, classifier.invoke(fixture.monitor, listOf(fixture.device, submix)))
     }
 
+    @Test
+    fun `production monitor timing is opt in bounded and retired with its AudioTrack`() = runTest {
+        val fixture = fixture()
+        fixture.lab.stop()
+        val track = fixture.track()
+        fixture.observe(track)
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1))
+        assertEquals(0, track.queryShadow.timestampReads)
+        fixture.lab.start()
+        fixture.monitor.sample()
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(500))
+        assertEquals(3, track.queryShadow.timestampReads)
+        kotlin.test.assertTrue(
+            fixture.lab.state.value.entries.any {
+                "track-timing" in it && "timestampFrames=null timestampNs=null" in it
+            },
+        )
+        fixture.forget()
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(5))
+        assertEquals(3, track.queryShadow.timestampReads)
+        fixture.lab.stop()
+    }
+
     private fun remoteSubmix(): AudioDeviceInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_REMOTE_SUBMIX).build()
     } else {
@@ -213,13 +239,14 @@ class AudioTrackRouteQueryTest {
         val endpoint = registry.reconcile(
             listOf(LiveOutputEndpointRegistry.Observation(device.id, device.type, device.productName?.toString())),
         ).single()
-        return Fixture(AudioTrackRouteMonitor(context, lab, registry), device, endpoint.id)
+        return Fixture(AudioTrackRouteMonitor(context, lab, clock, registry), device, endpoint.id, lab)
     }
 
     private data class Fixture(
         val monitor: AudioTrackRouteMonitor,
         val device: AudioDeviceInfo,
         val endpointId: String,
+        val lab: AudioRouteLab,
     ) {
         fun track(): AudioTrack = Shadow.newInstanceOf(AudioTrack::class.java).also { it.queryShadow.route = device }
 
@@ -246,6 +273,13 @@ class AudioTrackRouteQueryTest {
         var trackPlayState = AudioTrack.PLAYSTATE_PLAYING
         var route: AudioDeviceInfo? = null
         var routeReads = 0
+        var timestampReads = 0
+
+        @Implementation
+        fun getTimestamp(timestamp: AudioTimestamp): Boolean {
+            timestampReads++
+            return false
+        }
         var onStateRead: () -> Unit = {}
         var onPlayStateRead: () -> Unit = {}
         var onRouteRead: () -> Unit = {}

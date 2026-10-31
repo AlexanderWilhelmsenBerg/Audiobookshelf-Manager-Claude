@@ -216,6 +216,7 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
         service.audioTrackRouteMonitor = AudioTrackRouteMonitor(
             context,
             service.audioRouteLab,
+            clock,
             registry,
         )
         service.setPlaybackField("activeProfileGeneration", { 0L })

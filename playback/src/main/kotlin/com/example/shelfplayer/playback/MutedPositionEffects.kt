@@ -26,7 +26,9 @@ internal interface PositionCheckpointEffects {
 
     fun capture(probe: HeadsetRouteGuard.Probe): MutedPositionCheckpoint?
 
-    suspend fun complete(probe: HeadsetRouteGuard.Probe): MutedProbeCompletion
+    suspend fun restoreForProof(probe: HeadsetRouteGuard.Probe): Boolean
+
+    fun restoreCurrent(probe: HeadsetRouteGuard.Probe): Boolean
 
     fun position(target: Player): Duration
 
@@ -57,7 +59,7 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
 
         fun onCompensated(advance: Duration) = Unit
 
-        fun onPrepared(probe: HeadsetRouteGuard.Probe, finalStage: Boolean, bufferedSeek: Boolean) = Unit
+        fun onPrepared(probe: HeadsetRouteGuard.Probe, bufferedSeek: Boolean) = Unit
     }
 
     private var compensation: HeadsetRouteGuard.Probe? = null
@@ -255,31 +257,11 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         return authorized(probe, held)
     }
 
-    override suspend fun complete(probe: HeadsetRouteGuard.Probe): MutedProbeCompletion {
-        val held = probe.positionCheckpoint
-        var finished = false
-        return try {
-            completeCurrent(probe).also { finished = true }
-        } finally {
-            if (!finished && held != null) restore(probe, held)
-        }
-    }
+    override fun restoreCurrent(probe: HeadsetRouteGuard.Probe): Boolean =
+        probe.positionCheckpoint?.let { restore(probe, it) } == true
 
-    private suspend fun completeCurrent(probe: HeadsetRouteGuard.Probe): MutedProbeCompletion {
-        val held = probe.positionCheckpoint ?: return MutedProbeCompletion.Refused
-        if (!probe.player.playWhenReady) return refusal(probe, held)
-        val preparation = prepareProof(probe, held) ?: return refusal(probe, held)
-        source.onPrepared(probe, finalStage = false, preparation.bufferedSeek)
-        return awaitProof(probe, held, preparation)
-    }
-
-    private data class ProofPreparation(val bufferedSeek: Boolean)
-
-    private suspend fun prepareProof(
-        probe: HeadsetRouteGuard.Probe,
-        held: MutedPositionCheckpoint,
-    ): ProofPreparation? {
-        if (!authorized(probe, held)) return null
+    override suspend fun restoreForProof(probe: HeadsetRouteGuard.Probe): Boolean {
+        val held = probe.positionCheckpoint?.takeIf { authorized(probe, it) } ?: return false
         val current = probe.player
         val seekingFromReady = current.bookPosition() != held.position && current.playbackState == Player.STATE_READY
         var bufferedSeek = false
@@ -292,101 +274,16 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         }
         current.addListener(listener)
         try {
-            if (!restore(probe, held)) return null
+            if (!restore(probe, held)) return false
             bufferedSeek = bufferedSeek || (seekingFromReady && current.playbackState == Player.STATE_BUFFERING)
             val acknowledged = !probe.requiresPlaybackBarrier || playbackBarrier(current)
-            if (!acknowledged || !authorized(probe, held)) return null
+            if (!acknowledged || !authorized(probe, held)) return false
             probe.requiresPlaybackBarrier = false
-            return ProofPreparation(bufferedSeek)
+            source.onPrepared(probe, bufferedSeek)
+            return authorized(probe, held)
         } finally {
             current.removeListener(listener)
         }
-    }
-
-    private suspend fun awaitProof(
-        probe: HeadsetRouteGuard.Probe,
-        held: MutedPositionCheckpoint,
-        preparation: ProofPreparation,
-    ): MutedProbeCompletion = withTimeoutOrNull(1.seconds) {
-        var proof = awaitPlayingProof(probe, held)
-        val lateBufferedProof = proof.completion.permitsAudio && preparation.bufferedSeek &&
-            probe.player.bookPosition() - held.position > MAX_SETTLING_ADVANCE
-        val needsFinalCorrection = proof.completion.permitsAudio && (proof.waitedWhilePlaying || lateBufferedProof)
-        if (needsFinalCorrection) {
-            val finalPreparation = prepareProof(probe, held) ?: return@withTimeoutOrNull refusal(probe, held)
-            source.onPrepared(probe, finalStage = true, finalPreparation.bufferedSeek)
-            // This second stage cannot schedule another correction, even if its route remains unknown.
-            proof = awaitPlayingProof(probe, held)
-        }
-        if (proof.completion.permitsAudio) settledProof(probe, held, proof.completion) else proof.completion
-    } ?: refusal(probe, held)
-
-    private data class AwaitedProof(val completion: MutedProbeCompletion, val waitedWhilePlaying: Boolean)
-
-    private suspend fun awaitPlayingProof(
-        probe: HeadsetRouteGuard.Probe,
-        held: MutedPositionCheckpoint,
-    ): AwaitedProof {
-        var waitedWhilePlaying = false
-        while (authorized(probe, held)) {
-            playingProof(probe, held)?.let { return AwaitedProof(it, waitedWhilePlaying) }
-            // Buffering after our seek is distinct from a further unheard playing interval.
-            waitedWhilePlaying = waitedWhilePlaying || probe.player.isPlaying
-            probe.routeUpdates.receive()
-        }
-        return AwaitedProof(MutedProbeCompletion.Superseded, waitedWhilePlaying)
-    }
-
-    /** A playback-thread acknowledgement orders the seek; it cannot freeze a playing media clock. */
-    private fun settledProof(
-        probe: HeadsetRouteGuard.Probe,
-        held: MutedPositionCheckpoint,
-        candidate: MutedProbeCompletion,
-    ): MutedProbeCompletion {
-        if (!authorized(probe, held)) return MutedProbeCompletion.Superseded
-        if (isSettled(probe)) return candidate
-        // Never seek-buffer-seek in pursuit of exact equality. Excessive drift stops at the held point.
-        return refusal(probe, held)
-    }
-
-    /** Every query is fresh; neither a prior callback nor barrier delivery itself authorizes unmute. */
-    private fun playingProof(probe: HeadsetRouteGuard.Probe, held: MutedPositionCheckpoint): MutedProbeCompletion? {
-        if (!authorized(probe, held)) return MutedProbeCompletion.Superseded
-        val current = probe.player
-        if (!current.playWhenReady || !current.isPlaying || current.playbackState != Player.STATE_READY) return null
-        return if (probe.transferRequest != null) transferProof(probe, held) else endpointProof(probe, held)
-    }
-
-    private fun transferProof(probe: HeadsetRouteGuard.Probe, held: MutedPositionCheckpoint): MutedProbeCompletion? {
-        val proof = outputs.handoffs.proof(probe)
-        return when {
-            !authorized(probe, held) -> MutedProbeCompletion.Superseded
-            proof == MutedProbeCompletion.Refused -> refusal(probe, held)
-            else -> proof
-        }
-    }
-
-    private fun endpointProof(probe: HeadsetRouteGuard.Probe, held: MutedPositionCheckpoint): MutedProbeCompletion? {
-        val first = outputs.positions.measure()
-        if (!authorized(probe, held)) return MutedProbeCompletion.Superseded
-        val second = outputs.positions.measure()
-        return when {
-            !authorized(probe, held) -> MutedProbeCompletion.Superseded
-
-            first == setOf(
-                probe.endpointId,
-            ) && second == first && outputs.positions.isEligible(probe) -> MutedProbeCompletion.Verified
-
-            !first.isNullOrEmpty() || !second.isNullOrEmpty() -> refusal(probe, held)
-
-            else -> null
-        }
-    }
-
-    private fun refusal(probe: HeadsetRouteGuard.Probe, held: MutedPositionCheckpoint): MutedProbeCompletion {
-        if (!restore(probe, held)) return MutedProbeCompletion.Superseded
-        if (probe.transferRequest != null) outputs.handoffs.rollback(probe)
-        return if (authorized(probe, held)) MutedProbeCompletion.Refused else MutedProbeCompletion.Superseded
     }
 
     private suspend fun playbackBarrier(current: ExoPlayer): Boolean = withTimeoutOrNull(1.seconds) {

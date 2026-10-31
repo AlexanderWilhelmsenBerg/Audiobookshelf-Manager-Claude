@@ -495,7 +495,12 @@ class OutputHandoffEffectsTest {
                 }
             }
         }
+        // Exercise a real destination change; an already healthy same-target choice now preserves output.
+        fixture.observation = AudioTrackObservation(1, AudioTrackPath.RemoteSubmix)
+        fixture.routes = emptySet()
         fixture.router.select(fixture.outputId)
+        runCurrent()
+        fixture.report(AudioTrackPath.Endpoint(fixture.outputId))
         runCurrent()
 
         assertTrue(delivered)

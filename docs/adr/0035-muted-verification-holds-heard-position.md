@@ -1,6 +1,6 @@
 # ADR-0035 — Muted verification holds the listener's position
 
-**Status:** Implemented candidate; full strict local verification passed. Exact-head CI is tracked in #300.
+**Status:** Revised transaction candidate; current exact-head gates are tracked in #300 and #289.
 Hardware acceptance pending.
 **Requirements:** PLAY-002/003/004/005/008/009, ROUTE-002, SYNC-002 and PRODUCT_SPEC 6.5.
 
@@ -41,32 +41,18 @@ outer command is refused before raw transport. The actual service's pinned Media
 that correction from both nested and later genuine user seeks. Legitimate adopted seeks and
 auto-rewind replace the same probe's held point, retire an older completion and require post-seek proof.
 
-After compensation, a bounded cancellable Media3 playback-thread message barrier precedes fresh playing-track
-queries. Barrier delivery alone is insufficient: the current player/item/command/profile/selection, Ready and
-PlayWhenReady/IsPlaying state, exact live endpoint and collision checks must still agree. Unknown, mismatched
-or multiple sinks fail closed. Timeout restores any further silent advancement before safety Pause and volume
-release. Repeated callbacks cannot start another completion. No application thread blocks for the barrier.
-
-The 2242 device test exposed a missing distinction: a playback-thread message orders the seek but does not
-freeze a playing media clock. Verification must not keep seeking back to demand exact position equality.
-After the initial compensation, buffering waits for Ready without another seek. A genuinely playing,
-unknown-route interval may require one further compensation when proof arrives; that extra correction is
-bounded to once per completion. All post-seek target proof remains fresh and exact. At the final position
-validation, normal media advancement of zero through 50ms is allowed; this is a small residual unheard-media
-budget, not permission to accept a different endpoint or stale evidence. Larger or backward movement restores
-the held point and pauses instead of scheduling another verification seek. Explicit transfers recheck this
-bound after synchronous success publication, before releasing mute, with the prior lock retained as scoped
-recovery context. Existing scope,
-timeout, cancellation, sleep/listened-duration and user-seek provenance rules remain in force.
-
-The 2244 follow-up retains buffering attributable to the initial compensation seek, including a delayed
-Buffering callback before its playback-thread acknowledgement. If fresh playing target proof then shows
-forward movement beyond 50ms, it may spend the same one remaining correction even when the application
-never observed the intervening playing interval. Already-buffering/paused state alone is insufficient.
-The final stage still refuses over 50ms or backward movement and cannot repeat. Temporary observation is
-scoped to that preparation and removed on success, cancellation and failure. Durable stage labels and
-captured request scope make budget exhaustion distinguishable in a later device export; see the
-[2244 regression assessment](../testing/output-2244-regression.md).
+The [handoff transaction redesign](../architecture/output-handoff-transaction.md) supersedes the
+2242/2244 two-correction strategy after the 2246 distortion report. The transaction waits for current
+playing destination evidence before its single live position restoration. A bounded cancellable Media3
+playback-thread message barrier then precedes fresh playing-track queries. Ready, PlayWhenReady/IsPlaying,
+current player/item/command/profile/selection, unique live endpoint and collision checks must agree.
+The final position allowance remains zero through 50ms, rechecked after synchronous success publication.
+Late output, larger/backward movement or timeout pauses before restoring the held point and releasing
+mute. Failure restoration does not enter another proof cycle. Repeated callbacks cannot start another
+completion. No application thread blocks for the barrier; no fixed successful-path delay is added.
+Temporary buffering observation is scoped to the single restoration and removed on completion/cancellation.
+Earlier two-stage behavior and its test results remain historical evidence in the 2244 assessment, not
+current acceptance. This removes a risky feedback path but does not establish the cause of native distortion.
 
 Immutable event snapshots travel into asynchronous persistence. An old pause may persist its captured local
 owner's point, but cannot establish a successor baseline or sync a successor after waiting for the session
