@@ -72,7 +72,7 @@ internal class AudioTrackTimingCapture(
 
     fun request(epoch: Long, current: () -> Boolean, read: () -> AudioTrackTimingSample) {
         handler.post {
-            if (!enabled() || !current()) return@post
+            if (!permitted(current)) return@post
             if (activeEpoch == epoch && (work != null || nowMs() < nextBurstMs)) return@post
             work?.let(handler::removeCallbacks)
             activeEpoch = epoch
@@ -81,14 +81,14 @@ internal class AudioTrackTimingCapture(
             val sample = object : Runnable {
                 override fun run() {
                     if (work !== this) return
-                    if (!enabled() || !current()) {
+                    if (!permitted(current)) {
                         work = null
                         return
                     }
                     val evidence = read()
-                    if (enabled() && current()) record(evidence)
+                    if (permitted(current)) record(evidence)
                     remaining--
-                    if (remaining > 0 && enabled() && current()) {
+                    if (remaining > 0 && permitted(current)) {
                         handler.postDelayed(this, INTERVAL_MS)
                     } else {
                         work = null
@@ -99,6 +99,8 @@ internal class AudioTrackTimingCapture(
             sample.run()
         }
     }
+
+    private fun permitted(current: () -> Boolean): Boolean = enabled() && current()
 
     /** Old release callbacks cannot cancel a newer output's diagnostic burst. */
     fun retire(epoch: Long) {
