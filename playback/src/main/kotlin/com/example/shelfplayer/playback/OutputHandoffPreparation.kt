@@ -18,7 +18,8 @@ internal object OutputHandoffPreparation {
         // Decode/attach before the held narration instead of consuming it while the replacement becomes READY.
         // Scale media time by speed; this is preparation runway, never additional permitted unheard progress.
         val runway = PREPARATION_TIME * probe.player.playbackParameters.speed.toDouble()
-        return (held - runway).coerceAtLeast(Duration.ZERO)
+        // Compare with the same whole-millisecond target seekTo uses, including fractional playback speeds.
+        return (held - runway).coerceAtLeast(Duration.ZERO).inWholeMilliseconds.milliseconds
     }
 
     suspend fun awaitHeldPosition(
