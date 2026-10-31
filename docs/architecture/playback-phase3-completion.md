@@ -25,7 +25,9 @@ in that checkpoint. Selection-scoped deferred work also passes full strict local
 heard-route observation then pass the full strict gate at 2,765 tests /326 suites, including 949 playback
 tests, with no failures, errors or skips. Truthful output presentation passes the full strict gate at
 2,784 tests /327 suites, including 960 playback tests, with no failures, errors or skips. A final combined candidate must also include
-separate auth #296; physical output, startup and real-token acceptance remain distinct.
+separate auth #296; physical output, startup and real-token acceptance remain distinct. The combined
+QA branch now includes that fix; its forced verification, normal exact-head CI and APK identity are
+recorded in the execution checkpoint.
 
 ### Remaining work overview
 
@@ -36,7 +38,7 @@ separate auth #296; physical output, startup and real-token acceptance remain di
 | Service asynchronous ownership | Selection scope passes strict local verification; normal exact-head CI tracked in checkpoint | Existing selection sequence revokes stale prepare/install/Play; captured progress writes still complete |
 | Muted heard-route observation | Typed selection and common audible observer pass strict local verification; exact source/CI tracked in checkpoint | Muted raw playback cannot create heard-route evidence or consume the awaiting recovery claim; unmute and listener teardown use current ownership |
 | Typed presentation and callback cleanup | Software implemented; full strict local gate passes 2,784 tests; exact source/normal CI in checkpoint | Requested/measured/predicted/unknown remain distinct; Waiting/Verifying/Verified/Delegated/Failed, English/Norwegian, selected semantics and rendered doubled-font checks |
-| Final integration and APK | Remaining | Include auth #296, full `verifyDebug --rerun-tasks`, normal exact-head CI, independent review, then one combined signed QA APK |
+| Final integration and APK | Combined QA source includes auth #296; gate/build evidence is maintained in the execution checkpoint | Full `verifyDebug --rerun-tasks`, normal exact-head CI, independent review, then one combined signed QA APK |
 | Device/server acceptance | Pending | Stationary headset/Auto and lifecycle guide, #295 startup cases, #288 genuine 401 renewal; unsupported input identity recorded honestly |
 
 Green evidence above belongs to its recorded revision. It does not verify subsequent implementation work or
@@ -92,7 +94,8 @@ lint, Detekt and coverage green. Three intended regressions fail when unique/cur
 classification are removed; exact sources were restored. The post-cleanup Car regression also fails
 as intended. All tests and rule thresholds are retained. See the
 [rendered review](../testing/output-presentation-review.md) for normal and actual doubled-font frames.
-Final auth integration, forced verification, normal exact-head CI/review and one combined APK remain.
+The combined QA source includes auth #296. Forced verification, normal exact-head CI/review and the
+single combined APK are recorded in the execution checkpoint; physical acceptance remains separate.
 
 ## Ownership after refactoring
 
