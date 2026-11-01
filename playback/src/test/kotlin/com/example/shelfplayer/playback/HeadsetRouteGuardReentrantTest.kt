@@ -23,6 +23,41 @@ import kotlin.time.Duration.Companion.seconds
 @androidx.annotation.OptIn(UnstableApi::class)
 class HeadsetRouteGuardReentrantTest {
     @Test
+    fun `revoked episode cannot unmute even when route proof succeeds`() = runTest {
+        val effects = PlaybackVolumeEffects(TestAppClock())
+        val media = MutableMediaPlayer().apply { playWhenReady = true }
+        val guard = guard(backgroundScope, UnconfinedTestDispatcher(testScheduler), effects, media.player)
+        effects.attach(media.player)
+        guard.attachPlayer(media.player)
+        guard.protect(OUTPUT)
+        var authorized = true
+        assertTrue(guard.beginProbe(OUTPUT, media.player, EPOCH, canCommit = { authorized }))
+        authorized = false
+        guard.finishProbe(assertNotNull(guard.currentProbe), verified = true)
+        runCurrent()
+        assertEquals(1, media.pauseCalls, "pause before releasing mute on expired or revoked proof")
+        assertFalse(effects.isRouteMuted(media.player))
+    }
+
+    @Test
+    fun `absolute episode deadline retires a probe before its ordinary startup timeout`() = runTest {
+        val effects = PlaybackVolumeEffects(TestAppClock())
+        val media = MutableMediaPlayer().apply { playWhenReady = true }
+        val guard = guard(backgroundScope, UnconfinedTestDispatcher(testScheduler), effects, media.player)
+        effects.attach(media.player)
+        guard.attachPlayer(media.player)
+        guard.protect(OUTPUT)
+        assertTrue(guard.beginProbe(OUTPUT, media.player, EPOCH, remaining = 1.seconds))
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertEquals(1, media.pauseCalls)
+        assertNull(guard.currentProbe)
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertEquals(1, media.pauseCalls, "ordinary startup timer cannot retry a retired episode")
+    }
+
+    @Test
     fun `cancellation from checkpoint capture cannot acquire a later mute claim`() = runTest {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         val effects = PlaybackVolumeEffects(TestAppClock())
@@ -235,6 +270,7 @@ class HeadsetRouteGuardReentrantTest {
     )
 
     private class MutableMediaPlayer {
+        var playWhenReady = false
         var volume = 1f
         var pauseCalls = 0
         val player = Proxy.newProxyInstance(
@@ -244,6 +280,8 @@ class HeadsetRouteGuardReentrantTest {
             when (method.name) {
                 "getVolume" -> volume
 
+                "getPlayWhenReady" -> playWhenReady
+
                 "setVolume" -> {
                     volume = args!![0] as Float
                     null
@@ -251,6 +289,7 @@ class HeadsetRouteGuardReentrantTest {
 
                 "pause" -> {
                     pauseCalls += 1
+                    playWhenReady = false
                     null
                 }
 

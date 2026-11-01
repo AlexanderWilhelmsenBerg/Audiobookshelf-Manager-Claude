@@ -102,6 +102,9 @@ class AudioOutputRouter @Inject constructor(
     /** Queued preferences share one generation and the existing Media3 application dispatcher. */
     private val preferenceEffects = RoutePreferenceEffects(mainDispatcher)
     internal val localOutputs = AndroidLocalOutputAdapter(context, endpointRegistry, applicationScope, mainDispatcher)
+    val identityCapability get() = localOutputs.identityCapability
+
+    val identityAccess = OutputIdentityAccess(localOutputs.identityCapability, ::refresh)
     internal val positions = PositionAccess()
     internal val handoffs by lazy(LazyThreadSafetyMode.NONE) { OutputHandoffEffects(HandoffAccess()) }
     internal var currentProjection: () -> Boolean = { false }
@@ -146,17 +149,10 @@ class AudioOutputRouter @Inject constructor(
     /** Bound by the service after attachment; absent evidence fails closed. Retired on detach/replacement. */
     internal var currentTrackObservation: () -> AudioTrackObservation? = { null }
     private val collidingOutputIds: Set<String> get() = localOutputs.collidingOutputIds
-    private data class AutomaticProtection(
-        val outputId: String,
-        val generation: Long,
-        val selectionSequence: Long,
-        val preferenceEpoch: Long,
-        val preferredDeviceRequested: Boolean = false,
-    ) {
-        fun matchesClaim(id: String, bookGeneration: Long, sequence: Long): Boolean =
-            outputId == id && generation == bookGeneration && selectionSequence == sequence
-    }
-    private var automaticProtection: AutomaticProtection? = null
+    private val measuredHeadsetProtection = MeasuredHeadsetProtection(
+        applicationScope, preferenceEffects, localOutputs, headsetGuard, outputIntentOwner, _selectedId,
+        player = { player }, routes = { currentTrackRoutes() }, publish = ::publish,
+    )
 
     /** Process-scoped live endpoints; never key physical routing by persistent name-based policy ID. */
     private val live: Set<String> get() = localOutputs.endpointIds
@@ -197,7 +193,7 @@ class AudioOutputRouter @Inject constructor(
         _canKeepAudioHere.value = false
         outputIntentOwner.state.value.lock?.let(outputIntentOwner::invalidateProof)
         preferenceEffects.supersede()
-        automaticProtection = null
+        measuredHeadsetProtection.clear()
         volumeEffects.detach(player)
         headsetGuard.release()
         currentTrackRoutes = { null }
@@ -256,7 +252,7 @@ class AudioOutputRouter @Inject constructor(
         outputIntentOwner.keepHere(proof.outputId, proof.generation, effectEpoch)
         _selectedId.value = proof.outputId
         headsetGuard.protect(proof.outputId)
-        automaticProtection = null
+        measuredHeadsetProtection.clear()
         publish()
         return true
     }
@@ -347,10 +343,7 @@ class AudioOutputRouter @Inject constructor(
             else -> {
                 val epoch = preferenceEffects.supersede()
                 headsetGuard.protect(id)
-                automaticProtection = automaticProtection?.takeIf { it.outputId == id }?.copy(
-                    preferenceEpoch = epoch,
-                    preferredDeviceRequested = true,
-                )
+                measuredHeadsetProtection.markRequested(id, epoch)
                 _selectedId.value = id
                 publish()
                 apply(id, epoch)
@@ -392,55 +385,13 @@ class AudioOutputRouter @Inject constructor(
         generation: Long,
         selectionSequence: Long,
         isCurrentClaim: () -> Boolean,
-    ): Boolean {
-        if (!canProtectMeasuredHeadset(id, selectionSequence)) return false
-        if (automaticProtection?.matchesClaim(id, generation, selectionSequence) == true &&
-            _selectedId.value == id && headsetGuard.endpointId == id
-        ) {
-            return true
-        }
-        val attached = player ?: return false
-        val epoch = preferenceEffects.snapshot()
-        val measuredRoute = currentTrackRoutes()
-        val sameAttachment = preferenceEffects.isCurrent(epoch) && player === attached
-        return when {
-            measuredRoute != setOf(id) || !sameAttachment -> false
-
-            !canProtectMeasuredHeadset(id, selectionSequence) || !isCurrentClaim() -> false
-
-            else -> {
-                val protectionEpoch = preferenceEffects.supersede()
-                if (_selectedId.value == null) _selectedId.value = id
-                headsetGuard.protect(id)
-                automaticProtection = AutomaticProtection(id, generation, selectionSequence, protectionEpoch)
-                publish()
-                true
-            }
-        }
-    }
-
-    /** Route queries may synchronously retire an endpoint or deliver newer selection; check both sides. */
-    private fun canProtectMeasuredHeadset(id: String, selectionSequence: Long): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || id !in live ||
-            id in collidingOutputIds
-        ) {
-            return false
-        }
-        val selection = explicitSelection.value
-        if (selection?.destination == OutputIntentOwner.Destination.Car ||
-            (selection?.sequence ?: 0L) != selectionSequence
-        ) {
-            return false
-        }
-        return (_selectedId.value == null || _selectedId.value == id) &&
-            (headsetGuard.endpointId == null || headsetGuard.endpointId == id)
-    }
+    ): Boolean = measuredHeadsetProtection.protect(id, generation, selectionSequence, isCurrentClaim)
 
     /** Drops only the transient Automatic-route claim when its owning book/queue generation ends. */
     internal fun clearMeasuredPlayingHeadsetProtection() {
-        val active = automaticProtection ?: return
+        val active = measuredHeadsetProtection.claim ?: return
         val epoch = preferenceEffects.supersede()
-        automaticProtection = null
+        measuredHeadsetProtection.clear()
         if (headsetGuard.endpointId == active.outputId) headsetGuard.clearOwnership()
         if (_selectedId.value == active.outputId && explicitSelection.value?.outputId == null) {
             _selectedId.value = null
@@ -607,7 +558,11 @@ class AudioOutputRouter @Inject constructor(
     }
 
     /** Called on Media3's application thread before the automatic continuity Play. */
-    internal fun beginMutedHeadsetProbe(id: String): Boolean = canProbeHeldHeadset(id) && startMutedProbe(id)
+    internal fun beginMutedHeadsetProbe(
+        id: String,
+        remaining: kotlin.time.Duration? = null,
+        canCommit: () -> Boolean = { true },
+    ): Boolean = canProbeHeldHeadset(id) && startMutedProbe(id, remaining, canCommit)
 
     /** An unattributed manual Play can only become audible on this already-guarded headset. */
     internal fun protectManualPlayOnGuardedHeadset(
@@ -695,13 +650,18 @@ class AudioOutputRouter @Inject constructor(
         }
     }
 
-    private fun startMutedProbe(id: String): Boolean {
+    private fun startMutedProbe(
+        id: String,
+        remaining: kotlin.time.Duration? = null,
+        canCommit: () -> Boolean = { true },
+    ): Boolean {
         val current = player ?: return false
         val epoch = preferenceEffects.snapshot()
         val existing = headsetGuard.currentProbe?.let {
             it.matches(id, current, epoch) && headsetGuard.isCurrentProbe(it)
         } == true
-        val started = existing || headsetGuard.beginProbe(id, current, epoch)
+        val started =
+            (existing && remaining == null) || headsetGuard.beginProbe(id, current, epoch, remaining, canCommit)
         if (!started) return false
         val valid = isCurrentGuard(epoch, current, id) && id in live && id !in collidingOutputIds
         if (!valid) headsetGuard.cancelProbeForEndpoint(id, epoch)
@@ -918,7 +878,7 @@ class AudioOutputRouter @Inject constructor(
         }
 
         override fun selected(selection: OutputIntentOwner.Selection) {
-            automaticProtection = null
+            measuredHeadsetProtection.clear()
             val id = selection.outputId
             if (id == null) headsetGuard.clearOwnership() else headsetGuard.protect(id)
             _selectedId.value = id

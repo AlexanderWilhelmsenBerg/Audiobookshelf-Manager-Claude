@@ -285,7 +285,7 @@ internal class CarContinuityResumeEffects(
         }
         // An AudioManager preference is NOT proof of a physical route. Only the playing
         // AudioTrack may unmute this one-shot recovery; other routes fail closed.
-        if (heldHeadset == null || !outputs.beginMutedHeadsetProbe(heldHeadset)) {
+        if (heldHeadset == null || !beginContinuityProbe(target, heldHeadset, current)) {
             recovery.clearAwaiting(target)
             log("Car lifecycle refused unverified headset probe")
             return
@@ -302,6 +302,13 @@ internal class CarContinuityResumeEffects(
             ) + snapshot(),
         )
     }
+
+    /** The consumed claim remains bounded through the asynchronous muted-proof transaction. */
+    private fun beginContinuityProbe(target: CarArrivalResumeGate.Target, id: String, current: ExoPlayer): Boolean =
+        outputs.beginMutedHeadsetProbe(id, recovery.remainingWindow(target)) {
+            recovery.episodeValid(target) && owner.currentGeneration == target.generation &&
+                selectionSequence() == target.explicitSelectionSequence && currentPlayer() === current
+        }
 
     /**
      * The service owns Android Auto correlation and redaction. Recovery effects emit only

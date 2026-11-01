@@ -350,7 +350,10 @@ class PlaybackService : MediaLibraryService() {
      * The route recovery can tolerate Android's transient device-list omission but can target only the exact
      * headset captured by this policy. continuityPlayAwaiting is diagnostic only; it never authorizes Play.
      */
-    private val carContinuity = CarArrivalResumeGate()
+    private val carContinuity = CarArrivalResumeGate(
+        now = { clock.elapsed() },
+        trustedIdentity = { audioOutputs.localOutputs.retainsIdentity(it) },
+    )
     private val carRecovery = CarContinuityRecoveryCoordinator(carContinuity)
 
     /**
@@ -1060,14 +1063,30 @@ class PlaybackService : MediaLibraryService() {
         expectedSelectionSequence: Long,
         explicit: Boolean,
         bypassFreshness: Boolean,
-    ): Boolean = performFreshnessPlay(
-        explicit = explicit,
-        bypassFreshness = bypassFreshness,
-        stillAuthorized = {
-            controllerCommandGeneration == expectedCommandGeneration &&
-                currentExplicitSelectionSequence() == expectedSelectionSequence
-        },
-    )
+    ): Boolean {
+        val started = clock.elapsed()
+        var outcome = "cancelled-or-failed"
+        try {
+            return performFreshnessPlay(
+                explicit = explicit,
+                bypassFreshness = bypassFreshness,
+                stillAuthorized = {
+                    controllerCommandGeneration == expectedCommandGeneration &&
+                        currentExplicitSelectionSequence() == expectedSelectionSequence
+                },
+            ).also { outcome = if (it) "issued" else "denied-or-superseded" }
+        } finally {
+            logger.info(
+                LogCategory.Playback,
+                "Guarded Play request completed",
+                LogField.Public("outcome", outcome),
+                LogField.Public("elapsedMs", (clock.elapsed() - started).inWholeMilliseconds),
+                LogField.Public("rawPlayWhenReady", player?.playWhenReady?.toString() ?: "none"),
+                LogField.Public("sessionPlayWhenReady", session?.player?.playWhenReady?.toString() ?: "none"),
+                LogField.Public("identityCapability", audioOutputs.identityCapability.value.name),
+            )
+        }
+    }
 
     /**
      * The one service-owned resume implementation used by both MediaSession Play and sleep-grace Play.
@@ -1713,6 +1732,16 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun observeAudioOutputs() {
         outputWatch = scope.launch {
+            launch {
+                audioOutputs.identityCapability.collect { capability ->
+                    if (capability ==
+                        com.example.shelfplayer.core.model.playback.BluetoothIdentityCapability.PermissionMissing
+                    ) {
+                        clearCarContinuity()
+                    }
+                    if (routeObservationEffects.isAudible()) observeCarContinuityHeadset(audioOutputs.outputs.value)
+                }
+            }
             launch {
                 combine(audioOutputs.outputs, audioOutputs.selectedId, ::Pair).collect { (outputs, _) ->
                     syncExplicitOutputIntent()

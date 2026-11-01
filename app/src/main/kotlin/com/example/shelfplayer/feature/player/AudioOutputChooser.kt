@@ -75,6 +75,7 @@ internal fun AudioOutputAction(
             RequestedDestinationRows(controls, onExpandedChange)
             OutputMeasurementStatus(controls.presentation, measuredOutput(controls))
             OutputTransferStatusRow(controls.presentation)
+            HeadsetContinuityAccess(controls)
             EndpointOutputRows(controls, onExpandedChange)
             OutputLockControls(controls, lockRefused, onLockRefused = { lockRefused = true }) {
                 onExpandedChange(false)

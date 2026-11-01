@@ -1,9 +1,10 @@
 # Output handoff transaction redesign
 
-**Status:** Implemented candidate; exact-head gates are tracked in #289/#300. APK2248 has partial improvement;
-arrival retention and one Car transfer still failed physical acceptance. The latest corrective slice is unaccepted.
+**Status:** Implemented candidate; exact-head gates are tracked in #289/#300. APK2249 still failed arrival
+continuity. The permission-aware, bounded-arrival correction is unaccepted on hardware; see
+[the current implementation and acceptance procedure](../testing/2026-11-01-headset-continuity.md).
 **Requirements:** PLAY-002/004/008/009, ROUTE-001/002; retain S01–S22.
-**Baseline:** PR300 b30ba552, combined PR301 6a56e907. GitHub is authoritative.
+**Baseline for the latest correction:** PR300 8a7dc37c, combined PR301 01af8e12. GitHub is authoritative.
 
 ## Decision
 

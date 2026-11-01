@@ -1,6 +1,7 @@
 package com.example.shelfplayer.playback
 
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.BluetoothIdentityCapability
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -14,7 +15,13 @@ import javax.inject.Singleton
  */
 @Singleton
 class LiveOutputEndpointRegistry @Inject constructor() {
-    data class Observation(val platformId: Int, val type: Int, val productName: String?, val identity: String? = null)
+    data class Observation(
+        val platformId: Int,
+        val type: Int,
+        val productName: String?,
+        val identity: String? = null,
+        val capability: BluetoothIdentityCapability = BluetoothIdentityCapability.Unsupported,
+    )
 
     data class Endpoint(
         val platformId: Int,
@@ -31,6 +38,23 @@ class LiveOutputEndpointRegistry @Inject constructor() {
     private var connected: Map<Int, Endpoint> = emptyMap()
     private val bluetooth = BluetoothEndpointIdentity()
     private val retained = linkedMapOf<String, String>()
+    internal var identityAccess = true
+        private set
+
+    /** Permission changes retire cross-disconnect authority, preserving continuously observed appearances. */
+    @Synchronized
+    internal fun updateIdentityAccess(allowed: Boolean) {
+        if (identityAccess == allowed) return
+        identityAccess = allowed
+        retained.clear()
+        connected = connected.mapValues { (_, endpoint) -> endpoint.copy(identity = null) }
+    }
+
+    @Synchronized
+    internal fun retainsIdentity(id: String): Boolean = identityAccess && id in retained.values
+
+    internal fun bluetoothCapability(type: Int, address: String?): BluetoothIdentityCapability =
+        bluetooth.capability(type, address)
 
     internal fun bluetoothIdentity(type: Int, address: String?): String? = bluetooth.key(type, address)
 
@@ -44,13 +68,14 @@ class LiveOutputEndpointRegistry @Inject constructor() {
         for ((handle, items) in unique) {
             val observation = items.single()
             val output = OutputDevices.outputOf(observation.type, observation.productName) ?: continue
-            val identity = observation.identity?.takeUnless { it in ambiguous }
+            val identity = observation.identity?.takeIf { identityAccess }?.takeUnless { it in ambiguous }
+            connected[handle]?.identity?.takeIf { it != identity }?.let(retained::remove)
             val existing = connected[handle]?.takeIf {
                 it.type == observation.type && it.knownDeviceId == output.id &&
-                    it.productName == observation.productName && it.identity == identity &&
+                    it.productName == observation.productName && (it.identity == identity || it.identity == null) &&
                     observation.identity !in ambiguous
             }
-            updated[handle] = existing ?: Endpoint(
+            updated[handle] = existing?.copy(identity = identity) ?: Endpoint(
                 platformId = handle,
                 type = observation.type,
                 productName = observation.productName,

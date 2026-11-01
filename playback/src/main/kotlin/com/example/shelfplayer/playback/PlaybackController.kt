@@ -95,6 +95,7 @@ class PlaybackController @Inject constructor(
      */
     val outputs: StateFlow<List<AudioOutput>> = audioOutputs.outputs
     val outputPresentation: StateFlow<AudioOutputPresentation> = audioOutputs.presentation
+    val outputIdentityAccess = audioOutputs.identityAccess
 
     /**
      * PRODUCT_SPEC PLAY-002 — the output the listener *chose*, or `null` for *Automatic*.

@@ -17,7 +17,14 @@ class BluetoothEndpointIdentityTest {
         assertNotEquals(key, BluetoothEndpointIdentity().key(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "10:AB:33:44:55:66"))
         assertTrue(!key.contains(":"))
         assertNull(identity.key(AudioDeviceInfo.TYPE_WIRED_HEADPHONES, "10:AB:33:44:55:66"))
-        assertNull(identity.key(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "11:AB:33:44:55:66"))
+        assertNotNull(identity.key(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "11:AB:33:44:55:66"))
+    }
+
+    @Test
+    fun `redacted and placeholder addresses never authorize reconnection`() {
+        val identity = BluetoothEndpointIdentity()
+        listOf(null, "", "XX:XX:XX:XX:55:66", "02:00:00:00:00:00", "00:00:00:00:00:00", "FF:FF:FF:FF:FF:FF")
+            .forEach { assertNull(identity.key(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, it)) }
     }
 
     @Test

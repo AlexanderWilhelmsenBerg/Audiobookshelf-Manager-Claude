@@ -257,6 +257,7 @@ private fun ShelfPlayerContent(
     val audioOutputs by playerViewModel.outputs.collectAsStateWithLifecycle()
     val selectedOutput by playerViewModel.selectedOutput.collectAsStateWithLifecycle()
     val outputPresentation by playerViewModel.outputPresentation.collectAsStateWithLifecycle()
+    val outputIdentityCapability by playerViewModel.outputIdentityCapability.collectAsStateWithLifecycle()
     val outputLock by playerViewModel.outputLock.collectAsStateWithLifecycle()
     val canKeepAudioHere by playerViewModel.canKeepAudioHere.collectAsStateWithLifecycle()
     val history by playerViewModel.history.collectAsStateWithLifecycle()
@@ -396,6 +397,8 @@ private fun ShelfPlayerContent(
             outputs = OutputControls(
                 outputs = audioOutputs,
                 presentation = outputPresentation,
+                identityCapability = outputIdentityCapability,
+                onRefreshIdentityAccess = playerViewModel::refreshOutputIdentityAccess,
                 selectedId = selectedOutput,
                 onSelect = playerViewModel::onOutputSelected,
                 onSelectCar = playerViewModel::onCarOutputSelected,

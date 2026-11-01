@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.AudioOutputLockStatus
 import com.example.shelfplayer.core.model.playback.AudioOutputPresentation
+import com.example.shelfplayer.core.model.playback.BluetoothIdentityCapability
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import kotlin.time.Duration
 
@@ -45,6 +46,8 @@ data class OutputControls(
     val onReleaseLock: () -> Unit = {},
     val presentation: AudioOutputPresentation? = null,
     val onSelectCar: () -> Unit = {},
+    val identityCapability: BluetoothIdentityCapability = BluetoothIdentityCapability.Unsupported,
+    val onRefreshIdentityAccess: () -> Unit = {},
 ) {
     companion object {
         /** For a preview, or a test not exercising the chooser. */

@@ -4,6 +4,7 @@ import androidx.annotation.OptIn
 import androidx.media3.common.ForwardingSimpleBasePlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.google.common.util.concurrent.Futures
@@ -42,6 +43,20 @@ internal class ResumeFreshnessPlayer(
     private val movementEffects: PlaybackMovementEffects,
     private val allowEffects: () -> Boolean = { true },
 ) : ForwardingSimpleBasePlayer(delegate) {
+
+    /**
+     * A guarded Play is asynchronous. SimpleBasePlayer's default placeholder optimistically publishes the
+     * requested playWhenReady value while its future is pending, before freshness and output checks have
+     * issued raw ExoPlayer Play. Keep that one field tied to the delegate's committed state; the delegate
+     * remains the only playback-state owner.
+     */
+    override fun getPlaceholderState(suggestedPlaceholderState: SimpleBasePlayer.State): SimpleBasePlayer.State =
+        suggestedPlaceholderState.buildUpon()
+            .setPlayWhenReady(
+                delegate.playWhenReady,
+                suggestedPlaceholderState.playWhenReadyChangeReason,
+            )
+            .build()
 
     public override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> =
         movement(if (playWhenReady) PlaybackMovement.Play else PlaybackMovement.Pause) {
