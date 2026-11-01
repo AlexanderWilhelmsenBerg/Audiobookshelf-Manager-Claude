@@ -5,6 +5,7 @@ import android.media.AudioManager
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -21,8 +22,111 @@ import kotlin.test.assertTrue
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
+@android.annotation.SuppressLint("UseSdkSuppress") // Robolectric @Config selects SDK; JVM tests have no runner filter.
+@androidx.annotation.RequiresApi(31)
 class BluetoothEndpointContinuityTest {
+    @Before
+    fun grantIdentityAccess() {
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(android.Manifest.permission.BLUETOOTH_CONNECT)
+    }
     private val manager get() = shadowOf(RuntimeEnvironment.getApplication().getSystemService(AudioManager::class.java))
+
+    @Test
+    fun `queued preference cannot borrow a replacement native handle`() = runTest {
+        val fixture = fixture()
+        val adapter = fixture.router.localOutputs
+        manager.setOutputDevices(listOf(endpoint(1, "11:22:33:44:55:66")))
+        adapter.refresh()
+        val target = adapter.endpointIds.single()
+        fixture.measuredRoutes { setOf(target) }
+        assertTrue(fixture.router.protectMeasuredPlayingHeadset(target, 1, 0) { true })
+        manager.setOutputDevices(listOf(endpoint(2, "11:22:33:44:55:66")))
+        adapter.refresh()
+        runCurrent()
+        assertTrue(fixture.preferredRequests.isEmpty())
+        assertTrue(fixture.router.protectMeasuredPlayingHeadset(target, 1, 0) { true })
+        runCurrent()
+        assertEquals(1, fixture.preferredRequests.size)
+    }
+
+    @Test
+    fun `healthy automatic preference is reissued only for a new native handle`() = runTest {
+        val fixture = fixture()
+        val adapter = fixture.router.localOutputs
+        manager.setOutputDevices(listOf(endpoint(1, "11:22:33:44:55:66")))
+        adapter.refresh()
+        val target = adapter.endpointIds.single()
+        fixture.measuredRoutes { setOf(target) }
+        assertTrue(fixture.router.protectMeasuredPlayingHeadset(target, 1, 0) { true })
+        runCurrent()
+        assertEquals(1, fixture.preferredRequests.size)
+        manager.setOutputDevices(listOf(endpoint(2, "11:22:33:44:55:66")))
+        adapter.refresh()
+        repeat(3) {
+            assertTrue(fixture.router.protectMeasuredPlayingHeadset(target, 1, 0) { true })
+            runCurrent()
+        }
+        assertEquals(2, fixture.preferredRequests.size)
+        assertTrue(fixture.pauseThreads.isEmpty())
+        assertTrue(fixture.volumeChanges.isEmpty())
+    }
+
+    @Test
+    fun `denial grant and revoke preserve live appearance but never stale reconnect authority`() = runTest {
+        val fixture = fixture()
+        val adapter = fixture.router.localOutputs
+        val app = shadowOf(RuntimeEnvironment.getApplication())
+        app.denyPermissions(android.Manifest.permission.BLUETOOTH_CONNECT)
+        manager.setOutputDevices(listOf(endpoint(1, "11:22:33:44:55:66")))
+        adapter.refresh()
+        val original = adapter.endpointIds.single()
+        assertEquals(
+            com.example.shelfplayer.core.model.playback.BluetoothIdentityCapability.PermissionMissing,
+            adapter.identityCapability.value,
+        )
+        assertTrue(!adapter.retainsIdentity(original))
+        app.grantPermissions(android.Manifest.permission.BLUETOOTH_CONNECT)
+        adapter.refresh()
+        assertEquals(original, adapter.endpointIds.single())
+        assertTrue(adapter.retainsIdentity(original))
+        app.denyPermissions(android.Manifest.permission.BLUETOOTH_CONNECT)
+        adapter.refresh()
+        assertEquals(original, adapter.endpointIds.single(), "revocation must not reroute a healthy live appearance")
+        assertTrue(!adapter.retainsIdentity(original))
+        manager.setOutputDevices(emptyList())
+        adapter.refresh()
+        app.grantPermissions(android.Manifest.permission.BLUETOOTH_CONNECT)
+        manager.setOutputDevices(listOf(endpoint(2, "11:22:33:44:55:66")))
+        adapter.refresh()
+        assertNotEquals(original, adapter.endpointIds.single())
+        assertTrue(fixture.pauseThreads.isEmpty())
+        assertTrue(fixture.preferredRequests.isEmpty())
+    }
+
+    @Test
+    fun `permission alone cannot turn a masked cached port into verified identity`() = runTest {
+        val adapter = fixture().router.localOutputs
+        manager.setOutputDevices(listOf(endpoint(1, "XX:XX:XX:XX:55:66")))
+        adapter.refresh()
+        assertEquals(
+            com.example.shelfplayer.core.model.playback.BluetoothIdentityCapability.Redacted,
+            adapter.identityCapability.value,
+        )
+        assertTrue(!adapter.retainsIdentity(adapter.endpointIds.single()))
+    }
+
+    @Test
+    fun `a current handle losing its identity revokes the old recovery authority`() = runTest {
+        val adapter = fixture().router.localOutputs
+        manager.setOutputDevices(listOf(endpoint(1, "11:22:33:44:55:66")))
+        adapter.refresh()
+        val original = adapter.endpointIds.single()
+        assertTrue(adapter.retainsIdentity(original))
+        manager.setOutputDevices(listOf(endpoint(1, "XX:XX:XX:XX:55:66")))
+        adapter.refresh()
+        assertTrue(!adapter.retainsIdentity(original))
+        assertNotEquals(original, adapter.endpointIds.single())
+    }
 
     @Test
     fun `exact Bluetooth identity survives handle churn without touching healthy playback`() = runTest {

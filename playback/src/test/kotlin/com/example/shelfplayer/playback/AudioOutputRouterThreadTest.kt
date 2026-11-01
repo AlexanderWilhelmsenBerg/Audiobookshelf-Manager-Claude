@@ -41,6 +41,20 @@ import kotlin.test.assertTrue
 @Config(sdk = [34])
 class AudioOutputRouterThreadTest {
     @Test
+    fun `healthy measured route requests its preference once without playback mutations`() = runTest {
+        val fixture = fixture()
+        val endpoint = fixture.observeEndpoint(81)
+        fixture.measuredRoutes { setOf(endpoint.id) }
+        repeat(5) {
+            assertTrue(fixture.router.protectMeasuredPlayingHeadset(endpoint.id, 1L, 0L) { true })
+            runCurrent()
+        }
+        assertEquals(1, fixture.preferredRequests.size)
+        assertTrue(fixture.pauseThreads.isEmpty())
+        assertTrue(fixture.volumeChanges.isEmpty())
+    }
+
+    @Test
     fun `Waiting lock fails closed when the next book plays through a different route`() = runTest {
         val fixture = fixture()
         val endpoint = fixture.observeEndpoint(46, "Ambiguous A2DP")

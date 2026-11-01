@@ -16,6 +16,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Optional, requested only from the phone output chooser; no scanning or location access. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <!--
       PRODUCT_SPEC DL-001 — "download continues in background with a progress notification".
 

@@ -67,6 +67,10 @@ internal class CarContinuityRecoveryCoordinator(
     fun isCurrent(target: CarArrivalResumeGate.Target, generation: Long?, selectionSequence: Long): Boolean =
         gate.isCurrent(target, generation, selectionSequence)
 
+    fun remainingWindow(target: CarArrivalResumeGate.Target): Duration? = gate.remainingWindow(target)
+
+    fun episodeValid(target: CarArrivalResumeGate.Target): Boolean = gate.episodeValid(target)
+
     fun invalidationReason(target: CarArrivalResumeGate.Target, generation: Long?, selectionSequence: Long): String =
         when {
             generation != target.generation -> "generation-changed"
@@ -136,6 +140,7 @@ internal class CarContinuityRecoveryCoordinator(
         measured = measured,
         canProbe = canProbe,
         onEvent = onEvent,
+        recoveryWindowOverride = gate.remainingWindow(target),
         reassert = reassert,
     )
 

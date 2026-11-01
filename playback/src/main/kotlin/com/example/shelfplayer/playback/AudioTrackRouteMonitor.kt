@@ -123,6 +123,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
 
         else -> {
             val route = routes.single()
+            endpointRegistry.updateIdentityAccess(context.hasBluetoothIdentityAccess())
             val matched = endpointRegistry.find(route)
             matched?.let { AudioTrackPath.Endpoint(it.id) } ?: AudioTrackPath.Unresolved
         }

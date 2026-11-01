@@ -118,6 +118,9 @@ class PlayerViewModel @Inject constructor(
      */
     val selectedOutput: StateFlow<String?> = controller.selectedOutput
     val outputPresentation: StateFlow<AudioOutputPresentation> = controller.outputPresentation
+    val outputIdentityCapability = controller.outputIdentityAccess.capability
+
+    fun refreshOutputIdentityAccess() = controller.outputIdentityAccess.refresh()
     val outputLock: StateFlow<AudioOutputLockStatus?> = controller.outputLock
     val canKeepAudioHere: StateFlow<Boolean> = controller.canKeepAudioHere
 

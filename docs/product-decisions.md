@@ -435,3 +435,20 @@ phone bootstrap still needs credential-egress authorization and
 Sidecar exchange support. No stored/recovered password or Android rotating-refresh-token
 sharing is authorized by this decision. Garmin text must remain fully readable through measured pages,
 with visible physical-key cues and BookWave theming. [Implementation/acceptance state](testing/2026-10-08-garmin-watch-layout.md).
+
+## PD-009 — Optional Bluetooth identity and bounded Auto continuity
+
+**Owner decision:** 2026-11-01. Optional Nearby devices access is requested only from the phone output
+chooser to recognize an exact headset across Android handle churn. No scan/location access; denial
+preserves basic playback and explicit output selection. Permission never starts playback. Full unique
+identity stays process-private, and neither addresses nor correlation keys enter diagnostics or storage.
+
+Preserve a verified playing headset with one preference per current attachment/native handle and intent.
+If Android interrupts it, recovery requires an actual Auto boundary and previously verified identity,
+with one automatic Play claim and a 30-second absolute expiry from the earliest interruption. This is
+not a delay or a generic Bluetooth reconnect auto-start. Fresh actual-track proof is still required;
+newer listener/book/profile intent and permission/identity loss win. Keep one player/session and Media3
+focus ownership. An unattributed Play keeps the selected destination; device identity is not physical
+button provenance. No zero-silence guarantee or physical acceptance is implied.
+
+[Implementation and acceptance procedure](testing/2026-11-01-headset-continuity.md).

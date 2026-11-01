@@ -39,10 +39,11 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
         measured: (String) -> Boolean,
         canProbe: (String) -> Boolean = { false },
         onEvent: (Event) -> Unit = {},
+        recoveryWindowOverride: Duration? = null,
         reassert: suspend (String) -> Boolean,
     ): String? {
         var eligibilityLost = false
-        val result = withTimeoutOrNull(recoveryWindow) {
+        val result = withTimeoutOrNull(recoveryWindowOverride ?: recoveryWindow) {
             while (isStillEligible()) {
                 awaitTarget(target.outputId, outputs, onEvent)
                 if (!isStillEligible()) {

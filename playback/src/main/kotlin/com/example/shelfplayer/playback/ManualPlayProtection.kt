@@ -24,6 +24,7 @@ internal fun ManualPlayProtection.reportDenial(logger: Logger, router: AudioOutp
         LogField.Public("guardSelected", guarded != null && router.selectedId.value == guarded),
         LogField.Public("guardCollision", guarded in router.localOutputs.collidingOutputIds),
         LogField.Public("identifiedEndpoints", router.localOutputs.identifiedEndpointCount),
+        LogField.Public("identityCapability", router.identityCapability.value.name),
         LogField.Public("destination", router.explicitSelection.value?.destination?.name ?: "Automatic"),
     )
 }

@@ -12,6 +12,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -86,6 +87,7 @@ internal class HeadsetRouteGuard(
         val player: ExoPlayer,
         val preferenceEpoch: Long,
         val transferRequest: OutputIntentOwner.TransferRequest? = null,
+        val canCommit: () -> Boolean = { true },
     ) {
         // The slot is reserved before mute acquisition can invoke synchronous listeners. A null claim exists
         // only during that call; cancellation retires the reservation and its returning owner releases it.
@@ -94,6 +96,7 @@ internal class HeadsetRouteGuard(
         var startupTimeout: Job? = null
         var routeTimeout: Job? = null
         var completionJob: Job? = null
+        var eligibilityTimeout: Job? = null
         val routeUpdates = Channel<Unit>(Channel.CONFLATED)
         var requiresPlaybackBarrier = false
 
@@ -189,9 +192,16 @@ internal class HeadsetRouteGuard(
         endpointMissing = false
     }
 
-    fun beginProbe(id: String, player: ExoPlayer, preferenceEpoch: Long): Boolean {
-        if (probe != null || attachedPlayer !== player) return false
-        val active = Probe(id, player, preferenceEpoch)
+    fun beginProbe(
+        id: String,
+        player: ExoPlayer,
+        preferenceEpoch: Long,
+        remaining: Duration? = null,
+        canCommit: () -> Boolean = { true },
+    ): Boolean {
+        val eligible = canCommit() && remaining?.let { it <= Duration.ZERO } != true
+        if (probe != null || attachedPlayer !== player || !eligible) return false
+        val active = Probe(id, player, preferenceEpoch, canCommit = canCommit)
         probe = active
         if (!captureReservation(active)) {
             if (probe === active) probe = null
@@ -204,6 +214,12 @@ internal class HeadsetRouteGuard(
             return false
         }
         armStartupTimeout(active)
+        if (remaining != null) {
+            active.eligibilityTimeout = scope.launch(playerDispatcher) {
+                delay(remaining)
+                finishProbe(active, verified = false)
+            }
+        }
         return true
     }
 
@@ -385,7 +401,9 @@ internal class HeadsetRouteGuard(
         var result = MutedProbeCompletion.Refused
         var finished = false
         try {
-            result = if (completion.permitsAudio) {
+            result = if (completion.permitsAudio && !active.canCommit()) {
+                MutedProbeCompletion.Refused
+            } else if (completion.permitsAudio) {
                 commitVerifiedProbe?.invoke(active, completion)
                     ?: if (active.transferRequest == null) completion else MutedProbeCompletion.Refused
             } else {
@@ -398,10 +416,11 @@ internal class HeadsetRouteGuard(
     }
 
     private fun releaseFinishedProbe(active: Probe, completion: MutedProbeCompletion): Boolean {
+        val committed = if (completion.permitsAudio && !active.canCommit()) MutedProbeCompletion.Refused else completion
         quiesceProbe(active)
         val owned: Boolean
         try {
-            val needsPause = !completion.permitsAudio && completion != MutedProbeCompletion.Superseded
+            val needsPause = !committed.permitsAudio && committed != MutedProbeCompletion.Superseded
             if (needsPause && attachedPlayer === active.player && active.player.playWhenReady) {
                 pauseForSafety(active.player)
             }
@@ -410,8 +429,8 @@ internal class HeadsetRouteGuard(
             if (owned) probe = null
             volumeEffects.releaseRouteMute(active.muteClaim)
             if (owned) {
-                onProbeSettled?.invoke(active, completion)
-                onProbeFinished(completion.permitsAudio)
+                onProbeSettled?.invoke(active, committed)
+                onProbeFinished(committed.permitsAudio)
             }
         }
         return owned
@@ -452,6 +471,7 @@ internal class HeadsetRouteGuard(
 
     fun quiesceProbe(active: Probe) {
         if (probe !== active) return
+        active.eligibilityTimeout?.cancel()
         val work = active.completionJob
         active.completionJob = null
         work?.cancel()
@@ -487,6 +507,7 @@ internal class HeadsetRouteGuard(
     }
 
     private fun cancelProbeJobs(active: Probe) {
+        active.eligibilityTimeout?.cancel()
         active.startupTimeout?.cancel()
         active.routeTimeout?.cancel()
         active.completionJob?.cancel()

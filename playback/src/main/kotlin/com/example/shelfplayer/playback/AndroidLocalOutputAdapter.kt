@@ -10,9 +10,12 @@ import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.BluetoothIdentityCapability
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -28,9 +31,12 @@ internal class AndroidLocalOutputAdapter(
     private val dispatcher: CoroutineDispatcher,
 ) {
     private var live: Map<String, AudioDeviceInfo> = emptyMap()
+    private val _identityCapability = MutableStateFlow(BluetoothIdentityCapability.Empty)
+    val identityCapability = _identityCapability.asStateFlow()
 
     @Volatile private var callback: AudioDeviceCallback? = null
     val endpointIds: Set<String> get() = live.keys
+    fun nativeHandle(id: String): Int? = live[id]?.id
 
     /** Privacy-safe capability count; no identity material leaves this adapter. */
     val identifiedEndpointCount: Int get() = live.values.count { registry.find(it)?.identity != null }
@@ -66,16 +72,36 @@ internal class AndroidLocalOutputAdapter(
     }
 
     fun refresh() {
+        registry.updateIdentityAccess(context.hasBluetoothIdentityAccess())
         val manager = context.getSystemService(AudioManager::class.java) ?: return
         val devices = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).orEmpty()
-        val entries = registry.reconcile(
-            devices.map(registry::observationOf),
-        )
+        val observations = devices.map(registry::observationOf)
+        val entries = registry.reconcile(observations)
+        _identityCapability.value = identityCapability(observations)
         val byHandle = devices.associateBy(AudioDeviceInfo::getId)
         live = entries.mapNotNull { endpoint -> byHandle[endpoint.platformId]?.let { endpoint.id to it } }.toMap()
         collidingOutputIds = entries.groupBy { it.knownDeviceId }.values.filter { it.size > 1 }
             .flatMap { group -> group.map { it.id } }.toSet()
     }
+
+    private fun identityCapability(
+        observations: List<LiveOutputEndpointRegistry.Observation>,
+    ): BluetoothIdentityCapability {
+        if (!registry.identityAccess) return BluetoothIdentityCapability.PermissionMissing
+        val bluetooth = observations.filter { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
+        val duplicate = bluetooth.mapNotNull { it.identity }.groupingBy { it }.eachCount().any { it.value > 1 }
+        return when {
+            duplicate -> BluetoothIdentityCapability.Duplicate
+
+            bluetooth.any {
+                it.capability == BluetoothIdentityCapability.Verified
+            } -> BluetoothIdentityCapability.Verified
+
+            else -> bluetooth.firstOrNull()?.capability ?: BluetoothIdentityCapability.Empty
+        }
+    }
+
+    fun retainsIdentity(id: String): Boolean = context.hasBluetoothIdentityAccess() && registry.retainsIdentity(id)
 
     fun outputs(): List<AudioOutput> = live.mapNotNull { (id, info) ->
         registry.find(info)?.output?.copy(id = id)
