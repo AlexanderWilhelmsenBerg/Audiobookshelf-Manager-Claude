@@ -935,7 +935,8 @@ internal fun shouldSelectCarForControllerPlay(
     requestedPlay: Boolean,
     controllerIsCar: Boolean,
     playWhenReady: Boolean,
-): Boolean = requestedPlay && controllerIsCar && !playWhenReady
+    playbackFailed: Boolean = false,
+): Boolean = requestedPlay && controllerIsCar && (!playWhenReady || playbackFailed)
 
 /**
  * A silent probe never uses a different connected device or a known competing route.

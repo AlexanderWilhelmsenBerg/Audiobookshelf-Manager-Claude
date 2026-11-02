@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -62,6 +63,13 @@ internal class HeadsetRouteGuard(
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 if (attachedPlayer !== target || attachedListener !== listener) return
                 if (!playWhenReady && !isPausingForSafety(target)) retirePausedProbe(target)
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                if (attachedPlayer !== target || attachedListener !== listener) return
+                // Keep the existing bounded I/O recovery and its retained Play intent unchanged.
+                if (error.errorCode != PlaybackException.ERROR_CODE_DECODING_FAILED) return
+                retireFailedProbe(target)
             }
         }
         attachedPlayer = target
@@ -128,6 +136,19 @@ internal class HeadsetRouteGuard(
                     cancelProbe(active)
                 }
             }
+        }
+    }
+
+    /** A failed renderer cannot supply fresh proof, even if Media3 retains playWhenReady=true. */
+    private fun retireFailedProbe(target: ExoPlayer) {
+        val active = probe?.takeIf { it.player === target } ?: return
+        pauseForSafety(target)
+        if (probe !== active) return
+        quiesceProbe(active)
+        try {
+            onExternalPause?.invoke(active)
+        } finally {
+            if (probe === active) finishProbeNow(active, MutedProbeCompletion.Refused)
         }
     }
 
