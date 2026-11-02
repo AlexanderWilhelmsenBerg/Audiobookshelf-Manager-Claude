@@ -63,3 +63,8 @@ explicit verified transfer and rollback transaction, defined in ADR-0036.
 - Disconnect/reconnect and ambiguous inputs can cause a safe pause, never automatic playback or target adoption.
 - Android device, projection, and real headset-button acceptance remains required; JVM/Robolectric proof does
   not establish audible physical routing.
+
+Ordinary unlocked selections are not persistent locks. A disconnected headset choice may expire to Automatic
+only while safely paused, with positive car-absence evidence and no controller/projection ownership or active
+probe. Unknown/active Auto and explicit locks retain protection. See the
+[headset-swap regression and identity investigation](../testing/2026-11-02-disconnected-headset-selection.md).

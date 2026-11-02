@@ -384,6 +384,7 @@ class PlaybackService : MediaLibraryService() {
         super.onCreate()
         activeProfileGeneration = auto::activeProfileGeneration
         audioOutputs.currentProjection = { carLifecycle.projectionState.carConnected }
+        audioOutputs.confirmedCarAbsent = { carLifecycle.definitelyAbsent }
         audioOutputs.lastHeardRouteId = { routeOwnership.heardRoute?.outputId }
         serviceStartedAt = clock.elapsed()
         audioRouteLab.serviceStarted()
@@ -844,6 +845,7 @@ class PlaybackService : MediaLibraryService() {
         sessionSync.detach()
         audioOutputs.positions.clear()
         audioOutputs.currentProjection = { false }
+        audioOutputs.confirmedCarAbsent = { false }
         resumeFreshness.attach(null)
         autoRewind.attach(null)
         sleepTimer.attach(null)

@@ -408,6 +408,10 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - An explicit output lock retains its logical target across ordinary pause/resume and nonempty book changes,
   while invalidating old physical proof at book/player boundaries. Route loss or uncertainty fails closed;
   a new appearance never rebinds by name or starts playback automatically. The listener can release the lock.
+- An ordinary disconnected headset selection, without an explicit lock, may return to Automatic only with
+  positive car-absence evidence and no controller or retained projection ownership. Pause before clearing
+  the native preference; a later deliberate Play follows normal routing. Unknown/active Auto, pending
+  route verification and newer intent retain protection. This does not infer a replacement's button identity.
 - Explicit destination changes mute before preference effects and commit only with current target-specific
   AudioTrack proof. The prior lock remains recovery context until success; failed or unknown output stays
   safely paused. Car projection delegation must be distinguished from proof of a physical car speaker.

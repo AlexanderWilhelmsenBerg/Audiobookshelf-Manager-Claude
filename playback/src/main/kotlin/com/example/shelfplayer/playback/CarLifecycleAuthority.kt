@@ -30,6 +30,10 @@ internal class CarLifecycleAuthority(private val connections: CarConnections) {
     val connectedForSleepTimer: Boolean
         get() = connections.isConnected() || projectionOwnsCarLifecycle
 
+    /** Unknown observations and controller presence cannot authorize releasing an absent headset. */
+    val definitelyAbsent: Boolean
+        get() = projectionState == AndroidAutoProjectionMonitor.State.NotConnected && !connectedForSleepTimer
+
     /** A controller bind establishes a continuity session, even if projection is not observable. */
     fun onControllerConnected() {
         connections.onConnected()

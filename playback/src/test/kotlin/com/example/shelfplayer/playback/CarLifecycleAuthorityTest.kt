@@ -11,6 +11,25 @@ internal class CarLifecycleAuthorityTest {
     private val connections = CarConnections(TestAppClock())
     private val authority = CarLifecycleAuthority(connections)
 
+    @Test
+    fun `headset retirement requires positive absence without controllers or a projection latch`() {
+        assertFalse(authority.definitelyAbsent)
+        observe(null, AndroidAutoProjectionMonitor.State.NotConnected)
+        assertTrue(authority.definitelyAbsent)
+        authority.onControllerConnected()
+        assertFalse(authority.definitelyAbsent)
+        authority.onControllerDisconnected()
+        assertTrue(authority.definitelyAbsent)
+        observe(AndroidAutoProjectionMonitor.State.NotConnected, AndroidAutoProjectionMonitor.State.Projection)
+        assertFalse(authority.definitelyAbsent)
+        authority.onProjectionReported(AndroidAutoProjectionMonitor.State.NotConnected)
+        assertFalse(authority.definitelyAbsent, "the positive latch must also be retired")
+        observe(AndroidAutoProjectionMonitor.State.Projection, AndroidAutoProjectionMonitor.State.NotConnected)
+        assertTrue(authority.definitelyAbsent)
+        observe(AndroidAutoProjectionMonitor.State.NotConnected, AndroidAutoProjectionMonitor.State.Unknown)
+        assertFalse(authority.definitelyAbsent)
+    }
+
     private fun observe(
         from: AndroidAutoProjectionMonitor.State?,
         to: AndroidAutoProjectionMonitor.State,
