@@ -7,6 +7,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +24,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.AudioDeviceInfoBuilder
 import java.lang.reflect.Proxy
+import java.util.Collections
 import java.util.concurrent.Executors
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -641,8 +643,8 @@ private fun device(id: Int, type: Int, name: String): AudioDeviceInfo {
     return device
 }
 
-internal fun TestScope.fixture(): Fixture {
-    val reads = mutableListOf<Thread>()
+internal fun TestScope.fixture(applicationScope: CoroutineScope = backgroundScope): Fixture {
+    val reads = Collections.synchronizedList(mutableListOf<Thread>())
     val pauses = mutableListOf<Thread>()
     val volumes = mutableListOf<Float>()
     val preferredRequests = mutableListOf<Any?>()
@@ -656,7 +658,7 @@ internal fun TestScope.fixture(): Fixture {
         logger = object : Logger {
             override fun log(event: LogEvent) = Unit
         },
-        applicationScope = backgroundScope,
+        applicationScope = applicationScope,
         mainDispatcher = dispatcher,
         endpointRegistry = registry,
         volumeEffects = volumeEffects,

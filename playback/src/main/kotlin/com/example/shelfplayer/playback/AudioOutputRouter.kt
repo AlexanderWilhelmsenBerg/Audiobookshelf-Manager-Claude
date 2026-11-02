@@ -538,7 +538,7 @@ class AudioOutputRouter @Inject constructor(
         headsetGuard.endpointReturned()
         val attached = player ?: return
         val epoch = preferenceEffects.snapshot()
-        applicationScope.launch {
+        applicationScope.launch(mainDispatcher) {
             if (isCurrentGuard(epoch, attached, chosen) && chosen in live) {
                 reassert(chosen)
             }

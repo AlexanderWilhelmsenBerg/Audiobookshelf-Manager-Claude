@@ -91,3 +91,36 @@ lines, down from 998 at the preceding feature head. Existing route/intent/positi
 Combined gate, exact-head CI and signed artifact are recorded in issue #289 after confirmation.
 No physical PASS is claimed. The under-one-second audible-gap target and the earlier 177ms transfer
 refusal remain hardware acceptance items.
+
+## 2 November hardware failure and reappearance thread regression
+
+APK2250 (QA source `538263848551`) failed arrival continuity. The first capture reports missing Nearby
+devices permission, zero identified endpoints and an absent retained target. Generic Play was denied;
+explicit dashboard Car/Headset transfers succeeded. That run did not exercise qualified identity recovery.
+
+After the owner enabled access, the next capture contains a fresh uncaught `IllegalStateException` at
+07:01:24 UTC, not merely a historical crash. The stack is `onGuardedHeadsetReappeared` → `reassert` →
+`isMeasuredHeadset` → `currentLockContext`, with `mainThread=false`. The application scope uses the Default
+dispatcher; reappearance launched there and read ExoPlayer before reaching the preference effect's
+dispatcher boundary. The correction keeps the reappearance validity check and reassertion together on
+the injected player dispatcher. It adds no recovery claim, player, delay or automatic Play.
+This follows [Media3's single-thread access contract](https://developer.android.com/media/media3/exoplayer/hello-world#note-on-threading).
+
+The regression uses a separate application worker and test player dispatcher, invoking the production
+reappearance handler with a thread-checking player. The paused-reappearance case fails before the
+dispatcher correction; all three focused cases pass afterward. The other cases retain newer-Car-selection
+and detachment invalidation. Reappearance alone leaves paused playback paused without another Pause or
+Play. The registered device callback reaches this handler through the router's refresh path; the test
+invokes the handler directly rather than simulating Android Bluetooth hardware. A shared test scheduler
+for both scopes is insufficient evidence for this failure. Full verification is recorded in issue #289.
+
+The process restarted at 07:01:28 UTC. Diagnostic capture withheld startup restoration, leaving an empty
+queue. A later external Play set playWhenReady on that empty player without loading a book. This separate
+empty-session resumption symptom remains a follow-up; the crash correction must not make diagnostic
+startup autoplay. To recover manually, open a book and explicitly press Play. The paused position had
+been acknowledged before the crash; subsequent listening/progress acceptance still needs device testing.
+
+Retest with access granted and fresh discovery, checking same-headset disappearance/reappearance while
+paused and playing, newer Car/Headset selection during return, and repeated Auto arrivals. Retain a new
+capture even if the process restarts: the previous-crash section preserves the fatal stack. No hardware
+PASS is implied by the regression or CI result.
