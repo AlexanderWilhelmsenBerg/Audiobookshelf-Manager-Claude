@@ -71,7 +71,8 @@ internal class MediaInputDiagnostics(
             else -> "Resolved"
         }
         val fields = "input-key entry=$entry keyPresent=true keyCode=${event.keyCode} keyAction=${event.action} " +
-            "keyInputId=${event.deviceId} keyInputSource=${event.source} keyFlags=${event.flags} " +
+            "keyInputId=${event.deviceId} keyInputSource=${event.source} keyScanCode=${event.scanCode} " +
+            "keyFlags=${event.flags} " +
             "repeat=${event.repeatCount} longPress=${event.isLongPress} cancelled=${event.isCanceled} " +
             "heldMillis=${(event.eventTime - event.downTime).coerceAtLeast(0)} deviceQuery=$resolution"
         record(

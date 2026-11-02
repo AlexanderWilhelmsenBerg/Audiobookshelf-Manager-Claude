@@ -127,3 +127,31 @@ Retest with access granted and fresh discovery, checking same-headset disappeara
 paused and playing, newer Car/Headset selection during return, and repeated Auto arrivals. Retain a new
 capture even if the process restarts: the previous-crash section preserves the fatal stack. No hardware
 PASS is implied by the regression or CI result.
+
+## 2 November input-device capability extension
+
+PLAY-001 / PLAY-002: opt-in input diagnostics expose the public Android input-device vendor/product
+IDs and key scan code alongside the existing runtime ID, capture-local descriptor alias, source,
+flags and controller evidence. `inputKind` distinguishes Virtual, External, BuiltIn and NonVirtual
+(external status unavailable). Zero vendor/product values mean Android did not supply a model ID.
+Model IDs are not unit identifiers; input IDs are not audio endpoint IDs. Raw descriptors and device
+names remain excluded. No additional permission, Bluetooth scan or hidden Android API is used.
+
+Both the media-button receiver-start path and the active session callback reach the existing recorder.
+The same input snapshot and event fields appear in the unified JSON export. Recording off does not
+query input devices. This is capability observation, not an input-to-output enrollment or routing rule:
+`association=Unproven` remains until an actual association mechanism exists. Virtual events cannot
+be promoted to headset identity by their model IDs, current route or controller package.
+
+APK2251's 11:13:32 UTC capture has no recorded crash. The owner reports headset recovery and explicit
+dashboard transfers; headset return keys remain virtual input -1/source 0. It also records about 3.3s
+between arrival focus pause and observed playback recovery, and one Car transfer refusal at 260ms
+post-seek movement. Neither uninterrupted continuity nor anonymous-button switch-back is accepted.
+
+Acceptance for the extension: start a fresh unified capture, press headset, dashboard, steering-wheel
+and notification controls separately, then export. A real external input must retain its capture-local
+identity and public model fields; generic Bluetooth media events must remain Virtual/unassociated.
+Repeat after disconnect/reconnect and with another input of the same model; do not equate model IDs or
+recycled runtime IDs with a physical audio endpoint. Existing dashboard output selection must still work.
+Robolectric covers framework input objects through the production reader/recorder/exported rows; it
+does not prove physical headset identification. Software verification is recorded in issue #289.

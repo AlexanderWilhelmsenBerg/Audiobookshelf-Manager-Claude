@@ -47,6 +47,7 @@ internal class MediaInputTimeline {
 
     private fun facts(device: MediaInputDevice, alias: String, descriptor: String, count: Int): String =
         "inputAlias=$alias inputId=${device.id} deviceSources=${device.sources} " +
+            "inputKind=${device.kind} vendorId=${device.vendorId} productId=${device.productId} " +
             "keyboardType=${device.keyboardType} virtual=${device.virtual} external=${device.external ?: "unknown"} " +
             "descriptorAlias=$descriptor descriptorMatches=${if (descriptor.startsWith("s")) count else 0} " +
             "association=Unproven"

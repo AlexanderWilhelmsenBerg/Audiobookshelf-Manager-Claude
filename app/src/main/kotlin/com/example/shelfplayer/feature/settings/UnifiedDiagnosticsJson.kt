@@ -80,6 +80,7 @@ internal object UnifiedDiagnosticsJson {
         listOf(
             "Android route prediction does not prove human-heard audio.",
             "Input device -1 cannot identify headset A or B.",
+            "Input vendor/product IDs describe a model, not a unique device or audio-output association.",
             "Input descriptor aliases apply only within one opt-in capture; " +
                 "they do not identify an audio output.",
             "Controller software identity and RemoteSubmix do not prove a physical button or car speaker.",
