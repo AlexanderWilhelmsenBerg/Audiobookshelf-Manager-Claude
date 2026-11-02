@@ -11,8 +11,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -30,13 +28,13 @@ import kotlin.test.assertTrue
 class AudioOutputRouterReappearanceThreadTest {
     @Test
     fun `paused guarded headset reappearance reasserts on player dispatcher without starting playback`() = runTest {
-        withWorkerFixture(this) { fixture, worker, failure, _ ->
+        withWorkerFixture(this) { fixture, failure, executor ->
             prepareReappearance(fixture)
             fixture.player.pause()
             val pauseCountBeforeReappearance = fixture.pauseThreads.size
 
             invokeReappearance(fixture)
-            drainWorker(worker)
+            drainWorker(executor)
             runCurrent()
 
             assertTrue(!failure.isCompleted, "reappearance raised on the application worker")
@@ -57,7 +55,7 @@ class AudioOutputRouterReappearanceThreadTest {
 
     @Test
     fun `queued reappearance is invalidated by a newer Car selection`() = runTest {
-        withWorkerFixture(this) { fixture, worker, failure, executor ->
+        withWorkerFixture(this) { fixture, failure, executor ->
             prepareReappearance(fixture)
             val release = blockWorker(executor)
             try {
@@ -66,7 +64,7 @@ class AudioOutputRouterReappearanceThreadTest {
             } finally {
                 release()
             }
-            drainWorker(worker)
+            drainWorker(executor)
             assertTrue(!failure.isCompleted, "stale reappearance should not fail on the worker")
             runCurrent()
             assertEquals(null, fixture.router.selectedId.value)
@@ -77,7 +75,7 @@ class AudioOutputRouterReappearanceThreadTest {
 
     @Test
     fun `queued reappearance is invalidated by player detach`() = runTest {
-        withWorkerFixture(this) { fixture, worker, failure, executor ->
+        withWorkerFixture(this) { fixture, failure, executor ->
             prepareReappearance(fixture)
             val release = blockWorker(executor)
             try {
@@ -86,9 +84,10 @@ class AudioOutputRouterReappearanceThreadTest {
             } finally {
                 release()
             }
-            drainWorker(worker)
+            drainWorker(executor)
             assertTrue(!failure.isCompleted, "detached reappearance should not fail on the worker")
             runCurrent()
+            assertTrue(fixture.readThreads.isEmpty(), "detached reappearance must not read the retired player")
             assertTrue(fixture.preferredRequests.isEmpty(), "detached reappearance must not apply an output preference")
         }
     }
@@ -97,7 +96,6 @@ class AudioOutputRouterReappearanceThreadTest {
         testScope: TestScope,
         block: suspend (
             Fixture,
-            kotlinx.coroutines.CoroutineDispatcher,
             CompletableDeferred<Throwable>,
             java.util.concurrent.ExecutorService,
         ) -> Unit,
@@ -110,7 +108,7 @@ class AudioOutputRouterReappearanceThreadTest {
         )
         try {
             val fixture = testScope.fixture(applicationScope = scope)
-            block(fixture, dispatcher, failure, executor)
+            block(fixture, failure, executor)
         } finally {
             scope.cancel()
             dispatcher.close()
@@ -133,8 +131,10 @@ private fun invokeReappearance(fixture: Fixture) {
         .invoke(fixture.router, fixture.router.selectedId.value)
 }
 
-private suspend fun drainWorker(dispatcher: kotlinx.coroutines.CoroutineDispatcher) {
-    withTimeout(2_000) { withContext(dispatcher) { Unit } }
+private fun drainWorker(executor: java.util.concurrent.ExecutorService) {
+    // This barrier waits for a real executor, so use a real-time bound rather than runTest's
+    // virtual clock. The queued callback cannot be mistaken for completed work on a loaded runner.
+    executor.submit {}.get(10, TimeUnit.SECONDS)
 }
 
 private fun blockWorker(executor: java.util.concurrent.ExecutorService): () -> Unit {
@@ -143,9 +143,9 @@ private fun blockWorker(executor: java.util.concurrent.ExecutorService): () -> U
     // Enqueue a gate on the same single-thread executor before callback work.
     executor.submit {
         started.countDown()
-        release.await(2, TimeUnit.SECONDS)
+        check(release.await(10, TimeUnit.SECONDS))
     }
-    check(started.await(2, TimeUnit.SECONDS))
+    check(started.await(10, TimeUnit.SECONDS))
     return {
         release.countDown()
     }

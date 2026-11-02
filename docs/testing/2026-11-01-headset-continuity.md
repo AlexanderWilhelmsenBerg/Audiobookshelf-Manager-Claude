@@ -113,6 +113,9 @@ and detachment invalidation. Reappearance alone leaves paused playback paused wi
 Play. The registered device callback reaches this handler through the router's refresh path; the test
 invokes the handler directly rather than simulating Android Bluetooth hardware. A shared test scheduler
 for both scopes is insufficient evidence for this failure. Full verification is recorded in issue #289.
+The first CI run exposed a fixture timeout: a virtual test-clock deadline surrounded a real executor
+queue barrier. That barrier now has a bounded real-time deadline; functional and thread assertions stay
+unchanged. Removing the production dispatcher fix must still fail the paused-return regression.
 
 The process restarted at 07:01:28 UTC. Diagnostic capture withheld startup restoration, leaving an empty
 queue. A later external Play set playWhenReady on that empty player without loading a book. This separate
