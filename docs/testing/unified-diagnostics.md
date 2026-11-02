@@ -129,6 +129,10 @@ before merging.
 
 ## CI/hardware gates
 
+Renderer failures include bounded codec cause classifications, numeric format/error fields and
+recovery flags without exception messages, codec names or media metadata. See the
+[decoder/route regression and device procedure](2026-11-02-decoder-route-failure.md).
+
 - JVM regression: cold virtual toggle vs explicit Play, car, loaded queue, warm
   state, absent Bluetooth and physical key, plus the inherited route lab tests.
 - KtLint, Detekt, Android Lint, Robolectric and `verifyDebug` must pass on the exact

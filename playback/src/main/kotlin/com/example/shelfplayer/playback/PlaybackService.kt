@@ -520,7 +520,15 @@ class PlaybackService : MediaLibraryService() {
     private fun routeExplicitCarPlay(requestedPlay: Boolean, mediaPlayer: ExoPlayer) {
         val requestingController = session?.controllerForCurrentRequest
         val isCarController = requestingController != null && requestingController.packageName in CAR_PACKAGES
-        if (!shouldSelectCarForControllerPlay(requestedPlay, isCarController, mediaPlayer.playWhenReady)) return
+        if (!shouldSelectCarForControllerPlay(
+                requestedPlay,
+                isCarController,
+                mediaPlayer.playWhenReady,
+                mediaPlayer.playerError != null,
+            )
+        ) {
+            return
+        }
         if (!audioOutputs.selectCarFromGenericController()) return
         syncExplicitOutputIntent()
         autoTraces.log("Android Auto Play selected the car audio route", fields = carSnapshotFields())
@@ -1648,11 +1656,31 @@ class PlaybackService : MediaLibraryService() {
         override fun onPlayerError(error: PlaybackException) {
             pendingRecoveryRetry?.cancel()
             val retryIn = recovery.onError(error)
-            logger.warn(
-                LogCategory.Playback,
-                if (retryIn == null) "Playback stopped on an error" else "Playback hit an error and will retry",
-                LogField.Public("errorCode", error.errorCodeName),
-                LogField.Count("attempt", recovery.attemptCount),
+            logger.log(
+                LogEvent(
+                    level = LogLevel.Warn,
+                    category = LogCategory.Playback,
+                    message = if (retryIn ==
+                        null
+                    ) {
+                        "Playback stopped on an error"
+                    } else {
+                        "Playback hit an error and will retry"
+                    },
+                    fields = listOf(
+                        LogField.Public("errorCode", error.errorCodeName),
+                        LogField.Count("attempt", recovery.attemptCount),
+                        LogField.Public(
+                            "destination",
+                            audioOutputs.explicitSelection.value?.destination?.name ?: "Automatic",
+                        ),
+                        LogField.Public(
+                            "transferPhase",
+                            audioOutputs.outputIntentOwner.state.value.transfer?.phase?.name ?: "none",
+                        ),
+                    ) + PlaybackErrorDiagnostics.fields(error) + AndroidAutoDiagnostics.playerFields(player) +
+                        carSnapshotFields(),
+                ),
             )
             val snapshot = positionSnapshot()
             scope.launch { if (snapshot != null) recordPosition(snapshot) }
