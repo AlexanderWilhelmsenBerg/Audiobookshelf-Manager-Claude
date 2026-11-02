@@ -81,9 +81,13 @@ Perform one action at a time with a stationary car and note the heard destinatio
    removes the retained lab capture; a later capture's aliases must not be joined to the old ones.
 
 Interpret `entry=ReceiverStart` separately from `SessionCallback`; these may be two deliveries of one
-key. `keyFlags`, `repeat`, `heldMillis`, `deviceQuery`, `virtual`, `external`, `deviceSources` and
+key. `keyScanCode`, `keyFlags`, `repeat`, `heldMillis`, `deviceQuery`, `virtual`, `external`, `deviceSources` and
 `descriptorMatches` describe capabilities and transformations. A shared descriptor can represent
 indistinguishable devices or separate collections. `association=Unproven` stays authoritative.
+`inputKind` distinguishes Virtual, External, BuiltIn and NonVirtual (external status unavailable).
+`vendorId` and `productId` are public model identifiers, with zero meaning unavailable; matching values
+do not identify an individual accessory. These fields require no new permission and do not turn
+virtual media keys into physical headset events or authorize an output transfer.
 `caller=BluetoothService` identifies software forwarding; `caller=AndroidAuto` does not establish a
 physical dashboard gesture. `packageVerified` records whether Media3 verified the reported package;
 controller trust is a separate software-access property. Controller/interface versions distinguish

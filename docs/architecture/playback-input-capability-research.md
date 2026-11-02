@@ -104,8 +104,11 @@ Audio Route Lab owns the opt-in lifecycle. `MediaInputDiagnostics` observes publ
 that lab records. `PlatformMediaInputSource` adapts InputManager; `MediaInputTimeline` tracks bounded
 input appearances; `MediaInputAliases` converts descriptors to capture-local ordinals using an in-memory
 random HMAC key. Raw descriptor bytes, digest and key are never exported or persisted. Names, Bluetooth
-addresses, vendor/product identifiers and private media/server metadata are not requested by this input
-adapter. A new capture has a new namespace; descriptor aliases are not persistent identity.
+addresses and private media/server metadata are not requested by this input adapter. The 2 November
+extension records public vendor/product model IDs (zero when unavailable), input kind and key scan
+code without an additional permission. These do not identify an individual headset or associate an
+input with an audio endpoint. Virtual input stays virtual even if it supplies model IDs or an external
+flag. A new capture has a new namespace; descriptor aliases are not persistent identity.
 
 The current inventory is bounded to64 unique runtime input handles; descriptor alias storage to128
 entries; oversized descriptors are unavailable rather than copied. Duplicate runtime IDs are omitted.
