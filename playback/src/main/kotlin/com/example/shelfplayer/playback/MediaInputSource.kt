@@ -16,7 +16,18 @@ internal data class MediaInputDevice(
     val virtual: Boolean,
     val external: Boolean?,
     val descriptor: String?,
-)
+    val vendorId: Int = 0,
+    val productId: Int = 0,
+) {
+    /** Input classification only: even an external input has no implied audio-output association. */
+    val kind: String
+        get() = when {
+            virtual -> "Virtual"
+            external == true -> "External"
+            external == false -> "BuiltIn"
+            else -> "NonVirtual"
+        }
+}
 
 internal enum class MediaInputChange { Added, Removed, Changed }
 
@@ -64,5 +75,7 @@ internal class PlatformMediaInputSource(private val context: Context) : MediaInp
         virtual = device.isVirtual,
         external = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) device.isExternal else null,
         descriptor = device.descriptor,
+        vendorId = device.vendorId,
+        productId = device.productId,
     )
 }
