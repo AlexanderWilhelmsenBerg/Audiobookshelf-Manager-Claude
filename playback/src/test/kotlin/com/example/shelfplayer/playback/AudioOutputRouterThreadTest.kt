@@ -643,12 +643,16 @@ private fun device(id: Int, type: Int, name: String): AudioDeviceInfo {
     return device
 }
 
-internal fun TestScope.fixture(applicationScope: CoroutineScope = backgroundScope): Fixture {
+internal fun TestScope.fixture(
+    applicationScope: CoroutineScope = backgroundScope,
+    onPause: () -> Unit = {},
+    onPreference: () -> Unit = {},
+): Fixture {
     val reads = Collections.synchronizedList(mutableListOf<Thread>())
     val pauses = mutableListOf<Thread>()
     val volumes = mutableListOf<Float>()
     val preferredRequests = mutableListOf<Any?>()
-    val player = threadCheckedPlayer(reads, pauses, volumes, preferredRequests)
+    val player = threadCheckedPlayer(reads, pauses, volumes, preferredRequests, onPause, onPreference)
     val registry = LiveOutputEndpointRegistry()
     val dispatcher = StandardTestDispatcher(testScheduler)
     val volumeEffects = volumeEffectsForTest(dispatcher)
@@ -681,6 +685,8 @@ private fun threadCheckedPlayer(
     pauses: MutableList<Thread>,
     volumes: MutableList<Float>,
     preferredRequests: MutableList<Any?>,
+    onPause: () -> Unit,
+    onPreference: () -> Unit,
 ): ExoPlayer {
     val owningThread = Thread.currentThread()
     var playWhenReady = true
@@ -712,6 +718,7 @@ private fun threadCheckedPlayer(
                     "setPreferredAudioDevice on the wrong Media3 thread"
                 }
                 preferredRequests.add(args?.get(0))
+                onPreference()
                 null
             }
 
@@ -736,6 +743,7 @@ private fun threadCheckedPlayer(
                 check(Thread.currentThread() == owningThread) { "ExoPlayer pause on the wrong thread" }
                 pauses.add(Thread.currentThread())
                 playWhenReady = false
+                onPause()
                 null
             }
 

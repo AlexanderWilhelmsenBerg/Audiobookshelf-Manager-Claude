@@ -109,6 +109,9 @@ class AudioOutputRouter @Inject constructor(
     internal val handoffs by lazy(LazyThreadSafetyMode.NONE) { OutputHandoffEffects(HandoffAccess()) }
     internal var currentProjection: () -> Boolean = { false }
 
+    /** Positive absence evidence from the existing lifecycle owner; Unknown must retain protection. */
+    internal var confirmedCarAbsent: () -> Boolean = { false }
+
     /** Projection lifecycle edges can change presentation even when the device inventory is unchanged. */
     internal val refreshPresentationForLifecycle: () -> Unit get() = presentationPublisher::refresh
 
@@ -507,6 +510,7 @@ class AudioOutputRouter @Inject constructor(
 
         // Pause on the player looper before OS default routing can become audible.
         applicationScope.launch(mainDispatcher) {
+            if (_selectedId.value == chosen && handoffs.retireDisconnectedOutput(chosen)) return@launch
             if (_selectedId.value == chosen && headsetGuard.endpointId == chosen && chosen !in live) {
                 player?.takeIf { it.isPlaying }?.let(headsetGuard::pauseForSafety)
             }
@@ -598,6 +602,7 @@ class AudioOutputRouter @Inject constructor(
     internal fun isAttachedPlayer(expectedPlayer: Player): Boolean = player === expectedPlayer
 
     private fun beginManualPlayProtection(): ManualPlayProtection {
+        _selectedId.value?.let { handoffs.retireDisconnectedOutput(it) }
         if (explicitSelection.value?.destination?.let { it != OutputIntentOwner.Destination.Automatic } == true) {
             return handoffs.protectPlay()
         }
@@ -886,6 +891,9 @@ class AudioOutputRouter @Inject constructor(
         }
 
         override fun releasedRouteId(): String? = lastHeardRouteId()
+
+        override fun disconnectedOutputMayRetire(id: String): Boolean =
+            id !in live && !currentProjection() && confirmedCarAbsent()
 
         override fun enqueue(epoch: Long, effect: () -> Unit) {
             applicationScope.launch { preferenceEffects.run(epoch) { effect() } }

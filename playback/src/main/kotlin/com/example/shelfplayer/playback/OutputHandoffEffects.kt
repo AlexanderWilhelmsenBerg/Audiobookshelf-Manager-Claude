@@ -23,6 +23,7 @@ internal class OutputHandoffEffects(private val source: Source) {
         fun enqueue(epoch: Long, effect: () -> Unit)
         fun requestPreference(player: ExoPlayer, outputId: String?): Boolean
         fun changed()
+        fun disconnectedOutputMayRetire(id: String): Boolean
     }
 
     private data class Origin(
@@ -69,6 +70,52 @@ internal class OutputHandoffEffects(private val source: Source) {
         if (!unchanged(origin)) return false
         val prepared = source.owner.prepareTransfer(id, destination, source.preferences.supersede(), path)
         return start(prepared, origin, forPlay = false)
+    }
+
+    /** Ordinary headset swaps expire only unlocked intent, while paused and positively outside Auto. */
+    fun retireDisconnectedOutput(id: String): Boolean {
+        val origin = disconnectedOutputOrigin(id) ?: return false
+        val attached = origin.player ?: return false
+        val epoch = source.preferences.supersede()
+        val selection = source.owner.select(null, OutputIntentOwner.Destination.Automatic)
+        // The next manual Play can run immediately. Clear the native preference while still paused,
+        // retaining the guard if Android rejects the request or a callback supersedes the scope.
+        if (!retirementScope(origin, selection, epoch, id) || !tryPreference(attached, null) ||
+            !retirementScope(origin, selection, epoch, id)
+        ) {
+            return false
+        }
+        // Keep the guard through publication: a reentrant arrival/reconnect must still fail closed.
+        source.selected(selection)
+        return selectionScope(origin, selection, epoch)
+    }
+
+    private fun retirementScope(
+        origin: Origin,
+        selection: OutputIntentOwner.Selection,
+        epoch: Long,
+        id: String,
+    ): Boolean =
+        selectionScope(origin, selection, epoch) && canRetireOutput(id) && origin.player?.playWhenReady == false
+
+    private fun disconnectedOutputOrigin(id: String): Origin? {
+        if (!canRetireOutput(id)) return null
+        val origin = prepareOrigin() ?: return null
+        return origin.takeIf {
+            canRetireOutput(id) && unchanged(it) && it.player?.let(source.guard::pauseForSafety) == true &&
+                unchanged(it) && canRetireOutput(id)
+        }
+    }
+
+    private fun canRetireOutput(id: String): Boolean {
+        val state = source.owner.state.value
+        val destination = state.selection
+        return state.lock == null && source.guard.currentProbe == null &&
+            (
+                destination == null || destination.destination == OutputIntentOwner.Destination.Automatic ||
+                    (destination.destination == OutputIntentOwner.Destination.Output && destination.outputId == id)
+                ) &&
+            source.disconnectedOutputMayRetire(id)
     }
 
     /** Confirmed departure may expire an unlocked paused Car choice, without release suppression or Play. */
