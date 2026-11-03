@@ -1,5 +1,7 @@
 package com.example.shelfplayer.playback
 
+import android.bluetooth.BluetoothClass
+import android.bluetooth.BluetoothManager
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -30,6 +32,36 @@ class BluetoothEndpointContinuityTest {
         shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(android.Manifest.permission.BLUETOOTH_CONNECT)
     }
     private val manager get() = shadowOf(RuntimeEnvironment.getApplication().getSystemService(AudioManager::class.java))
+
+    @Test
+    fun `only a wearable Bluetooth peer can be the sole inferred headset beside a car`() = runTest {
+        val adapter = fixture().router.localOutputs
+        val bluetooth = RuntimeEnvironment.getApplication().getSystemService(BluetoothManager::class.java).adapter
+        val headset = "11:22:33:44:55:66"
+        val car = "22:33:44:55:66:77"
+        fun classify(address: String, deviceClass: Int) {
+            val classification = ReflectionHelpers.callConstructor(
+                BluetoothClass::class.java,
+                ReflectionHelpers.ClassParameter.from(Int::class.javaPrimitiveType, deviceClass),
+            )
+            shadowOf(bluetooth.getRemoteDevice(address)).setBluetoothClass(classification)
+        }
+        classify(headset, BluetoothClass.Device.AUDIO_VIDEO_HEADPHONES)
+        classify(car, BluetoothClass.Device.AUDIO_VIDEO_CAR_AUDIO)
+        manager.setOutputDevices(listOf(endpoint(1, headset, "Headset"), endpoint(2, car, "Car")))
+        adapter.refresh()
+        val headphoneId = requireNotNull(adapter.buttonOutputForAddress(headset))
+        assertEquals(headphoneId, adapter.soleButtonHeadset(adapter.buttonCandidates()))
+        classify(car, BluetoothClass.Device.AUDIO_VIDEO_WEARABLE_HEADSET)
+        assertEquals(null, adapter.soleButtonHeadset(adapter.buttonCandidates()))
+        manager.setOutputDevices(listOf(endpoint(1, headset), endpoint(2, car)))
+        adapter.refresh()
+        assertTrue(adapter.buttonCandidates().isEmpty(), "indistinguishable output handles cannot authorize fallback")
+        manager.setOutputDevices(listOf(endpoint(2, car)))
+        classify(car, BluetoothClass.Device.AUDIO_VIDEO_CAR_AUDIO)
+        adapter.refresh()
+        assertTrue(adapter.buttonCandidates().isEmpty())
+    }
 
     @Test
     fun `queued preference cannot borrow a replacement native handle`() = runTest {
@@ -217,10 +249,10 @@ class BluetoothEndpointContinuityTest {
         assertTrue(original !in adapter.endpointIds)
     }
 
-    private fun endpoint(id: Int, address: String): AudioDeviceInfo =
+    private fun endpoint(id: Int, address: String, name: String = "Same headset name"): AudioDeviceInfo =
         AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP).build().also { device ->
             val port = ReflectionHelpers.getField<Any>(device, "mPort")
-            ReflectionHelpers.setField(port, "mName", "Same headset name")
+            ReflectionHelpers.setField(port, "mName", name)
             ReflectionHelpers.setField(port, "mAddress", address)
             val handle = ReflectionHelpers.getField<Any>(port, "mHandle")
             ReflectionHelpers.setField(handle, "mId", id)

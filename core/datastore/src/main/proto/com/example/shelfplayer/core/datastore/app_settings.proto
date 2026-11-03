@@ -309,6 +309,11 @@ message AppSettings {
   // any device it was installed on, and a new field numbered 48 would read those bytes as its own.
   reserved 48;
   reserved "keep_sound_in_headset";
+
+  // Inverted so older stored data retains the enabled default. Never reuse reserved field 48.
+  bool headset_button_routing_disabled = 56;
+  // Direct Sony taps are opt-in; absent data keeps detection off.
+  bool sony_tap_detection = 57;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.

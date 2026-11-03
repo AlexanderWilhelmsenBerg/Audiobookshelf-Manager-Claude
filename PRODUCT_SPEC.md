@@ -553,6 +553,13 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - When the user presses Play on a connected headset, Android routes the command to the media session and the last item for the active profile resumes when platform policy permits.
 - If no playable item exists, the command does nothing and logs a non-fatal diagnostic.
 - A media-button command is treated as explicit user intent and may start playback.
+- During Android Auto, a fresh Play from a verified dashboard controller requests Car. With headset-button
+  routing enabled (default), a recognized headset-style media key followed by its Play can request the one
+  recognizable live headset. Multiple candidates require evidence for the exact headset. Anonymous Play,
+  Pause and connection alone do not select a new output. An explicit output lock takes precedence.
+- Optional WF-1000XM6 tap detection defaults off. BookWave must leave the Sony control channel alone whenever
+  Sony Sound Connect is installed and enabled. A tap can supply identity to the pending key but cannot start
+  playback. All transfers use the existing output handoff and actual-track verification.
 - Playback resumption metadata is published for Android system media controls.
 - When a Media3 playback service is recreated with no current item, BookWave may publish the active profile's
   last resumable book as an idle current item without opening a server playback session or starting audio.

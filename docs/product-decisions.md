@@ -452,3 +452,12 @@ focus ownership. An unattributed Play keeps the selected destination; device ide
 button provenance. No zero-silence guarantee or physical acceptance is implied.
 
 [Implementation and acceptance procedure](testing/2026-11-01-headset-continuity.md).
+
+**2026-11-03 owner refinement.** During Android Auto, an eligible Bluetooth- or Google-dispatched media key
+followed by its fresh Play may request the sole recognizable headset. This is a default-on user preference.
+The dispatcher identifies a command path shared by some car controls and does not prove physical origin.
+Verified Android Auto Play requests Car. Multiple possible headsets require an exact match. Ordinary phone
+Play and unmatched media commands keep the current selection. Dashboard output icons and output locks retain
+their authority. Direct WF-1000XM6 tap evidence is optional, defaults off and is unavailable while Sound
+Connect is installed and enabled. The app uses the existing Nearby devices grant and never changes the
+companion app's state. See the [hardware test procedure](testing/2026-11-03-headset-button-routing.md).

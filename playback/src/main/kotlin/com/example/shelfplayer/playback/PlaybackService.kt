@@ -247,6 +247,26 @@ class PlaybackService : MediaLibraryService() {
     internal lateinit var mainDispatcher: CoroutineDispatcher
 
     @Inject
+    @Dispatcher(ShelfDispatcher.Io)
+    internal lateinit var buttonIoDispatcher: CoroutineDispatcher
+
+    private val buttonRouting by lazy(LazyThreadSafetyMode.NONE) {
+        ServiceButtonRouting(
+            audioOutputs,
+            clock,
+            {
+                ButtonPlayScope(
+                    positionEffects.authority(),
+                    audioOutputs.explicitSelection.value?.sequence,
+                    audioOutputs.outputIntentOwner.state.value.activeBookGeneration,
+                )
+            },
+            { carLifecycle.connectedForSleepTimer },
+            CAR_PACKAGES,
+        )
+    }
+
+    @Inject
     internal lateinit var coldStartToggleGate: ColdStartToggleGate
     private var serviceStartedAt: Duration = Duration.ZERO
     private var player: ExoPlayer? = null
@@ -420,6 +440,15 @@ class PlaybackService : MediaLibraryService() {
         // restore only its own old player and cannot emit an audible-resume event into the new observers.
         installPositionCheckpointHandlers()
         attachRouteSafetyMonitor(exoPlayer)
+        buttonRouting.sony = SonyTapMonitor(
+            this,
+            scope,
+            mainDispatcher,
+            buttonIoDispatcher,
+            buttonRouting::sonyTap,
+            audioOutputs.localOutputs::buttonOutputForAddress,
+        )
+        buttonRouting.settings(settings)
         routeObservationEffects.attach()
         attachSleepTimer(exoPlayer)
         // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does. It is given the
@@ -518,9 +547,10 @@ class PlaybackService : MediaLibraryService() {
      * Keep route changes outside the onCreate forwarding-player lambda: the shared policy
      * remains testable and a duplicate Play does not steal a healthy headset route.
      */
-    private fun routeExplicitCarPlay(requestedPlay: Boolean, mediaPlayer: ExoPlayer) {
+    private fun routeExplicitCarPlay(requestedPlay: Boolean, mediaPlayer: ExoPlayer): Boolean {
         val requestingController = session?.controllerForCurrentRequest
-        val isCarController = requestingController != null && requestingController.packageName in CAR_PACKAGES
+        val isCarController = requestingController != null && requestingController.isPackageNameVerified &&
+            requestingController.packageName in CAR_PACKAGES
         if (!shouldSelectCarForControllerPlay(
                 requestedPlay,
                 isCarController,
@@ -528,11 +558,13 @@ class PlaybackService : MediaLibraryService() {
                 mediaPlayer.playerError != null,
             )
         ) {
-            return
+            return true
         }
-        if (!audioOutputs.selectCarFromGenericController()) return
+        if (audioOutputs.outputLock.value != null) return true
+        if (!audioOutputs.selectCarFromGenericController()) return false
         syncExplicitOutputIntent()
         autoTraces.log("Android Auto Play selected the car audio route", fields = carSnapshotFields())
+        return true
     }
 
     /**
@@ -791,6 +823,7 @@ class PlaybackService : MediaLibraryService() {
 
     /** New controller movement supersedes all suspended work, even without a raw player callback. */
     private fun onControllerCommand(origin: ResumeInvalidation): Boolean {
+        buttonRouting.clear()
         val movement = when (origin) {
             ResumeInvalidation.MediaChanged -> PlaybackMovement.MediaChanged
             ResumeInvalidation.Seek, ResumeInvalidation.NotificationSkip -> PlaybackMovement.Seek
@@ -819,19 +852,38 @@ class PlaybackService : MediaLibraryService() {
 
     /** External transport is newer listener intent even when Media3 emits no raw state transition. */
     private fun onControllerTransportRequest(requestedPlay: Boolean, current: ExoPlayer): Boolean {
+        val buttonDestination = buttonRouting.transport(requestedPlay, session, current)
         controllerCommandGeneration += 1
         val expected = positionEffects.authority()
         logControllerTransportRequest(requestedPlay, current)
-        routeExplicitCarPlay(requestedPlay, current)
+        val accepted = routeExplicitCarPlay(requestedPlay, current) && buttonRouting.apply(buttonDestination)
+        if (buttonDestination != null) {
+            autoTraces.log(
+                "Media-button output request",
+                fields = listOf(
+                    LogField.Public("evidence", buttonDestination.evidence),
+                    LogField.Public(
+                        "result",
+                        when {
+                            audioOutputs.outputLock.value != null -> "locked"
+                            accepted -> "accepted"
+                            else -> "refused"
+                        },
+                    ),
+                ),
+            )
+        }
+        if (accepted && buttonDestination != null) syncExplicitOutputIntent()
         // Duplicate Pause still matters. Automatic continuity uses the raw player and bypasses this boundary.
         sleepTimer.onControllerTransportIntent()
         carResumeEffects.cancelPending()
         if (requestedPlay) carRecovery.cancelPending() else carRecovery.cancelAll()
         carRecovery.clearAwaiting()
-        return player === current && positionEffects.authority() == expected
+        return accepted && player === current && positionEffects.authority() == expected
     }
 
     override fun onDestroy() {
+        buttonRouting.close()
         routeObservationEffects.detach()
         audioOutputs.outputIntentOwner.releaseRuntime()
         audioOutputs.lastHeardRouteId = { null }
@@ -1746,6 +1798,7 @@ class PlaybackService : MediaLibraryService() {
         skipWatch = scope.launch {
             playbackSettings.observeSettings().collect { settings ->
                 skips = settings.skips
+                buttonRouting.settings(settings)
                 // PRODUCT_SPEC PLAY-002 — read here rather than in its own collector: it comes off the same
                 // flow, and a second `observeSettings()` would be a second cold DataStore read of the same
                 // bytes on every write to any playback setting.
@@ -1774,6 +1827,7 @@ class PlaybackService : MediaLibraryService() {
             }
             launch {
                 combine(audioOutputs.outputs, audioOutputs.selectedId, ::Pair).collect { (outputs, _) ->
+                    buttonRouting.updateMonitor()
                     syncExplicitOutputIntent()
                     val isPlaying = routeObservationEffects.isAudible()
                     if ((player?.mediaItemCount ?: 0) == 0) {
@@ -1991,6 +2045,7 @@ class PlaybackService : MediaLibraryService() {
         val carWasConnected = carConnections.isConnected()
         val carArrivedAt = if (carWasConnected) null else clock.elapsed()
         carLifecycle.onControllerConnected()
+        buttonRouting.updateMonitor()
         // Preserve positive evidence before the host can change routing or focus; muted playback is ignored.
         observeCurrentAudibleRoute()
         // The first arrival must be registered synchronously. Routing resettle runs in a later coroutine,
@@ -2026,6 +2081,8 @@ class PlaybackService : MediaLibraryService() {
         val trace = autoTraces.ensure("controller-disconnect")
         val carWasConnected = carConnections.isConnected()
         carLifecycle.onControllerDisconnected()
+        buttonRouting.clear()
+        buttonRouting.updateMonitor()
         val carStillConnected = carConnections.isConnected()
         synchronizeSleepTimerCarConnection()
         val finalControllerDeparture = carWasConnected && !carStillConnected
@@ -2080,6 +2137,8 @@ class PlaybackService : MediaLibraryService() {
         )
 
         val edge = carLifecycle.onProjectionBoundary(update)
+        if (previous != update.current) buttonRouting.clear()
+        buttonRouting.updateMonitor()
         if (update.initial) {
             synchronizeSleepTimerCarConnection()
             return
@@ -3164,9 +3223,11 @@ class PlaybackService : MediaLibraryService() {
             // PLAY_PAUSE press during the three-second cold-start window.
             val suppressed = keyEvent?.let { shouldConsumeColdStartToggle(it, controllerInfo.packageName) } == true
             if (suppressed) {
+                buttonRouting.clear()
                 autoTraces.log("Cold virtual Bluetooth toggle consumed before playback resumption")
                 return true
             }
+            buttonRouting.key(session, controllerInfo, keyEvent)
             return super.onMediaButtonEvent(session, controllerInfo, intent)
         }
 

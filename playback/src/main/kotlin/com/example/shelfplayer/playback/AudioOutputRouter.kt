@@ -244,8 +244,7 @@ class AudioOutputRouter @Inject constructor(
     /** Generic controller Play carries no physical dashboard gesture evidence and cannot supersede a lock. */
     internal fun selectCarFromGenericController(): Boolean {
         if (outputIntentOwner.state.value.lock != null) return false
-        selectCar()
-        return true
+        return handoffs.select(null, OutputIntentOwner.Destination.Car)
     }
 
     /** Arm the listener's logical target only after fresh, unique proof from the current playing AudioTrack. */

@@ -1016,4 +1016,8 @@
     <string name="debug_race_capture_stop">Stopp hendelseslogg</string>
     <string name="debug_race_capture_copy">Kopier hendelseslogg</string>
     <string name="debug_race_capture_clear">Tøm hendelseslogg</string>
+    <string name="settings_headset_button_routing">Spill-knappen på hodesettet velger lydutgang</string>
+    <string name="settings_headset_button_routing_hint">Bruk en Spill-kommando fra hodesettet til å be om den kjente lydutgangen, eller det eneste aktuelle hodesettet under Android Auto. Ukjente Bluetooth-kontroller kan også komme fra en bil. Når dette er av, beholdes gjeldende lydutgang og tilkoblingsatferd. Manuelle lydutgangskontroller virker fortsatt.</string>
+    <string name="settings_sony_tap_detection">Registrer trykk på Sony WF-1000XM6 direkte</string>
+    <string name="settings_sony_tap_detection_hint">Slå på direkte registrering av trykk bare for WF-1000XM6. Sony Sound Connect må være avinstallert eller deaktivert i Android-innstillingene. BookWave deaktiverer ikke appen for deg.</string>
 </resources>

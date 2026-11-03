@@ -54,7 +54,10 @@ internal fun playbackFixtureItem(id: String): MediaItem =
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-internal class PlaybackServiceCommandContinuityFixture(private val scope: TestScope) : AutoCloseable {
+internal class PlaybackServiceCommandContinuityFixture(
+    private val scope: TestScope,
+    deviceType: Int = AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+) : AutoCloseable {
     private val context = RuntimeEnvironment.getApplication()
     private val dispatcher = StandardTestDispatcher(scope.testScheduler)
     private val clock = TestAppClock()
@@ -62,7 +65,7 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
         override fun log(event: LogEvent) = Unit
     }
     private val registry = LiveOutputEndpointRegistry()
-    private val device = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP).build()
+    private val device = AudioDeviceInfoBuilder.newBuilder().setType(deviceType).build()
         .apply {
             val port = org.robolectric.util.ReflectionHelpers.getField<Any>(this, "mPort")
             org.robolectric.util.ReflectionHelpers.setField(port, "mName", "Fixture headset")
@@ -194,6 +197,8 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
 
     fun configurePostConnectRace() = selectionSupport.configurePostConnectRace()
 
+    fun libraryCallback() = selectionSupport.libraryCallback()
+
     private fun configureService() {
         val baseline = ResumeBaseline()
         val sync = SessionSyncCoordinator(
@@ -206,6 +211,7 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
             mainDispatcher = dispatcher,
         )
         service.clock = clock
+        service.coldStartToggleGate = ColdStartToggleGate()
         service.logger = logger
         service.applicationScope = scope.backgroundScope
         service.mainDispatcher = dispatcher
@@ -561,7 +567,14 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
         }
     }
 
-    fun <T> fromCarController(request: () -> T): T {
+    fun <T> fromCarController(request: () -> T): T =
+        fromController("com.google.android.projection.gearhead") { _, _ -> request() }
+
+    fun <T> fromController(
+        pkg: String,
+        verified: Boolean = true,
+        request: (MediaLibraryService.MediaLibrarySession, MediaSession.ControllerInfo) -> T,
+    ): T {
         val session = MediaLibraryService.MediaLibrarySession.Builder(
             context,
             player,
@@ -570,14 +583,14 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
         service.setPlaybackField("session", session)
         try {
             val info = MediaSession.ControllerInfo.createTestOnlyControllerInfo(
-                "com.google.android.projection.gearhead",
+                pkg,
                 0,
                 0,
                 1,
                 1,
                 false,
                 Bundle.EMPTY,
-                false,
+                verified,
             )
             // Exercise the pinned Media3 request-context seam, rather than bypassing service routing.
             val impl = MediaSession::class.java.getDeclaredField("impl").run {
@@ -587,7 +600,7 @@ internal class PlaybackServiceCommandContinuityFixture(private val scope: TestSc
             Class.forName("androidx.media3.session.MediaSessionImpl")
                 .getDeclaredField("controllerForCurrentRequest").apply { isAccessible = true }.set(impl, info)
             assertEquals(info, session.controllerForCurrentRequest)
-            return request()
+            return request(session, info)
         } finally {
             service.setPlaybackField("session", null)
             session.release()
