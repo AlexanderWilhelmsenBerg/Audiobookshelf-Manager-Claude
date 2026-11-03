@@ -161,7 +161,7 @@ internal class PlaybackServiceSelectionFixtureSupport(
         }
     }
 
-    private fun libraryCallback(): MediaLibraryService.MediaLibrarySession.Callback {
+    fun libraryCallback(): MediaLibraryService.MediaLibrarySession.Callback {
         val type = PlaybackService::class.java.declaredClasses.single { it.simpleName == "LibraryCallback" }
         return type.getDeclaredConstructor(PlaybackService::class.java).apply { isAccessible = true }
             .newInstance(service) as MediaLibraryService.MediaLibrarySession.Callback

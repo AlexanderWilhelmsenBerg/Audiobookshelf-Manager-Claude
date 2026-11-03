@@ -35,6 +35,12 @@ interface PlaybackSettingsRepository {
     /** PRODUCT_SPEC 6.4 step 6 — whether finishing a book starts the next one in its series. */
     suspend fun setAutoAdvanceSeries(enabled: Boolean): AppResult<Unit>
 
+    /** ROUTE-001 / SET-002: request an eligible headset output from its Play command. */
+    suspend fun setHeadsetButtonRouting(enabled: Boolean): AppResult<Unit>
+
+    /** Direct WF-1000XM6 taps require Sound Connect to be uninstalled or disabled. */
+    suspend fun setSonyTapDetection(enabled: Boolean): AppResult<Unit>
+
     /**
      * PRODUCT_SPEC DL-004 / ADR-0018 decision 5 — which categories may spend cellular data.
      *

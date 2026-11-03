@@ -31,6 +31,11 @@ internal class AndroidLocalOutputAdapter(
     private val dispatcher: CoroutineDispatcher,
 ) {
     private var live: Map<String, AudioDeviceInfo> = emptyMap()
+    private val buttonInventory = ButtonOutputInventory(context, registry)
+    fun buttonCandidates(): Set<String> = buttonInventory.candidates(live, collidingOutputIds)
+    fun soleButtonHeadset(ids: Set<String>): String? = buttonInventory.soleHeadset(ids, live)
+    fun buttonOutputForAddress(address: String): String? =
+        buttonInventory.matchingPeer(address, live, collidingOutputIds)
     private val _identityCapability = MutableStateFlow(BluetoothIdentityCapability.Empty)
     val identityCapability = _identityCapability.asStateFlow()
 

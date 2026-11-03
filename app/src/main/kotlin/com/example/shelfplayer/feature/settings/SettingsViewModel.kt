@@ -347,6 +347,14 @@ class SettingsViewModel @Inject constructor(
     }
 
     /** PRODUCT_SPEC 6.4 step 6 — whether finishing a book starts the next one in its series. */
+    val onHeadsetButtonRoutingChanged: (Boolean) -> Unit = { enabled ->
+        viewModelScope.launch { playbackSettings.setHeadsetButtonRouting(enabled) }
+    }
+
+    val onSonyTapDetectionChanged: (Boolean) -> Unit = { enabled ->
+        viewModelScope.launch { playbackSettings.setSonyTapDetection(enabled) }
+    }
+
     fun onAutoAdvanceSeriesChanged(enabled: Boolean) {
         viewModelScope.launch { playbackSettings.setAutoAdvanceSeries(enabled) }
     }

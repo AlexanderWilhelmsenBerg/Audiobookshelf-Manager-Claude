@@ -121,6 +121,18 @@ private fun LazyListScope.behaviourCard(settings: PlaybackSettings, actions: Pla
     item {
         SettingsCard {
             SwitchRow(
+                label = stringResource(R.string.settings_headset_button_routing),
+                summary = stringResource(R.string.settings_headset_button_routing_hint),
+                checked = settings.headsetButtonRouting,
+                onCheckedChange = actions.onHeadsetButtonRoutingChanged,
+            )
+            SwitchRow(
+                label = stringResource(R.string.settings_sony_tap_detection),
+                summary = stringResource(R.string.settings_sony_tap_detection_hint),
+                checked = settings.sonyTapDetection,
+                onCheckedChange = actions.onSonyTapDetectionChanged,
+            )
+            SwitchRow(
                 label = stringResource(R.string.settings_series_auto_advance),
                 checked = settings.autoAdvanceSeries,
                 onCheckedChange = actions.onAutoAdvanceSeriesChanged,
@@ -269,6 +281,8 @@ data class PlaybackSettingsActions(
     val onAutoRewindChanged: (AutoRewind) -> Unit,
     val onBufferChanged: (BufferPreset) -> Unit,
     val onAutoAdvanceSeriesChanged: (Boolean) -> Unit = {},
+    val onHeadsetButtonRoutingChanged: (Boolean) -> Unit = {},
+    val onSonyTapDetectionChanged: (Boolean) -> Unit = {},
     val onFocusBehaviourChanged: (FocusBehaviour) -> Unit = {},
     val onStartupModeChanged: (StartupMode) -> Unit = {},
     val onNetworkPolicyChanged: (NetworkPolicy) -> Unit = {},

@@ -1269,4 +1269,8 @@
     <string name="debug_race_capture_stop">Stop race trace</string>
     <string name="debug_race_capture_copy">Copy race trace</string>
     <string name="debug_race_capture_clear">Clear race trace</string>
+    <string name="settings_headset_button_routing">Headset Play selects its output</string>
+    <string name="settings_headset_button_routing_hint">Use a headset Play command to request its known output, or the only eligible headset during Android Auto. Unknown Bluetooth controls can also come from a car. When off, keep the current output and connection behavior. Manual output controls still work.</string>
+    <string name="settings_sony_tap_detection">Detect Sony WF-1000XM6 taps directly</string>
+    <string name="settings_sony_tap_detection_hint">Opt in to direct tap detection for WF-1000XM6 only. Sony Sound Connect must be uninstalled or disabled in Android settings. BookWave does not disable it for you.</string>
 </resources>

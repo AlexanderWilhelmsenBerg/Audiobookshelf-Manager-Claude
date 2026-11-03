@@ -252,6 +252,10 @@ data class PlaybackSettings(
      * to that and exists (PLAY-008); this switch is the other one.
      */
     val autoAdvanceSeries: Boolean = true,
+    /** ROUTE-001 / SET-002 — a headset Play command may request its eligible output. */
+    val headsetButtonRouting: Boolean = true,
+    /** Explicit opt-in; direct WF-1000XM6 taps require Sound Connect to be absent or disabled. */
+    val sonyTapDetection: Boolean = false,
 ) {
     companion object {
         val Default = PlaybackSettings()
