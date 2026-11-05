@@ -213,6 +213,23 @@ class AudioTrackRouteQueryTest {
         fixture.lab.stop()
     }
 
+    @Test
+    fun `inventory gap makes a still reported playing track unresolved rather than proving disconnection`() = runTest {
+        val fixture = fixture()
+        val track = fixture.track()
+        fixture.observe(track)
+        val before = assertNotNull(fixture.monitor.currentRouteObservation())
+        assertEquals(AudioTrackPath.Endpoint(fixture.endpointId), before.path)
+
+        fixture.registry.reconcile(emptyList())
+
+        val during = assertNotNull(fixture.monitor.currentRouteObservation())
+        assertEquals(before.observerEpoch, during.observerEpoch, "the AudioTrack has not been replaced")
+        assertEquals(AudioTrack.PLAYSTATE_PLAYING, track.queryShadow.trackPlayState)
+        assertEquals(fixture.device, track.queryShadow.route, "Android still reports the same sink in this fixture")
+        assertEquals(AudioTrackPath.Unresolved, during.path, "missing inventory is not fresh endpoint proof")
+    }
+
     private fun remoteSubmix(): AudioDeviceInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_REMOTE_SUBMIX).build()
     } else {
@@ -239,7 +256,7 @@ class AudioTrackRouteQueryTest {
         val endpoint = registry.reconcile(
             listOf(LiveOutputEndpointRegistry.Observation(device.id, device.type, device.productName?.toString())),
         ).single()
-        return Fixture(AudioTrackRouteMonitor(context, lab, clock, registry), device, endpoint.id, lab)
+        return Fixture(AudioTrackRouteMonitor(context, lab, clock, registry), device, endpoint.id, lab, registry)
     }
 
     private data class Fixture(
@@ -247,6 +264,7 @@ class AudioTrackRouteQueryTest {
         val device: AudioDeviceInfo,
         val endpointId: String,
         val lab: AudioRouteLab,
+        val registry: LiveOutputEndpointRegistry,
     ) {
         fun track(): AudioTrack = Shadow.newInstanceOf(AudioTrack::class.java).also { it.queryShadow.route = device }
 
