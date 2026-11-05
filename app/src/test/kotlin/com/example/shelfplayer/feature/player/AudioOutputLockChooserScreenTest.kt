@@ -50,7 +50,7 @@ import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
-class AudioOutputLockChooserTest {
+class AudioOutputLockChooserScreenTest {
     @get:Rule
     val compose = createComposeRule()
 
