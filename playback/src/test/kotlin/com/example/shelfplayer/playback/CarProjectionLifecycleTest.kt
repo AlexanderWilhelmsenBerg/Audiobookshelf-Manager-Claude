@@ -7,6 +7,8 @@ import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
 import android.os.Looper
+import androidx.media3.common.Player
+import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
@@ -176,6 +178,109 @@ class CarProjectionLifecycleTest {
         }
     }
 
+    /**
+     * The service receives an actual platform-interruption callback before MediaSession's
+     * first car controller connection. The policy must see that event, not just a direct gate test.
+     */
+    @Test
+    fun `service focus callback before first controller bind reaches arrival recovery once`() = runTest {
+        fixture(initialState = null, controllerBindings = 0).use { car ->
+            runCurrent()
+            car.seedHeadsetViaService()
+            car.reportFocusLossFromPlayerListener()
+
+            assertEquals(listOf("Armed"), car.focusDecisions().map { it.public("status") })
+            car.connectController()
+            assertEquals(listOf("Ready"), car.controllerArrivalDecisions().map { it.public("status") })
+
+            car.connectController()
+            assertEquals(1, car.controllerArrivalDecisions().size, "another controller is not another arrival")
+            assertFalse(car.events.any { it.message == "Car lifecycle continuity issued Play" })
+        }
+    }
+
+    @Test
+    fun `service controller arrival before player focus callback retains one exact target`() = runTest {
+        fixture(initialState = null, controllerBindings = 0).use { car ->
+            runCurrent()
+            car.seedHeadsetViaService()
+            car.connectController()
+
+            assertEquals(listOf("Armed"), car.controllerArrivalDecisions().map { it.public("status") })
+            car.reportFocusLossFromPlayerListener()
+            assertEquals(listOf("Ready"), car.focusDecisions().map { it.public("status") })
+            assertEquals("Arrival", car.focusDecisions().single().public("phase"))
+
+            car.connectController()
+            assertEquals(1, car.controllerArrivalDecisions().size)
+            assertFalse(car.events.any { it.message == "Car lifecycle continuity issued Play" })
+        }
+    }
+
+    @Test
+    fun `service focus then physical projection arrival cannot borrow duplicate controller boundary`() = runTest {
+        fixture(initialState = null, controllerBindings = 0).use { car ->
+            runCurrent()
+            car.seedHeadsetViaService()
+            car.reportFocusLossFromPlayerListener()
+            assertEquals(listOf("Armed"), car.focusDecisions().map { it.public("status") })
+
+            car.read(2)
+            runCurrent()
+            assertEquals(listOf("Ready"), car.arrivalDecisions().map { it.public("status") })
+            car.read(null)
+            runCurrent()
+            car.read(2)
+            runCurrent()
+            assertEquals(1, car.arrivalDecisions().size, "unknown/reconnect is not a new projection")
+
+            car.connectController()
+            assertFalse(car.controllerArrivalDecisions().any { it.public("status") == "Ready" })
+            assertFalse(car.events.any { it.message == "Car lifecycle continuity issued Play" })
+        }
+    }
+
+    @Test
+    fun `service focus after deliberate pause cannot recover a retained headset snapshot`() = runTest {
+        fixture(initialState = null, controllerBindings = 0).use { car ->
+            runCurrent()
+            car.seedHeadsetViaService()
+            car.continuity.cancelAll()
+            car.connectController()
+            car.reportFocusLossFromPlayerListener()
+
+            assertEquals(listOf("Rejected"), car.focusDecisions().map { it.public("status") })
+            assertEquals("NoFreshPlaybackAfterIntentReset", car.focusDecisions().single().public("reason"))
+            assertFalse(car.events.any { it.message == "Car lifecycle continuity issued Play" })
+        }
+    }
+
+    @Test
+    fun `physical projection owns service sleep timer car state after stale controller departure`() = runTest {
+        fixture(initialState = null, controllerBindings = 0).use { car ->
+            runCurrent()
+            assertFalse(car.sleepTimerSeesCar())
+
+            car.connectController()
+            runCurrent()
+            assertTrue(car.sleepTimerSeesCar())
+
+            car.read(2)
+            runCurrent()
+            car.disconnectController()
+            runCurrent()
+            assertTrue(car.sleepTimerSeesCar(), "legacy controller loss cannot end the physical car interval")
+
+            car.read(null)
+            runCurrent()
+            assertTrue(car.sleepTimerSeesCar(), "unknown projection must preserve the last positive state")
+
+            car.read(0)
+            runCurrent()
+            assertFalse(car.sleepTimerSeesCar(), "confirmed physical departure must release the timer's car block")
+        }
+    }
+
     private fun TestScope.fixture(initialState: Int? = 2, controllerBindings: Int = 2): Fixture =
         Fixture(backgroundScope, StandardTestDispatcher(testScheduler), initialState, controllerBindings)
 
@@ -197,6 +302,7 @@ class CarProjectionLifecycleTest {
         private val service = PlaybackService()
         private val provider = ProjectionProvider().apply { state = initialState }
         private val monitor = AndroidAutoProjectionMonitor(context, dispatcher, logger, clock)
+        private val volumeEffects = volumeEffectsForTest(dispatcher, clock)
         val continuity: CarArrivalResumeGate get() = service.field("carContinuity")
 
         init {
@@ -205,28 +311,39 @@ class CarProjectionLifecycleTest {
                 baseline = ResumeBaseline(),
                 clock = clock,
                 logger = logger,
+                volumeEffects = volumeEffects,
                 applicationScope = scope,
                 mainDispatcher = dispatcher,
             )
-            service.audioOutputs = AudioOutputRouter(context, logger, scope, dispatcher)
+            service.audioOutputs = AudioOutputRouter(
+                context,
+                logger,
+                scope,
+                dispatcher,
+                volumeEffects = volumeEffects,
+            )
             service.clock = clock
+            service.audioRouteLab =
+                AudioRouteLab(context, EventLog(clock), clock, service.audioOutputs, scope, dispatcher)
+            service.volumeEffects = volumeEffects
             service.logger = logger
             service.carConnections = connections
+            val timers = proxy<SleepTimerRepository> { name ->
+                when (name) {
+                    "observeSettings" -> flowOf(SleepTimerSettings.Default)
+                    else -> error("Unexpected sleep repository call: $name")
+                }
+            }
             service.sleepTimer = SleepTimerController(
-                repository = proxy<SleepTimerRepository> { name ->
-                    when (name) {
-                        "observeSettings" -> flowOf(SleepTimerSettings.Default)
-                        else -> error("Unexpected sleep repository call: $name")
-                    }
-                },
+                repository = timers,
                 shakes = proxy<ShakeSource> { name ->
                     when (name) {
                         "isSensing" -> false
                         else -> error("Unexpected shake call: $name")
                     }
                 },
-                sessionSync = sync,
-                history = unused<PlaybackHistoryRepository>(),
+                volumeEffects = volumeEffects,
+                history = SleepTimerHistory(timers, unused<PlaybackHistoryRepository>(), sync, clock, scope),
                 clock = clock,
                 zoneProvider = object : LocalZoneProvider {
                     override fun current(): ZoneId = ZoneId.of("UTC")
@@ -250,7 +367,7 @@ class CarProjectionLifecycleTest {
         }
 
         fun armDeparture() {
-            val owner: RouteHeardOwnership = service.field("routeOwnership")
+            val owner: RouteHeardOwnership = service.routeOwnership
             val buds = AudioOutput(
                 id = "bluetooth:fixture",
                 displayName = "Fixture headset",
@@ -273,7 +390,7 @@ class CarProjectionLifecycleTest {
         }
 
         fun seedArrivalHeadset() {
-            val owner: RouteHeardOwnership = service.field("routeOwnership")
+            val owner: RouteHeardOwnership = service.routeOwnership
             val buds = AudioOutput(
                 id = "bluetooth:fixture",
                 displayName = "Fixture headset",
@@ -285,10 +402,41 @@ class CarProjectionLifecycleTest {
             continuity.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 0)
         }
 
+        /** Uses the service's actual continuity adapter, not a direct call to the gate. */
+        fun seedHeadsetViaService() {
+            val owner: RouteHeardOwnership = service.routeOwnership
+            val original = AudioOutput(
+                id = "bluetooth:fixture",
+                displayName = "Fixture headset",
+                kind = DeviceKind.Bluetooth,
+                role = AudioOutputRole.Headset,
+                isActive = true,
+            )
+            owner.onBookChanged(hasBook = true)
+            owner.onPlaybackObserved(listOf(original))
+            PlaybackService::class.java.getDeclaredMethod("observeCarContinuityHeadset", List::class.java)
+                .apply { isAccessible = true }
+                .invoke(service, listOf(original))
+        }
+
+        /** Only delegates the real PlayerEvents focus adapter; no mock player or fake policy. */
+        fun reportFocusLossFromPlayerListener() {
+            val type = PlaybackService::class.java.declaredClasses
+                .single { it.simpleName == "PlayerEvents" }
+            val listener = type.getDeclaredConstructor(PlaybackService::class.java)
+                .apply { isAccessible = true }
+                .newInstance(service)
+            type.getDeclaredMethod("onCarPlatformInterruption", Int::class.javaPrimitiveType)
+                .apply { isAccessible = true }
+                .invoke(listener, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
+        }
+
+        fun focusDecisions(): List<LogEvent> = decisions("audio-focus-loss")
+
         fun connectController() = service.invoke("onCarControllerConnected", "com.google.android.projection.gearhead")
 
         fun focusAfterControllerBind(): CarArrivalResumeGate.Decision {
-            val owner: RouteHeardOwnership = service.field("routeOwnership")
+            val owner: RouteHeardOwnership = service.routeOwnership
             return continuity.onAudioFocusLoss(
                 at = clock.elapsed(),
                 heardRoute = null,
@@ -300,7 +448,7 @@ class CarProjectionLifecycleTest {
         }
 
         fun isCurrentRecovery(target: CarArrivalResumeGate.Target): Boolean {
-            val owner: RouteHeardOwnership = service.field("routeOwnership")
+            val owner: RouteHeardOwnership = service.routeOwnership
             return continuity.isCurrent(target, owner.currentGeneration, 0)
         }
 
@@ -309,9 +457,15 @@ class CarProjectionLifecycleTest {
         fun disconnectController() =
             service.invoke("onCarControllerDisconnected", "com.google.android.projection.gearhead")
 
-        fun ownsLifecycle(): Boolean = service.field("projectionOwnsCarLifecycle")
+        fun ownsLifecycle(): Boolean = service.carLifecycle.projectionOwnsCarLifecycle
 
-        fun isEstablished(): Boolean = service.field("carContinuitySessionEstablished")
+        fun isEstablished(): Boolean = service.carLifecycle.sessionEstablished
+
+        /** Reads the real SleepTimerController state after PlaybackService forwarded a car boundary. */
+        fun sleepTimerSeesCar(): Boolean = SleepTimerController::class.java.getDeclaredField("carConnected").run {
+            isAccessible = true
+            getBoolean(service.sleepTimer)
+        }
 
         fun departureDecisions(): List<LogEvent> = decisions("projection-disconnect")
 

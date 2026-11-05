@@ -131,6 +131,59 @@ class ExistingSessionAttachmentTest {
     }
 
     @Test
+    fun `attached Media3 controller keeps current profile and drops old sleep overlay on replacement`() {
+        val live = LivePlaybackSession()
+        val player = ExoPlayer.Builder(context).build()
+        val session = MediaSession.Builder(context, player).build()
+        var controller: MediaController? = null
+        try {
+            val original = book().buildUpon()
+                .setMediaMetadata(
+                    book().mediaMetadata.buildUpon()
+                        .setExtras(Bundle().apply { putString(MediaItems.KEY_OWNER_PROFILE_ID, "profile-a") })
+                        .build(),
+                ).build()
+            player.setMediaItem(original)
+            live.publish(session.token)
+
+            val attached = assertNotNull(connectExisting(SessionConnector(context, logger, live)))
+            controller = attached
+            assertEquals(ProfileId("profile-a"), attached.playbackUiState().ownerProfileId)
+
+            player.replaceMediaItem(0, assertNotNull(SleepTimerMediaMetadata.project(original, "08:30")))
+            awaitMainLooper("the old book should project its sleep countdown") {
+                attached.currentMediaItem?.mediaMetadata?.title?.toString() == "08:30"
+            }
+            assertEquals(ProfileId("profile-a"), attached.playbackUiState().ownerProfileId)
+
+            val incoming = MediaItem.Builder()
+                .setMediaId("new-profile-book")
+                .setUri("https://books.example/api/items/new-profile-book/file/1")
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle("Incoming profile book")
+                        .setIsPlayable(true)
+                        .setExtras(Bundle().apply { putString(MediaItems.KEY_OWNER_PROFILE_ID, "profile-b") })
+                        .build(),
+                ).build()
+            player.setMediaItem(incoming)
+            awaitMainLooper("the same MediaSession must display the incoming profile book") {
+                attached.currentMediaItem?.mediaId == "new-profile-book"
+            }
+
+            assertEquals(ProfileId("profile-b"), attached.playbackUiState().ownerProfileId)
+            assertEquals("Incoming profile book", attached.playbackUiState().title)
+            assertEquals(1, player.mediaItemCount)
+            assertEquals(session.token, live.currentToken())
+            assertFalse(player.playWhenReady, "profile replacement and timer projection must not issue Play")
+        } finally {
+            controller?.release()
+            session.release()
+            player.release()
+        }
+    }
+
+    @Test
     fun `a second UI controller recovers the same live session after recreation`() {
         val live = LivePlaybackSession()
         val player = ExoPlayer.Builder(context).build()

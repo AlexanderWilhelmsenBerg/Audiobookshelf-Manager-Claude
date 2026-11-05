@@ -14,7 +14,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * #36 integration regression: exercise the ownership → lifecycle pairing → route recovery → final consume chain.
+ * #36 integration regression: exercise the ownership â†’ lifecycle pairing â†’ route recovery â†’ final consume chain.
  *
  * PlaybackService is framework/Hilt-owned, so its Media3 callback itself remains a physical/controller
  * boundary. These tests keep the service's exact ordering while using the same concrete policy objects it
@@ -48,6 +48,7 @@ class CarLifecycleContinuityIntegrationTest {
         val held = CarArrivalRouteRecovery(90.milliseconds).secure(
             target = target,
             outputs = outputs,
+            measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
             selectedId = selected,
             isStillEligible = { gate.isCurrent(target, owner.currentGeneration, 0) },
         ) { id ->
@@ -85,6 +86,7 @@ class CarLifecycleContinuityIntegrationTest {
         val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
             outputs = outputs,
+            measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
             selectedId = selected,
             isStillEligible = { gate.isCurrent(target, owner.currentGeneration, 0) },
         ) { id ->
@@ -130,6 +132,7 @@ class CarLifecycleContinuityIntegrationTest {
         val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
             outputs = outputs,
+            measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
             selectedId = selected,
             isStillEligible = { gate.isCurrent(target, owner.currentGeneration, 0) },
         ) { id ->
@@ -182,6 +185,7 @@ class CarLifecycleContinuityIntegrationTest {
             val held = CarArrivalRouteRecovery(200.milliseconds).secure(
                 target = target,
                 outputs = outputs,
+                measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
                 selectedId = selected,
                 isStillEligible = { gate.isCurrent(target, owner.currentGeneration, 0) },
             ) { id ->
@@ -229,6 +233,7 @@ class CarLifecycleContinuityIntegrationTest {
         val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
             outputs = outputs,
+            measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
             selectedId = selected,
             isStillEligible = { gate.isCurrent(target, owner.currentGeneration, 0) },
         ) { id ->
@@ -298,6 +303,7 @@ class CarLifecycleContinuityIntegrationTest {
         val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
             outputs = MutableStateFlow(listOf(buds.copy(isActive = true))),
+            measured = { id -> fixtureHeadsetMeasured(id, listOf(buds.copy(isActive = true))) },
             selectedId = selected,
             isStillEligible = { gate.isCurrent(target, owner.currentGeneration, 0) },
         ) { id ->
@@ -341,7 +347,12 @@ class CarLifecycleContinuityIntegrationTest {
         val gate = CarArrivalResumeGate()
 
         // The owner had explicitly selected the headset while the book was genuinely playing.
-        owner.onExplicitSelection(buds.id, listOf(buds), isPlaying = true, selectionSequence = 1)
+        val selection = owner.intentOwner.select(buds.id, OutputIntentOwner.Destination.Output)
+        owner.onExplicitSelection(
+            selection,
+            listOf(buds),
+            isAudible = true,
+        )
         gate.observePlayingHeadset(owner.heardRoute, buds.id, owner.currentGeneration, 1)
         assertEquals(buds.id, owner.heardRoute?.outputId)
 
@@ -437,7 +448,7 @@ class CarLifecycleContinuityIntegrationTest {
         )
     }
 
-    private fun playingOwner(): RouteHeardOwnership = RouteHeardOwnership().apply {
+    private fun playingOwner(): RouteHeardOwnership = RouteHeardOwnership(OutputIntentOwner()).apply {
         onBookChanged(hasBook = true)
         onPlaybackObserved(listOf(buds.copy(isActive = true)))
     }

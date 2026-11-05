@@ -2,12 +2,13 @@
 <resources>
     <string name="unified_diag_open">Start diagnostics / JSON report</string>
     <string name="unified_diag_title">Unified diagnostics</string>
-    <string name="unified_diag_description">Record the event log, playback race, Audio Route Lab and output classifier together. The structured JSON is exported only when you choose Copy or Save. No names or addresses are collected. Use while stationary.</string>
+    <string name="unified_diag_description">Record the event log, playback race, Audio Route Lab and output classifier together. Clear all removes these captures and the retained crash report; it leaves playback progress and library data intact. The structured JSON is exported only when you choose Copy or Save. No names or addresses are collected. Use while stationary.</string>
     <string name="unified_diag_recording">Recording all diagnostics</string>
     <string name="unified_diag_stopped">Recording stopped</string>
     <string name="unified_diag_start">Start diagnostics</string>
     <string name="unified_diag_stop">Stop diagnostics</string>
     <string name="unified_diag_clear">Clear all</string>
+    <string name="unified_diag_clearing">Clearing diagnostic data…</string>
     <string name="unified_diag_copy_json">Copy complete JSON report</string>
     <string name="unified_diag_save_json">Save JSON file</string>
     <string name="unified_diag_save_success">Diagnostic JSON file saved</string>

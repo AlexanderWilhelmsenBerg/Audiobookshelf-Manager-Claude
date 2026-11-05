@@ -7,6 +7,7 @@ import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.util.AtomicFile
+import android.view.KeyEvent
 import androidx.core.content.edit
 import com.example.shelfplayer.core.common.dispatcher.ApplicationScope
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
@@ -19,6 +20,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +30,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.time.Instant
@@ -49,6 +52,8 @@ data class AudioRouteLabState(
     val entries: List<String> = emptyList(),
     val route: String = "Not measured",
     val reportStatus: String = "Track-level routing unavailable (observer not installed)",
+    val inputStatus: String = "Not recording",
+    val inputDevices: List<String> = emptyList(),
 )
 
 @Singleton
@@ -64,6 +69,8 @@ class AudioRouteLab @Inject constructor(
     private val incidentFile = File(context.noBackupFilesDir, "audio-route-lab.txt")
     private val atomicIncident = AtomicFile(incidentFile)
     private val mutex = Mutex()
+    private val writeRequests = Channel<Unit>(Channel.CONFLATED)
+    private var writerStarted = false
     private val _state = MutableStateFlow(AudioRouteLabState())
     val state: StateFlow<AudioRouteLabState> = _state.asStateFlow()
     private var eventJob: Job? = null
@@ -75,6 +82,13 @@ class AudioRouteLab @Inject constructor(
     private val deviceTimeline = AudioRouteDeviceTimeline()
     private val correlator = AudioRouteTestCorrelator()
     private var deviceCallback: AudioDeviceCallback? = null
+    private val mediaInput = MediaInputDiagnostics(
+        PlatformMediaInputSource(context),
+        emit = { record(it) },
+        publish = { status, devices ->
+            _state.update { it.copy(inputStatus = status, inputDevices = devices) }
+        },
+    )
 
     init {
         if (incidentFile.exists() && clock.now().toEpochMilli() - incidentFile.lastModified() > RETENTION_MS) {
@@ -97,7 +111,19 @@ class AudioRouteLab @Inject constructor(
         record("observer-$event")
     }
 
+    internal fun trackTiming(sample: AudioTrackTimingSample) {
+        if (_state.value.recording) record(sample.evidence())
+    }
+
     internal fun deviceAlias(platformId: Int): String = deviceTimeline.aliasFor(platformId)
+
+    internal fun mediaButtonInput(event: KeyEvent?, controller: MediaInputController, entry: MediaInputEntry) {
+        mediaInput.mediaKey(event, controller, entry)
+    }
+
+    internal fun controllerTransport(play: Boolean, controller: MediaInputController) {
+        mediaInput.transport(play, controller)
+    }
 
     internal fun trackObserverStatus(description: String) {
         _state.update { it.copy(reportStatus = description) }
@@ -116,9 +142,13 @@ class AudioRouteLab @Inject constructor(
         if (!_state.value.recording) return
         val manager = context.getSystemService(AudioManager::class.java) ?: return
         val devices = runCatching {
-            manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).mapNotNull { device ->
-                val out = OutputDevices.outputOf(device.type, device.productName) ?: return@mapNotNull null
-                AudioRouteDeviceTimeline.Handle(device.id, out.id, out.role.name)
+            manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { device ->
+                val out = OutputDevices.outputOf(device.type, device.productName)
+                AudioRouteDeviceTimeline.Handle(
+                    device.id,
+                    out?.id ?: "platform:${device.id}:${device.type}",
+                    out?.role?.name ?: AudioTrackRouteTypes.label(device.type),
+                )
             }
         }.getOrElse {
             record("device-enumeration-unavailable")
@@ -167,6 +197,7 @@ class AudioRouteLab @Inject constructor(
         }
         record("diagnostic-start", currentGeneration)
         startDeviceObserver()
+        mediaInput.start()
         val channel = Channel<LoggedEvent>(EVENT_BUFFER_CAPACITY)
         eventChannel = channel
         // This receiver is allowed to run behind the producer: every event is delivered,
@@ -213,6 +244,7 @@ class AudioRouteLab @Inject constructor(
         unsubscribe?.invoke()
         unsubscribe = null
         stopDeviceObserver()
+        mediaInput.stop()
         eventChannel?.close()
         eventChannel = null
         preferences.edit { putBoolean(ENABLED, false) }
@@ -244,13 +276,29 @@ class AudioRouteLab @Inject constructor(
 
     fun clear() {
         stop()
-        val clearGeneration = recordingGeneration.incrementAndGet()
-        _state.value = AudioRouteLabState()
+        val clearGeneration = beginClear()
         scope.launch(io) {
             mutex.withLock {
                 if (recordingGeneration.get() == clearGeneration) atomicIncident.delete()
             }
         }
+    }
+
+    /** Clear persisted evidence before returning, for an operation that promises a clean next capture. */
+    suspend fun clearAndAwait() {
+        stop()
+        val clearGeneration = beginClear()
+        withContext(io) {
+            mutex.withLock {
+                if (recordingGeneration.get() == clearGeneration) atomicIncident.delete()
+            }
+        }
+    }
+
+    private fun beginClear(): Long {
+        val clearGeneration = recordingGeneration.incrementAndGet()
+        _state.value = AudioRouteLabState()
+        return clearGeneration
     }
 
     fun report(version: String): String = buildString {
@@ -260,6 +308,8 @@ class AudioRouteLab @Inject constructor(
         appendLine("routePolicy: ${state.value.route}")
         appendLine("actualTrack: ${state.value.reportStatus}")
         appendLine("devices: ${deviceTimeline.snapshot()} (aliases are process-scoped)")
+        appendLine("inputStatus: ${state.value.inputStatus}")
+        appendLine("inputDevices: ${state.value.inputDevices.joinToString("; ").ifEmpty { "none" }}")
         appendLine("evidence: track-route when available is platform-reported; not human-heard sound")
         appendLine("retention: private no-backup file, at most 24h; opt-in recording")
         appendLine("[incident]")
@@ -292,21 +342,36 @@ class AudioRouteLab @Inject constructor(
                 current.copy(entries = AudioRouteLabEvidence.recent(current.entries + line, clock.now(), MAX_ROWS))
             }
         }
-        scope.launch(io) {
-            mutex.withLock {
-                if (generation != recordingGeneration.get()) return@withLock
-                runCatching {
-                    incidentFile.parentFile?.mkdirs()
-                    // AtomicFile leaves the previous completed capture available if this process
-                    // crashes while replacing the latest bounded incident snapshot.
-                    val bytes = _state.value.entries.joinToString("\n", postfix = "\n").toByteArray()
-                    val stream = atomicIncident.startWrite()
-                    try {
-                        stream.write(bytes)
-                        atomicIncident.finishWrite(stream)
-                    } catch (expected: IOException) {
-                        atomicIncident.failWrite(stream)
-                    }
+        requestWrite()
+    }
+
+    /** One conflated writer bounds queued IO work even during input/device callback storms. */
+    @Synchronized
+    private fun requestWrite() {
+        if (!writerStarted) {
+            writerStarted = true
+            scope.launch(io) {
+                writeRequests.consumeEach { persist() }
+            }
+        }
+        writeRequests.trySend(Unit)
+    }
+
+    private suspend fun persist() {
+        mutex.withLock {
+            // Signals always flush the latest snapshot. An old producer cannot replace a newer
+            // generation token in the conflated queue or recreate a file after Clear.
+            if (_state.value.entries.isEmpty()) return@withLock
+            runCatching {
+                incidentFile.parentFile?.mkdirs()
+                // Coalescing disk snapshots never coalesces the bounded in-memory event sequence.
+                val bytes = _state.value.entries.joinToString("\n", postfix = "\n").toByteArray()
+                val stream = atomicIncident.startWrite()
+                try {
+                    stream.write(bytes)
+                    atomicIncident.finishWrite(stream)
+                } catch (expected: IOException) {
+                    atomicIncident.failWrite(stream)
                 }
             }
         }

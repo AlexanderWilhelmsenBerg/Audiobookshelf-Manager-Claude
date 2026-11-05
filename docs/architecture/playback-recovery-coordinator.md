@@ -1,21 +1,27 @@
-# Playback recovery consolidation — PR B
+# Playback recovery coordinator
 
-PR B builds on PR A (live endpoint identity). The behavioral goal is unchanged.
+The A/B/C foundation is merged. The behavioral goal remains unchanged in the
+unmerged Phase 3 continuation for issue #289.
 
 CarContinuityRecoveryCoordinator owns the recovery episode's route-securing attempt,
 final one-shot authorization and diagnostic awaiting-Play record. It delegates to the
 existing CarArrivalResumeGate for arrival/departure correlation and invalidation, and
 CarArrivalRouteRecovery for bounded reassertion of exactly the captured output.
 
-The Media3 service still owns ExoPlayer, actual Play, audio focus, callbacks, and
-logging. The AudioOutputRouter still owns the physical route request and muted
-AudioTrack verification. No additional playback state machine or session is created.
+The Media3 service still owns ExoPlayer, audio focus, callbacks, and logging.
+`CarContinuityResumeEffects` executes actual Play against that service-owned player
+and owns its cancellable effect lifetime. The AudioOutputRouter owns endpoint discovery, selection, and the
+physical route request. Its attached `HeadsetRouteGuard` owns transient headset protection, muted-probe
+verification, timeout jobs, and volume restoration. The router supplies measured `AudioTrack` evidence and
+the existing freshness predicate to that owner. No additional playback state machine or session is created.
 
 The tests reject repeated consume, deliberate Pause, empty queue, already-playing
 intent, changed profile/book generation, newer explicit output-selection sequence,
 wrong headset ID, stale asynchronous route securing, and mismatched diagnostic
 completion. They call production components directly.
 
-PR C follows only after B passes required checks, and will shorten service callback
-adapters without moving Media3 session ownership. Physical car/headset audible-route
-acceptance belongs to the combined C APK; CI cannot establish it.
+Final consumption and scoped cancellation match the gate-issued Target instance,
+so an older suspended completion cannot clear a newer claim, even for identical
+route/generation/selection values. Diagnostic awaiting records are likewise cleared
+only by their own effect or a real global invalidation. Physical car/headset
+audible-route acceptance remains separate; CI cannot establish it.

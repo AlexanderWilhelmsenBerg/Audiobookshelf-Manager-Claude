@@ -229,7 +229,7 @@ class CarArrivalResumeGateTest {
     @Test
     fun `speaker or car evidence never creates arrival continuity`() {
         val gate = CarArrivalResumeGate()
-        val speakerOwner = RouteHeardOwnership().apply {
+        val speakerOwner = RouteHeardOwnership(OutputIntentOwner()).apply {
             onBookChanged(hasBook = true)
             onPlaybackObserved(listOf(speaker.copy(isActive = true)))
         }
@@ -244,7 +244,7 @@ class CarArrivalResumeGateTest {
         )
         assertEquals(CarArrivalResumeGate.Reason.NoQualifyingHeadset, speakerFocus.reason)
 
-        val carOwner = RouteHeardOwnership().apply {
+        val carOwner = RouteHeardOwnership(OutputIntentOwner()).apply {
             onBookChanged(hasBook = true)
             onPlaybackObserved(listOf(car.copy(isActive = true)))
         }
@@ -645,7 +645,7 @@ class CarArrivalResumeGateTest {
             )
         }
 
-    private fun heardOnBuds(): RouteHeardOwnership = RouteHeardOwnership().apply {
+    private fun heardOnBuds(): RouteHeardOwnership = RouteHeardOwnership(OutputIntentOwner()).apply {
         onBookChanged(hasBook = true)
         onPlaybackObserved(listOf(buds.copy(isActive = true)))
     }

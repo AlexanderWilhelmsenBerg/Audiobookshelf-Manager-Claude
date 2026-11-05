@@ -1,13 +1,16 @@
 package com.example.shelfplayer.playback
 
 import android.content.Context
+import android.util.AtomicFile
 import androidx.core.content.edit
 import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.LogLevel
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.time.AppClock
+import com.example.shelfplayer.core.testing.TestAppClock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -17,7 +20,11 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -26,7 +33,7 @@ import kotlin.time.Duration
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], shadows = [AudioRouteLabRecorderTest.AtomicFileRenameShadow::class])
 class AudioRouteLabRecorderTest {
     private val context: Context get() = RuntimeEnvironment.getApplication()
 
@@ -35,6 +42,36 @@ class AudioRouteLabRecorderTest {
         context.getSharedPreferences("audio-route-lab", Context.MODE_PRIVATE).edit { clear() }
         File(context.noBackupFilesDir, "audio-route-lab.txt").delete()
         File(context.noBackupFilesDir, "audio-route-lab.txt.bak").delete()
+    }
+
+    @Test
+    fun `input bursts keep every retained event without queuing one disk writer per callback`() = runTest {
+        val clock = TestAppClock()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val logger = object : Logger {
+            override fun log(event: LogEvent) = Unit
+        }
+        val router = AudioOutputRouter(
+            context,
+            logger,
+            backgroundScope,
+            dispatcher,
+            volumeEffects = volumeEffectsForTest(dispatcher),
+        )
+        val recorder = AudioRouteLab(context, EventLog(clock), clock, router, backgroundScope, dispatcher)
+        recorder.start()
+        val parent = requireNotNull(backgroundScope.coroutineContext[Job])
+        val before = parent.children.count()
+        repeat(200) {
+            recorder.mediaButtonInput(null, MediaInputController(), MediaInputEntry.SessionCallback)
+        }
+        assertEquals(before, parent.children.count(), "disk work must remain bounded while IO is suspended")
+        assertEquals(200, recorder.state.value.entries.count { "input-key" in it })
+        recorder.stop()
+        runCurrent()
+        val persisted = File(context.noBackupFilesDir, "audio-route-lab.txt").readText()
+        assertEquals(200, persisted.lineSequence().count { "input-key" in it })
+        assertTrue("diagnostic-stop" in persisted)
     }
 
     @Test
@@ -49,7 +86,14 @@ class AudioRouteLabRecorderTest {
         }
         val log = EventLog(clock)
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val router = AudioOutputRouter(context, logger, backgroundScope, dispatcher)
+        val router =
+            AudioOutputRouter(
+                context,
+                logger,
+                backgroundScope,
+                dispatcher,
+                volumeEffects = volumeEffectsForTest(dispatcher),
+            )
         val recorder = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
         recorder.start()
         runCurrent()
@@ -74,15 +118,56 @@ class AudioRouteLabRecorderTest {
         log.write(LogLevel.Info, "AndroidAuto", "MediaSession transport request observed requested=Pause")
         runCurrent()
         assertEquals(28, recorder.state.value.entries.count { it.contains("transport-intent") })
+        assertEquals(
+            28,
+            File(context.noBackupFilesDir, "audio-route-lab.txt").readLines().count { it.contains("transport-intent") },
+            "the committed incident file must contain every accepted command before restoration",
+        )
         val restored = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
         assertFalse(restored.state.value.recording)
         assertEquals(28, restored.state.value.entries.count { it.contains("transport-intent") })
         assertTrue(restored.report("same-build").contains("diagnostic-stop"))
 
-        restored.clear()
-        runCurrent()
+        restored.clearAndAwait()
         assertFalse(File(context.noBackupFilesDir, "audio-route-lab.txt").exists())
         assertTrue(restored.state.value.entries.isEmpty())
+        val afterClear = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
+        assertTrue(afterClear.state.value.entries.isEmpty(), "a process restart must not restore cleared evidence")
+    }
+
+    @Test
+    fun `clear reservation rejects duplicate clears and starts until reset finishes`() = runTest {
+        context.getSharedPreferences("unified-diagnostics", Context.MODE_PRIVATE).edit { clear() }
+        val clock = TestAppClock()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val logger = object : Logger {
+            override fun log(event: LogEvent) = Unit
+        }
+        val log = EventLog(clock)
+        val router = AudioOutputRouter(
+            context,
+            logger,
+            backgroundScope,
+            dispatcher,
+            volumeEffects = volumeEffectsForTest(dispatcher),
+        )
+        val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
+        val classifier = OutputClassifier(context, lab)
+        val capture = UnifiedDiagnosticsCapture(context, lab, classifier, log, PlaybackMetricsRecorder(clock))
+
+        assertTrue(capture.beginClear())
+        assertFalse(capture.beginClear(), "only one clear may own the persisted diagnostics")
+        capture.start()
+        assertFalse(capture.active.value, "capture must not restart before clear releases its reservation")
+        assertFalse(
+            context.getSharedPreferences("unified-diagnostics", Context.MODE_PRIVATE).getBoolean("active", false),
+        )
+
+        capture.finishClear()
+        capture.start()
+        assertTrue(capture.active.value, "capture can start again after clear completion")
+        capture.stop()
+        runCurrent()
     }
 
     @Test
@@ -96,9 +181,16 @@ class AudioRouteLabRecorderTest {
         val logger = object : Logger {
             override fun log(event: LogEvent) = Unit
         }
-        val router = AudioOutputRouter(context, logger, backgroundScope, dispatcher)
+        val router =
+            AudioOutputRouter(
+                context,
+                logger,
+                backgroundScope,
+                dispatcher,
+                volumeEffects = volumeEffectsForTest(dispatcher),
+            )
         val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
-        val monitor = AudioTrackRouteMonitor(context, lab)
+        val monitor = AudioTrackRouteMonitor(context, lab, clock)
 
         // Passive route verification is always installed, but recording is opt-in.
         val provider = requireNotNull(monitor.providerForPlayer())
@@ -128,9 +220,16 @@ class AudioRouteLabRecorderTest {
         val logger = object : Logger {
             override fun log(event: LogEvent) = Unit
         }
-        val router = AudioOutputRouter(context, logger, backgroundScope, dispatcher)
+        val router =
+            AudioOutputRouter(
+                context,
+                logger,
+                backgroundScope,
+                dispatcher,
+                volumeEffects = volumeEffectsForTest(dispatcher),
+            )
         val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
-        val monitor = AudioTrackRouteMonitor(context, lab)
+        val monitor = AudioTrackRouteMonitor(context, lab, clock)
 
         // The in-memory safety observer is present, even though diagnostic capture is off.
         val firstProvider = requireNotNull(monitor.providerForPlayer())
@@ -162,7 +261,14 @@ class AudioRouteLabRecorderTest {
             override fun log(event: LogEvent) = Unit
         }
         val log = EventLog(clock)
-        val router = AudioOutputRouter(context, logger, backgroundScope, dispatcher)
+        val router =
+            AudioOutputRouter(
+                context,
+                logger,
+                backgroundScope,
+                dispatcher,
+                volumeEffects = volumeEffectsForTest(dispatcher),
+            )
         val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
 
         lab.trackLifecycle("provider-installed")
@@ -200,7 +306,14 @@ class AudioRouteLabRecorderTest {
         val logger = object : Logger {
             override fun log(event: LogEvent) = Unit
         }
-        val router = AudioOutputRouter(context, logger, backgroundScope, dispatcher)
+        val router =
+            AudioOutputRouter(
+                context,
+                logger,
+                backgroundScope,
+                dispatcher,
+                volumeEffects = volumeEffectsForTest(dispatcher),
+            )
         val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
         lab.heardAt("Car")
         lab.mark("AndroidAuto")
@@ -217,5 +330,28 @@ class AudioRouteLabRecorderTest {
         assertTrue(report.contains("test-armed step=ButtonA"))
         assertFalse(report.contains("private-headset-name"))
         assertFalse(report.contains("private-test-step"))
+    }
+
+    /**
+     * Android/Linux rename replaces an existing file; host Java File.renameTo does not on Windows.
+     * Only that private platform primitive is adapted for this test class. AtomicFile's real
+     * startWrite/finishWrite/openRead transactions and every recorder assertion remain in use.
+     */
+    @Implements(AtomicFile::class)
+    // Robolectric requires a public empty constructor even for a shadow of static methods only.
+    @Suppress("UtilityClassWithPublicConstructor")
+    class AtomicFileRenameShadow {
+        companion object {
+            @JvmStatic
+            @Implementation
+            fun rename(source: File, destination: File) {
+                Files.move(
+                    source.toPath(),
+                    destination.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            }
+        }
     }
 }

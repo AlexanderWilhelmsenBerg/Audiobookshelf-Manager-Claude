@@ -7,6 +7,9 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.AudioOutputLockStatus
+import com.example.shelfplayer.core.model.playback.AudioOutputPresentation
+import com.example.shelfplayer.core.model.playback.OutputDestination
 import com.example.shelfplayer.core.model.playback.PlaybackHistoryEntry
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
@@ -108,13 +111,18 @@ class PlayerViewModel @Inject constructor(
     val outputs: StateFlow<List<AudioOutput>> = controller.outputs
 
     /**
-     * PRODUCT_SPEC PLAY-002 — which output the listener picked, for the tick in the menu.
+     * PRODUCT_SPEC PLAY-002 — the selected endpoint id for older player consumers.
      *
-     * Deliberately separate from the routed flag on each [AudioOutput]: the tick is what was asked for and
-     * the "playing here" label is what the platform did with it, and a device run proved the two disagree
-     * when a request is declined.
+     * Car and Automatic both have a null id. The output chooser uses [outputPresentation] for the
+     * destination distinction, current AudioTrack observation, and transfer phase.
      */
     val selectedOutput: StateFlow<String?> = controller.selectedOutput
+    val outputPresentation: StateFlow<AudioOutputPresentation> = controller.outputPresentation
+    val outputIdentityCapability = controller.outputIdentityAccess.capability
+
+    fun refreshOutputIdentityAccess() = controller.outputIdentityAccess.refresh()
+    val outputLock: StateFlow<AudioOutputLockStatus?> = controller.outputLock
+    val canKeepAudioHere: StateFlow<Boolean> = controller.canKeepAudioHere
 
     /** PRODUCT_SPEC PLAY-009 — "applied rewind is visible briefly and can be undone". */
     val rewind: StateFlow<AutoRewindController.Applied?> = autoRewind.lastApplied
@@ -254,6 +262,9 @@ class PlayerViewModel @Inject constructor(
      * Not remembered across restarts, deliberately: see ADR-0027.
      */
     fun onOutputSelected(id: String?) = controller.selectOutput(id)
+    fun onCarOutputSelected() = controller.selectOutput(null, OutputDestination.Car)
+    fun onKeepAudioHere(): Boolean = controller.keepAudioHere()
+    fun onReleaseOutputLock() = controller.releaseOutputLock()
 
     /** PRODUCT_SPEC PLAY-003 — jumps to a chapter chosen from the list. */
     fun onChapterSelected(chapter: Chapter) = controller.seekToChapter(chapter)

@@ -19,9 +19,7 @@ import com.example.shelfplayer.core.model.playback.SleepTimerMode
 import com.example.shelfplayer.core.model.playback.SleepTimerOutcome
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.playback.SleepTimerState
-import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.domain.playback.SleepTimerMath
-import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -90,8 +88,8 @@ internal interface SleepTimerResumeOwner {
 class SleepTimerController @Inject constructor(
     private val repository: SleepTimerRepository,
     private val shakes: ShakeSource,
-    private val sessionSync: SessionSyncCoordinator,
-    private val history: PlaybackHistoryRepository,
+    private val volumeEffects: PlaybackVolumeEffects,
+    private val history: SleepTimerHistory,
     private val clock: AppClock,
     private val zoneProvider: LocalZoneProvider,
     private val logger: Logger,
@@ -112,6 +110,7 @@ class SleepTimerController @Inject constructor(
 
     /** True only while this attached player is actually producing audio. Main-dispatcher confined. */
     private var playbackActive = false
+    private var routeMuted = false
 
     private var carConnected = false
     private var carConnectionGeneration = 0L
@@ -217,6 +216,8 @@ class SleepTimerController @Inject constructor(
             scheduleBoundary = null
         }
         this.player = player
+        player?.let(volumeEffects::attach)
+        routeMuted = volumeEffects.isRouteMuted(player)
         this.resumeOwner = if (player == null) null else resumeOwner
         if (changed && detachedRun != null) {
             applicationScope.launch(mainDispatcher) {
@@ -301,9 +302,13 @@ class SleepTimerController @Inject constructor(
      */
     fun onPlaybackChanged(isPlaying: Boolean) {
         applicationScope.launch(mainDispatcher) {
+            // The guard's internal zero-volume proof leaves the raw player playing. Do not treat that raw
+            // observation as a new audible transition or consume an explicit Play marker during the mute.
+            if (routeMuted && isPlaying) return@launch
             reconcileCountdown(isPlaying)
             playbackActive = isPlaying
             if (!isPlaying) {
+                if (routeMuted) restorePlayerVolume()
                 if (phase is TimerPhase.Starting) invalidateTransientPhase()
                 invalidatePlayRequestNow()
                 scheduleScheduleBoundary()
@@ -311,24 +316,7 @@ class SleepTimerController @Inject constructor(
             }
             val explicit = nextPlaybackIntent?.explicit == true
             nextPlaybackIntent = null
-            when (phase) {
-                is TimerPhase.GraceAvailable -> {
-                    // Some service-owned path resumed without claiming grace. It now owns playback.
-                    invalidateGraceAuthority()
-                    reconcileSchedule(explicitPlay = explicit)
-                }
-
-                is TimerPhase.GraceClaimed,
-                is TimerPhase.Starting,
-                is TimerPhase.Expiring,
-                -> {
-                    // The transition owner will publish/reconcile after its suspension-safe commit.
-                }
-
-                TimerPhase.Idle,
-                is TimerPhase.Running,
-                -> reconcileSchedule(explicitPlay = explicit)
-            }
+            reconcileAfterAudiblePlay(explicit)
         }
     }
 
@@ -406,12 +394,10 @@ class SleepTimerController @Inject constructor(
      * generation change can invalidate that claim and the old coroutine can no longer install a timer later.
      */
     private suspend fun startTimer(mode: SleepTimerMode, automaticOccurrence: String?): AppResult<Unit> {
-        val currentPlayer = player?.takeIf { it.isPlaying && it.currentMediaItem != null } ?: return nothingToStop()
-        if (mode is SleepTimerMode.EndOfChapter && remainingToChapterEnd(skip = 0) == null) {
-            return AppResult.Failure(
-                AppError.Playback(summary = "This book has no chapters to stop at."),
-            )
-        }
+        val candidate = player
+        val refusal = timerStartRefusal(candidate, mode)
+        if (refusal != null) return refusal
+        val currentPlayer = requireNotNull(candidate)
 
         val replaced = running
         if (replaced != null) {
@@ -435,10 +421,10 @@ class SleepTimerController @Inject constructor(
             if (!isStartClaimCurrent(claim)) return startSuperseded()
         }
 
-        val sessionId = claim.bookId?.let { recordStarted(it, mode) }
+        val sessionId = claim.bookId?.let { history.recordStarted(it, mode) }
         return if (!isStartClaimCurrent(claim)) {
             if ((phase as? TimerPhase.Starting)?.claim?.token == claim.token) invalidateTransientPhase()
-            closeUncommittedSession(sessionId)
+            history.closeUncommittedSession(sessionId)
             startSuperseded()
         } else {
             val started = TimerRun(
@@ -449,7 +435,7 @@ class SleepTimerController @Inject constructor(
                 automaticOccurrence = automaticOccurrence,
             )
             phase = TimerPhase.Running(started)
-            record(PlaybackEvent.SleepTimerStarted, detail = remainingOf(started))
+            history.record(player, PlaybackEvent.SleepTimerStarted, detail = remainingOf(started))
             reconcileSensing()
             startTicking()
             publish()
@@ -465,6 +451,20 @@ class SleepTimerController @Inject constructor(
      * second press worth pressing.
      */
     fun extend() = adjust(restart = false)
+
+    private fun timerStartRefusal(candidate: Player?, mode: SleepTimerMode): AppResult<Unit>? = when {
+        volumeEffects.isRouteMuted(candidate) -> AppResult.Failure(
+            AppError.Playback(summary = "Wait for playback to become audible, then try again."),
+        )
+
+        candidate == null || !candidate.isPlaying || candidate.currentMediaItem == null -> nothingToStop()
+
+        mode is SleepTimerMode.EndOfChapter && remainingToChapterEnd(skip = 0) == null -> AppResult.Failure(
+            AppError.Playback(summary = "This book has no chapters to stop at."),
+        )
+
+        else -> null
+    }
 
     /**
      * ADR-0014 — a shake puts the timer back to its full length.
@@ -587,23 +587,23 @@ class SleepTimerController @Inject constructor(
             abandonGraceClaim(claim)
             return
         }
-        val sessionId = grace.bookId?.let { recordStarted(it, grace.mode) }
+        val sessionId = grace.bookId?.let { history.recordStarted(it, grace.mode) }
         if (!isGraceClaimCurrent(claim)) {
-            closeUncommittedSession(sessionId)
+            history.closeUncommittedSession(sessionId)
             return
         }
 
         val owner = resumeOwner
         if (owner == null) {
             abandonGraceClaim(claim)
-            closeUncommittedSession(sessionId)
+            history.closeUncommittedSession(sessionId)
             return
         }
 
         val resumed = owner.resume { isGraceClaimCurrent(claim) }
         if (!resumed || !isGraceClaimCurrent(claim)) {
             abandonGraceClaim(claim)
-            closeUncommittedSession(sessionId)
+            history.closeUncommittedSession(sessionId)
             return
         }
 
@@ -726,10 +726,10 @@ class SleepTimerController @Inject constructor(
      * would drift from the moment the listener changed it.
      */
     private suspend fun tick() {
-        reconcileCountdown(player?.isPlaying == true)
+        reconcileCountdown(player?.isPlaying == true && !routeMuted)
         val current = running ?: return
         if (current.pausedAtElapsedMs != null) {
-            restorePlayerVolume()
+            if (!routeMuted) restorePlayerVolume()
             publish()
             return
         }
@@ -742,7 +742,12 @@ class SleepTimerController @Inject constructor(
         // volume for a zero fade anyway; the guard is here so `isFading` cannot be reported true for a
         // fade that is not happening, which is what the player's UI reads to show its fading state.
         val fade = settings.fadeLength
-        player?.volume = if (fade > Duration.ZERO) SleepTimerMath.fadeVolume(remaining, fade) else FULL_VOLUME
+        player?.let {
+            volumeEffects.setSleepGain(
+                it,
+                if (fade > Duration.ZERO) SleepTimerMath.fadeVolume(remaining, fade) else FULL_VOLUME,
+            )
+        }
         publish(remaining, isFading = fade > Duration.ZERO && remaining < fade)
     }
 
@@ -771,7 +776,7 @@ class SleepTimerController @Inject constructor(
             LogField.Public("mode", expired.mode::class.simpleName.orEmpty()),
         )
         player?.pause()
-        record(PlaybackEvent.SleepTimerExpired)
+        history.record(player, PlaybackEvent.SleepTimerExpired)
         rewindAfterStop()
         restorePlayerVolume()
         armShakeGrace(expired, expiringToken)
@@ -819,26 +824,7 @@ class SleepTimerController @Inject constructor(
             "Rewound because the sleep timer stopped playback",
             LogField.Millis("amount", (from - to).inWholeMilliseconds),
         )
-        record(PlaybackEvent.SleepTimerRewind, from = from, to = to)
-    }
-
-    /**
-     * PRODUCT_SPEC PLAY-003 — a timer event, in the book's history.
-     *
-     * The device report that asked for this: *"starting sleep timer doesn't show"*. A timer is a decision
-     * about the book, and the history is where a listener looks to reconstruct an evening.
-     *
-     * Silent when there is no book. Everything here is a side effect of something that already happened,
-     * and none of it may prevent the timer from working (product priority 1).
-     */
-    private fun record(event: PlaybackEvent, from: Duration? = null, to: Duration? = null, detail: Duration? = null) {
-        val media = player ?: return
-        val item = media.currentMediaItem ?: return
-        val bookId = MediaItems.bookIdOf(item)
-        val at = to ?: media.bookPosition()
-        val owner = MediaItems.ownerOf(item)
-        val happenedAt = clock.now()
-        applicationScope.launch { history.record(bookId, event, from, at, detail, at = happenedAt, owner = owner) }
+        history.record(player, PlaybackEvent.SleepTimerRewind, from = from, to = to)
     }
 
     private suspend fun finish(outcome: SleepTimerOutcome, suppressAutomaticRearm: Boolean = false) {
@@ -884,9 +870,7 @@ class SleepTimerController @Inject constructor(
                     )
             }
         }
-        current.sessionId?.let { id -> repository.recordEnded(id, outcome) }
-        sessionSync.request(SyncTrigger.SleepTimerStopped)
-        sessionSync.drain()
+        history.recordEnded(current.sessionId, outcome)
         scheduleScheduleBoundary()
     }
 
@@ -925,7 +909,9 @@ class SleepTimerController @Inject constructor(
             return
         }
 
-        if (phase is TimerPhase.Idle && occurrence != null && shouldArmAutomaticTimer(occurrence, explicitPlay)) {
+        if (phase is TimerPhase.Idle && occurrence != null &&
+            shouldArmAutomaticTimer(occurrence, explicitPlay)
+        ) {
             armAutomaticTimer(occurrence)
             return
         }
@@ -953,7 +939,8 @@ class SleepTimerController @Inject constructor(
         val schedule = settings.schedule
         val suppressed = schedule.suppressedOccurrence == occurrence.id
         val replayRequired = schedule.replayRequiredOccurrence == occurrence.id
-        return !carConnected && !suppressed && (!replayRequired || explicitPlay)
+        val unavailable = routeMuted || carConnected || suppressed
+        return !unavailable && (!replayRequired || explicitPlay)
     }
 
     private suspend fun armAutomaticTimer(occurrence: SleepSchedulePolicy.Occurrence) {
@@ -981,7 +968,7 @@ class SleepTimerController @Inject constructor(
     private fun isAutomaticArmCurrent(ownerPlayer: Player, ownerGeneration: Long, ownerCarGeneration: Long): Boolean {
         val playbackCurrent = player === ownerPlayer && playbackGeneration == ownerGeneration
         val carCurrent = !carConnected && carConnectionGeneration == ownerCarGeneration
-        return playbackCurrent && carCurrent
+        return playbackCurrent && carCurrent && !volumeEffects.isRouteMuted(ownerPlayer)
     }
 
     /**
@@ -1052,6 +1039,7 @@ class SleepTimerController @Inject constructor(
         return current.claim.token == claim.token &&
             player === claim.player &&
             playbackGeneration == claim.playbackGeneration &&
+            !volumeEffects.isRouteMuted(claim.player) &&
             claim.player.isPlaying &&
             claim.bookId != null &&
             claim.player.currentMediaItem?.let(MediaItems::bookIdOf) == claim.bookId &&
@@ -1122,10 +1110,6 @@ class SleepTimerController @Inject constructor(
         }
     }
 
-    private suspend fun closeUncommittedSession(sessionId: String?) {
-        sessionId?.let { id -> repository.recordEnded(id, SleepTimerOutcome.PlaybackStopped) }
-    }
-
     private fun nothingToStop(): AppResult<Unit> = AppResult.Failure(
         AppError.Playback(summary = "Nothing is playing, so there is nothing to stop."),
     )
@@ -1141,7 +1125,7 @@ class SleepTimerController @Inject constructor(
      * no reason they could see and no control that fixed it.
      */
     private fun restorePlayerVolume() {
-        player?.volume = FULL_VOLUME
+        player?.let { volumeEffects.setSleepGain(it, FULL_VOLUME) }
     }
 
     private fun remainingOf(current: TimerRun): Duration = when (current.mode) {
@@ -1154,23 +1138,84 @@ class SleepTimerController @Inject constructor(
     }
 
     /** PLAY-008 — count audible listening time; the schedule remains a separate wall-clock eligibility. */
-    private fun reconcileCountdown(isPlaying: Boolean) {
+    private fun reconcileCountdown(
+        isPlaying: Boolean,
+        restoreGain: Boolean = true,
+        nowMs: Long = clock.elapsed().inWholeMilliseconds,
+    ) {
         val current = running ?: return
-        val now = clock.elapsed().inWholeMilliseconds
         val pausedAt = current.pausedAtElapsedMs
         val next = when {
-            !isPlaying && pausedAt == null -> current.copy(pausedAtElapsedMs = now)
+            !isPlaying && pausedAt == null -> current.copy(pausedAtElapsedMs = nowMs)
 
             isPlaying && pausedAt != null -> current.copy(
-                deadlineElapsedMs = current.deadlineElapsedMs + (now - pausedAt).coerceAtLeast(0),
+                deadlineElapsedMs = current.deadlineElapsedMs + (nowMs - pausedAt).coerceAtLeast(0),
                 pausedAtElapsedMs = null,
             )
 
             else -> return
         }
         phase = TimerPhase.Running(next)
-        if (!isPlaying) restorePlayerVolume()
+        if (!isPlaying && restoreGain) restorePlayerVolume()
         publish()
+    }
+
+    private fun onRouteMuteChanged(change: PlaybackVolumeEffects.MuteChange) {
+        if (player !== change.player || routeMuted == change.muted) return
+        routeMuted = change.muted
+        if (change.muted) {
+            playbackActive = false
+            reconcileCountdown(isPlaying = false, restoreGain = false, nowMs = change.elapsed.inWholeMilliseconds)
+        } else if (change.player.isPlaying) {
+            reconcileCountdown(isPlaying = true, restoreGain = false, nowMs = change.elapsed.inWholeMilliseconds)
+            playbackActive = true
+            val explicit = nextPlaybackIntent?.explicit == true
+            nextPlaybackIntent = null
+            val expectedGeneration = playbackGeneration
+            val expectedPlayRequest = playRequestGeneration
+            running?.let { current ->
+                val remaining = remainingOf(current)
+                val fade = settings.fadeLength
+                volumeEffects.setSleepGain(
+                    change.player,
+                    if (fade > Duration.ZERO) SleepTimerMath.fadeVolume(remaining, fade) else FULL_VOLUME,
+                )
+                publish(remaining, isFading = fade > Duration.ZERO && remaining < fade)
+            }
+            applicationScope.launch(mainDispatcher) {
+                if (isAudibleReplayCurrent(change.player, expectedGeneration, expectedPlayRequest)) {
+                    reconcileAfterAudiblePlay(explicit)
+                }
+            }
+        }
+    }
+
+    private fun isAudibleReplayCurrent(
+        expectedPlayer: Player,
+        expectedGeneration: Long,
+        expectedPlayRequest: Long,
+    ): Boolean {
+        val playbackCurrent = player === expectedPlayer && playbackGeneration == expectedGeneration
+        val requestCurrent = playRequestGeneration == expectedPlayRequest && !routeMuted
+        return playbackCurrent && requestCurrent && expectedPlayer.isPlaying
+    }
+
+    private suspend fun reconcileAfterAudiblePlay(explicitPlay: Boolean) {
+        when (phase) {
+            is TimerPhase.GraceAvailable -> {
+                invalidateGraceAuthority()
+                reconcileSchedule(explicitPlay = explicitPlay)
+            }
+
+            is TimerPhase.GraceClaimed,
+            is TimerPhase.Starting,
+            is TimerPhase.Expiring,
+            -> Unit
+
+            TimerPhase.Idle,
+            is TimerPhase.Running,
+            -> reconcileSchedule(explicitPlay = explicitPlay)
+        }
     }
 
     private fun remainingToChapterEnd(skip: Int): Duration? {
@@ -1184,15 +1229,6 @@ class SleepTimerController @Inject constructor(
         SleepTimerMode.EndOfChapter -> 0L
     }
 
-    private suspend fun recordStarted(bookId: LibraryItemId, mode: SleepTimerMode): String? =
-        when (val recorded = repository.recordStarted(bookId, mode)) {
-            is AppResult.Success -> recorded.value
-
-            // A timer whose history could not be written still runs. The record is worth having and is
-            // not worth refusing to start a timer over (product priority 1).
-            is AppResult.Failure -> null
-        }
-
     /**
      * The settings, kept warm rather than read per tick.
      *
@@ -1204,6 +1240,7 @@ class SleepTimerController @Inject constructor(
     private var settings: SleepTimerSettings = SleepTimerSettings.Default
 
     init {
+        volumeEffects.addMuteListener(::onRouteMuteChanged)
         applicationScope.launch(mainDispatcher) {
             repository.observeSettings().collect { latest ->
                 settings = latest

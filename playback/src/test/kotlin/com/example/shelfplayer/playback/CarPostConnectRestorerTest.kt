@@ -39,9 +39,20 @@ class CarPostConnectRestorerTest {
     private var locked = false
     private var activeProfile: ProfileId? = ProfileId("first")
     private var profileGeneration = 0L
+    private var itemGeneration = 0L
     private val held = AutoLibrary.HeldResume(item("held"), HELD_START_MS)
     private val queue = MediaItems.Queue(item("queued"), QUEUE_START_MS)
     private var openedQueues = 0
+
+    init {
+        player.addListener(
+            object : Player.Listener {
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    itemGeneration += 1
+                }
+            },
+        )
+    }
 
     private val quiet = object : CarPostConnectRestorer.Observer {
         override fun note(message: String, player: Player?) = Unit
@@ -55,6 +66,7 @@ class CarPostConnectRestorerTest {
         isRequestCurrent: () -> Boolean = { true },
         activeProfileLookup: suspend () -> ProfileId? = { activeProfile },
         beforeAcceptance: () -> Unit = {},
+        commands: PlaybackCommands = UnprotectedPlaybackCommands(),
         openQueue: suspend (LibraryItemId) -> MediaItems.Queue? = {
             openedQueues++
             queue
@@ -63,6 +75,7 @@ class CarPostConnectRestorerTest {
         activeProfileId = activeProfileLookup,
         profileGeneration = { profileGeneration },
         isRequestCurrent = isRequestCurrent,
+        commands = commands,
         isProfileLocked = { locked },
         lastPlayedBookId = lastPlayed,
         heldResume = heldResume,
@@ -77,6 +90,16 @@ class CarPostConnectRestorerTest {
             }
         },
         observer = quiet,
+    )
+
+    private fun playbackCommands() = PlaybackCommandEffects(
+        currentPlayer = { player },
+        itemGeneration = { itemGeneration },
+        isAttached = { it === player },
+        protectOutput = { target, willStartAudio, holdPaused ->
+            if (!willStartAudio && holdPaused && target.playWhenReady) target.pause()
+            ManualPlayProtection.NoGuard
+        },
     )
 
     @After
@@ -124,7 +147,7 @@ class CarPostConnectRestorerTest {
 
     @Test
     fun `Arm installs and prepares without playing`() = runBlocking {
-        restorer().restore(AutoStartAction.Arm, player)
+        restorer(commands = playbackCommands()).restore(AutoStartAction.Arm, player)
 
         assertEquals("queued", player.currentMediaItem?.mediaId)
         assertEquals(QUEUE_START_MS, player.currentPosition)
@@ -139,6 +162,65 @@ class CarPostConnectRestorerTest {
         assertEquals("queued", player.currentMediaItem?.mediaId)
         assertTrue(player.playbackState != Player.STATE_IDLE)
         assertTrue(player.playWhenReady)
+    }
+
+    @Test
+    fun `Arm clears retained empty-player Play intent before installing and preparing`() = runBlocking {
+        player.play()
+        assertTrue(player.playWhenReady)
+        restorer(commands = playbackCommands()).restore(AutoStartAction.Arm, player)
+
+        assertEquals("queued", player.currentMediaItem?.mediaId)
+        assertTrue(player.playbackState != Player.STATE_IDLE, "Arm still prepares its accepted queue")
+        assertFalse(player.playWhenReady, "an Arm install cannot inherit an empty player's stale Play intent")
+    }
+
+    @Test
+    fun `post-connect request survives session publication but newer command prevents install`() = runBlocking {
+        var command = 0
+        var publishedFreshness = 0
+        restorer(
+            isRequestCurrent = { command == 0 },
+            beforeAcceptance = { publishedFreshness += 1 },
+            commands = playbackCommands(),
+        ).restore(AutoStartAction.Arm, player)
+
+        assertEquals(1, publishedFreshness)
+        assertEquals("queued", player.currentMediaItem?.mediaId)
+
+        player.clearMediaItems()
+        restorer(
+            isRequestCurrent = { command == 0 },
+            beforeAcceptance = { command += 1 },
+            commands = playbackCommands(),
+        ).restore(AutoStartAction.Arm, player)
+
+        assertEquals(0, player.mediaItemCount, "a newer request must invalidate before installation")
+    }
+
+    @Test
+    fun `install accepts a same-item update when no transition callback is observed`() {
+        val same = item("same")
+        player.setMediaItem(same)
+        val commands = PlaybackCommandEffects(
+            currentPlayer = { player },
+            itemGeneration = { 0L },
+            isAttached = { it === player },
+            protectOutput = { _, _, _ -> ManualPlayProtection.NoGuard },
+        )
+
+        val installed = commands.installAndPrepare(
+            current = player,
+            item = same,
+            startPositionMs = 0L,
+            authorizedBeforeInstall = { true },
+            stillAuthorizedAfterInstall = { player.currentMediaItem == same },
+            startPlaying = false,
+        )
+
+        assertTrue(installed)
+        assertTrue(player.playbackState != Player.STATE_IDLE)
+        assertFalse(player.playWhenReady)
     }
 
     @Test

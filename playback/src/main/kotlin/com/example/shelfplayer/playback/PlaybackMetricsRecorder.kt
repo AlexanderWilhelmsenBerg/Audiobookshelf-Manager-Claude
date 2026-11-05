@@ -42,6 +42,9 @@ class PlaybackMetricsRecorder @Inject constructor(private val clock: AppClock) {
     /** Whether this item has ever been ready, which is what tells a first fill from a rebuffer. */
     private var hasBeenReady: Boolean = false
 
+    /** Whether an item is still current, even when Clear all has discarded its loading stopwatch. */
+    private var hasCurrentItem: Boolean = false
+
     /**
      * A new item was prepared. Starts the startup-latency stopwatch.
      *
@@ -51,6 +54,7 @@ class PlaybackMetricsRecorder @Inject constructor(private val clock: AppClock) {
     fun onItemPrepared() {
         loadingSince = clock.elapsed()
         hasBeenReady = false
+        hasCurrentItem = true
     }
 
     /** The player began waiting for data. Counts only once this item has already played. */
@@ -67,9 +71,11 @@ class PlaybackMetricsRecorder @Inject constructor(private val clock: AppClock) {
      * number somebody is trying to see.
      */
     fun onReady() {
-        val since = loadingSince ?: return
+        if (!hasCurrentItem) return
+        val since = loadingSince
         loadingSince = null
         hasBeenReady = true
+        if (since == null) return
 
         val latency = clock.elapsed() - since
         // A negative or wild reading means the monotonic source was not monotonic. Dropping it is better
@@ -88,5 +94,12 @@ class PlaybackMetricsRecorder @Inject constructor(private val clock: AppClock) {
     fun onReleased() {
         loadingSince = null
         hasBeenReady = false
+        hasCurrentItem = false
+    }
+
+    /** Forget old diagnostic samples without changing the current item's playback lifecycle. */
+    fun clear() {
+        _metrics.value = PlaybackMetrics.Empty
+        loadingSince = null
     }
 }

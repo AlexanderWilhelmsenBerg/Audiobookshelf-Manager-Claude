@@ -42,6 +42,7 @@
     -->
     <queries>
         <package android:name="com.google.android.projection.gearhead" />
+        <package android:name="com.sony.songpal.mdr" />
     </queries>
 
     <application>

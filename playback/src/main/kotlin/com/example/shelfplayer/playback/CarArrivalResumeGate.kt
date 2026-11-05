@@ -21,7 +21,23 @@ import kotlin.time.Duration.Companion.seconds
  *
  * Not thread-safe by design: [PlaybackService] calls it from the player/session main-thread boundary.
  */
-internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAULT_PAIRING_WINDOW) {
+internal class CarArrivalResumeGate private constructor(
+    private val pairingWindow: Duration,
+    private val now: () -> Duration,
+    private val trustedIdentity: (String) -> Boolean,
+) {
+    constructor(pairingWindow: Duration = DEFAULT_PAIRING_WINDOW) : this(
+        pairingWindow,
+        { Duration.ZERO },
+        { false },
+    )
+
+    constructor(
+        now: () -> Duration,
+        trustedIdentity: (String) -> Boolean,
+        pairingWindow: Duration = DEFAULT_PAIRING_WINDOW,
+    ) : this(pairingWindow, now, trustedIdentity)
+
     internal enum class Phase {
         Arrival,
         Departure,
@@ -47,25 +63,49 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         WrongLifecyclePhase,
         CandidateInvalidated,
         WrongHeadset,
+        IdentityUntrusted,
+        RecoveryExpired,
         Eligible,
     }
 
+    /**
+     * The gate-issued instance is also the one-shot episode identity. Equal route fields from
+     * another lifecycle interval do not authorize an older suspended effect.
+     */
     internal data class Target(
         val outputId: String,
         val generation: Long,
         val explicitSelectionSequence: Long,
         val phase: Phase,
+        val deadline: Duration? = null,
     )
 
     internal data class Decision(val phase: Phase, val status: Status, val reason: Reason, val target: Target? = null)
 
     internal data class ConsumeResult(val accepted: Boolean, val reason: Reason)
 
-    private data class Identity(val outputId: String, val generation: Long, val explicitSelectionSequence: Long)
+    private data class Identity(
+        val outputId: String,
+        val generation: Long,
+        val explicitSelectionSequence: Long,
+        val trustedAtPlayback: Boolean,
+    )
 
-    private data class FocusCandidate(val at: Duration, val phase: Phase, val identity: Identity)
+    private data class QualifiedEpisode(
+        val identity: Identity,
+        val startedAt: Duration,
+        val deadline: Duration,
+        val issuedTarget: Target? = null,
+        val closed: Boolean = false,
+    )
+    private data class FocusCandidate(
+        val at: Duration,
+        val phase: Phase,
+        val identity: Identity,
+        val deadline: Duration?,
+    )
     private data class DepartureBoundary(val at: Duration, val identity: Identity)
-    private data class ArrivalBoundary(val at: Duration, val identity: Identity)
+    private data class ArrivalBoundary(val at: Duration, val identity: Identity, val deadline: Duration?)
 
     private var focusCandidate: FocusCandidate? = null
     private var projectionDeparture: DepartureBoundary? = null
@@ -73,6 +113,28 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     private var arrivalRecorded = false
     private var activeRecovery: Target? = null
     private var requiresFreshPlaybackEvidence = false
+    private var safetyPausedAt: Duration? = null
+    private var qualifiedEpisode: QualifiedEpisode? = null
+
+    /** Retain this interruption's evidence, without extending it on repeated safety callbacks. */
+    fun onRouteSafetyPause(at: Duration) {
+        val previous = safetyPausedAt
+        if (previous == null || at < previous) safetyPausedAt = at
+        playingHeadset?.let { beginQualifiedEpisode(it, at) }
+    }
+
+    private fun expireSafetyPause(at: Duration): Boolean {
+        val qualified = qualifiedEpisode?.takeUnless { it.closed }
+        val expired = if (qualified != null) {
+            val age = at - qualified.startedAt
+            age < Duration.ZERO || age >= QUALIFIED_ARRIVAL_WINDOW ||
+                !trustedIdentity(qualified.identity.outputId)
+        } else {
+            safetyPausedAt?.let { at - it !in Duration.ZERO..pairingWindow } == true
+        }
+        if (expired) cancelAll()
+        return expired
+    }
 
     /**
      * Last headset positively heard while playback was actually active.
@@ -93,11 +155,14 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         // This method is invoked only after the service positively observes current playback.
         // A previous Pause cannot authorize automatic recovery until audio has genuinely played again.
         requiresFreshPlaybackEvidence = false
+        safetyPausedAt = null
+        qualifiedEpisode = null
         val identity = identityOf(
             heardRoute = heardRoute,
             headsetId = headsetId,
             currentGeneration = currentGeneration,
             explicitSelectionSequence = explicitSelectionSequence,
+            captureTrust = true,
         )
         when {
             identity != null -> playingHeadset = identity
@@ -120,11 +185,12 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         explicitSelectionSequence: Long,
         carConnected: Boolean,
     ): Decision {
+        val expired = expireSafetyPause(at)
         if (requiresFreshPlaybackEvidence) {
             return Decision(
                 phase = if (carConnected) Phase.Departure else Phase.Arrival,
                 status = Status.Rejected,
-                reason = Reason.NoFreshPlaybackAfterIntentReset,
+                reason = if (expired) Reason.OutsidePairingWindow else Reason.NoFreshPlaybackAfterIntentReset,
             )
         }
         return onEligibleAudioFocusLoss(
@@ -170,34 +236,17 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         explicitSelectionSequence: Long,
         carConnected: Boolean,
     ): Decision {
-        projectionDeparture?.let { boundary ->
-            projectionDeparture = null
-            val invalid = invalidReason(
-                identity = boundary.identity,
+        val matched = qualifiedEpisode?.issuedTarget?.let { target ->
+            existingQualifiedClaim(target, currentGeneration, explicitSelectionSequence)
+        } ?: matchProjectionDeparture(at, currentGeneration, explicitSelectionSequence, carConnected)
+            ?: matchFocusToFirstArrival(
+                at = at,
+                heardRoute = heardRoute,
+                headsetId = headsetId,
                 currentGeneration = currentGeneration,
                 explicitSelectionSequence = explicitSelectionSequence,
-                interval = at - boundary.at,
             )
-            if (!carConnected && invalid == null) {
-                val target = boundary.identity.target(Phase.Departure)
-                focusCandidate = null
-                activeRecovery = target
-                return Decision(
-                    phase = Phase.Departure,
-                    status = Status.Ready,
-                    reason = Reason.BoundaryMatchedFocusLoss,
-                    target = target,
-                )
-            }
-        }
-
-        matchFocusToFirstArrival(
-            at = at,
-            heardRoute = heardRoute,
-            headsetId = headsetId,
-            currentGeneration = currentGeneration,
-            explicitSelectionSequence = explicitSelectionSequence,
-        )?.let { return it }
+        if (matched != null) return matched
 
         val phase = if (carConnected) Phase.Departure else Phase.Arrival
         val liveIdentity = identityOf(
@@ -218,20 +267,58 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
             )
         }
 
-        focusCandidate = FocusCandidate(at = at, phase = phase, identity = identity)
+        val episode = if (phase == Phase.Arrival) beginQualifiedEpisode(identity, at) else null
+        val deadline = episode?.deadline
+        focusCandidate = FocusCandidate(
+            at = episode?.startedAt ?: safetyPausedAt ?: at,
+            phase = phase,
+            identity = identity,
+            deadline = deadline,
+        )
         activeRecovery = null
         return Decision(
             phase = phase,
             status = Status.Armed,
             reason = Reason.FocusLossWaitingForBoundary,
-            target = identity.target(phase),
+            target = identity.target(phase, deadline),
+        )
+    }
+
+    private fun matchProjectionDeparture(
+        at: Duration,
+        currentGeneration: Long?,
+        explicitSelectionSequence: Long,
+        carConnected: Boolean,
+    ): Decision? {
+        val boundary = projectionDeparture ?: return null
+        projectionDeparture = null
+        val invalid = invalidReason(
+            identity = boundary.identity,
+            currentGeneration = currentGeneration,
+            explicitSelectionSequence = explicitSelectionSequence,
+            interval = at - boundary.at,
+        )
+        if (carConnected || invalid != null) return null
+        val target = boundary.identity.target(Phase.Departure)
+        focusCandidate = null
+        activeRecovery = target
+        return Decision(
+            phase = Phase.Departure,
+            status = Status.Ready,
+            reason = Reason.BoundaryMatchedFocusLoss,
+            target = target,
         )
     }
 
     /** Pairs arrival focus with only the first controller/projection boundary of this car session. */
     fun onCarArrival(arrivedAt: Duration, currentGeneration: Long?, explicitSelectionSequence: Long): Decision {
+        expireSafetyPause(arrivedAt)
         projectionDeparture = null
-        if (arrivalRecorded) return Decision(Phase.Arrival, Status.Rejected, Reason.NoPendingFocusLoss)
+        if (arrivalRecorded || qualifiedEpisode?.issuedTarget != null) {
+            val issued = qualifiedEpisode?.issuedTarget
+            return issued?.let { existingQualifiedClaim(it, currentGeneration, explicitSelectionSequence) }
+                ?: Decision(Phase.Arrival, Status.Rejected, Reason.NoPendingFocusLoss)
+        }
         arrivalRecorded = true
         val candidate = focusCandidate
         return if (candidate == null) {
@@ -248,13 +335,14 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     ): Decision {
         val heard = currentPlayingHeadset(currentGeneration, explicitSelectionSequence)
             ?: return Decision(Phase.Arrival, Status.Rejected, Reason.NoPendingFocusLoss)
-        firstArrival = ArrivalBoundary(at = arrivedAt, identity = heard)
+        val episode = beginQualifiedEpisode(heard, arrivedAt)
+        firstArrival = ArrivalBoundary(at = arrivedAt, identity = heard, deadline = episode?.deadline)
         activeRecovery = null
         return Decision(
             Phase.Arrival,
             Status.Armed,
             Reason.BoundaryWaitingForFocusLoss,
-            heard.target(Phase.Arrival),
+            heard.target(Phase.Arrival, episode?.deadline),
         )
     }
 
@@ -275,6 +363,8 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
             currentGeneration = currentGeneration,
             explicitSelectionSequence = explicitSelectionSequence,
             interval = arrivedAt - candidate.at,
+            eventAt = arrivedAt,
+            deadline = candidate.deadline,
         )
         if (invalid != null) {
             focusCandidate = null
@@ -282,9 +372,8 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
             return Decision(Phase.Arrival, Status.Rejected, invalid)
         }
 
-        val target = candidate.identity.target(Phase.Arrival)
+        val target = issueArrivalRecovery(candidate.identity, candidate.deadline)
         focusCandidate = null
-        activeRecovery = target
         return Decision(
             phase = Phase.Arrival,
             status = Status.Ready,
@@ -311,13 +400,15 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
             currentGeneration = currentGeneration,
             explicitSelectionSequence = explicitSelectionSequence,
             interval = at - boundary.at,
+            eventAt = at,
+            deadline = boundary.deadline,
         )
         if (invalid != null) return null
         val live = identityOf(heardRoute, headsetId, currentGeneration, explicitSelectionSequence)
         if (live != null && live.outputId != boundary.identity.outputId) return null
 
         focusCandidate = null
-        val target = boundary.identity.target(Phase.Arrival)
+        val target = issueArrivalRecovery(boundary.identity, boundary.deadline)
         activeRecovery = target
         return Decision(Phase.Arrival, Status.Ready, Reason.BoundaryMatchedFocusLoss, target)
     }
@@ -334,17 +425,28 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         currentGeneration: Long?,
         explicitSelectionSequence: Long,
     ): Decision {
+        expireSafetyPause(departedAt)
+        qualifiedEpisode?.issuedTarget?.let {
+            closeQualifiedArrivalEpisode()
+            return Decision(Phase.Departure, Status.Rejected, Reason.CandidateInvalidated)
+        }
         firstArrival = null
         arrivalRecorded = false
         val candidate = focusCandidate
         if (candidate != null) {
-            return onCarDeparture(departedAt, currentGeneration, explicitSelectionSequence)
+            val decision = onCarDeparture(departedAt, currentGeneration, explicitSelectionSequence)
+            closeQualifiedArrivalEpisode()
+            return decision
         }
 
         val identity = currentPlayingHeadset(currentGeneration, explicitSelectionSequence)
-            ?: return Decision(Phase.Departure, Status.Rejected, Reason.NoPlayingCarHeadset)
+            ?: run {
+                closeQualifiedArrivalEpisode()
+                return Decision(Phase.Departure, Status.Rejected, Reason.NoPlayingCarHeadset)
+            }
         projectionDeparture = DepartureBoundary(at = departedAt, identity = identity)
         activeRecovery = null
+        closeQualifiedArrivalEpisode()
         return Decision(
             phase = Phase.Departure,
             status = Status.Armed,
@@ -361,47 +463,67 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
      * only [onProjectionDeparture] may retain a boundary before focus loss.
      */
     fun onCarDeparture(departedAt: Duration, currentGeneration: Long?, explicitSelectionSequence: Long): Decision {
+        qualifiedEpisode?.issuedTarget?.let {
+            closeQualifiedArrivalEpisode()
+            return Decision(Phase.Departure, Status.Rejected, Reason.CandidateInvalidated)
+        }
         firstArrival = null
         arrivalRecorded = false
         val candidate = focusCandidate
-            ?: return Decision(Phase.Departure, Status.Rejected, Reason.NoPendingFocusLoss)
-        if (candidate.phase != Phase.Departure) {
-            focusCandidate = null
-            activeRecovery = null
-            return Decision(Phase.Departure, Status.Rejected, Reason.WrongLifecyclePhase)
-        }
+        val decision = when {
+            candidate == null -> Decision(Phase.Departure, Status.Rejected, Reason.NoPendingFocusLoss)
 
+            candidate.phase != Phase.Departure -> {
+                activeRecovery = null
+                Decision(Phase.Departure, Status.Rejected, Reason.WrongLifecyclePhase)
+            }
+
+            else -> resolveCarDeparture(candidate, departedAt, currentGeneration, explicitSelectionSequence)
+        }
+        focusCandidate = null
+        closeQualifiedArrivalEpisode()
+        return decision
+    }
+
+    private fun resolveCarDeparture(
+        candidate: FocusCandidate,
+        departedAt: Duration,
+        currentGeneration: Long?,
+        explicitSelectionSequence: Long,
+    ): Decision {
         val invalid = invalidReason(
             identity = candidate.identity,
             currentGeneration = currentGeneration,
             explicitSelectionSequence = explicitSelectionSequence,
             interval = departedAt - candidate.at,
         )
-        focusCandidate = null
         if (invalid != null) {
             activeRecovery = null
             return Decision(Phase.Departure, Status.Rejected, invalid)
         }
-
         val target = candidate.identity.target(Phase.Departure)
         activeRecovery = target
-        return Decision(
-            phase = Phase.Departure,
-            status = Status.Ready,
-            reason = Reason.BoundaryMatchedFocusLoss,
-            target = target,
-        )
+        return Decision(Phase.Departure, Status.Ready, Reason.BoundaryMatchedFocusLoss, target)
     }
 
     /** True only while the resolved target remains the single active lifecycle recovery. */
     fun isCurrent(target: Target, currentGeneration: Long?, explicitSelectionSequence: Long): Boolean =
-        activeRecovery == target &&
-            eligibilityReason(target, currentGeneration, explicitSelectionSequence) == null
+        activeRecovery === target &&
+            eligibilityReason(target, currentGeneration, explicitSelectionSequence, now()) == null
+
+    /** Remaining time for an eligible qualified arrival route wait; null retains the ordinary route bound. */
+    fun remainingWindow(target: Target): Duration? = target.deadline?.minus(now())?.coerceAtLeast(Duration.ZERO)
+
+    /** The deadline/identity half of eligibility for async route probes after the one-shot claim is consumed. */
+    fun episodeValid(target: Target): Boolean = target.deadline == null || qualifiedEpisode?.let { episode ->
+        !episode.closed && episode.issuedTarget === target && episode.deadline == target.deadline &&
+            now() < target.deadline && trustedIdentity(target.outputId)
+    } == true
 
     /**
      * Final one-shot check after routing has secured the exact captured headset.
      *
-     * A refusal also consumes the active recovery. One lifecycle transition gets at most one Play attempt.
+     * A refusal consumes only this episode. An obsolete callback cannot consume its successor.
      */
     fun consumeRecovery(
         target: Target,
@@ -409,15 +531,19 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         headsetId: String?,
         explicitSelectionSequence: Long,
     ): ConsumeResult {
-        val reason = when {
-            activeRecovery != target -> Reason.CandidateInvalidated
-
-            else -> eligibilityReason(target, currentGeneration, explicitSelectionSequence)
-                ?: if (headsetId != target.outputId) Reason.WrongHeadset else null
-        }
+        if (activeRecovery !== target) return ConsumeResult(false, Reason.CandidateInvalidated)
+        val reason = eligibilityReason(target, currentGeneration, explicitSelectionSequence, now())
+            ?: if (headsetId != target.outputId) Reason.WrongHeadset else null
         activeRecovery = null
         if (reason != null) return ConsumeResult(accepted = false, reason = reason)
         return ConsumeResult(accepted = true, reason = Reason.Eligible)
+    }
+
+    /** Cancel only work holding this gate-issued claim, leaving any newer episode intact. */
+    fun cancelRecovery(target: Target): Boolean {
+        if (activeRecovery !== target) return false
+        cancelPending()
+        return true
     }
 
     /** A newer Play supersedes pending automatic recovery but does not rewrite route-heard ownership. */
@@ -431,6 +557,8 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
     /** A deliberate/non-focus pause or book/session boundary invalidates every continuity fact. */
     fun cancelAll() {
         cancelPending()
+        safetyPausedAt = null
+        qualifiedEpisode = null
         requiresFreshPlaybackEvidence = true
         playingHeadset = null
     }
@@ -446,6 +574,7 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         headsetId: String?,
         currentGeneration: Long?,
         explicitSelectionSequence: Long,
+        captureTrust: Boolean = false,
     ): Identity? = heardRoute
         ?.takeIf { heard ->
             headsetId != null &&
@@ -457,6 +586,14 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
                 outputId = heard.outputId,
                 generation = heard.generation,
                 explicitSelectionSequence = explicitSelectionSequence,
+                trustedAtPlayback = if (captureTrust) {
+                    trustedIdentity(heard.outputId)
+                } else {
+                    playingHeadset?.takeIf {
+                        it.outputId == heard.outputId && it.generation == heard.generation &&
+                            it.explicitSelectionSequence == explicitSelectionSequence
+                    }?.trustedAtPlayback ?: false
+                },
             )
         }
 
@@ -465,25 +602,122 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
         currentGeneration: Long?,
         explicitSelectionSequence: Long,
         interval: Duration,
+        eventAt: Duration? = null,
+        deadline: Duration? = null,
     ): Reason? = when {
         identity.generation != currentGeneration -> Reason.GenerationChanged
+
         identity.explicitSelectionSequence != explicitSelectionSequence -> Reason.ExplicitSelectionChanged
-        interval < Duration.ZERO || interval > pairingWindow -> Reason.OutsidePairingWindow
+
+        deadline != null && eventAt != null && eventAt >= deadline -> Reason.RecoveryExpired
+
+        interval < Duration.ZERO || interval > maxPairInterval(interval, eventAt, deadline) ->
+            Reason.OutsidePairingWindow
+
         else -> null
     }
 
-    private fun eligibilityReason(target: Target, currentGeneration: Long?, explicitSelectionSequence: Long): Reason? =
-        when {
-            target.generation != currentGeneration -> Reason.GenerationChanged
-            target.explicitSelectionSequence != explicitSelectionSequence -> Reason.ExplicitSelectionChanged
-            else -> null
+    private fun eligibilityReason(
+        target: Target,
+        currentGeneration: Long?,
+        explicitSelectionSequence: Long,
+        at: Duration,
+    ): Reason? = when {
+        target.generation != currentGeneration -> Reason.GenerationChanged
+        target.explicitSelectionSequence != explicitSelectionSequence -> Reason.ExplicitSelectionChanged
+        target.deadline != null && at >= target.deadline -> Reason.RecoveryExpired
+        target.deadline != null && !trustedIdentity(target.outputId) -> Reason.IdentityUntrusted
+        else -> null
+    }
+
+    private fun beginQualifiedEpisode(identity: Identity, at: Duration): QualifiedEpisode? {
+        val existing = qualifiedEpisode
+        return if (existing == null) {
+            startQualifiedEpisode(identity, at)
+        } else {
+            updateQualifiedEpisode(existing, identity, at)
+        }
+    }
+
+    private fun updateQualifiedEpisode(
+        episode: QualifiedEpisode,
+        identity: Identity,
+        at: Duration,
+    ): QualifiedEpisode? {
+        if (episode.closed || episode.identity != identity) return null
+        val earlierStart = minOf(episode.startedAt, safetyPausedAt ?: at, at)
+        if (earlierStart >= episode.startedAt) return episode
+        val earlier = episode.copy(
+            startedAt = earlierStart,
+            deadline = earlierStart + QUALIFIED_ARRIVAL_WINDOW,
+        )
+        qualifiedEpisode = earlier
+        revisePendingArrivalDeadline(identity, earlier)
+        return earlier
+    }
+
+    private fun revisePendingArrivalDeadline(identity: Identity, episode: QualifiedEpisode) {
+        val focus = focusCandidate
+        if (focus != null && focus.phase == Phase.Arrival && focus.identity == identity) {
+            focusCandidate = focus.copy(at = episode.startedAt, deadline = episode.deadline)
+        }
+        val arrival = firstArrival
+        if (arrival != null && arrival.identity == identity) {
+            firstArrival = arrival.copy(deadline = episode.deadline)
+        }
+        val recovery = activeRecovery
+        if (recovery != null && recovery.phase == Phase.Arrival && recovery.outputId == identity.outputId) {
+            activeRecovery = null
+        }
+    }
+
+    private fun startQualifiedEpisode(identity: Identity, at: Duration): QualifiedEpisode? {
+        if (!identity.trustedAtPlayback) return null
+        if (currentPlayingHeadset(identity.generation, identity.explicitSelectionSequence) != identity) return null
+        if (!trustedIdentity(identity.outputId)) return null
+        val startedAt = minOf(safetyPausedAt ?: at, at)
+        return QualifiedEpisode(identity, startedAt, startedAt + QUALIFIED_ARRIVAL_WINDOW).also {
+            qualifiedEpisode = it
+        }
+    }
+
+    private fun maxPairInterval(interval: Duration, eventAt: Duration?, deadline: Duration?): Duration =
+        if (deadline != null && eventAt != null) deadline - (eventAt - interval) else pairingWindow
+
+    private fun issueArrivalRecovery(identity: Identity, deadline: Duration?): Target =
+        identity.target(Phase.Arrival, deadline).also { target ->
+            activeRecovery = target
+            qualifiedEpisode?.takeIf { it.identity == identity }?.let { episode ->
+                qualifiedEpisode = episode.copy(issuedTarget = target)
+            }
         }
 
-    private fun Identity.target(phase: Phase) = Target(
+    private fun closeQualifiedArrivalEpisode() {
+        val episode = qualifiedEpisode ?: return
+        qualifiedEpisode = episode.copy(closed = true)
+        safetyPausedAt = null
+        if (activeRecovery?.deadline != null) activeRecovery = null
+    }
+
+    private fun existingQualifiedClaim(
+        target: Target,
+        currentGeneration: Long?,
+        explicitSelectionSequence: Long,
+    ): Decision {
+        val reason = eligibilityReason(target, currentGeneration, explicitSelectionSequence, now())
+        return if (activeRecovery === target && reason == null) {
+            Decision(target.phase, Status.Ready, Reason.BoundaryMatchedFocusLoss, target)
+        } else {
+            Decision(target.phase, Status.Rejected, reason ?: Reason.CandidateInvalidated)
+        }
+    }
+
+    private fun Identity.target(phase: Phase, deadline: Duration? = null) = Target(
         outputId = outputId,
         generation = generation,
         explicitSelectionSequence = explicitSelectionSequence,
         phase = phase,
+        deadline = deadline,
     )
 
     private companion object {
@@ -493,5 +727,6 @@ internal class CarArrivalResumeGate(private val pairingWindow: Duration = DEFAUL
          * merely because time passed.
          */
         val DEFAULT_PAIRING_WINDOW: Duration = 6.seconds
+        val QUALIFIED_ARRIVAL_WINDOW: Duration = 30.seconds
     }
 }

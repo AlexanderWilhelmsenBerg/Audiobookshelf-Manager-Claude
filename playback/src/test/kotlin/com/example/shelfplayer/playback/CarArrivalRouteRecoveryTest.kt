@@ -92,6 +92,7 @@ class CarArrivalRouteRecoveryTest {
         val held = CarArrivalRouteRecovery(120.milliseconds).secure(
             target = target,
             outputs = outputs,
+            measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
             selectedId = selected,
             isStillEligible = { true },
             onEvent = events::add,
@@ -120,6 +121,7 @@ class CarArrivalRouteRecoveryTest {
         val held = CarArrivalRouteRecovery(250.milliseconds).secure(
             target = target,
             outputs = outputs,
+            measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
             selectedId = selected,
             isStillEligible = { true },
         ) { id ->
@@ -140,6 +142,7 @@ class CarArrivalRouteRecoveryTest {
         val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
             outputs = outputs,
+            measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
             selectedId = selected,
             isStillEligible = { true },
             onEvent = events::add,
@@ -151,7 +154,7 @@ class CarArrivalRouteRecoveryTest {
         assertEquals(0, reassertions)
         assertEquals(null, selected.value)
         assertTrue(CarArrivalRouteRecovery.Event.Secured in events)
-        assertTrue(headsetAlreadyActive(buds.id, outputs.value))
+        assertTrue(fixtureHeadsetMeasured(buds.id, outputs.value))
     }
 
     @Test
@@ -170,6 +173,7 @@ class CarArrivalRouteRecoveryTest {
         val held = CarArrivalRouteRecovery(120.milliseconds).secure(
             target = target,
             outputs = outputs,
+            measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
             selectedId = selected,
             isStillEligible = { true },
             onEvent = events::add,
@@ -190,10 +194,11 @@ class CarArrivalRouteRecoveryTest {
         val selected = MutableStateFlow<String?>(null)
         var reassertions = 0
 
-        assertTrue(!headsetAlreadyActive(buds.id, outputs.value))
+        assertTrue(!fixtureHeadsetMeasured(buds.id, outputs.value))
         val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
             outputs = outputs,
+            measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
             selectedId = selected,
             isStillEligible = { true },
         ) { id ->
@@ -215,6 +220,7 @@ class CarArrivalRouteRecoveryTest {
         val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
             outputs = outputs,
+            measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
             selectedId = selected,
             isStillEligible = { true },
             onEvent = events::add,
@@ -248,6 +254,7 @@ class CarArrivalRouteRecoveryTest {
         val held = CarArrivalRouteRecovery(50.milliseconds).secure(
             target = target,
             outputs = outputs,
+            measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
             selectedId = selected,
             isStillEligible = { true },
             onEvent = events::add,
@@ -276,6 +283,7 @@ class CarArrivalRouteRecoveryTest {
         val held = CarArrivalRouteRecovery(200.milliseconds).secure(
             target = target,
             outputs = outputs,
+            measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
             selectedId = selected,
             isStillEligible = { true },
             onEvent = events::add,
@@ -302,6 +310,7 @@ class CarArrivalRouteRecoveryTest {
         val held = CarArrivalRouteRecovery(100.milliseconds).secure(
             target = target,
             outputs = outputs,
+            measured = { id -> fixtureHeadsetMeasured(id, outputs.value) },
             selectedId = selected,
             isStillEligible = { eligible },
             onEvent = events::add,
@@ -317,3 +326,8 @@ class CarArrivalRouteRecoveryTest {
         assertTrue(CarArrivalRouteRecovery.Event.EligibilityLost in events)
     }
 }
+
+/** Controlled measurement port for policy tests; production reads current AudioTrack observations. */
+internal fun fixtureHeadsetMeasured(outputId: String, outputs: List<AudioOutput>): Boolean =
+    outputs.any { it.id == outputId && it.isHeadsetCandidate && it.isActive } &&
+        outputs.none { it.id != outputId && it.isActive }

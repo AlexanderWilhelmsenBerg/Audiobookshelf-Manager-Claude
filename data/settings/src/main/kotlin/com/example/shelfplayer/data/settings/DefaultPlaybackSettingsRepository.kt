@@ -122,6 +122,14 @@ class DefaultPlaybackSettingsRepository @Inject constructor(
         )
     }
 
+    override suspend fun setHeadsetButtonRouting(enabled: Boolean): AppResult<Unit> = write {
+        settings.setHeadsetButtonRouting(enabled)
+    }
+
+    override suspend fun setSonyTapDetection(enabled: Boolean): AppResult<Unit> = write {
+        settings.setSonyTapDetection(enabled)
+    }
+
     override suspend fun setAutoAdvanceSeries(enabled: Boolean): AppResult<Unit> = write {
         settings.setAutoAdvanceSeries(enabled)
     }

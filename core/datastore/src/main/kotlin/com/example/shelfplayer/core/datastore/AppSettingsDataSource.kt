@@ -526,7 +526,21 @@ class AppSettingsDataSource @Inject constructor(
             // Inverted in the store so proto3's `false` means the default, which is *on*. See the proto's
             // own comment on `auto_advance_series_disabled` for why the field is named for the other state.
             autoAdvanceSeries = !stored.autoAdvanceSeriesDisabled,
+            headsetButtonRouting = !stored.headsetButtonRoutingDisabled,
+            sonyTapDetection = stored.sonyTapDetection,
         )
+    }
+
+    suspend fun setHeadsetButtonRouting(enabled: Boolean) {
+        dataStore.updateData { current ->
+            current.toBuilder().setHeadsetButtonRoutingDisabled(!enabled).build()
+        }
+    }
+
+    suspend fun setSonyTapDetection(enabled: Boolean) {
+        dataStore.updateData { current ->
+            current.toBuilder().setSonyTapDetection(enabled).build()
+        }
     }
 
     suspend fun setAutoAdvanceSeries(enabled: Boolean) {

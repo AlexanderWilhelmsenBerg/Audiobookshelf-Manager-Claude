@@ -106,6 +106,23 @@ class PlaybackMetricsRecorderTest {
         assertEquals(0, recorder.metrics.value.rebuffers)
     }
 
+    @Test
+    fun `clearing during item loading drops startup but preserves readiness for later rebuffers`() {
+        recorder.onItemPrepared()
+        clock.advanceBy(3.seconds)
+
+        recorder.clear()
+        recorder.onBuffering()
+        recorder.onReady()
+
+        assertTrue(recorder.metrics.value.isEmpty, "the pre-clear startup must not be reported")
+        assertNull(recorder.metrics.value.lastStartup)
+
+        recorder.onBuffering()
+        assertEquals(1, recorder.metrics.value.rebuffers)
+        assertEquals(0, recorder.metrics.value.startupsMeasured)
+    }
+
     /**
      * The session's counts survive the player being released, because the screen reports the *session*.
      * What does not survive is the half-finished stopwatch, which would otherwise measure the gap between

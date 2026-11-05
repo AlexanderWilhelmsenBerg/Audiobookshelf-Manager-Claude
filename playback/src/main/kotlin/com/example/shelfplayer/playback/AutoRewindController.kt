@@ -138,7 +138,10 @@ class AutoRewindController @Inject constructor(
         val stoppedAt = pausedAt ?: return
         pausedAt = null
         val media = player ?: return
-        media.currentMediaItem ?: return
+        val item = media.currentMediaItem ?: return
+        val bookId = MediaItems.bookIdOf(item)
+        val owner = MediaItems.ownerOf(item)
+        val happenedAt = clock.now()
         val from = media.bookPosition()
         val resumeAt = AutoRewindMath.resumeAt(
             from = from,
@@ -153,8 +156,8 @@ class AutoRewindController @Inject constructor(
         // PRODUCT_SPEC PLAY-003 — the app moved the position, so it goes in the history like any other jump.
         // The transient undo notice lasts seconds; this outlives it, which matters for a rewind somebody only
         // notices two chapters later.
-        media.currentMediaItem?.let(MediaItems::bookIdOf)?.let { bookId ->
-            applicationScope.launch { history.record(bookId, PlaybackEvent.AutoRewind, from, resumeAt) }
+        applicationScope.launch {
+            history.record(bookId, PlaybackEvent.AutoRewind, from, resumeAt, at = happenedAt, owner = owner)
         }
         logger.info(
             LogCategory.Playback,

@@ -34,20 +34,23 @@ class ColdResumeDiagnosticTest {
     @Test
     fun `diagnostic selector has exactly one cold playback service call site`() {
         val source = File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt").readText()
+        val resumption = File(
+            "src/main/kotlin/com/example/shelfplayer/playback/PlaybackResumptionCallbacks.kt",
+        ).readText()
         val selectorCall = "coldResumeStartPosition.forPlaybackResumption"
 
         assertEquals(
             1,
-            source.split(selectorCall).size - 1,
+            (source + resumption).split(selectorCall).size - 1,
             "foreground Play and metadata-only resumption must not gain another diagnostic consumption site",
         )
-        val coldResumption = source
-            .substringAfter("private suspend fun resumeForPlayback()")
-            .substringBefore("private suspend fun describeResumable()")
+        val coldResumption = resumption
+            .substringAfter("suspend fun forPlayback(")
+            .substringBefore("suspend fun describe(")
         assertTrue(selectorCall in coldResumption)
         assertTrue(
             Regex(
-                """if\s*\(isForPlayback\)\s*resumeForPlayback\(\)\s*else\s*describeResumable\(\)""",
+                """if\s*\(isForPlayback\)\s*resumption.forPlayback\(claim\)\s*else\s*resumption.describe\(claim\)""",
             ).containsMatchIn(source),
             "metadata-only resumption must stay on describeResumable without consuming the one-shot",
         )

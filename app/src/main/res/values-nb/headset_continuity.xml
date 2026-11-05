@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="headset_continuity_enable">Forbedre kontinuitet i hodetelefoner</string>
+    <string name="headset_continuity_available">Bluetooth-identitet er tilgjengelig</string>
+    <string name="headset_continuity_waiting">Venter på ny oppdagelse av hodetelefonen</string>
+    <string name="headset_continuity_explanation">Valgfri tilgang til enheter i nærheten hjelper med å gjenkjenne samme Bluetooth-hodetelefon når Android Auto kobler til lyd på nytt. Ingen skanning utføres, og enhetsadresser lagres eller eksporteres aldri. Avspilling og utgangsknappene fungerer uten tilgangen. Android kan kreve en ny enhetstilkobling før identiteten blir tilgjengelig. Dette identifiserer ikke hvilken fysisk knapp som sendte Spill av. Hvis tilgangen ble avslått, kan du aktivere den i appinnstillingene.</string>
+    <string name="headset_continuity_continue">Fortsett</string>
+    <string name="headset_continuity_settings">Appinnstillinger</string>
+</resources>

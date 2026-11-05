@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="headset_continuity_enable">Improve headset continuity</string>
+    <string name="headset_continuity_available">Bluetooth identity available</string>
+    <string name="headset_continuity_waiting">Waiting for fresh headset discovery</string>
+    <string name="headset_continuity_explanation">Optional Nearby devices access helps recognize the same Bluetooth headset when Android Auto reconnects audio. No scanning is performed and device addresses are never saved or exported. Playback and the output buttons work without it. Android may require a fresh device connection before identity becomes available. This does not identify which physical button sent Play. If access was denied, you can enable it in app settings.</string>
+    <string name="headset_continuity_continue">Continue</string>
+    <string name="headset_continuity_settings">App settings</string>
+</resources>

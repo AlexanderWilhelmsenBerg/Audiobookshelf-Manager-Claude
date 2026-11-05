@@ -1,15 +1,16 @@
 package com.example.shelfplayer.playback
 
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import com.example.shelfplayer.core.model.playback.AudioOutputRole
 
 /**
  * PRODUCT_SPEC PLAY-002 / ROUTE-002 — one owner for the strongest route evidence of the loaded book.
  *
- * Android does not expose the AudioTrack's exact sink here. API 33+
- * `getAudioDevicesForAttributes` is system-policy evidence for BookWave's media attributes, not proof of
- * the device carrying this exact track. This owner therefore records where each fact came from and keeps an
- * explicit listener choice stronger than that framework observation.
+ * The router labels measured AudioTrack sinks separately from API 33+ media-policy predictions and
+ * older-platform preference fallbacks. This owner keeps that provenance while preserving an explicit
+ * listener choice as the strongest product intent. A heard route authorizes a continuity candidate;
+ * only the router's current playing-track check can authorize audible guarded playback.
  *
  * The record is generation-bound. Loading another book or emptying the queue invalidates the old evidence,
  * while the router's current explicit preference may legitimately remain in force for the next book.
@@ -20,9 +21,18 @@ internal enum class RouteHeardEvidence {
 
     /** Android reported this route while BookWave playback was observed as running. */
     FrameworkPolicyWhilePlaying,
+
+    /** The router measured this current playing AudioTrack's route. */
+    ActualAudioTrackWhilePlaying,
+
+    /** Only a selected preference was available; Android did not report this track's sink. */
+    SelectedPreferenceWhilePlaying,
+
+    /** A caller supplied activity without provenance; retain policy behavior without inventing proof. */
+    UnmeasuredActivityWhilePlaying,
 }
 
-internal class RouteHeardOwnership {
+internal class RouteHeardOwnership(internal val intentOwner: OutputIntentOwner) {
     data class HeardRoute(
         val generation: Long,
         val outputId: String,
@@ -30,25 +40,11 @@ internal class RouteHeardOwnership {
         val evidence: RouteHeardEvidence,
     )
 
-    private sealed interface ListenerIntent {
-        data object Unspecified : ListenerIntent
-
-        data class Device(val outputId: String) : ListenerIntent
-
-        /**
-         * Automatic is explicit intent too.
-         *
-         * [releasedRouteId] prevents the still-active callback caused by `select(null)` from immediately
-         * resurrecting the route the listener just released. It is part of this single ownership state, not
-         * a second release flag; it is cleared as soon as Android reports another route or the device leaves.
-         */
-        data class Automatic(val releasedRouteId: String?) : ListenerIntent
-    }
-
     private var nextGeneration = 0L
     private var activeGeneration: Long? = null
-    private var listenerIntent: ListenerIntent = ListenerIntent.Unspecified
-    private var lastExplicitSelectionSequence = 0L
+
+    /** Consumer watermark only; the authoritative sequence remains in [intentOwner]. */
+    private var lastConsumedSelectionSequence = 0L
 
     var heardRoute: HeardRoute? = null
         private set
@@ -66,10 +62,7 @@ internal class RouteHeardOwnership {
     fun onBookChanged(hasBook: Boolean) {
         heardRoute = null
         activeGeneration = if (hasBook) ++nextGeneration else null
-        listenerIntent = when (val current = listenerIntent) {
-            is ListenerIntent.Automatic -> current.copy(releasedRouteId = null)
-            else -> current
-        }
+        intentOwner.onBookChanged(activeGeneration)
     }
 
     /** Stop/queue-clear can happen without an audio-output emission, so invalidate it explicitly. */
@@ -82,36 +75,36 @@ internal class RouteHeardOwnership {
      * and temporarily refuses the just-released route, so phone and Android Auto selection paths cannot drift.
      */
     fun onExplicitSelection(
-        outputId: String?,
+        selection: OutputIntentOwner.Selection,
         outputs: List<AudioOutput>,
-        isPlaying: Boolean,
-        selectionSequence: Long? = null,
-    ) {
-        if (selectionSequence != null && selectionSequence <= lastExplicitSelectionSequence) return
-        if (selectionSequence != null) lastExplicitSelectionSequence = selectionSequence
+        isAudible: Boolean,
+    ): Boolean {
+        if (intentOwner.state.value.selection != selection || selection.sequence <= lastConsumedSelectionSequence) {
+            return false
+        }
+        lastConsumedSelectionSequence = selection.sequence
 
         val generation = activeGeneration
         val previous = heardRoute?.takeIf { it.generation == generation }
 
-        if (outputId == null) {
-            listenerIntent = ListenerIntent.Automatic(previous?.outputId)
+        if (selection.outputId == null) {
             heardRoute = null
-            if (isPlaying) observeFrameworkWhilePlaying(outputs)
-            return
+            if (isAudible) observeRouteWhilePlaying(outputs)
+            return true
         }
 
-        listenerIntent = ListenerIntent.Device(outputId)
-        val chosen = outputs.firstOrNull { it.id == outputId }
-        heardRoute = previous?.takeIf { it.outputId == outputId && chosen != null }
+        val chosen = outputs.firstOrNull { it.id == selection.outputId }
+        heardRoute = previous?.takeIf { it.outputId == selection.outputId && chosen != null }
 
-        if (isPlaying && generation != null && chosen != null) {
+        if (isAudible && generation != null && chosen != null) {
             heardRoute = chosen.asHeard(generation, RouteHeardEvidence.ListenerSelectionWhilePlaying)
         }
+        return true
     }
 
     /** The service has just observed real playback; capture the strongest route evidence available now. */
     fun onPlaybackObserved(outputs: List<AudioOutput>) {
-        observeFrameworkWhilePlaying(outputs)
+        observeRouteWhilePlaying(outputs)
     }
 
     /**
@@ -120,11 +113,12 @@ internal class RouteHeardOwnership {
      */
     fun onOutputsChanged(outputs: List<AudioOutput>, isPlaying: Boolean) {
         retireDisconnectedState(outputs)
-        if (isPlaying) observeFrameworkWhilePlaying(outputs)
+        if (isPlaying) observeRouteWhilePlaying(outputs)
     }
 
     /** The generation-bound headset a car arrival may reassert, if that same candidate is still connected. */
     fun headsetForCar(outputs: List<AudioOutput>): String? {
+        if (intentOwner.state.value.selection?.destination == OutputIntentOwner.Destination.Car) return null
         val generation = activeGeneration ?: return null
         val heard = heardRoute?.takeIf { it.generation == generation } ?: return null
         return heard.outputId.takeIf { id ->
@@ -132,39 +126,51 @@ internal class RouteHeardOwnership {
         }
     }
 
-    private fun observeFrameworkWhilePlaying(outputs: List<AudioOutput>) {
+    /** The only transient pre-arrival claim: one current-generation, measured, uniquely active headset candidate. */
+    fun measuredPlayingHeadsetForContinuity(outputs: List<AudioOutput>): String? {
+        val generation = activeGeneration ?: return null
+        val heard = heardRoute?.takeIf {
+            it.generation == generation && it.evidence == RouteHeardEvidence.ActualAudioTrackWhilePlaying
+        } ?: return null
+        val activeTracks = outputs.filter {
+            it.isActive && it.activitySource == AudioOutputActivitySource.PlayingAudioTrack
+        }
+        if (activeTracks.size != 1 || activeTracks.single().id != heard.outputId) return null
+        return headsetForCar(outputs)?.takeIf { it == heard.outputId }
+    }
+
+    private fun observeRouteWhilePlaying(outputs: List<AudioOutput>) {
         val generation = activeGeneration ?: return
         retireDisconnectedState(outputs)
 
         explicitOutput(outputs)?.let { chosen ->
             heardRoute = chosen.asHeard(generation, RouteHeardEvidence.ListenerSelectionWhilePlaying)
-        } ?: observePolicyRoute(generation, outputs)
+            intentOwner.reportHeardRoute(chosen.id)
+        } ?: observeActivityRoute(generation, outputs)
     }
 
     private fun explicitOutput(outputs: List<AudioOutput>): AudioOutput? {
-        val explicit = listenerIntent as? ListenerIntent.Device ?: return null
+        val explicit =
+            intentOwner.state.value.selection?.takeIf { it.destination == OutputIntentOwner.Destination.Output }
+                ?: return null
         return outputs.firstOrNull { it.id == explicit.outputId }
     }
 
-    private fun observePolicyRoute(generation: Long, outputs: List<AudioOutput>) {
-        val candidate = frameworkCandidate(outputs) ?: return
-        if (isJustReleased(candidate)) return
+    private fun observeActivityRoute(generation: Long, outputs: List<AudioOutput>) {
+        val candidate = activityCandidate(outputs) ?: return
+        if (intentOwner.isReleasedRoute(candidate.id)) return
 
-        clearReleaseAfterMove(candidate)
         if (!shouldKeepPreviousAgainst(candidate, outputs)) {
-            heardRoute = candidate.asHeard(generation, RouteHeardEvidence.FrameworkPolicyWhilePlaying)
+            heardRoute = candidate.asHeard(generation, candidate.heardEvidence())
+            intentOwner.reportHeardRoute(candidate.id)
         }
     }
 
-    private fun isJustReleased(candidate: AudioOutput): Boolean =
-        (listenerIntent as? ListenerIntent.Automatic)?.releasedRouteId == candidate.id
-
-    private fun clearReleaseAfterMove(candidate: AudioOutput) {
-        val automatic = listenerIntent as? ListenerIntent.Automatic ?: return
-        val released = automatic.releasedRouteId
-        if (released != null && released != candidate.id) {
-            listenerIntent = automatic.copy(releasedRouteId = null)
-        }
+    private fun AudioOutput.heardEvidence(): RouteHeardEvidence = when (activitySource) {
+        AudioOutputActivitySource.PlayingAudioTrack -> RouteHeardEvidence.ActualAudioTrackWhilePlaying
+        AudioOutputActivitySource.FrameworkMediaPolicy -> RouteHeardEvidence.FrameworkPolicyWhilePlaying
+        AudioOutputActivitySource.SelectedPreference -> RouteHeardEvidence.SelectedPreferenceWhilePlaying
+        AudioOutputActivitySource.Unmeasured -> RouteHeardEvidence.UnmeasuredActivityWhilePlaying
     }
 
     private fun shouldKeepPreviousAgainst(candidate: AudioOutput, outputs: List<AudioOutput>): Boolean {
@@ -185,7 +191,7 @@ internal class RouteHeardOwnership {
      * A speaker is demoted when exactly one non-speaker is active, matching the existing presentation rule.
      * Multiple ambiguous A2DP endpoints remain ambiguous as a set: their ordering is never ownership.
      */
-    private fun frameworkCandidate(outputs: List<AudioOutput>): AudioOutput? {
+    private fun activityCandidate(outputs: List<AudioOutput>): AudioOutput? {
         val active = outputs.filter(AudioOutput::isActive)
         val nonSpeakers = active.filterNot(AudioOutput::isSpeaker)
         if (nonSpeakers.size == 1) return nonSpeakers.single()
@@ -197,23 +203,10 @@ internal class RouteHeardOwnership {
 
     private fun retireDisconnectedState(outputs: List<AudioOutput>) {
         val connected = outputs.asSequence().map(AudioOutput::id).toSet()
+        intentOwner.onOutputDisconnected(connected)
 
         heardRoute = heardRoute?.takeIf { heard ->
             heard.generation == activeGeneration && heard.outputId in connected
-        }
-
-        listenerIntent = when (val current = listenerIntent) {
-            is ListenerIntent.Device ->
-                if (current.outputId in connected) current else ListenerIntent.Unspecified
-
-            is ListenerIntent.Automatic ->
-                if (current.releasedRouteId == null || current.releasedRouteId in connected) {
-                    current
-                } else {
-                    current.copy(releasedRouteId = null)
-                }
-
-            ListenerIntent.Unspecified -> ListenerIntent.Unspecified
         }
     }
 

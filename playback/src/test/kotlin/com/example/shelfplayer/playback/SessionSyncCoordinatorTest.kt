@@ -44,6 +44,34 @@ import kotlin.time.Duration.Companion.seconds
 class SessionSyncCoordinatorTest {
 
     @Test
+    fun `queued old pause cannot snapshot the successor after waiting for session ownership`() = runTest {
+        val repository = BlockingSessionSyncRepository()
+        val coordinator = coordinator(repository)
+        val oldBook = LibraryItemId("old-pause")
+        val newBook = LibraryItemId("new-session")
+        coordinator.attach(playerFor(oldBook, position = 12.minutes)) { it.bookPosition() }
+        repository.allowNextOpen()
+        coordinator.onSessionOpened(session(oldBook))
+        repository.started.receive()
+
+        val opening = async(start = CoroutineStart.UNDISPATCHED) { coordinator.onSessionOpened(session(newBook)) }
+        repository.started.receive()
+        var oldCommandCurrent = true
+        val queued = async(start = CoroutineStart.UNDISPATCHED) {
+            coordinator.sync(SyncTrigger.Paused) { oldCommandCurrent }
+        }
+        assertFalse(queued.isCompleted)
+        oldCommandCurrent = false
+        coordinator.attach(playerFor(newBook, position = 44.minutes)) { it.bookPosition() }
+        repository.allowNextOpen()
+        opening.await()
+
+        assertFalse(queued.await(), "authorization must be rechecked inside the serialized snapshot")
+        assertEquals(null, repository.lastSyncedSession, "the old pause must not upload the successor")
+        coordinator.detach()
+    }
+
+    @Test
     fun `a superseded prepared session does not open a row or publish bookkeeping`() = runTest {
         val repository = RecordingSessionSyncRepository()
         val coordinator = coordinator(repository)
@@ -61,7 +89,7 @@ class SessionSyncCoordinatorTest {
         val repository = BlockingSessionSyncRepository()
         val coordinator = coordinator(repository)
         val book = LibraryItemId("book-a")
-        coordinator.attach(playerFor(book, position = 42.minutes))
+        coordinator.attach(playerFor(book, position = 42.minutes)) { it.bookPosition() }
         repository.allowNextOpen()
         coordinator.onSessionOpened(session(book))
         repository.started.receive()
@@ -79,7 +107,7 @@ class SessionSyncCoordinatorTest {
         coordinator.sync(SyncTrigger.Paused)
         assertEquals("local-book-a", repository.lastSyncedSession)
         assertEquals(0, repository.closeCalls)
-        coordinator.attach(null)
+        coordinator.detach()
     }
 
     @Test
@@ -87,7 +115,7 @@ class SessionSyncCoordinatorTest {
         val repository = BlockingSessionSyncRepository()
         val coordinator = coordinator(repository)
         val book = LibraryItemId("book-a")
-        coordinator.attach(playerFor(book))
+        coordinator.attach(playerFor(book)) { it.bookPosition() }
         repository.allowNextOpen()
         coordinator.onSessionOpened(session(book))
         repository.started.receive()
@@ -102,7 +130,7 @@ class SessionSyncCoordinatorTest {
         assertTrue(accepting.isCancelled)
         assertEquals("local-book-a", repository.lastSyncedSession)
         assertEquals(0, repository.closeCalls)
-        coordinator.attach(null)
+        coordinator.detach()
     }
 
     @Test
@@ -164,12 +192,45 @@ class SessionSyncCoordinatorTest {
         val activeBook = LibraryItemId("book-a")
 
         coordinator.onSessionOpened(session(activeBook))
-        coordinator.attach(playerFor(LibraryItemId("book-b")))
+        coordinator.attach(playerFor(LibraryItemId("book-b"))) { it.bookPosition() }
 
         val accepted = coordinator.sync(SyncTrigger.Interval)
 
         assertFalse(accepted)
         assertEquals(0, repository.syncCalls)
+    }
+
+    @Test
+    fun `new book during a queued sync cannot move the old session position`() = runTest {
+        val repository = RecordingSessionSyncRepository()
+        val coordinator = coordinator(repository)
+        val old = LibraryItemId("book-a")
+        val incoming = LibraryItemId("book-b")
+        coordinator.onSessionOpened(session(old))
+        coordinator.attach(playerFor(incoming, position = 17.seconds)) { it.bookPosition() }
+
+        assertFalse(coordinator.sync(SyncTrigger.Paused))
+        assertEquals(0, repository.syncCalls)
+        coordinator.onShutdown()
+        runCurrent()
+        assertEquals(0, repository.closeCalls, "teardown must not close old session with new book position")
+        coordinator.detach()
+    }
+
+    @Test
+    fun `same book from a different profile cannot sync or close the departing session`() = runTest {
+        val repository = RecordingSessionSyncRepository()
+        val coordinator = coordinator(repository)
+        val book = LibraryItemId("book-a")
+        coordinator.onSessionOpened(session(book))
+        coordinator.attach(playerFor(book, position = 47.seconds, owner = "profile-b")) { it.bookPosition() }
+
+        assertFalse(coordinator.sync(SyncTrigger.Paused))
+        assertEquals(0, repository.syncCalls)
+        coordinator.onShutdown()
+        coordinator.detach()
+        runCurrent()
+        assertEquals(0, repository.closeCalls, "profile-b progress must not close profile-a's session")
     }
 
     @Test
@@ -179,7 +240,7 @@ class SessionSyncCoordinatorTest {
         val book = LibraryItemId("book-a")
 
         coordinator.onSessionOpened(session(book))
-        coordinator.attach(playerFor(book, position = Duration.ZERO))
+        coordinator.attach(playerFor(book, position = Duration.ZERO)) { it.bookPosition() }
 
         val accepted = coordinator.sync(SyncTrigger.TrackChanged)
 
@@ -194,7 +255,7 @@ class SessionSyncCoordinatorTest {
         val book = LibraryItemId("book-a")
 
         coordinator.onSessionOpened(session(book))
-        coordinator.attach(playerFor(book, position = 42.seconds, resumePlaceholder = true))
+        coordinator.attach(playerFor(book, position = 42.seconds, resumePlaceholder = true)) { it.bookPosition() }
 
         val accepted = coordinator.sync(SyncTrigger.Interval)
 
@@ -209,10 +270,10 @@ class SessionSyncCoordinatorTest {
         val book = LibraryItemId("book-a")
 
         coordinator.onSessionOpened(session(book))
-        coordinator.attach(playerFor(book, position = 42.seconds))
+        coordinator.attach(playerFor(book, position = 42.seconds)) { it.bookPosition() }
 
         coordinator.onShutdown()
-        coordinator.attach(null)
+        coordinator.detach()
         runCurrent()
 
         assertEquals(1, repository.closeCalls)
@@ -220,15 +281,114 @@ class SessionSyncCoordinatorTest {
         assertEquals(SyncTrigger.ServiceShutdown, repository.lastCloseTrigger)
     }
 
-    private fun kotlinx.coroutines.test.TestScope.coordinator(repository: SessionSyncRepository) =
-        SessionSyncCoordinator(
+    @Test
+    fun `route verification interval is excluded from listened duration`() = runTest {
+        val repository = RecordingSessionSyncRepository()
+        val clock = TestAppClock()
+        val volumeEffects = PlaybackVolumeEffects(clock)
+        val coordinator = coordinator(repository, clock, volumeEffects)
+        val book = LibraryItemId("book-a")
+        val player = playerFor(book, playing = { true })
+        volumeEffects.attach(player)
+        coordinator.attach(player) { it.bookPosition() }
+        coordinator.onSessionOpened(session(book))
+        coordinator.onPlayingChanged(true)
+
+        clock.advanceBy(2.minutes)
+        val claim = requireNotNull(volumeEffects.acquireRouteMute(player))
+        clock.advanceBy(5.minutes)
+        assertTrue(volumeEffects.releaseRouteMute(claim))
+        clock.advanceBy(3.minutes)
+        coordinator.onShutdown()
+        runCurrent()
+
+        assertEquals(5.minutes, repository.lastClosedProgress?.timeListened)
+    }
+
+    @Test
+    fun `verified unmute remembers current audible book without another raw Play`() = runTest {
+        val repository = RecordingSessionSyncRepository()
+        val clock = TestAppClock()
+        val volumeEffects = PlaybackVolumeEffects(clock)
+        val remembered = FakeRememberedBooks()
+        val profile = ProfileId("profile-a")
+        val book = LibraryItemId("book-a")
+        val coordinator = coordinator(
+            repository,
+            clock,
+            volumeEffects,
+            RememberedBookRecorder(remembered, backgroundScope),
+        )
+        val player = playerFor(book, playing = { true })
+        volumeEffects.attach(player)
+        coordinator.attach(player) { it.bookPosition() }
+        coordinator.onSessionOpened(session(book))
+        val claim = requireNotNull(volumeEffects.acquireRouteMute(player))
+        coordinator.onPlayingChanged(true)
+        runCurrent()
+        assertEquals(null, remembered.valueFor(profile), "route-muted playback is not remembered as audible")
+
+        assertTrue(volumeEffects.releaseRouteMute(claim))
+        runCurrent()
+
+        assertEquals(book, remembered.valueFor(profile))
+    }
+
+    @Test
+    fun `paused or retired route mute cleanup does not remember a book`() = runTest {
+        val clock = TestAppClock()
+        val volumeEffects = PlaybackVolumeEffects(clock)
+        val remembered = FakeRememberedBooks()
+        val profile = ProfileId("profile-a")
+        val book = LibraryItemId("book-a")
+        val coordinator = coordinator(
+            RecordingSessionSyncRepository(),
+            clock,
+            volumeEffects,
+            RememberedBookRecorder(remembered, backgroundScope),
+        )
+        val paused = playerFor(book, playing = { false })
+        val successor = playerFor(LibraryItemId("book-b"), playing = { false })
+        volumeEffects.attach(paused)
+        coordinator.attach(paused) { it.bookPosition() }
+        val pausedClaim = requireNotNull(volumeEffects.acquireRouteMute(paused))
+        assertTrue(volumeEffects.releaseRouteMute(pausedClaim))
+        runCurrent()
+        assertEquals(null, remembered.valueFor(profile), "a paused verification cannot claim audible ownership")
+
+        val retiredClaim = requireNotNull(volumeEffects.acquireRouteMute(paused))
+        volumeEffects.attach(successor)
+        assertTrue(volumeEffects.releaseRouteMute(retiredClaim))
+        runCurrent()
+
+        assertEquals(null, remembered.valueFor(profile), "retired-player cleanup cannot claim a successor book")
+    }
+
+    private fun kotlinx.coroutines.test.TestScope.coordinator(
+        repository: SessionSyncRepository,
+    ): SessionSyncCoordinator {
+        val clock = TestAppClock()
+        return coordinator(repository, clock, volumeEffectsForTest(UnconfinedTestDispatcher(testScheduler), clock))
+    }
+
+    private fun kotlinx.coroutines.test.TestScope.coordinator(
+        repository: SessionSyncRepository,
+        clock: TestAppClock,
+        volumeEffects: PlaybackVolumeEffects,
+        rememberedBookRecorder: RememberedBookRecorder = RememberedBookRecorder.None,
+    ): SessionSyncCoordinator {
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        return SessionSyncCoordinator(
             repository = repository,
             baseline = ResumeBaseline(),
-            clock = TestAppClock(),
+            clock = clock,
             logger = NO_OP_LOGGER,
+            rememberedBookRecorder = rememberedBookRecorder,
+            volumeEffects = volumeEffects,
             applicationScope = backgroundScope,
-            mainDispatcher = UnconfinedTestDispatcher(testScheduler),
+            mainDispatcher = dispatcher,
         )
+    }
 
     private fun session(bookId: LibraryItemId) = PlaybackSession(
         id = "remote-${bookId.value}",
@@ -247,9 +407,11 @@ class SessionSyncCoordinatorTest {
         bookId: LibraryItemId,
         position: Duration = 10.seconds,
         resumePlaceholder: Boolean = false,
+        owner: String = "profile-a",
+        playing: () -> Boolean = { false },
     ): Player {
         val extras = Bundle().apply {
-            putString(MediaItems.KEY_OWNER_PROFILE_ID, "profile-a")
+            putString(MediaItems.KEY_OWNER_PROFILE_ID, owner)
             putBoolean(MediaItems.KEY_RESUME_PLACEHOLDER, resumePlaceholder)
         }
         val item = MediaItem.Builder()
@@ -264,6 +426,7 @@ class SessionSyncCoordinatorTest {
                 "getCurrentMediaItem" -> item
                 "getCurrentPosition" -> position.inWholeMilliseconds
                 "getDuration" -> 60.minutes.inWholeMilliseconds
+                "isPlaying" -> playing()
                 else -> defaultValue(method.returnType)
             }
         } as Player

@@ -67,6 +67,10 @@ internal class CarContinuityRecoveryCoordinator(
     fun isCurrent(target: CarArrivalResumeGate.Target, generation: Long?, selectionSequence: Long): Boolean =
         gate.isCurrent(target, generation, selectionSequence)
 
+    fun remainingWindow(target: CarArrivalResumeGate.Target): Duration? = gate.remainingWindow(target)
+
+    fun episodeValid(target: CarArrivalResumeGate.Target): Boolean = gate.episodeValid(target)
+
     fun invalidationReason(target: CarArrivalResumeGate.Target, generation: Long?, selectionSequence: Long): String =
         when {
             generation != target.generation -> "generation-changed"
@@ -88,6 +92,11 @@ internal class CarContinuityRecoveryCoordinator(
         awaiting = null
     }
 
+    fun routeSafetyPause(at: Duration) {
+        gate.onRouteSafetyPause(at)
+        awaiting = null
+    }
+
     fun playbackBecameActive(generation: Long?, selectionSequence: Long): CarArrivalResumeGate.Target? {
         val candidate = awaiting
         awaiting = null
@@ -100,6 +109,15 @@ internal class CarContinuityRecoveryCoordinator(
         awaiting = null
     }
 
+    fun clearAwaiting(target: CarArrivalResumeGate.Target) {
+        if (awaiting === target) awaiting = null
+    }
+
+    /** Effect completion/cancellation may retire its own episode, never a newer one. */
+    fun discard(target: CarArrivalResumeGate.Target) {
+        gate.cancelRecovery(target)
+    }
+
     fun notePlayIssued(target: CarArrivalResumeGate.Target) {
         awaiting = target
     }
@@ -110,6 +128,8 @@ internal class CarContinuityRecoveryCoordinator(
         selectedId: StateFlow<String?>,
         currentGeneration: () -> Long?,
         selectionSequence: () -> Long,
+        measured: (String) -> Boolean,
+        canProbe: (String) -> Boolean = { false },
         onEvent: (CarArrivalRouteRecovery.Event) -> Unit = {},
         reassert: suspend (String) -> Boolean,
     ): String? = routeRecovery.secure(
@@ -117,7 +137,10 @@ internal class CarContinuityRecoveryCoordinator(
         outputs = outputs,
         selectedId = selectedId,
         isStillEligible = { gate.isCurrent(target, currentGeneration(), selectionSequence()) },
+        measured = measured,
+        canProbe = canProbe,
         onEvent = onEvent,
+        recoveryWindowOverride = gate.remainingWindow(target),
         reassert = reassert,
     )
 
@@ -132,19 +155,20 @@ internal class CarContinuityRecoveryCoordinator(
         CarContinuityPlayPrecheck.NoPlayer,
         CarContinuityPlayPrecheck.AlreadyPlaying,
         -> {
-            cancelPending()
-            clearAwaiting()
+            discard(target)
+            clearAwaiting(target)
             Assessment(precheck)
         }
 
         CarContinuityPlayPrecheck.EmptyQueue -> {
-            cancelAll()
+            if (gate.cancelRecovery(target)) gate.cancelAll()
+            clearAwaiting(target)
             Assessment(precheck)
         }
 
         CarContinuityPlayPrecheck.Proceed -> {
             val consumed = gate.consumeRecovery(target, currentGeneration, securedHeadsetId, selectionSequence)
-            if (!consumed.accepted) awaiting = null
+            if (!consumed.accepted) clearAwaiting(target)
             Assessment(precheck, consumed)
         }
     }

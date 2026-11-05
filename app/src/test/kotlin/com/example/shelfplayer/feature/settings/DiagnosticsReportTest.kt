@@ -10,9 +10,14 @@ import com.example.shelfplayer.core.model.library.Library
 import com.example.shelfplayer.core.model.library.LibraryKind
 import com.example.shelfplayer.core.model.playback.PlaybackMetrics
 import com.example.shelfplayer.core.model.realtime.RealtimeStatus
+import com.example.shelfplayer.diagnostics.CrashReportFile
+import com.example.shelfplayer.diagnostics.CrashReportFormatter
 import com.example.shelfplayer.domain.usecase.ServerDiagnostics
+import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import java.time.Instant
+import kotlin.io.path.createTempDirectory
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -109,6 +114,48 @@ class DiagnosticsReportTest {
         assertTrue(report.contains("[previous crash]"))
         assertTrue(report.contains("source: uncaught_exception"))
         assertTrue(report.contains("exception: java.lang.IllegalStateException"))
+    }
+
+    @Test
+    fun `clear all removes prior crash before a new diagnostic export`() = runTest {
+        val directory = createTempDirectory("bookwave-unified-clear").toFile()
+        try {
+            val crashFile = CrashReportFile(directory)
+            val crash = CrashReportFormatter.processExit(
+                at = Instant.ofEpochMilli(1234),
+                app = "0.9.9 release abc123 main",
+                sdk = 36,
+                reason = "ANR",
+                reasonCode = 6,
+                status = 0,
+                importance = 100,
+            )
+            assertTrue(crashFile.write(crash))
+            assertTrue(crashFile.markExitHandled(1234))
+            var eventLog = listOf(LoggedEvent(Instant.EPOCH, LogLevel.Warn, "Playback", "old-event"))
+
+            clearAllDiagnosticSources(
+                clearCaptures = { eventLog = emptyList() },
+                clearCrashReport = { crashFile.clearReport() },
+            )
+
+            val report = DiagnosticsReport.of(
+                appVersion = "0.9.9",
+                state = state(),
+                metrics = PlaybackMetrics.Empty,
+                events = eventLog,
+                at = Instant.EPOCH,
+                previousCrash = crashFile.read()?.text,
+            )
+
+            assertTrue(report.contains("[previous crash]"))
+            assertTrue(report.contains("none"))
+            assertFalse(report.contains("ANR"))
+            assertFalse(report.contains("old-event"))
+            assertEquals(1234, crashFile.handledExitTimestamp())
+        } finally {
+            directory.deleteRecursively()
+        }
     }
 
     /** The counts a supporter actually asks for, present and labelled. */

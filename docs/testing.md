@@ -123,3 +123,13 @@ checks do not. The [Garmin Phase 1 log](https://github.com/AlexanderWilhelmsenBe
 bridge test methods at `6239a148` are source inventory only: no passing execution is recorded here.
 Require forced strict verification after its classpath change, common wire fixtures and actual caller/
 lifecycle/privacy coverage before transport acceptance. Documentation reconciliation runs no phone tests.
+
+### Output handoff transaction
+
+The [current handoff contract and device matrix](architecture/output-handoff-transaction.md) replace the
+historical two-correction sequence. `OutputTransferTransactionTest` covers waiting for destination before
+restoration, single-cycle refusal, healthy same-target preservation and synchronous route/selection changes.
+Existing settling, buffer, scope and position suites retain fail-closed/progress coverage with one live
+restoration. `AudioTrackTimingCaptureTest` and `AudioTrackRouteQueryTest` cover opt-in/no-query behavior,
+callback bounds, replacement/release and unavailable timestamps. The real Media3 integration also installs
+the production output provider. None of these tests substitutes for physical Auto/headset acceptance.

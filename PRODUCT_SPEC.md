@@ -295,6 +295,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - A `401` from an authenticated Audiobookshelf request first uses one shared, generation-aware renewal
   coordinator. A renewable session is renewed once and the failed operation is retried once; a missing or
   refused refresh token marks the profile as requiring reauthentication.
+- Background playback session sync, close, and offline outbox upload use the same bounded renewal path.
+  They remain bound to the profile captured by the durable session row or drain, including across a profile
+  switch; failed requests keep their outbox rows and unsynced progress until the server accepts the position.
 - Existing downloaded playback continues.
 - An active Audiobookshelf stream that receives `401` renews once, creates a fresh authenticated media data
   source, and retries that range request once. A second `401` is surfaced without another renewal.
@@ -390,7 +393,44 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Incoming calls and navigation prompts behave according to Android audio focus.
 - Disconnecting headphones while playing pauses immediately.
 - Playback never unexpectedly moves from headphones to the phone speaker.
+- Android Auto discovery must preserve an already verified, healthy headset route without a preference
+  reset or artificial waiting delay. Android focus loss or unavailable actual output still pauses safely.
+- An internal route-safety pause retains prior heard intent for the existing bounded car-continuity
+  decision; it is not listener Pause and cannot alone authorize Play. Listener Pause and newer
+  selection/book/profile/player context still invalidate recovery.
+- Exact unique A2DP addresses may correlate endpoint handle changes in process memory only. Missing,
+  placeholder or ambiguous identity never falls back to a device name. A real gap invalidates live proof;
+  return requires current inventory and fresh actual-track verification, not automatic unmute.
 - Reconnecting a route follows the configured per-device policy.
+- The player output chooser can explicitly keep audio on the current output only while a loaded book is
+  playing through one fresh, exact mapped AudioTrack route; predicted, missing, conflicting and duplicate
+  endpoint evidence cannot arm this choice.
+- An explicit output lock retains its logical target across ordinary pause/resume and nonempty book changes,
+  while invalidating old physical proof at book/player boundaries. Route loss or uncertainty fails closed;
+  a new appearance never rebinds by name or starts playback automatically. The listener can release the lock.
+- An ordinary disconnected headset selection, without an explicit lock, may return to Automatic only with
+  positive car-absence evidence and no controller or retained projection ownership. Pause before clearing
+  the native preference; a later deliberate Play follows normal routing. Unknown/active Auto, pending
+  route verification and newer intent retain protection. This does not infer a replacement's button identity.
+- Explicit destination changes mute before preference effects and commit only with current target-specific
+  AudioTrack proof. The prior lock remains recovery context until success; failed or unknown output stays
+  safely paused. Car projection delegation must be distinguished from proof of a physical car speaker.
+  Selecting an already measured healthy destination may preserve the unmuted output without a preference
+  request or seek; pending probes cannot bypass verification and proof is rechecked around publication.
+- Transfer preserves heard position, queue, speed, history and sleep state, and never manufactures Play.
+  Shared position reads remain held during verification. At final validation a successful transfer permits
+  at most 50ms of normal post-seek media-clock settling. A transfer waits for its destination before one
+  live position restoration. An advancing explicit transfer may prepare up to 250ms of playback time
+  before the held point, silently, and await that point through a cancellable Media3 position message.
+  Shared progress remains held; final target proof and the same 0–50ms allowance still apply. This
+  preparation is clamped at the book start and scaled by playback speed, not an extra skip allowance.
+  Larger or backward movement at final validation then pauses before restoring the held point,
+  without another live seek/proof cycle.
+  Newer command/selection/book/profile/attachment wins; rollback requires fresh unique original-route proof.
+- A confirmed physical car-projection departure with no recoverable Car playback may retire only the exact
+  unlocked Car choice while PlayWhenReady is false. It leaves playback paused and sets no output-release
+  suppression; later intentional Play follows normal Automatic policy. Unknown projection, controller churn,
+  pending Play, accepted recovery, newer choices and retained explicit output locks are preserved.
 
 ### PLAY-003 Playback queue and tracks
 
@@ -516,6 +556,13 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - When the user presses Play on a connected headset, Android routes the command to the media session and the last item for the active profile resumes when platform policy permits.
 - If no playable item exists, the command does nothing and logs a non-fatal diagnostic.
 - A media-button command is treated as explicit user intent and may start playback.
+- During Android Auto, a fresh Play from a verified dashboard controller requests Car. With headset-button
+  routing enabled (default), a recognized headset-style media key followed by its Play can request the one
+  recognizable live headset. Multiple candidates require evidence for the exact headset. Anonymous Play,
+  Pause and connection alone do not select a new output. An explicit output lock takes precedence.
+- Optional WF-1000XM6 tap detection defaults off. BookWave must leave the Sony control channel alone whenever
+  Sony Sound Connect is installed and enabled. A tap can supply identity to the pending key but cannot start
+  playback. All transfers use the existing output handoff and actual-track verification.
 - Playback resumption metadata is published for Android system media controls.
 - When a Media3 playback service is recreated with no current item, BookWave may publish the active profile's
   last resumable book as an idle current item without opening a server playback session or starting audio.
@@ -1441,6 +1488,10 @@ Never show stack traces in ordinary UI.
 - Redact authorization, cookies, password fields, tokens in URLs, local filesystem paths, server host, username, media title, and description by default.
 - Debug builds may enable expanded local logging through a developer toggle.
 - Diagnostic export is ZIP/JSON/text with explicit redaction report.
+- Unified diagnostics provides Clear all before a new test: stop recording, clear retained captures,
+  playback diagnostic counters and the saved crash report, and await stored trace deletion before
+  allowing another capture. Clearing must not erase listening progress, history or library data, or
+  cause an already-handled historical Android crash to reappear on restart.
 - No analytics or crash service by default.
 - Any future crash reporting is opt-in and strips private content.
 

@@ -40,14 +40,12 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
-import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.library.Bookmark
 import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.SkipIntervals
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.core.model.playback.SyncTrigger
-import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.domain.lock.ProfileLockGuard
 import com.example.shelfplayer.domain.playback.ResumeBaseline
 import com.example.shelfplayer.domain.repository.BookmarkRepository
@@ -63,8 +61,6 @@ import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
-import com.google.common.util.concurrent.MoreExecutors
-import com.google.common.util.concurrent.SettableFuture
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -78,8 +74,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
@@ -131,6 +125,9 @@ class PlaybackService : MediaLibraryService() {
     /** PRODUCT_SPEC PLAY-002 — the chooser's half that can actually move audio: see [AudioOutputRouter]. */
     @Inject
     internal lateinit var audioOutputs: AudioOutputRouter
+
+    @Inject
+    internal lateinit var volumeEffects: PlaybackVolumeEffects
 
     /** PRODUCT_SPEC 6.4 step 6 — what to play when a book ends, or nothing. See [advanceToNextInSeries]. */
     @Inject
@@ -249,23 +246,36 @@ class PlaybackService : MediaLibraryService() {
     @Dispatcher(ShelfDispatcher.MainImmediate)
     internal lateinit var mainDispatcher: CoroutineDispatcher
 
-    private val coldStartToggleGate = ColdStartToggleGate()
+    @Inject
+    @Dispatcher(ShelfDispatcher.Io)
+    internal lateinit var buttonIoDispatcher: CoroutineDispatcher
+
+    private val buttonRouting by lazy(LazyThreadSafetyMode.NONE) {
+        ServiceButtonRouting(
+            audioOutputs,
+            clock,
+            {
+                ButtonPlayScope(
+                    positionEffects.authority(),
+                    audioOutputs.explicitSelection.value?.sequence,
+                    audioOutputs.outputIntentOwner.state.value.activeBookGeneration,
+                )
+            },
+            { carLifecycle.connectedForSleepTimer },
+            CAR_PACKAGES,
+        )
+    }
+
+    @Inject
+    internal lateinit var coldStartToggleGate: ColdStartToggleGate
     private var serviceStartedAt: Duration = Duration.ZERO
     private var player: ExoPlayer? = null
+    private lateinit var activeProfileGeneration: () -> Long
     private var session: MediaLibrarySession? = null
     private var journal: Job? = null
     private var sleepTimerWatch: Job? = null
     private var skipWatch: Job? = null
     private var outputWatch: Job? = null
-
-    /**
-     * BW-SLEEP-01 — Media3 can ask for a cold playback resumption and then issue the Play itself.
-     *
-     * The next forwarding-player Play after that callback is deliberately not classified as an explicit
-     * replay for sleep-schedule purposes. A later ordinary controller Play is. This keeps process/lifecycle
-     * restoration from manufacturing the user intent required after an automatic timer has expired.
-     */
-    private var passiveResumptionPlayPending = false
 
     /**
      * Issue #88 — invalidates a suspended holder-to-play materialization when a newer controller command wins.
@@ -282,6 +292,18 @@ class PlaybackService : MediaLibraryService() {
     /** Only the newest failed stream may retry; book changes and successful playback cancel older delays. */
     private var pendingRecoveryRetry: Job? = null
 
+    /** One synchronous gate for every service-owned raw prepare/Play activation. */
+    internal val playbackCommandEffects: PlaybackCommands by lazy(LazyThreadSafetyMode.NONE) {
+        PlaybackCommandEffects(
+            currentPlayer = { player },
+            itemGeneration = { mediaItemGeneration },
+            isAttached = audioOutputs::isAttachedPlayer,
+            protectOutput = { expectedPlayer, willStartAudio, holdForSeek ->
+                audioOutputs.protectManualPlayOnGuardedHeadset(expectedPlayer, willStartAudio, holdForSeek)
+            },
+        )
+    }
+
     /**
      * PLAY-001 / ROUTE-002 / issue #257 — one service-owned claim for delayed recovery and automatic
      * media replacement. The controller generation remains the existing Media3 freshness authority;
@@ -292,7 +314,9 @@ class PlaybackService : MediaLibraryService() {
             currentPlayer = { player },
             commandGeneration = { controllerCommandGeneration },
             itemGeneration = { mediaItemGeneration },
-            profileGeneration = { auto.activeProfileGeneration() },
+            profileGeneration = { activeProfileGeneration() },
+            explicitSelectionSequence = ::currentExplicitSelectionSequence,
+            commands = playbackCommandEffects,
             acceptPrepared = { prepared, authorized, install ->
                 bookChanges.acceptBook(prepared.session, authorized, install)
             },
@@ -328,7 +352,17 @@ class PlaybackService : MediaLibraryService() {
      * Explicit listener output intent is fed through [AudioOutputRouter.explicitSelection]; Android route
      * policy is observed only while this player is actually playing. See [RouteHeardOwnership].
      */
-    private val routeOwnership = RouteHeardOwnership()
+    internal val routeOwnership: RouteHeardOwnership by lazy(LazyThreadSafetyMode.NONE) {
+        RouteHeardOwnership(audioOutputs.outputIntentOwner)
+    }
+
+    private val routeObservationEffects by lazy(LazyThreadSafetyMode.NONE) {
+        PlaybackRouteObservationEffects(
+            currentPlayer = { player },
+            volumeEffects = volumeEffects,
+            onAudible = ::onRouteAudible,
+        )
+    }
 
     /**
      * Issue #36 — one owner correlates measured audio-focus loss with car arrival or final departure.
@@ -336,40 +370,24 @@ class PlaybackService : MediaLibraryService() {
      * The route recovery can tolerate Android's transient device-list omission but can target only the exact
      * headset captured by this policy. continuityPlayAwaiting is diagnostic only; it never authorizes Play.
      */
-    private val carContinuity = CarArrivalResumeGate()
-    private val carRecovery = CarContinuityRecoveryCoordinator(carContinuity)
-    private var projectionState = AndroidAutoProjectionMonitor.State.Unknown
-    private var projectionOwnsCarLifecycle = false
-
-    /**
-     * True only after a car media session has actually become established for continuity classification.
-     *
-     * Projection may start before the first Gearhead binding; that interval is still Arrival. Physical
-     * projection exit clears this immediately even if a legacy MediaSession controller remains bound.
-     */
-    private var carContinuitySessionEstablished = false
-
-    /**
-     * Issues #36/#88 — one correlation timeline across focus/projection/controller/browse Media3 events.
-     *
-     * A focus loss can precede Gearhead's first bind, so a trace may start before the controller is known.
-     * A later car bind reuses a recent pending trace rather than starting a second timeline for one ignition.
-     */
-    private var autoTraceSequence = 0L
-    private var activeAutoTrace: AutoTrace? = null
-
-    private data class AutoTrace(val id: Long, val startedAt: Duration, val source: String) {
-        val correlationId: String get() = "auto-$id"
-    }
-
-    private data class ChildrenTraceContext(
-        val parentId: String,
-        val page: Int,
-        val pageSize: Int,
-        val allCount: Int,
-        val entryPlayer: List<LogField>,
-        val startedAt: Duration,
+    private val carContinuity = CarArrivalResumeGate(
+        now = { clock.elapsed() },
+        trustedIdentity = { audioOutputs.localOutputs.retainsIdentity(it) },
     )
+    private val carRecovery = CarContinuityRecoveryCoordinator(carContinuity)
+
+    /**
+     * Owns existing controller/projection lifecycle latches, separate from Media3, route policy
+     * and the physical AudioTrack. Lazy because Android injects CarConnections before onCreate.
+     */
+    internal val carLifecycle by lazy { CarLifecycleAuthority(carConnections) }
+
+    /** One owner for correlation, bounded reuse and privacy-safe Android Auto diagnostics. */
+    private val autoTraces by lazy {
+        AndroidAutoTraceRecorder(logger, clock) {
+            AndroidAutoDiagnostics.playerFields(player) + carSnapshotFields()
+        }
+    }
 
     /** PRODUCT_SPEC PLAY-001 — how many times a failing stream may be re-prepared before the user is told. */
     private val recovery = PlaybackRecovery()
@@ -384,6 +402,10 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        activeProfileGeneration = auto::activeProfileGeneration
+        audioOutputs.currentProjection = { carLifecycle.projectionState.carConnected }
+        audioOutputs.confirmedCarAbsent = { carLifecycle.definitelyAbsent }
+        audioOutputs.lastHeardRouteId = { routeOwnership.heardRoute?.outputId }
         serviceStartedAt = clock.elapsed()
         audioRouteLab.serviceStarted()
         scope = CoroutineScope(SupervisorJob() + mainDispatcher)
@@ -399,37 +421,7 @@ class PlaybackService : MediaLibraryService() {
             .also { player = it }
         exoPlayer.addListener(PlayerEvents())
         resumeFreshness.attach(exoPlayer)
-        val sessionPlayer = ResumeFreshnessPlayer(
-            delegate = exoPlayer,
-            preparePlay = {
-                val generation = controllerCommandGeneration
-                future { handleFreshnessPlay(generation) }
-            },
-            consumeFreshStart = resumeFreshness::consumeFreshStart,
-            invalidate = { origin ->
-                controllerCommandGeneration += 1
-                resumeFreshness.invalidate(origin)
-                sleepTimer.onResumeInvalidation(origin)
-            },
-            onPlayWhenReadyRequest = { requestedPlay ->
-                controllerCommandGeneration += 1
-                logControllerTransportRequest(requestedPlay, exoPlayer)
-                routeExplicitCarPlay(requestedPlay, exoPlayer)
-                // A duplicate Pause still matters, even if the raw player emits no state transition.
-                sleepTimer.onControllerTransportIntent()
-                // A controller's Play/Pause is newer listener intent even when ExoPlayer is already in that
-                // state and therefore emits no onPlayWhenReadyChanged callback. Automatic continuity uses the
-                // raw ExoPlayer and bypasses this forwarding boundary, so it cannot cancel itself here.
-                if (requestedPlay) {
-                    carRecovery.cancelPending()
-                } else {
-                    carRecovery.cancelAll()
-                }
-                carRecovery.clearAwaiting()
-            },
-            // #197 — headset Previous/Back become the configured relative skip.
-            skipIntervals = { skips },
-        )
+        val sessionPlayer = createSessionPlayer(exoPlayer)
         // Issue #91 — controllers see the forwarding player; service-owned timers/sync/routing below keep
         // the raw ExoPlayer so internal atomic operations cannot recursively enter the external Play gate.
         val mediaSession = MediaLibrarySession.Builder(this, sessionPlayer, LibraryCallback())
@@ -444,16 +436,27 @@ class PlaybackService : MediaLibraryService() {
         // Issue #75 — publish only after the real MediaSession exists. A direct session token lets a
         // recreated Activity attach to this exact session without using the service token that can start us.
         liveSession.publish(mediaSession.token)
+        // Attach route/volume ownership before sleep and sync observe the successor. A retiring probe may
+        // restore only its own old player and cannot emit an audible-resume event into the new observers.
+        installPositionCheckpointHandlers()
+        attachRouteSafetyMonitor(exoPlayer)
+        buttonRouting.sony = SonyTapMonitor(
+            this,
+            scope,
+            mainDispatcher,
+            buttonIoDispatcher,
+            buttonRouting::sonyTap,
+            audioOutputs.localOutputs::buttonOutputForAddress,
+        )
+        buttonRouting.settings(settings)
+        routeObservationEffects.attach()
         attachSleepTimer(exoPlayer)
         // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does. It is given the
         // player rather than owning one, for the same reason the timer is: there is exactly one.
-        sessionSync.attach(exoPlayer)
+        sessionSync.attach(exoPlayer, ::effectiveBookPosition)
         autoRewind.attach(exoPlayer) {
             resumeFreshness.invalidate(ResumeInvalidation.AutoRewind)
         }
-        // PRODUCT_SPEC PLAY-002 — after the player exists and before anything can be chosen. A preference
-        // set on a released player routes nothing, so this is re-run on every player this service builds.
-        attachRouteSafetyMonitor(exoPlayer)
         startJournal()
         observeSleepTimer()
         observeSkipIntervals()
@@ -467,20 +470,101 @@ class PlaybackService : MediaLibraryService() {
     private fun attachRouteSafetyMonitor(exoPlayer: ExoPlayer) {
         audioTrackRouteMonitor.onRouteChanged = audioOutputs::onActualTrackRouteChanged
         audioOutputs.attach(exoPlayer, audioTrackRouteMonitor::currentRouteIds)
+        audioOutputs.currentTrackObservation = audioTrackRouteMonitor::currentRouteObservation
+        audioOutputs.onActualTrackRouteChanged()
     }
+
+    internal fun installPositionCheckpointHandlers() {
+        positionEffects.install()
+    }
+
+    private val positionEffects by lazy(LazyThreadSafetyMode.NONE) {
+        MutedPositionEffects(
+            audioOutputs,
+            object : MutedPositionEffects.Source {
+                override fun player(): ExoPlayer? = this@PlaybackService.player
+                override fun context() = MutedPositionEffects.Context(
+                    controllerCommandGeneration,
+                    mediaItemGeneration,
+                    activeProfileGeneration(),
+                )
+
+                override fun onSettlingRefused(advance: Duration) {
+                    logger.info(
+                        LogCategory.Playback,
+                        "Muted output verification refused excessive post-seek clock movement",
+                        LogField.Millis("advance", advance.inWholeMilliseconds),
+                    )
+                }
+
+                override fun onCompensated(advance: Duration) {
+                    logger.info(
+                        LogCategory.Playback,
+                        "Muted output position compensated",
+                        LogField.Millis("advance", advance.inWholeMilliseconds),
+                    )
+                }
+
+                override fun onPrepared(probe: HeadsetRouteGuard.Probe, bufferedSeek: Boolean) {
+                    logger.info(
+                        LogCategory.Playback,
+                        "Muted output proof preparation completed",
+                        LogField.Public("stage", "SingleRestore"),
+                        LogField.Public(
+                            "speedMilli",
+                            (
+                                probe.player.playbackParameters.speed *
+                                    PLAYBACK_PARAMETER_SCALE
+                                ).toInt(),
+                        ),
+                        LogField.Public(
+                            "pitchMilli",
+                            (
+                                probe.player.playbackParameters.pitch *
+                                    PLAYBACK_PARAMETER_SCALE
+                                ).toInt(),
+                        ),
+                        LogField.Public("bufferedSeek", bufferedSeek),
+                        LogField.Public("proofEpoch", probe.preferenceEpoch),
+                        LogField.Public(
+                            "requestGeneration",
+                            probe.transferRequest?.bookGeneration?.toString() ?: "none",
+                        ),
+                        LogField.Public(
+                            "requestSelection",
+                            probe.transferRequest?.selection?.sequence?.toString() ?: "none",
+                        ),
+                    )
+                }
+            },
+        )
+    }
+
+    private fun effectiveBookPosition(target: Player): Duration = positionEffects.position(target)
 
     /**
      * A new Play from Android Auto is an explicit request for car audio, unlike car binding.
      * Keep route changes outside the onCreate forwarding-player lambda: the shared policy
      * remains testable and a duplicate Play does not steal a healthy headset route.
      */
-    private fun routeExplicitCarPlay(requestedPlay: Boolean, mediaPlayer: ExoPlayer) {
+    private fun routeExplicitCarPlay(requestedPlay: Boolean, mediaPlayer: ExoPlayer): Boolean {
         val requestingController = session?.controllerForCurrentRequest
-        val isCarController = requestingController != null && requestingController.packageName in CAR_PACKAGES
-        if (!shouldSelectCarForControllerPlay(requestedPlay, isCarController, mediaPlayer.playWhenReady)) return
-        audioOutputs.selectCar()
+        val isCarController = requestingController != null && requestingController.isPackageNameVerified &&
+            requestingController.packageName in CAR_PACKAGES
+        if (!shouldSelectCarForControllerPlay(
+                requestedPlay,
+                isCarController,
+                mediaPlayer.playWhenReady,
+                mediaPlayer.playerError != null,
+            )
+        ) {
+            return true
+        }
+        if (audioOutputs.outputLock.value != null) return true
+        if (!audioOutputs.selectCarFromGenericController()) return false
         syncExplicitOutputIntent()
-        logAuto("Android Auto Play selected the car audio route", fields = carSnapshotFields())
+        autoTraces.log("Android Auto Play selected the car audio route", fields = carSnapshotFields())
+        return true
     }
 
     /**
@@ -489,7 +573,10 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun logControllerTransportRequest(requestedPlay: Boolean, mediaPlayer: ExoPlayer) {
         val requestingController = session?.controllerForCurrentRequest
-        logAuto(
+        if (audioRouteLab.state.value.recording) {
+            audioRouteLab.controllerTransport(requestedPlay, mediaInputController(requestingController))
+        }
+        autoTraces.log(
             "MediaSession transport request observed",
             fields = buildList {
                 add(LogField.Public("requested", if (requestedPlay) "Play" else "Pause"))
@@ -633,7 +720,66 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
+        // MediaButtonReceiver starts this service in the foreground before Media3 asks for a session.
+        // If the cold-start safety gate consumes that receiver event later in onMediaButtonEvent, no
+        // playback starts and Android tears the service down for missing its foreground promotion.
+        // Reject only this exact Media3 fallback request when the same gate says to consume its event.
+        // Media3's onStartCommand handles a null session through stopSelfSafely(), completing the
+        // foreground-service start without manufacturing a playback notification or opening media.
+        if (isSuppressedReceiverStart(controllerInfo)) {
+            logger.info(LogCategory.Playback, "Cold virtual Bluetooth toggle consumed before service resume")
+            return null
+        }
+        return session
+    }
+
+    private fun isSuppressedReceiverStart(controllerInfo: MediaSession.ControllerInfo): Boolean {
+        if (!isMediaButtonReceiver(controllerInfo)) return false
+        val hints = controllerInfo.connectionHints
+        val extras = hints.getBundle(MediaLibraryService.CONNECTION_HINT_KEY_INTENT_EXTRAS) ?: return false
+        val intent = Intent(Intent.ACTION_MEDIA_BUTTON).putExtras(extras)
+        val keyEvent = mediaButtonKeyEvent(intent) ?: return false
+        if (audioRouteLab.state.value.recording) {
+            audioRouteLab.mediaButtonInput(
+                keyEvent,
+                mediaInputController(controllerInfo),
+                MediaInputEntry.ReceiverStart,
+            )
+        }
+        return shouldConsumeColdStartToggle(keyEvent, controllerInfo.packageName)
+    }
+
+    private fun mediaInputController(controller: MediaSession.ControllerInfo?): MediaInputController =
+        MediaInputController.capture(controller, Process.myUid(), CAR_PACKAGES)
+
+    private fun isMediaButtonReceiver(controllerInfo: MediaSession.ControllerInfo): Boolean =
+        controllerInfo.connectionHints.getString(MediaLibraryService.CONNECTION_HINT_KEY_CONTROLLER_INFO_TYPE) ==
+            Intent.ACTION_MEDIA_BUTTON
+
+    private fun mediaButtonKeyEvent(intent: Intent): KeyEvent? {
+        @Suppress("DEPRECATION")
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+        } else {
+            intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT)
+        }
+    }
+
+    private fun shouldConsumeColdStartToggle(keyEvent: KeyEvent, controllerPackage: String): Boolean =
+        coldStartToggleGate.consume(
+            sinceServiceStart = clock.elapsed() - serviceStartedAt,
+            keyCode = keyEvent.keyCode,
+            keyAction = keyEvent.action,
+            inputDeviceId = keyEvent.deviceId,
+            bluetoothEndpoints = audioOutputs.outputs.value
+                .filter { it.id.startsWith("bluetooth:") }
+                .map { it.id }
+                .toSet(),
+            emptyQueue = (player?.mediaItemCount ?: 0) == 0,
+            carConnected = carConnections.isConnected() || carLifecycle.projectionState.carConnected ||
+                controllerPackage in CAR_PACKAGES,
+        )
 
     /**
      * PRODUCT_SPEC product priority 1 — swiping the app away does not stop a book that is actively playing.
@@ -651,7 +797,96 @@ class PlaybackService : MediaLibraryService() {
         super.onTaskRemoved(rootIntent)
     }
 
+    /** The actual MediaSession adapter; service-owned effects keep the raw player. */
+    internal fun createSessionPlayer(exoPlayer: ExoPlayer): ResumeFreshnessPlayer = ResumeFreshnessPlayer(
+        delegate = exoPlayer,
+        preparePlay = { bypassFreshness ->
+            val generation = controllerCommandGeneration
+            // Car routing runs synchronously in onPlayWhenReadyRequest before this future factory.
+            val selectionSequence = currentExplicitSelectionSequence()
+            // Capture before launching: the scoped Media3 resumption listener ends when it returns.
+            val explicit = !callbackFutures.isPlaybackResumptionDelivery()
+            future { handleFreshnessPlay(generation, selectionSequence, explicit, bypassFreshness) }
+        },
+        prepareCurrentOutput = {
+            val generation = controllerCommandGeneration
+            val selectionSequence = currentExplicitSelectionSequence()
+            future { prepareCurrentOutput(generation, selectionSequence) }
+        },
+        consumeFreshStart = resumeFreshness::consumeFreshStart,
+        movementEffects = positionEffects,
+        invalidate = ::onControllerCommand,
+        onPlayWhenReadyRequest = { requestedPlay -> onControllerTransportRequest(requestedPlay, exoPlayer) },
+        skipIntervals = { skips },
+        allowEffects = { callbackFutures.playerEffectsAllowed() },
+    )
+
+    /** New controller movement supersedes all suspended work, even without a raw player callback. */
+    private fun onControllerCommand(origin: ResumeInvalidation): Boolean {
+        buttonRouting.clear()
+        val movement = when (origin) {
+            ResumeInvalidation.MediaChanged -> PlaybackMovement.MediaChanged
+            ResumeInvalidation.Seek, ResumeInvalidation.NotificationSkip -> PlaybackMovement.Seek
+            ResumeInvalidation.Pause, ResumeInvalidation.Stop, ResumeInvalidation.AutoRewind -> null
+        }
+        if (movement != null) {
+            val finished = positionEffects.before(movement) ?: return false
+            finished()
+        }
+        controllerCommandGeneration += 1
+        val expected = positionEffects.authority()
+        val current = player
+        if (origin == ResumeInvalidation.Stop) audioOutputs.outputIntentOwner.onPlaybackStopped()
+        resumeFreshness.invalidate(origin)
+        sleepTimer.onResumeInvalidation(origin)
+        clearCarContinuity()
+        return player === current && positionEffects.authority() == expected
+    }
+
+    /** Actual listener/book/queue/service boundaries retire the existing claim and its pending effects. */
+    private fun clearCarContinuity() {
+        carResumeEffects.cancelPending()
+        carRecovery.cancelAll()
+        carRecovery.clearAwaiting()
+    }
+
+    /** External transport is newer listener intent even when Media3 emits no raw state transition. */
+    private fun onControllerTransportRequest(requestedPlay: Boolean, current: ExoPlayer): Boolean {
+        val buttonDestination = buttonRouting.transport(requestedPlay, session, current)
+        controllerCommandGeneration += 1
+        val expected = positionEffects.authority()
+        logControllerTransportRequest(requestedPlay, current)
+        val accepted = routeExplicitCarPlay(requestedPlay, current) && buttonRouting.apply(buttonDestination)
+        if (buttonDestination != null) {
+            autoTraces.log(
+                "Media-button output request",
+                fields = listOf(
+                    LogField.Public("evidence", buttonDestination.evidence),
+                    LogField.Public(
+                        "result",
+                        when {
+                            audioOutputs.outputLock.value != null -> "locked"
+                            accepted -> "accepted"
+                            else -> "refused"
+                        },
+                    ),
+                ),
+            )
+        }
+        if (accepted && buttonDestination != null) syncExplicitOutputIntent()
+        // Duplicate Pause still matters. Automatic continuity uses the raw player and bypasses this boundary.
+        sleepTimer.onControllerTransportIntent()
+        carResumeEffects.cancelPending()
+        if (requestedPlay) carRecovery.cancelPending() else carRecovery.cancelAll()
+        carRecovery.clearAwaiting()
+        return accepted && player === current && positionEffects.authority() == expected
+    }
+
     override fun onDestroy() {
+        buttonRouting.close()
+        routeObservationEffects.detach()
+        audioOutputs.outputIntentOwner.releaseRuntime()
+        audioOutputs.lastHeardRouteId = { null }
         audioRouteLab.serviceStopped()
         flushProgress()
         outputDevices.stop()
@@ -659,12 +894,16 @@ class PlaybackService : MediaLibraryService() {
         // PRODUCT_SPEC PLAY-004 — "service shutdown callback". On the application scope inside the
         // coordinator, because `scope` is cancelled two lines below.
         sessionSync.onShutdown()
-        sessionSync.attach(null)
+        sessionSync.detach()
+        audioOutputs.positions.clear()
+        audioOutputs.currentProjection = { false }
+        audioOutputs.confirmedCarAbsent = { false }
         resumeFreshness.attach(null)
         autoRewind.attach(null)
         sleepTimer.attach(null)
         unregisterReceiver(wallClockChanges)
         carProjection.stop()
+        clearCarContinuity()
         audioOutputs.detach()
         journal?.cancel()
         sleepTimerWatch?.cancel()
@@ -699,9 +938,10 @@ class PlaybackService : MediaLibraryService() {
             while (isActive) {
                 delay(JOURNAL_INTERVAL_MS)
                 val snapshot = positionSnapshot() ?: continue
+                val claim = deferredWork.capture()
                 val playing = player?.isPlaying == true
                 val at = clock.now()
-                val historySample = if (playing) {
+                val historySample = if (playing && !volumeEffects.isRouteMuted(player)) {
                     listeningHistory.capture(
                         snapshot.bookId,
                         snapshot.position,
@@ -714,14 +954,14 @@ class PlaybackService : MediaLibraryService() {
                 recordPosition(snapshot)
                 if (historySample != null) {
                     listeningHistory.persist(historySample)
-                    if (historySample.crossed) bookChanges.onChapterCrossed()
+                    if (historySample.crossed) {
+                        sessionSync.request(SyncTrigger.ChapterChanged) {
+                            claim != null && deferredWork.isCurrent(claim)
+                        }
+                    }
                 }
             }
         }
-    }
-
-    private suspend fun recordPosition() {
-        recordPosition(positionSnapshot() ?: return)
     }
 
     /**
@@ -774,24 +1014,26 @@ class PlaybackService : MediaLibraryService() {
      * deliberate: it puts the capture in the same callback and the same coroutine as the sync that
      * acknowledges it, so no dispatch order can put the acknowledgement before the thing it acknowledges.
      */
-    private suspend fun onCameToRest() {
-        val snapshot = positionSnapshot()
+    private suspend fun onCameToRest(snapshot: PositionSnapshot?, claim: DeferredPlaybackWork.Claim?) {
+        val current = { claim != null && deferredWork.isCurrent(claim) }
         if (snapshot == null) {
             // Nothing worth a baseline — a player that has not started, or the single-file fallback whose
             // offsets are not book positions at all (R-61). The next Play has no acknowledged pause and
             // therefore resumes locally, which is the correct answer for a position we cannot vouch for.
-            resumeBaseline.onLocalMove()
+            if (current()) resumeBaseline.onLocalMove()
             return
         }
-        val generation = resumeBaseline.onPaused(snapshot.bookId, snapshot.position)
-        logger.debug(
-            LogCategory.Playback,
-            "The player came to rest, pending the server's acknowledgement",
-            LogField.Millis("position", snapshot.position.inWholeMilliseconds),
-            LogField.Public("generation", generation.toString()),
-        )
+        if (current()) {
+            val generation = resumeBaseline.onPaused(snapshot.bookId, snapshot.position)
+            logger.debug(
+                LogCategory.Playback,
+                "The player came to rest, pending the server's acknowledgement",
+                LogField.Millis("position", snapshot.position.inWholeMilliseconds),
+                LogField.Public("generation", generation.toString()),
+            )
+        }
         recordPosition(snapshot)
-        sessionSync.sync(SyncTrigger.Paused)
+        sessionSync.sync(SyncTrigger.Paused, current)
     }
 
     /**
@@ -832,7 +1074,8 @@ class PlaybackService : MediaLibraryService() {
         // Issue #88 — this position was copied from cached/server progress solely for system presentation.
         // No audio session owns it, so journalling it would manufacture a local playback write.
         if (item == null || MediaItems.isResumePlaceholder(item)) return null
-        val positionMs = current.currentPosition
+        val position = effectiveBookPosition(current)
+        val positionMs = position.inWholeMilliseconds
         /*
          * Two reasons there is nothing worth writing, in one condition because they are one idea.
          *
@@ -853,7 +1096,7 @@ class PlaybackService : MediaLibraryService() {
         // off it. There is no per-file arithmetic left to get wrong.
         return PositionSnapshot(
             bookId = MediaItems.bookIdOf(item),
-            position = current.bookPosition(),
+            position = position,
             duration = current.bookDuration(),
             // PRODUCT_SPEC 6.5 — read here, with the position, rather than resolved at the far end of the
             // write. The two facts are one observation: this position, of this account's book.
@@ -877,13 +1120,34 @@ class PlaybackService : MediaLibraryService() {
      * screen. A superseded request does nothing; the newer seek/Pause/book/profile command already owns the
      * player.
      */
-    private suspend fun handleFreshnessPlay(expectedCommandGeneration: Long) {
-        val explicit = !passiveResumptionPlayPending
-        passiveResumptionPlayPending = false
-        performFreshnessPlay(
-            explicit = explicit,
-            stillAuthorized = { controllerCommandGeneration == expectedCommandGeneration },
-        )
+    private suspend fun handleFreshnessPlay(
+        expectedCommandGeneration: Long,
+        expectedSelectionSequence: Long,
+        explicit: Boolean,
+        bypassFreshness: Boolean,
+    ): Boolean {
+        val started = clock.elapsed()
+        var outcome = "cancelled-or-failed"
+        try {
+            return performFreshnessPlay(
+                explicit = explicit,
+                bypassFreshness = bypassFreshness,
+                stillAuthorized = {
+                    controllerCommandGeneration == expectedCommandGeneration &&
+                        currentExplicitSelectionSequence() == expectedSelectionSequence
+                },
+            ).also { outcome = if (it) "issued" else "denied-or-superseded" }
+        } finally {
+            logger.info(
+                LogCategory.Playback,
+                "Guarded Play request completed",
+                LogField.Public("outcome", outcome),
+                LogField.Public("elapsedMs", (clock.elapsed() - started).inWholeMilliseconds),
+                LogField.Public("rawPlayWhenReady", player?.playWhenReady?.toString() ?: "none"),
+                LogField.Public("sessionPlayWhenReady", session?.player?.playWhenReady?.toString() ?: "none"),
+                LogField.Public("identityCapability", audioOutputs.identityCapability.value.name),
+            )
+        }
     }
 
     /**
@@ -893,19 +1157,30 @@ class PlaybackService : MediaLibraryService() {
      * The predicate is checked again inside the same main-thread turn as the final raw command, so schedule
      * expiry, teardown, book replacement or newer controller intent can revoke a suspended grace attempt.
      */
-    private suspend fun performFreshnessPlay(explicit: Boolean, stillAuthorized: () -> Boolean = { true }): Boolean {
+    private suspend fun performFreshnessPlay(
+        explicit: Boolean,
+        stillAuthorized: () -> Boolean = { true },
+        bypassFreshness: Boolean = false,
+    ): Boolean {
+        // Sleep-grace Play enters directly; its output owner must be captured before any suspension.
+        val selectionSequence = currentExplicitSelectionSequence()
+        val authorized = { stillAuthorized() && currentExplicitSelectionSequence() == selectionSequence }
         // Issue #88 — BookChanges.onBookOpened invalidates sleep Play claims. Materialize the display-only
         // holder first so the claim below belongs to the real book generation it is authorizing.
-        if (!stillAuthorized() || !materializeHeldResume(stillAuthorized)) return false
+        if (!authorized() || !materializeHeldResume(authorized)) return false
         val sleepPlayRequest = sleepTimer.onPlayRequest(explicit)
-        if (!stillAuthorized()) {
+        if (!authorized()) {
             sleepTimer.clearPlayRequest(sleepPlayRequest)
             return false
         }
-        val requestedPlay = when (val prepared = resumeFreshness.preparePlay()) {
-            ResumePlayPreparation.Bypass -> resumeLoadedCurrent(stillAuthorized)
-            ResumePlayPreparation.Superseded -> false
-            is ResumePlayPreparation.Ready -> applyFreshnessPlan(prepared.plan, stillAuthorized)
+        val requestedPlay = if (bypassFreshness) {
+            resumeLoadedCurrent(authorized)
+        } else {
+            when (val prepared = resumeFreshness.preparePlay()) {
+                ResumePlayPreparation.Bypass -> resumeLoadedCurrent(authorized)
+                ResumePlayPreparation.Superseded -> false
+                is ResumePlayPreparation.Ready -> applyFreshnessPlan(prepared.plan, authorized)
+            }
         }
         if (!requestedPlay) sleepTimer.clearPlayRequest(sleepPlayRequest)
         return requestedPlay
@@ -921,13 +1196,9 @@ class PlaybackService : MediaLibraryService() {
         val target = heldResumeTarget() ?: return true
         val profileId = target.profileId
         if (profileId == null || !stillAuthorized() || lock.isActiveProfileLocked()) return false
-        val queue = openQueue(target.bookId, startAt = null)
-
-        return queue != null &&
-            stillAuthorized() &&
-            !lock.isActiveProfileLocked() &&
-            MediaItems.ownerOf(queue.item) == profileId &&
-            installMaterializedResume(target.copy(profileId = profileId), queue, stillAuthorized)
+        val claim = withContext(mainDispatcher) { deferredWork.capture() } ?: return false
+        val prepared = prepareQueue(target.bookId, startAt = null)
+        return prepared != null && installMaterializedResume(target, prepared, claim, stillAuthorized)
     }
 
     private suspend fun heldResumeTarget(): HeldResumeTarget? = withContext(mainDispatcher) {
@@ -941,21 +1212,22 @@ class PlaybackService : MediaLibraryService() {
 
     private suspend fun installMaterializedResume(
         target: HeldResumeTarget,
-        queue: MediaItems.Queue,
+        prepared: CarPostConnectRestorer.Prepared,
+        claim: DeferredPlaybackWork.Claim,
         stillAuthorized: () -> Boolean,
     ): Boolean = withContext(mainDispatcher) {
-        val item = player?.currentMediaItem
-        val sameHolder = item != null &&
-            MediaItems.isResumePlaceholder(item) &&
-            MediaItems.ownerOf(item) == target.profileId &&
-            MediaItems.bookIdOf(item) == target.bookId
-        val current = player
-        if (!stillAuthorized() || !sameHolder || current == null) {
-            false
-        } else {
-            current.setMediaItem(queue.item, queue.startPositionMs)
+        val authorized: suspend () -> Boolean = {
+            val allowed = stillAuthorized() && !lock.isActiveProfileLocked() &&
+                target.profileId?.let { auto.isActiveProfile(it) } == true &&
+                prepared.session.profileId == target.profileId
+            val item = player?.currentMediaItem
+            allowed && stillAuthorized() && deferredWork.isMutationCurrent(claim) && item != null &&
+                MediaItems.isResumePlaceholder(item) &&
+                MediaItems.ownerOf(item) == target.profileId && MediaItems.bookIdOf(item) == target.bookId
+        }
+        bookChanges.acceptBook(prepared.session, authorized) {
+            claim.player.setMediaItem(prepared.queue.item, prepared.queue.startPositionMs)
             logger.info(LogCategory.Playback, "Materialized the held resume book for explicit Play")
-            true
         }
     }
 
@@ -992,20 +1264,36 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
-    /** The old direct Play behavior, now used only after the shared freshness decision says to stay local. */
+    /** Local resume after the shared freshness decision, using the same guarded command boundaries. */
     private suspend fun resumeLoadedCurrent(stillAuthorized: () -> Boolean = { true }): Boolean =
         withContext(mainDispatcher) {
             if (!stillAuthorized()) return@withContext false
             val current = player ?: return@withContext false
             if (current.mediaItemCount == 0) return@withContext false
-            if (current.playbackState == Player.STATE_IDLE || current.playerError != null) current.prepare()
+            if ((current.playbackState == Player.STATE_IDLE || current.playerError != null) &&
+                !playbackCommandEffects.prepare(current, stillAuthorized)
+            ) {
+                return@withContext false
+            }
             if (!stillAuthorized()) return@withContext false
             // The freshness network request may take seconds. Start the muted route
             // probe only NOW, immediately before the actual raw ExoPlayer Play.
-            if (!current.playWhenReady) audioOutputs.protectManualPlayOnGuardedHeadset()
-            current.play()
-            true
+            playbackCommandEffects.play(current, stillAuthorized)
         }
+
+    private suspend fun prepareCurrentOutput(
+        expectedCommandGeneration: Long,
+        expectedSelectionSequence: Long,
+    ): Boolean = withContext(mainDispatcher) {
+        val current = player ?: return@withContext false
+        playbackCommandEffects.prepare(
+            current,
+            stillAuthorized = {
+                controllerCommandGeneration == expectedCommandGeneration &&
+                    currentExplicitSelectionSequence() == expectedSelectionSequence
+            },
+        )
+    }
 
     /** Records the REST check result independently of whether a later adopted seek succeeds. */
     private fun recordFreshnessCheck(plan: ResumeFreshnessPlan) {
@@ -1080,9 +1368,9 @@ class PlaybackService : MediaLibraryService() {
     /**
      * [ResumeTarget] over the service's own [ExoPlayer]. Main thread only, like its subject.
      *
-     * Thin on purpose: the ordering it is driven by is asserted against a fake in `AtomicResumeTest`, and
-     * everything here is a single Media3 call so that there is as little as possible that only a device can
-     * exercise.
+     * `AtomicResumeTest` verifies prepare/seek/confirm/Play ordering. Command helpers additionally enforce
+     * route preparation and current ownership around synchronous callbacks; seek confirmation still reads
+     * this exact raw player's events on its application thread.
      */
     private inner class OwnedPlayer(
         private val media: ExoPlayer,
@@ -1095,7 +1383,7 @@ class PlaybackService : MediaLibraryService() {
 
         override fun needsPreparing(): Boolean = media.playbackState == Player.STATE_IDLE || media.playerError != null
 
-        override fun prepare() = media.prepare()
+        override fun prepare(): Boolean = playbackCommandEffects.prepare(media, stillAuthorized, holdForSeek = true)
 
         /**
          * Seeks, and waits for **this player** to say where it ended up.
@@ -1147,13 +1435,7 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override suspend fun playIfCurrent(): Boolean = resumeFreshness.withCurrentPlan(plan, requireBaseline = false) {
-            if (!stillAuthorized()) {
-                false
-            } else {
-                if (!media.playWhenReady) audioOutputs.protectManualPlayOnGuardedHeadset()
-                media.play()
-                true
-            }
+            playbackCommandEffects.play(media, stillAuthorized)
         } ?: false
     }
 
@@ -1165,10 +1447,22 @@ class PlaybackService : MediaLibraryService() {
      * be torn down.
      */
     private inner class PlayerEvents : Player.Listener {
+        override fun onPlaybackParametersChanged(parameters: androidx.media3.common.PlaybackParameters) {
+            autoTraces.log(
+                "Media3 playback parameters changed",
+                fields = listOf(
+                    LogField.Public("speedMilli", (parameters.speed * PLAYBACK_PARAMETER_SCALE).toInt()),
+                    LogField.Public("pitchMilli", (parameters.pitch * PLAYBACK_PARAMETER_SCALE).toInt()),
+                ),
+            )
+        }
+
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (isPlaying) autoRewind.onResumed()
             audioTrackRouteMonitor.sample()
-            logAuto(
-                "Media3 audible playback changed",
+            audioOutputs.verifyOutputLock()
+            autoTraces.log(
+                "Media3 playback activity changed",
                 fields = listOf(LogField.Public("isPlaying", isPlaying)) +
                     AndroidAutoDiagnostics.playerFields(player) + carSnapshotFields(),
             )
@@ -1183,32 +1477,20 @@ class PlaybackService : MediaLibraryService() {
                 pendingRecoveryRetry?.cancel()
                 // ROUTE-002 — real playback is the gate for creating route-heard evidence.
                 syncExplicitOutputIntent()
-                val outputs = audioOutputs.outputs.value
-                routeOwnership.onPlaybackObserved(outputs)
-                observeCarContinuityHeadset(outputs)
-                carRecovery.playbackBecameActive(
-                    routeOwnership.currentGeneration,
-                    currentExplicitSelectionSequence(),
-                )?.let { target ->
-                    logAuto(
-                        "Car lifecycle continuity playback became active",
-                        fields = listOf(
-                            LogField.Public("phase", target.phase.name),
-                            LogField.Public("kind", target.outputId.substringBefore(':')),
-                        ) + carSnapshotFields(),
-                    )
-                }
+                observeCurrentAudibleRoute()
                 // PRODUCT_SPEC SYNC-002 — the book is moving again, so the position it was resting at is no
                 // longer a description of where this device is. See `ResumeBaseline.onLocalMove`.
                 resumeBaseline.onLocalMove()
                 // PRODUCT_SPEC PLAY-009 — before anything else on the resume path: a rewind that landed after
                 // playback had started would be audible as a stutter.
-                autoRewind.onResumed()
+                // Rewind runs above, before any route proof can release verification mute.
             } else {
                 // PRODUCT_SPEC SYNC-002 — capture, journal, then *await* the sync that acknowledges it. See
                 // `onCameToRest` for why the awaiting is the point, and why it is not on this service's
                 // scope.
-                applicationScope.launch(mainDispatcher) { onCameToRest() }
+                val snapshot = positionSnapshot()
+                val claim = deferredWork.capture()
+                applicationScope.launch(mainDispatcher) { onCameToRest(snapshot, claim) }
             }
         }
 
@@ -1220,7 +1502,7 @@ class PlaybackService : MediaLibraryService() {
          * a satnav spoke.
          */
         override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
-            logAuto(
+            autoTraces.log(
                 "Media3 playback suppression changed",
                 fields = listOf(LogField.Public("reasonCode", playbackSuppressionReason)) +
                     AndroidAutoDiagnostics.playerFields(player) + carSnapshotFields(),
@@ -1228,69 +1510,38 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-            // PRODUCT_SPEC PLAY-003 — play and pause, in the book's history. The device report asked for
-            // them: *"Play start and play pause doesn't show."*
-            //
-            // Recorded from `playWhenReady` rather than from `isPlaying`, and that is the whole trick.
-            // `isPlaying` goes false every time the player buffers, so a book on a slow connection would
-            // write a pause and a play every few seconds and bury everything else in the list. This flag
-            // is *intent*: it changes when somebody presses something, or when audio focus is taken away.
-            //
-            // Here rather than in `PlaybackController`, because the service outlives the app — a pause from
-            // a headset with the app closed is exactly the one worth having. One recorder, so no event can
-            // be written twice.
-            recordTransport(if (playWhenReady) PlaybackEvent.Play else PlaybackEvent.Pause)
-            /*
-             * PRODUCT_SPEC 14.4 — and the only line that can witness a steering wheel.
-             *
-             * A review caught §2.9 inferring the wheel from `The player changed state`, which a working
-             * wheel need not produce: play/pause keeps the player in `STATE_READY`, volume touches no
-             * playback state at all, and next/previous are no-ops on the one-item queue a car selection
-             * builds. The step would have reported a working wheel as unsupported — the mirror image of
-             * the false pass it had just been fixed for.
-             *
-             * `reason` is worth logging rather than `playWhenReady` alone because it separates a person
-             * from the system: `audioFocusLoss` and `becomingNoisy` mean nobody pressed anything. A
-             * boolean would have said neither.
-             *
-             * It does **not** say who pressed, and §2.9 briefly claimed it did (R-76). Media3 collapses
-             * that before this listener sees it: a controller's play/pause reaches `MediaSession`, which
-             * forwards it to the local player as `play()` → `setPlayWhenReady(true)`, and `ExoPlayerImpl`
-             * hard-codes that call to `PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST`. A wheel, a headset
-             * button and the app's own UI are therefore indistinguishable here. `REMOTE` belongs to a
-             * *remote* player — CastPlayer, or a controller observing a session — and this listener is on
-             * the local ExoPlayer, so it cannot appear. The device script isolates the log window and
-             * tells the tester to touch nothing else; that, not the reason, is the attribution.
-             */
+            // Record transport intent, not buffer or route changes, and never invent a physical key origin.
+            val routeSafetyPause = !playWhenReady && audioOutputs.isRouteSafetyPause(player)
+            val input = PlaybackTransportInput.interpret(
+                playWhenReady,
+                reason,
+                routeSafetyPause = routeSafetyPause,
+            )
+            carResumeEffects.cancelPending()
+            if (!routeSafetyPause) recordTransport(if (input.isPlay) PlaybackEvent.Play else PlaybackEvent.Pause)
             logger.debug(
                 LogCategory.Playback,
                 "Playback was asked to change",
                 LogField.Public("playWhenReady", playWhenReady.toString()),
-                LogField.Public("reason", playWhenReadyReason(reason)),
+                LogField.Public("reason", input.reasonName),
             )
-            if (playWhenReady) {
-                // Any newer Play wins over pending automatic continuity. A successful continuity Play has
-                // already consumed its one-shot target before it reaches this listener.
+            if (input.isPlay) {
+                // New Play supersedes any pending continuity result, including a repeated system Play.
                 carRecovery.cancelPending()
                 return
             }
-            // `REMOTE` cannot occur while this listener is on the local ExoPlayer (R-76); it stays in the
-            // condition so the *intent* — a person asked, from wherever — survives if the player is ever
-            // wrapped or replaced by a remote one, which is when the reason would start appearing.
-            val userInitiated = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST ||
-                reason == Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE
-            autoRewind.onPaused(wasUserInitiated = userInitiated)
 
-            when (reason) {
-                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
-                Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY,
-                -> onCarPlatformInterruption(reason)
-
-                else -> {
-                    // Deliberate pause, end-of-item and unknown causes invalidate transition evidence.
-                    carRecovery.cancelAll()
-                    carRecovery.clearAwaiting()
-                }
+            autoRewind.onPaused(wasUserInitiated = input.isUserPause)
+            val interruption = input.interruptionReason
+            if (interruption != null) {
+                onCarPlatformInterruption(interruption)
+            } else if (routeSafetyPause) {
+                carRecovery.routeSafetyPause(clock.elapsed())
+            } else {
+                // An internal safety pause preserves prior heard intent for a later platform/car boundary.
+                // It grants no Play. Deliberate pause, end-of-item and unknown causes still revoke evidence.
+                carRecovery.cancelAll()
+                carRecovery.clearAwaiting()
             }
         }
 
@@ -1301,8 +1552,8 @@ class PlaybackService : MediaLibraryService() {
         private fun onCarPlatformInterruption(reason: Int) {
             val focusLoss = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
             val source = if (focusLoss) "audio-focus-loss" else "becoming-noisy"
-            val trace = ensureAutoTrace(source)
-            logAuto(
+            val trace = autoTraces.ensure(source)
+            autoTraces.log(
                 "Android Auto lifecycle input",
                 trace,
                 buildList {
@@ -1320,7 +1571,7 @@ class PlaybackService : MediaLibraryService() {
             logCarContinuityDecision(source, decision)
             decision.target
                 ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
-                ?.let { target -> scope.launch { recoverAndResumeCarContinuity(target) } }
+                ?.let(carResumeEffects::onRecoveryReady)
             if (!focusLoss) carRecovery.clearAwaiting()
         }
 
@@ -1329,10 +1580,11 @@ class PlaybackService : MediaLibraryService() {
          * History sampler. Chapter lists remain in-process rather than duplicated in MediaItem extras.
          */
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            positionEffects.retireForItemTransition()
             mediaItemGeneration += 1
             pendingRecoveryRetry?.cancel()
-            activeAutoTrace?.let { trace ->
-                logAuto(
+            autoTraces.activeTrace?.let { trace ->
+                autoTraces.log(
                     "Media3 current item changed during Android Auto trace",
                     trace,
                     buildList {
@@ -1349,15 +1601,18 @@ class PlaybackService : MediaLibraryService() {
             if (mediaItem != null && !MediaItems.isResumePlaceholder(mediaItem)) metrics.onItemPrepared()
             // PRODUCT_SPEC PLAY-002 — route evidence belongs only to this loaded book generation.
             routeOwnership.onBookChanged(mediaItem != null)
-            // Issue #36 — all continuity evidence is generation-bound and dies with the loaded book.
-            carRecovery.cancelAll()
-            carRecovery.clearAwaiting()
+            audioOutputs.clearMeasuredPlayingHeadsetProtection()
+            // Retire the old recovery before observing playback into the incoming book's generation.
+            clearCarContinuity()
+            if (mediaItem != null) observeCurrentAudibleRoute()
             // PRODUCT_SPEC SYNC-002 — a baseline is per book and per position, and this is both changing.
             resumeBaseline.onBookClosed()
             // Record before the sync that follows it, so the row the sync uploads is this item's own.
+            val snapshot = positionSnapshot()
+            val claim = deferredWork.capture()
             scope.launch {
-                recordPosition()
-                sessionSync.request(SyncTrigger.TrackChanged)
+                if (snapshot != null) recordPosition(snapshot)
+                sessionSync.sync(SyncTrigger.TrackChanged) { claim != null && deferredWork.isCurrent(claim) }
             }
         }
 
@@ -1376,6 +1631,8 @@ class PlaybackService : MediaLibraryService() {
             if (reason == Player.DISCONTINUITY_REASON_SEEK ||
                 reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
             ) {
+                val current = player ?: return
+                if (positionEffects.onSeek(current)) return
                 // PRODUCT_SPEC PLAY-009 — "rewind is not applied after a user seek". A listener who chose a
                 // position chose it; moving it afterwards is the app overruling them.
                 autoRewind.onSeeked()
@@ -1383,9 +1640,11 @@ class PlaybackService : MediaLibraryService() {
                 // describes it. Including the adopting seek itself: the pause it belonged to is over.
                 resumeBaseline.onLocalMove()
                 // Record before the sync that follows it, so the row the sync uploads is the seek's own.
+                val snapshot = positionSnapshot()
+                val claim = deferredWork.capture()
                 scope.launch {
-                    recordPosition()
-                    sessionSync.request(SyncTrigger.SeekCompleted)
+                    if (snapshot != null) recordPosition(snapshot)
+                    sessionSync.sync(SyncTrigger.SeekCompleted) { claim != null && deferredWork.isCurrent(claim) }
                 }
             }
         }
@@ -1417,17 +1676,19 @@ class PlaybackService : MediaLibraryService() {
                 // PRODUCT_SPEC SYNC-002 — the book is over; nothing about its last pause is still true.
                 resumeBaseline.onBookClosed()
                 // Record before the sync that follows it, so the row the sync uploads is the final one.
-                scope.launch {
-                    recordPosition()
-                    sessionSync.request(SyncTrigger.BookChanged)
-                }
+                val snapshot = positionSnapshot()
+                val endedClaim = deferredWork.capture()
                 // PRODUCT_SPEC 6.4 step 6 — after the position is journalled and the sync is asked for,
                 // never before: the book that just ended has to be recorded as finished whether or not
                 // anything follows it, and an advance that failed must not have cost the last write.
                 // Capture the ended item before scheduling work; a newer manual selection must not
                 // become the "finished" book when this coroutine eventually starts.
-                deferredWork.capture()?.let { claim ->
-                    scope.launch { advanceToNextInSeries(claim) }
+                scope.launch {
+                    if (snapshot != null) recordPosition(snapshot)
+                    sessionSync.sync(SyncTrigger.BookChanged) {
+                        endedClaim != null && deferredWork.isCurrent(endedClaim)
+                    }
+                    if (endedClaim != null) advanceToNextInSeries(endedClaim)
                 }
             }
         }
@@ -1449,13 +1710,34 @@ class PlaybackService : MediaLibraryService() {
         override fun onPlayerError(error: PlaybackException) {
             pendingRecoveryRetry?.cancel()
             val retryIn = recovery.onError(error)
-            logger.warn(
-                LogCategory.Playback,
-                if (retryIn == null) "Playback stopped on an error" else "Playback hit an error and will retry",
-                LogField.Public("errorCode", error.errorCodeName),
-                LogField.Count("attempt", recovery.attemptCount),
+            logger.log(
+                LogEvent(
+                    level = LogLevel.Warn,
+                    category = LogCategory.Playback,
+                    message = if (retryIn ==
+                        null
+                    ) {
+                        "Playback stopped on an error"
+                    } else {
+                        "Playback hit an error and will retry"
+                    },
+                    fields = listOf(
+                        LogField.Public("errorCode", error.errorCodeName),
+                        LogField.Count("attempt", recovery.attemptCount),
+                        LogField.Public(
+                            "destination",
+                            audioOutputs.explicitSelection.value?.destination?.name ?: "Automatic",
+                        ),
+                        LogField.Public(
+                            "transferPhase",
+                            audioOutputs.outputIntentOwner.state.value.transfer?.phase?.name ?: "none",
+                        ),
+                    ) + PlaybackErrorDiagnostics.fields(error) + AndroidAutoDiagnostics.playerFields(player) +
+                        carSnapshotFields(),
+                ),
             )
-            scope.launch { recordPosition() }
+            val snapshot = positionSnapshot()
+            scope.launch { if (snapshot != null) recordPosition(snapshot) }
             reportFailureToControllers(error, willRetry = retryIn != null)
             val claim = deferredWork.capture() ?: return
             if (retryIn == null) return
@@ -1516,6 +1798,7 @@ class PlaybackService : MediaLibraryService() {
         skipWatch = scope.launch {
             playbackSettings.observeSettings().collect { settings ->
                 skips = settings.skips
+                buttonRouting.settings(settings)
                 // PRODUCT_SPEC PLAY-002 — read here rather than in its own collector: it comes off the same
                 // flow, and a second `observeSettings()` would be a second cold DataStore read of the same
                 // bytes on every write to any playback setting.
@@ -1533,14 +1816,27 @@ class PlaybackService : MediaLibraryService() {
     private fun observeAudioOutputs() {
         outputWatch = scope.launch {
             launch {
+                audioOutputs.identityCapability.collect { capability ->
+                    if (capability ==
+                        com.example.shelfplayer.core.model.playback.BluetoothIdentityCapability.PermissionMissing
+                    ) {
+                        clearCarContinuity()
+                    }
+                    if (routeObservationEffects.isAudible()) observeCarContinuityHeadset(audioOutputs.outputs.value)
+                }
+            }
+            launch {
                 combine(audioOutputs.outputs, audioOutputs.selectedId, ::Pair).collect { (outputs, _) ->
+                    buttonRouting.updateMonitor()
                     syncExplicitOutputIntent()
-                    val isPlaying = player?.isPlaying == true
+                    val isPlaying = routeObservationEffects.isAudible()
                     if ((player?.mediaItemCount ?: 0) == 0) {
                         routeOwnership.onQueueEmptied()
-                        carRecovery.cancelAll()
+                        audioOutputs.clearMeasuredPlayingHeadsetProtection()
+                        clearCarContinuity()
                     } else {
                         routeOwnership.onOutputsChanged(outputs, isPlaying = isPlaying)
+                        audioOutputs.verifyOutputLock()
                         if (isPlaying) observeCarContinuityHeadset(outputs)
                     }
                     republishOutputButtons()
@@ -1561,15 +1857,40 @@ class PlaybackService : MediaLibraryService() {
 
     private fun syncExplicitOutputIntent() {
         val selection = audioOutputs.explicitSelection.value ?: return
-        routeOwnership.onExplicitSelection(
-            outputId = selection.outputId,
+        val changed = routeOwnership.onExplicitSelection(
+            selection = selection,
             outputs = audioOutputs.outputs.value,
-            isPlaying = player?.isPlaying == true,
-            selectionSequence = selection.sequence,
+            isAudible = routeObservationEffects.isAudible(),
         )
+        if (changed) {
+            clearCarContinuity()
+            sleepTimer.onControllerTransportIntent()
+        }
     }
 
     private fun currentExplicitSelectionSequence(): Long = audioOutputs.explicitSelection.value?.sequence ?: 0L
+
+    private fun observeCurrentAudibleRoute(target: Player? = player) {
+        routeObservationEffects.observe(target)
+    }
+
+    private fun onRouteAudible() {
+        val outputs = audioOutputs.outputs.value
+        routeOwnership.onPlaybackObserved(outputs)
+        observeCarContinuityHeadset(outputs)
+        carRecovery.playbackBecameActive(
+            routeOwnership.currentGeneration,
+            currentExplicitSelectionSequence(),
+        )?.let { recoveryTarget ->
+            autoTraces.log(
+                "Car lifecycle continuity playback became active",
+                fields = listOf(
+                    LogField.Public("phase", recoveryTarget.phase.name),
+                    LogField.Public("kind", recoveryTarget.outputId.substringBefore(':')),
+                ) + carSnapshotFields(),
+            )
+        }
+    }
 
     /**
      * Refreshes #36's car-session continuity target only from positive route evidence while audio is playing.
@@ -1584,10 +1905,22 @@ class PlaybackService : MediaLibraryService() {
             headsetId = routeOwnership.headsetForCar(outputs),
             generation = routeOwnership.currentGeneration,
             selectionSequence = currentExplicitSelectionSequence(),
-            carConnected = carContinuitySessionEstablished,
+            carConnected = carLifecycle.sessionEstablished,
         )
 
     private fun observeCarContinuityHeadset(outputs: List<AudioOutput>) {
+        val generation = routeOwnership.currentGeneration
+        val headset = routeOwnership.measuredPlayingHeadsetForContinuity(outputs)
+        if (generation != null && headset != null) {
+            audioOutputs.protectMeasuredPlayingHeadset(
+                headset,
+                generation,
+                currentExplicitSelectionSequence(),
+            ) {
+                routeOwnership.currentGeneration == generation &&
+                    routeOwnership.measuredPlayingHeadsetForContinuity(audioOutputs.outputs.value) == headset
+            }
+        }
         carRecovery.observePlayingHeadset(continuityInputs(outputs))
     }
 
@@ -1605,7 +1938,7 @@ class PlaybackService : MediaLibraryService() {
             selectedId = audioOutputs.selectedId.value,
             carConnected = carBound,
             carRequested = audioOutputs.explicitSelection.value?.destination ==
-                AudioOutputRouter.ExplicitDestination.Car,
+                OutputIntentOwner.Destination.Car,
         )
         if (!mediaButtonPublishing.needsPublish(next, carBound)) {
             outputButtons = next
@@ -1651,300 +1984,42 @@ class PlaybackService : MediaLibraryService() {
                 fields = fields,
             ),
         )
-        if (activeAutoTrace != null) {
-            logAuto(
+        if (autoTraces.activeTrace != null) {
+            autoTraces.log(
                 "The car output actions were recomputed",
                 fields = fields + carSnapshotFields(),
             )
         }
     }
 
-    /**
-     * PRODUCT_SPEC PLAY-002 — reassert only generation-bound headset evidence when a car controller arrives.
-     *
-     * A merely connected headset has no [RouteHeardOwnership.HeardRoute], and an emptied queue invalidates
-     * the generation before any routing preference can be reasserted.
-     */
-    private suspend fun holdHeadsetAgainstCar(): String? {
-        if ((player?.mediaItemCount ?: 0) == 0) {
-            routeOwnership.onQueueEmptied()
-            carRecovery.cancelAll()
-            return null
-        }
-        syncExplicitOutputIntent()
-        val outputs = audioOutputs.outputs.value
-        val hold = routeOwnership.headsetForCar(outputs) ?: return null
-        // Car controller binding alone must not restart or reconfigure an already-audible headset.
-        // Retain Media3's current player/focus/route when this exact headset remains the sole active sink.
-        if (player?.isPlaying == true && headsetAlreadyActive(hold, outputs)) {
-            audioOutputs.protectPlayingHeadset(hold)
-            logAuto("Car lifecycle preserved active headset without route reassertion")
-        } else {
-            val reasserted = audioOutputs.reassert(hold)
-            val heldHeadsetIsConnected = reasserted && audioOutputs.outputs.value.any { output ->
-                output.id == hold && output.isHeadsetCandidate
-            }
-            if (!heldHeadsetIsConnected) return null
-            logHeldHeadset(hold)
-        }
-        return hold
-    }
-
-    /**
-     * #36 — route recovery never rediscovers a destination from Android's live list.
-     *
-     * The lifecycle gate has already captured one exact headset. Android may temporarily omit it or clear the
-     * preferred route to Automatic; the recovery may wait for and reassert only that same target.
-     */
-    private suspend fun recoverCarContinuityHeadset(target: CarArrivalResumeGate.Target): String? {
-        val held = carRecovery.secure(
-            target = target,
-            outputs = audioOutputs.outputs,
-            selectedId = audioOutputs.selectedId,
-            currentGeneration = { routeOwnership.currentGeneration },
+    /** Recovery-to-Play effects share one coordinator claim; no second lifecycle or player. */
+    private val carResumeEffects by lazy {
+        CarContinuityResumeEffects(
+            recovery = carRecovery,
+            outputs = audioOutputs,
+            owner = routeOwnership,
+            trace = { message, fields -> autoTraces.log(message, fields = fields) },
+            currentPlayer = { player },
             selectionSequence = ::currentExplicitSelectionSequence,
-            onEvent = { event -> logCarContinuityRouteEvent(target, event) },
-            reassert = audioOutputs::reassert,
-        )
-        if (held == null) {
-            logAuto(
-                "Car lifecycle continuity did not secure the headset",
-                fields = listOf(
-                    LogField.Public("phase", target.phase.name),
-                    LogField.Public("kind", target.outputId.substringBefore(':')),
-                    LogField.Public("reason", currentContinuityInvalidation(target)),
-                ) + carSnapshotFields(),
-            )
-            // A paused track cannot report its actual route. If Android Auto exposes only
-            // REMOTE_SUBMIX, allow a bounded MUTED playback probe of the original exact
-            // headset. The router must prove this player's sink before it unmutes.
-            if (carRecovery.isCurrent(
-                    target,
-                    routeOwnership.currentGeneration,
-                    currentExplicitSelectionSequence(),
-                ) && audioOutputs.canProbeHeldHeadset(target.outputId)
-            ) {
-                logAuto("Car lifecycle will verify original headset silently")
-                return target.outputId
-            }
-            carRecovery.cancelPending()
-            return null
-        }
-        logHeldHeadset(held, target.phase)
-        return held
-    }
-
-    private fun logHeldHeadset(hold: String, phase: CarArrivalResumeGate.Phase? = null) {
-        logAuto(
-            if (phase == null) {
-                "A car connected and the book was held in the headset"
-            } else {
-                "Car lifecycle continuity secured the headset"
+            snapshot = ::carSnapshotFields,
+            resumePlayer = { current, stillAuthorized, beforeRawPlay ->
+                if (!stillAuthorized()) {
+                    false
+                } else {
+                    sleepTimer.onServiceResumeIntent()
+                    playbackCommandEffects.play(current, stillAuthorized, beforeRawPlay)
+                }
             },
-            fields = listOf(
-                LogField.Public("phase", phase?.name ?: "route-hold"),
-                LogField.Public("kind", hold.substringBefore(':')),
-            ) + carSnapshotFields(),
+            scope = scope,
+            synchronizeOutputIntent = ::syncExplicitOutputIntent,
+            onOutputsChanged = ::republishOutputButtons,
         )
-    }
-
-    private fun logCarContinuityRouteEvent(target: CarArrivalResumeGate.Target, event: CarArrivalRouteRecovery.Event) {
-        logAuto(
-            "Car lifecycle route recovery changed",
-            fields = listOf(
-                LogField.Public("phase", target.phase.name),
-                LogField.Public("event", event.name),
-                LogField.Public("kind", target.outputId.substringBefore(':')),
-            ) + carSnapshotFields(),
-        )
-    }
-
-    private fun currentContinuityInvalidation(target: CarArrivalResumeGate.Target): String =
-        carRecovery.invalidationReason(
-            target,
-            routeOwnership.currentGeneration,
-            currentExplicitSelectionSequence(),
-        )
-
-    private suspend fun recoverAndResumeCarContinuity(target: CarArrivalResumeGate.Target) {
-        // Media3 can hold playWhenReady=true while temporarily suppressing audible playback.
-        // It owns focus restoration in that state; issuing another Play or reasserting the output
-        // would only disturb a player that is already committed to continuing.
-        if (player?.playWhenReady == true) {
-            logAuto("Car lifecycle left active playback intent with Media3")
-            carRecovery.cancelPending()
-            return
-        }
-        val heldHeadset = recoverCarContinuityHeadset(target)
-        resumeAfterCarContinuity(target, heldHeadset)
-    }
-
-    /**
-     * Issues one Play only after the exact target is secured and the final generation/intent guard passes.
-     *
-     * The log says Play was issued rather than claiming playback resumed. Actual audio movement is logged from
-     * onIsPlayingChanged, which is the first service callback that can truthfully make that claim.
-     */
-    private fun resumeAfterCarContinuity(target: CarArrivalResumeGate.Target, heldHeadset: String?) {
-        val current = player
-        val precheck = CarContinuityPlayPrecheck.decide(
-            hasPlayer = current != null,
-            mediaItemCount = current?.mediaItemCount ?: 0,
-            playWhenReady = current?.playWhenReady == true,
-        )
-        val assessment = carRecovery.assess(
-            target = target,
-            precheck = precheck,
-            currentGeneration = routeOwnership.currentGeneration,
-            selectionSequence = currentExplicitSelectionSequence(),
-            securedHeadsetId = heldHeadset,
-        )
-        if (precheck != CarContinuityPlayPrecheck.Proceed) {
-            if (precheck == CarContinuityPlayPrecheck.AlreadyPlaying) {
-                logAuto(
-                    "Car lifecycle continuity skipped Play because playback intent was already active",
-                    fields = listOf(LogField.Public("phase", target.phase.name)) + carSnapshotFields(),
-                )
-            }
-            return
-        }
-        checkNotNull(current) { "Proceed implies a player" }
-        val result = checkNotNull(assessment.consumed)
-        logAuto(
-            "Car lifecycle continuity final eligibility checked",
-            fields = listOf(
-                LogField.Public("phase", target.phase.name),
-                LogField.Public("eligible", result.accepted),
-                LogField.Public("reason", result.reason.name),
-                LogField.Public("kind", target.outputId.substringBefore(':')),
-            ) + carSnapshotFields(),
-        )
-        if (!result.accepted) {
-            carRecovery.clearAwaiting()
-            return
-        }
-
-        // A headset that stayed uniquely active can satisfy route recovery without reassertion.
-        // Preserve that exact original target as the safety guard before the muted probe.
-        if (heldHeadset != null && headsetAlreadyActive(heldHeadset, audioOutputs.outputs.value)) {
-            audioOutputs.protectPlayingHeadset(heldHeadset)
-        }
-        // An AudioManager preference is NOT proof of a physical route. Only the playing
-        // AudioTrack may unmute this one-shot recovery; other routes fail closed.
-        if (heldHeadset == null || !audioOutputs.beginMutedHeadsetProbe(heldHeadset)) {
-            carRecovery.clearAwaiting()
-            logAuto("Car lifecycle refused unverified headset probe")
-            return
-        }
-        carRecovery.notePlayIssued(target)
-        logAuto(
-            "Car lifecycle continuity issued Play",
-            fields = listOf(
-                LogField.Public("phase", target.phase.name),
-                LogField.Public("kind", target.outputId.substringBefore(':')),
-            ) + carSnapshotFields(),
-        )
-        sleepTimer.onServiceResumeIntent()
-        current.play()
-    }
-
-    private fun ensureAutoTrace(source: String): AutoTrace {
-        val now = clock.elapsed()
-        val existing = activeAutoTrace
-        if (existing != null && now - existing.startedAt <= AUTO_TRACE_REUSE_WINDOW) return existing
-
-        val trace = AutoTrace(
-            id = ++autoTraceSequence,
-            startedAt = now,
-            source = source,
-        )
-        activeAutoTrace = trace
-        logAuto(
-            "Android Auto trace started",
-            trace,
-            buildList {
-                add(LogField.Public("source", source))
-                addAll(AndroidAutoDiagnostics.playerFields(player))
-                addAll(carSnapshotFields())
-            },
-        )
-        return trace
-    }
-
-    private fun autoTraceFor(controllerPackage: String): AutoTrace? =
-        activeAutoTrace?.takeIf { controllerPackage in CAR_PACKAGES }
-
-    private fun logAuto(
-        message: String,
-        trace: AutoTrace? = activeAutoTrace,
-        fields: List<LogField> = emptyList(),
-        level: LogLevel = LogLevel.Info,
-    ) {
-        val timed = if (trace == null) {
-            emptyList()
-        } else {
-            listOf(
-                LogField.Public("traceSource", trace.source),
-                LogField.Millis(
-                    "afterTrace",
-                    (clock.elapsed() - trace.startedAt).inWholeMilliseconds.coerceAtLeast(0L),
-                ),
-            )
-        }
-        logger.log(
-            LogEvent(
-                level = level,
-                category = LogCategory.AndroidAuto,
-                message = message,
-                fields = timed + fields,
-                correlationId = trace?.correlationId,
-            ),
-        )
-    }
-
-    private fun logAutoItems(
-        trace: AutoTrace?,
-        callback: String,
-        direction: String,
-        items: List<MediaItem>,
-        extraFields: List<LogField> = emptyList(),
-    ) {
-        if (trace == null) return
-        val playable = items.filter { item ->
-            item.mediaMetadata.isPlayable == true || MediaItems.isReadyToPlay(item)
-        }
-        logAuto(
-            "Android Auto media item handoff",
-            trace,
-            buildList {
-                add(LogField.Public("callback", callback))
-                add(LogField.Public("direction", direction))
-                add(LogField.Count("items", items.size))
-                add(LogField.Count("playableItems", playable.size))
-                addAll(extraFields)
-            },
-        )
-        // Sample both playable rows and browse-only folders/holders. A browse tree can be returned
-        // successfully while the car still has no playable book to show on its startup surface.
-        items.take(AndroidAutoDiagnostics.MAX_MEDIA_HANDOFF_ITEMS).forEachIndexed { index, item ->
-            logAuto(
-                "Android Auto media row handed off",
-                trace,
-                buildList {
-                    add(LogField.Public("callback", callback))
-                    add(LogField.Public("direction", direction))
-                    add(LogField.Public("index", index))
-                    addAll(AndroidAutoDiagnostics.itemFields(item))
-                    addAll(AndroidAutoDiagnostics.metadataPresenceFields(item))
-                } + extraFields,
-            )
-        }
     }
 
     private fun carSnapshotFields(): List<LogField> = listOf(
-        LogField.Public("projection", projectionState.name),
-        LogField.Public("projectionOwnsLifecycle", projectionOwnsCarLifecycle),
-        LogField.Public("sessionEstablished", carContinuitySessionEstablished),
+        LogField.Public("projection", carLifecycle.projectionState.name),
+        LogField.Public("projectionOwnsLifecycle", carLifecycle.projectionOwnsCarLifecycle),
+        LogField.Public("sessionEstablished", carLifecycle.sessionEstablished),
         LogField.Public("carBound", carConnections.isConnected()),
         LogField.Public("continuityPlayAwaiting", carRecovery.isPlayAwaiting),
         LogField.Public("generation", routeOwnership.currentGeneration?.toString() ?: "none"),
@@ -1952,7 +2027,7 @@ class PlaybackService : MediaLibraryService() {
     )
 
     private fun logCarContinuityDecision(source: String, decision: CarArrivalResumeGate.Decision) {
-        logAuto(
+        autoTraces.log(
             "Car lifecycle continuity decision",
             fields = buildList {
                 add(LogField.Public("source", source))
@@ -1966,25 +2041,23 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun onCarControllerConnected(controllerPackage: String) {
-        val trace = ensureAutoTrace("controller-connect")
+        val trace = autoTraces.ensure("controller-connect")
         val carWasConnected = carConnections.isConnected()
         val carArrivedAt = if (carWasConnected) null else clock.elapsed()
-        carConnections.onConnected()
-        if (player?.isPlaying == true) {
-            // Preserve the positively heard headset before the host can change routing or focus.
-            observeCarContinuityHeadset(audioOutputs.outputs.value)
-        }
+        carLifecycle.onControllerConnected()
+        buttonRouting.updateMonitor()
+        // Preserve positive evidence before the host can change routing or focus; muted playback is ignored.
+        observeCurrentAudibleRoute()
         // The first arrival must be registered synchronously. Routing resettle runs in a later coroutine,
         // and Media3 focus loss can arrive before that coroutine is scheduled.
         val arrivalDecision = carArrivedAt?.let { at ->
             carRecovery.carArrival(at, routeOwnership.currentGeneration, currentExplicitSelectionSequence())
         }
         arrivalDecision?.let { logCarContinuityDecision("first-car-bind", it) }
-        carContinuitySessionEstablished = true
         synchronizeSleepTimerCarConnection()
         // PD-002: publish car-safe media buttons synchronously before Media3 publishes initial state.
         publishMediaButtons()
-        logAuto(
+        autoTraces.log(
             "A car connected to the media session",
             trace,
             buildList {
@@ -1995,42 +2068,25 @@ class PlaybackService : MediaLibraryService() {
             },
         )
         if (carWasConnected) {
-            logAuto(
+            autoTraces.log(
                 "A later car controller bind was ignored as a new arrival",
                 trace,
                 listOf(LogField.Public("controller", controllerPackage)) + carSnapshotFields(),
             )
         }
-        scope.launch { handleCarArrival(arrivalDecision) }
-    }
-
-    private suspend fun handleCarArrival(decision: CarArrivalResumeGate.Decision?) {
-        audioOutputs.resettle()
-        if (decision == null) {
-            holdHeadsetAgainstCar()
-            republishOutputButtons()
-            return
-        }
-
-        val target = decision.target?.takeIf {
-            decision.status == CarArrivalResumeGate.Status.Ready
-        }
-        if (target == null) {
-            holdHeadsetAgainstCar()
-        } else {
-            recoverAndResumeCarContinuity(target)
-        }
-        republishOutputButtons()
+        carResumeEffects.onArrival(arrivalDecision)
     }
 
     private fun onCarControllerDisconnected(controllerPackage: String) {
-        val trace = ensureAutoTrace("controller-disconnect")
+        val trace = autoTraces.ensure("controller-disconnect")
         val carWasConnected = carConnections.isConnected()
-        carConnections.onDisconnected()
+        carLifecycle.onControllerDisconnected()
+        buttonRouting.clear()
+        buttonRouting.updateMonitor()
         val carStillConnected = carConnections.isConnected()
         synchronizeSleepTimerCarConnection()
         val finalControllerDeparture = carWasConnected && !carStillConnected
-        logAuto(
+        autoTraces.log(
             "A car controller disconnected from the media session",
             trace,
             buildList {
@@ -2049,26 +2105,27 @@ class PlaybackService : MediaLibraryService() {
 
         // Once a positive projection state has been observed for this drive, projection owns the physical
         // boundary. Legacy controllers may disappear/reappear independently and cannot end that car session.
-        if (projectionOwnsCarLifecycle) {
+        if (carLifecycle.projectionOwnsCarLifecycle) {
             scope.launch { republishOutputButtons() }
             return
         }
 
-        // No usable positive projection signal was observed for this drive. Preserve the pre-#36 controller
-        // fallback for hosts/OEMs that do not expose the Android Auto projection provider.
-        carContinuitySessionEstablished = false
+        // Without a positive projection edge the last controller is the fallback physical boundary.
+        // The lifecycle authority invalidates the established-session latch before recovery assessment.
+        carLifecycle.onFinalLegacyControllerDeparture()
         completeCarDeparture("final-car-disconnect")
     }
 
     private fun onCarProjectionUpdate(update: AndroidAutoProjectionMonitor.Update) {
         val previous = update.previous
         val trace = if (update.current.carConnected || previous?.carConnected == true) {
-            ensureAutoTrace("projection-state")
+            autoTraces.ensure("projection-state")
         } else {
-            activeAutoTrace
+            autoTraces.activeTrace
         }
-        projectionState = update.current
-        logAuto(
+        carLifecycle.onProjectionReported(update.current)
+        audioOutputs.refreshPresentationForLifecycle()
+        autoTraces.log(
             "Android Auto projection state changed",
             trace,
             buildList {
@@ -2079,52 +2136,60 @@ class PlaybackService : MediaLibraryService() {
             },
         )
 
+        val edge = carLifecycle.onProjectionBoundary(update)
+        if (previous != update.current) buttonRouting.clear()
+        buttonRouting.updateMonitor()
         if (update.initial) {
-            projectionOwnsCarLifecycle = update.current.carConnected
             synchronizeSleepTimerCarConnection()
-            if (update.current.carConnected && carConnections.isConnected()) {
-                carContinuitySessionEstablished = true
-            }
             return
         }
-
-        // An unreadable provider result cannot erase a positively observed car lifecycle. Use the existing
-        // latch so Unknown -> NotConnected still ends it, and Unknown -> Projection is not another arrival.
-        val wasConnected = projectionOwnsCarLifecycle
-        val isConnected = update.current.carConnected
-        when {
-            !wasConnected && isConnected -> {
-                projectionOwnsCarLifecycle = true
-                // This stronger car-specific edge may follow focus loss before Gearhead binds. If it leads
-                // focus loss instead, the later first controller bind remains the arrival completion boundary.
+        when (edge) {
+            CarLifecycleAuthority.ProjectionEdge.Arrival -> {
+                // Focus may precede the stronger physical arrival; the service remains the Play owner.
                 val decision = carRecovery.carArrival(
                     at = clock.elapsed(),
                     generation = routeOwnership.currentGeneration,
                     sequence = currentExplicitSelectionSequence(),
                 )
                 logCarContinuityDecision("projection-connect", decision)
-                scope.launch { handleCarArrival(decision) }
+                carResumeEffects.onArrival(decision)
             }
 
-            wasConnected &&
-                !isConnected &&
-                update.current == AndroidAutoProjectionMonitor.State.NotConnected -> {
-                // Physical projection exit is authoritative even when the legacy controller remains stale.
-                carContinuitySessionEstablished = false
-                carConnections.onProjectionDisconnected()
-                completeCarDeparture("projection-disconnect", physicalProjection = true)
-                projectionOwnsCarLifecycle = false
+            CarLifecycleAuthority.ProjectionEdge.PhysicalDeparture -> {
+                // Controller bindings have already been retired by the lifecycle authority.
+                completeProjectionDeparture()
             }
+
+            CarLifecycleAuthority.ProjectionEdge.None -> Unit
         }
         synchronizeSleepTimerCarConnection()
     }
 
     /** The timer owns eligibility; this adapter supplies controller/projection connection truth. */
     private fun synchronizeSleepTimerCarConnection() {
-        sleepTimer.onCarConnectionChanged(carConnections.isConnected() || projectionOwnsCarLifecycle)
+        sleepTimer.onCarConnectionChanged(carLifecycle.connectedForSleepTimer)
     }
 
-    private fun completeCarDeparture(source: String, physicalProjection: Boolean = false) {
+    private fun completeProjectionDeparture() {
+        val selection = audioOutputs.explicitSelection.value
+        val decision = completeCarDeparture("projection-disconnect", physicalProjection = true)
+        if (decision.status == CarArrivalResumeGate.Status.Rejected &&
+            decision.reason == CarArrivalResumeGate.Reason.NoPlayingCarHeadset &&
+            audioOutputs.handoffs.retirePausedCar(selection)
+        ) {
+            logger.info(
+                LogCategory.Playback,
+                "A paused Car destination expired after projection disconnection",
+                LogField.Public("requestSelection", selection?.sequence?.toString() ?: "none"),
+                LogField.Public("selectionSequence", currentExplicitSelectionSequence()),
+            )
+        }
+    }
+
+    private fun completeCarDeparture(
+        source: String,
+        physicalProjection: Boolean = false,
+    ): CarArrivalResumeGate.Decision {
         val departedAt = clock.elapsed()
         val generation = routeOwnership.currentGeneration
         val selectionSequence = currentExplicitSelectionSequence()
@@ -2135,13 +2200,8 @@ class PlaybackService : MediaLibraryService() {
             physicalProjection = physicalProjection,
         )
         logCarContinuityDecision(source, decision)
-        scope.launch {
-            audioOutputs.resettle()
-            decision.target
-                ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
-                ?.let { target -> recoverAndResumeCarContinuity(target) }
-            republishOutputButtons()
-        }
+        carResumeEffects.onDeparture(decision)
+        return decision
     }
 
     /**
@@ -2394,7 +2454,7 @@ class PlaybackService : MediaLibraryService() {
         val item = current.currentMediaItem ?: return
         if (current.mediaItemCount == 0) return
         val bookId = MediaItems.bookIdOf(item)
-        val at = current.bookPosition()
+        val at = effectiveBookPosition(current)
         // PRODUCT_SPEC 6.5 — the owner is read now, on the main thread with the position, not inside the
         // launch. See [flushProgress] for why the far end of an application-scoped launch is the wrong
         // place to ask who is signed in.
@@ -2417,7 +2477,7 @@ class PlaybackService : MediaLibraryService() {
     private fun nowPlaying(): NowPlaying? {
         val current = player ?: return null
         val bookId = current.currentMediaItem?.let(MediaItems::bookIdOf) ?: return null
-        return NowPlaying(bookId, current.currentPosition.coerceAtLeast(0).milliseconds)
+        return NowPlaying(bookId, effectiveBookPosition(current))
     }
 
     /**
@@ -2440,26 +2500,6 @@ class PlaybackService : MediaLibraryService() {
         val kind: String,
         val answer: MediaSession.MediaItemsWithStartPosition,
     )
-
-    /**
-     * A `PLAY_WHEN_READY_CHANGE_REASON_*` constant as the word Media3 calls it.
-     *
-     * What this can and cannot tell §2.9: it separates a press from the system — `audioFocusLoss` and
-     * `becomingNoisy` mean nobody pressed anything — and it does not say *who* pressed. `remote` is
-     * mapped for completeness and is unreachable from this service: it describes a change reported by a
-     * *remote* player, and the listener is attached to the local ExoPlayer, which emits only
-     * `userRequest` (every `setPlayWhenReady` call), `becomingNoisy`, and the focus and end-of-item
-     * reasons. R-76 is what happened when a device script read `remote` as "the wheel asked".
-     */
-    private fun playWhenReadyReason(reason: Int): String = when (reason) {
-        Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST -> "userRequest"
-        Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS -> "audioFocusLoss"
-        Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY -> "becomingNoisy"
-        Player.PLAY_WHEN_READY_CHANGE_REASON_REMOTE -> "remote"
-        Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM -> "endOfItem"
-        Player.PLAY_WHEN_READY_CHANGE_REASON_SUPPRESSED_TOO_LONG -> "suppressedTooLong"
-        else -> "unknown"
-    }
 
     /**
      * A `Player.STATE_*` constant as the word Media3 calls it.
@@ -2495,36 +2535,34 @@ class PlaybackService : MediaLibraryService() {
     private fun loadedNow(): MediaSession.MediaItemsWithStartPosition? {
         val current = player ?: return null
         val loaded = current.currentMediaItem ?: return null
-        return MediaSession.MediaItemsWithStartPosition(listOf(loaded), 0, current.currentPosition.coerceAtLeast(0))
+        return MediaSession.MediaItemsWithStartPosition(
+            listOf(loaded),
+            0,
+            effectiveBookPosition(current).inWholeMilliseconds.coerceAtLeast(0L),
+        )
     }
 
-    /**
-     * Turns a browse item into something the player can actually load.
-     *
-     * A browse item has a media id and no URI: the tree is built from cached rows, and the track URLs come
-     * from a session the server has to open. This is where that happens.
-     *
-     * An item that is **already** complete is returned untouched — see [MediaItems.isReadyToPlay], which is
-     * where the reasoning for that lives, because it is the part worth testing.
-     *
-     * @param trusted whether the submitting controller is this application. Only then may a pre-resolved
-     *   item pass through as given; otherwise the item must name a browse id this service resolves itself,
-     *   because "already complete" is satisfied by a bare URI and an outside caller chooses that URI.
-     */
-    private suspend fun resolvePlayable(item: MediaItem, trusted: Boolean): MediaItem? =
-        if (trusted && MediaItems.isReadyToPlay(item)) item else resolveQueue(item)?.item
+    private val callbackFutures by lazy { SessionCallbackFutures(applicationScope, mainDispatcher, logger) }
 
-    /**
-     * Resolves a controller-supplied browse/spoken item to a fresh server queue.
-     *
-     * Deliberately has no "Play follows" argument. `MediaSession.Callback.onSetMediaItems` and
-     * `onAddMediaItems` mean only that a controller is setting media; Media3 1.11 does not promise a Play in
-     * the same operation. Treating this helper as arm-only makes generic external resolution structurally
-     * unable to mint a fresh-start exemption that a much later Play could consume.
-     */
-    private suspend fun resolveQueue(item: MediaItem): MediaItems.Queue? {
+    private val controllerQueueResolution by lazy {
+        ControllerQueueResolution(
+            commandGeneration = { controllerCommandGeneration },
+            profileGeneration = auto::activeProfileGeneration,
+            explicitSelectionSequence = ::currentExplicitSelectionSequence,
+            serviceOwner = { player.takeIf { scope.isActive } },
+            activeProfileId = auto::activeProfileId,
+            isProfileLocked = lock::isActiveProfileLocked,
+            prepare = ::prepareQueue,
+            accept = { prepared, authorized, install ->
+                bookChanges.acceptBook(prepared.session, authorized, install)
+            },
+        )
+    }
+
+    private suspend fun resolveQueue(item: MediaItem, claim: ControllerQueueResolution.Claim): MediaItems.Queue? {
+        controllerQueueResolution.requireCurrent(claim)
         val target = AutoLibrary.resolve(item.mediaId) ?: return null
-        return openQueue(target.bookId, target.startAt)
+        return controllerQueueResolution.resolve(claim, target.bookId, target.startAt)
     }
 
     /**
@@ -2582,25 +2620,6 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
-    /**
-     * Opens a session for [bookId] and returns it as a queue, starting at [startAt] when one was asked for.
-     *
-     * `null` on any failure, and the failure is logged rather than surfaced: the caller is a car or a
-     * headset, neither of which has anywhere to show an error. What they get instead is nothing happening,
-     * which is what ROUTE-001 asks for — "if no playable item exists, the command does nothing and logs a
-     * non-fatal diagnostic".
-     *
-     * Service-owned queue opens deliberately do not mint PR #93's first-Play exemption. Generic controller
-     * resolution can arm media without playing it, while cold `onPlaybackResumption(isForPlayback = true)`
-     * has a separate Media3 loaded-item Play after installation. That loaded Play must pass through the
-     * shared freshness coordinator because a newly opened `/play` position can still be stale.
-     */
-    private suspend fun openQueue(bookId: LibraryItemId, startAt: Duration?): MediaItems.Queue? {
-        val prepared = prepareQueue(bookId, startAt) ?: return null
-        bookChanges.onBookOpened(prepared.session)
-        return prepared.queue
-    }
-
     /** Resolves media without publishing a book change; car restore owns a later guarded acceptance. */
     private suspend fun prepareQueue(bookId: LibraryItemId, startAt: Duration?): CarPostConnectRestorer.Prepared? =
         when (val opened = openPlaybackSession(bookId)) {
@@ -2626,52 +2645,7 @@ class PlaybackService : MediaLibraryService() {
             }
         }
 
-    /**
-     * A suspending body as the `ListenableFuture` Media3's callbacks return.
-     *
-     * Media3's session callbacks are future-based and this app is coroutine-based, and the bridge has to
-     * exist somewhere. On the **application** scope rather than the service's: a browse request that arrives
-     * as the service is being torn down should still answer, and a cancelled scope would leave the car
-     * waiting on a future nobody completes.
-     */
-    private fun <T> future(block: suspend () -> T): ListenableFuture<T> {
-        val settable = SettableFuture.create<T>()
-        val job = applicationScope.launch {
-            // ADR-0003 — `resultOf` is the app's single exception boundary, and this is a boundary: a
-            // throwing browse request must reach the *future*, or the car waits on something nobody will
-            // ever complete. `resultOf` rethrows cancellation before it catches anything, which is the
-            // property a `runCatching` here would not have.
-            when (val outcome = resultOf { block() }) {
-                is AppResult.Success -> settable.set(outcome.value)
-
-                is AppResult.Failure -> {
-                    /*
-                     * PRODUCT_SPEC 14.4 / 14.5 — the code *and* what threw.
-                     *
-                     * This used to log the code alone, and a head-unit run spent its whole budget on two
-                     * lines reading `error=unknown` — which is what `AppError.Unknown` is called, and says
-                     * nothing about the `IllegalStateException` underneath it. The cause was carried and
-                     * discarded at the one place it would have been read.
-                     *
-                     * The **class name** is what identifies a defect; the message is what may carry a book
-                     * title or a URL. So the class is logged and the message is not, which keeps 14.5 while
-                     * making the line worth reading. `AppError.Unknown` is the only variant with a cause,
-                     * and for every other variant the code already is the answer.
-                     */
-                    val cause = (outcome.error as? AppError.Unknown)?.cause
-                    logger.warn(
-                        LogCategory.Playback,
-                        "A browse request failed",
-                        LogField.Public("error", outcome.error.code),
-                        LogField.Public("thrown", cause?.let { it::class.java.simpleName } ?: "none"),
-                    )
-                    settable.setException(IllegalStateException(outcome.error.code))
-                }
-            }
-        }
-        settable.addListener({ if (settable.isCancelled) job.cancel() }, MoreExecutors.directExecutor())
-        return settable
-    }
+    private fun <T> future(block: suspend () -> T): ListenableFuture<T> = callbackFutures.submit(block)
 
     /**
      * PRODUCT_SPEC 11.1 — a bookmark at whatever is playing, from a control surface with no keyboard.
@@ -2687,7 +2661,7 @@ class PlaybackService : MediaLibraryService() {
         val current = player ?: return
         val item = current.currentMediaItem ?: return
         val bookId = MediaItems.bookIdOf(item)
-        val at = Bookmark.roundedFrom(current.bookPosition())
+        val at = Bookmark.roundedFrom(effectiveBookPosition(current))
         // PRODUCT_SPEC 6.5 — read here, on the main thread with the position, not inside the launch. The
         // same reasoning as `flushProgress`: the far end of an application-scoped launch is the wrong place
         // to ask who is signed in, because the whole point of that scope is outliving this moment.
@@ -2708,10 +2682,15 @@ class PlaybackService : MediaLibraryService() {
     private fun skipBy(delta: Duration) {
         val current = player ?: return
         if (current.mediaItemCount == 0) return
+        val target = effectiveBookPosition(current) + delta
         // Issue #91 — this custom notification command bypasses ResumeFreshnessPlayer.handleSeek.
-        resumeFreshness.invalidate(ResumeInvalidation.NotificationSkip)
-        sleepTimer.onResumeInvalidation(ResumeInvalidation.NotificationSkip)
-        current.seekTo((current.bookPosition() + delta).inWholeMilliseconds.coerceAtLeast(0))
+        val finished = positionEffects.before(PlaybackMovement.Seek) ?: return
+        try {
+            if (!onControllerCommand(ResumeInvalidation.NotificationSkip)) return
+            current.seekTo(target.inWholeMilliseconds.coerceAtLeast(0))
+        } finally {
+            finished()
+        }
     }
 
     /**
@@ -2739,41 +2718,41 @@ class PlaybackService : MediaLibraryService() {
     private inner class LibraryCallback : MediaLibrarySession.Callback {
 
         /** #174 — car profile selections run one at a time; see [switchProfileFromCar]. */
-        private val carProfileSwitch = Mutex()
+        private val resumption = PlaybackResumptionCallbacks(
+            lastPlayedBookId = { auto.lastPlayedAfter(::refreshResumeAccount)?.id },
+            resumeItem = auto::resumeItem,
+            resolution = controllerQueueResolution,
+            lock = lock,
+            coldResumeStartPosition = coldResumeStartPosition,
+            logger = logger,
+        )
 
-        /**
-         * PRODUCT_SPEC 11.1 — the browse root, which is what makes the app appear in a car at all.
-         *
-         * The default rejects, and a rejection is what wave 1 shipped because an empty root would have
-         * looked supported and browsed to nothing. There is a tree now.
-         */
+        private val profileSwitcher = CarProfileSwitcher(
+            isActive = auto::isActiveProfile,
+            switch = { switchProfile(it) },
+            restore = { profileId -> scope.launch { restoreProfilePlayback(profileId) } },
+            unavailableMessage = { getString(R.string.car_profile_unavailable) },
+            unlockMessage = { getString(R.string.car_profile_unlock_phone) },
+            failedMessage = { getString(R.string.car_profile_switch_failed) },
+        )
+
+        private val browse = LibraryBrowseCallbacks(
+            auto = auto,
+            futures = callbackFutures,
+            autoTraces = autoTraces,
+            clock = clock,
+            logger = logger,
+            nowPlaying = ::nowPlaying,
+            player = { player },
+            mayBrowse = { session, controller -> session.mayBrowse(controller) },
+            carPackages = CAR_PACKAGES,
+        )
+
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
             params: LibraryParams?,
-        ): ListenableFuture<LibraryResult<MediaItem>> {
-            // PRODUCT_SPEC ROUTE-001 — the car asking for a *resume tile* rather than for the browse tree.
-            //
-            // Android Auto sends this hint when it starts, before the driver has touched anything, and what
-            // comes back is the tile on the media home screen. It is a different question from "what can I
-            // browse", so it gets a different root: see `AutoLibrary.RECENT_ROOT`.
-            if (!session.mayBrowse(browser)) {
-                return Futures.immediateFuture(deniedItem(browser, "onGetLibraryRoot"))
-            }
-            val root = if (params?.isRecent == true) auto.recentRoot() else auto.root()
-            autoTraceFor(browser.packageName)?.let { trace ->
-                logAuto(
-                    "Android Auto library root returned",
-                    trace,
-                    buildList {
-                        add(LogField.Public("recent", params?.isRecent == true))
-                        addAll(AndroidAutoDiagnostics.playerFields(player))
-                        addAll(AndroidAutoDiagnostics.itemFields(root, prefix = "returned"))
-                    },
-                )
-            }
-            return Futures.immediateFuture(LibraryResult.ofItem(root, params))
-        }
+        ): ListenableFuture<LibraryResult<MediaItem>> = browse.onGetLibraryRoot(session, browser, params)
 
         override fun onGetChildren(
             session: MediaLibrarySession,
@@ -2782,170 +2761,22 @@ class PlaybackService : MediaLibraryService() {
             page: Int,
             pageSize: Int,
             params: LibraryParams?,
-        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
-            /*
-             * **Read the player here, not inside `future`** — `docs/risks.md` R-66.
-             *
-             * Media3 invokes this callback on the application thread; `future` runs its block on
-             * `applicationScope`, which is `Dispatchers.Default`. `nowPlaying()` reads
-             * `player.currentMediaItem`, and ExoPlayer throws `IllegalStateException` for any property read
-             * off its application thread. So the call used to be inside the block and every browse of a
-             * node threw before it could answer.
-             *
-             * That is what a head-unit run saw: two `A browse request failed error=unknown` lines — the two
-             * roots Android Auto asks for on connect — an empty browse tree, and **search working**, because
-             * `onGetSearchResult` is the one browse callback that does not need the player.
-             *
-             * Same discipline as `recordTransport` and `positionSnapshot` a few hundred lines up, which say
-             * the same thing about the same object. This is the third place it has mattered.
-             */
-            val now = nowPlaying()
-            val trace = autoTraceFor(browser.packageName)
-            val entryPlayer = if (trace == null) emptyList() else AndroidAutoDiagnostics.playerFields(player)
-            val startedAt = clock.elapsed()
-            return future {
-                if (!session.mayBrowse(browser)) return@future deniedList(browser, "onGetChildren")
-                val all = auto.children(parentId, now)
-                logger.info(
-                    LogCategory.Playback,
-                    "A browser asked for a node's children",
-                    LogField.Public("parent", parentId),
-                    LogField.Count("children", all.size),
-                )
-                val from = (page * pageSize).coerceAtMost(all.size)
-                val to = (from + pageSize).coerceAtMost(all.size)
-                val returned = all.subList(from, to)
-                logger.info(
-                    LogCategory.Playback,
-                    "Android Auto browse artwork offered",
-                    LogField.Public("parentKind", AutoLibrary.kindOf(parentId)),
-                    LogField.Count("returned", returned.size),
-                    LogField.Count("withArtworkUri", returned.count { item -> item.mediaMetadata.artworkUri != null }),
-                    LogField.Count(
-                        "withContentArtworkUri",
-                        returned.count { item -> item.mediaMetadata.artworkUri?.scheme == "content" },
-                    ),
-                )
-                // Only sample the first grid cards the car is likely to display, not whole libraries.
-                // A matching artworkRef in the content-provider log proves that the host requested that card.
-                if (trace != null) {
-                    returned.take(AndroidAutoDiagnostics.MAX_ARTWORK_OFFER_EVENTS).forEachIndexed { index, item ->
-                        val fields = AndroidAutoDiagnostics.artworkOfferFields(parentId, from + index, item)
-                        if (fields.isNotEmpty()) {
-                            logger.log(
-                                LogEvent(
-                                    LogLevel.Info,
-                                    LogCategory.Playback,
-                                    "Android Auto artwork card offered",
-                                    fields,
-                                ),
-                            )
-                        }
-                    }
-                }
-                traceChildrenResult(
-                    trace = trace,
-                    context = ChildrenTraceContext(
-                        parentId = parentId,
-                        page = page,
-                        pageSize = pageSize,
-                        allCount = all.size,
-                        entryPlayer = entryPlayer,
-                        startedAt = startedAt,
-                    ),
-                    returned = returned,
-                )
-                LibraryResult.ofItemList(ImmutableList.copyOf(returned), params)
-            }
-        }
-
-        private fun traceChildrenResult(trace: AutoTrace?, context: ChildrenTraceContext, returned: List<MediaItem>) {
-            if (trace == null) return
-            val parentFields = listOf(
-                LogField.Public("parentKind", AutoLibrary.kindOf(context.parentId)),
-                LogField.Identifier("parentId", context.parentId),
-            )
-            logAuto(
-                "Android Auto children returned",
-                trace,
-                buildList {
-                    addAll(parentFields)
-                    add(LogField.Public("page", context.page))
-                    add(LogField.Public("pageSize", context.pageSize))
-                    add(LogField.Count("children", context.allCount))
-                    add(LogField.Count("returned", returned.size))
-                    add(
-                        LogField.Millis(
-                            "callbackElapsed",
-                            (clock.elapsed() - context.startedAt).inWholeMilliseconds.coerceAtLeast(0L),
-                        ),
-                    )
-                    addAll(context.entryPlayer)
-                },
-            )
-            logAutoItems(
-                trace = trace,
-                callback = "onGetChildren",
-                direction = "returned",
-                items = returned,
-                extraFields = parentFields,
-            )
-        }
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
+            browse.onGetChildren(session, browser, parentId, page, pageSize, params)
 
         override fun onGetItem(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
             mediaId: String,
-        ): ListenableFuture<LibraryResult<MediaItem>> {
-            val now = nowPlaying()
-            val trace = autoTraceFor(browser.packageName)
-            val entryPlayer = if (trace == null) emptyList() else AndroidAutoDiagnostics.playerFields(player)
-            val startedAt = clock.elapsed()
-            return future {
-                if (!session.mayBrowse(browser)) return@future deniedItem(browser, "onGetItem")
-                val resolved = auto.item(mediaId, now)
-                if (trace != null) {
-                    logAuto(
-                        "Android Auto item lookup returned",
-                        trace,
-                        buildList {
-                            add(LogField.Public("askedKind", AutoLibrary.kindOf(mediaId)))
-                            add(LogField.Identifier("askedId", mediaId))
-                            add(LogField.Public("resolved", resolved != null))
-                            add(
-                                LogField.Millis(
-                                    "callbackElapsed",
-                                    (clock.elapsed() - startedAt).inWholeMilliseconds.coerceAtLeast(0L),
-                                ),
-                            )
-                            addAll(entryPlayer)
-                            addAll(AndroidAutoDiagnostics.itemFields(resolved, prefix = "returned"))
-                        },
-                    )
-                }
-                resolved
-                    ?.let { item -> LibraryResult.ofItem(item, null) }
-                    ?: LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
-            }
-        }
+        ): ListenableFuture<LibraryResult<MediaItem>> = browse.onGetItem(session, browser, mediaId)
 
-        /**
-         * Media3 search is a two-step protocol: this callback announces how many results are available,
-         * then [onGetSearchResult] supplies the requested page. Returning items directly from `onSearch`
-         * would skip the notification a browser is waiting for and leave Android Auto showing no results.
-         */
         @Suppress("ForbiddenVoid")
         override fun onSearch(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
             query: String,
             params: LibraryParams?,
-        ): ListenableFuture<LibraryResult<Void>> = future {
-            if (!session.mayBrowse(browser)) return@future deniedVoid(browser, "onSearch")
-            val results = auto.search(query)
-            session.notifySearchResultChanged(browser, query, results.size, params)
-            LibraryResult.ofVoid(params)
-        }
+        ): ListenableFuture<LibraryResult<Void>> = browse.onSearch(session, browser, query, params)
 
         override fun onGetSearchResult(
             session: MediaLibrarySession,
@@ -2954,33 +2785,8 @@ class PlaybackService : MediaLibraryService() {
             page: Int,
             pageSize: Int,
             params: LibraryParams?,
-        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
-            val trace = autoTraceFor(browser.packageName)
-            val startedAt = clock.elapsed()
-            return future {
-                if (!session.mayBrowse(browser)) return@future deniedList(browser, "onGetSearchResult")
-                val all = auto.search(query)
-                val from = (page * pageSize).coerceAtMost(all.size)
-                val to = (from + pageSize).coerceAtMost(all.size)
-                val returned = all.subList(from, to)
-                logAutoItems(
-                    trace = trace,
-                    callback = "onGetSearchResult",
-                    direction = "returned",
-                    items = returned,
-                    extraFields = listOf(
-                        LogField.Public("page", page),
-                        LogField.Public("pageSize", pageSize),
-                        LogField.Count("results", all.size),
-                        LogField.Millis(
-                            "callbackElapsed",
-                            (clock.elapsed() - startedAt).inWholeMilliseconds.coerceAtLeast(0L),
-                        ),
-                    ),
-                )
-                LibraryResult.ofItemList(ImmutableList.copyOf(returned), params)
-            }
-        }
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
+            browse.onGetSearchResult(session, browser, query, page, pageSize, params)
 
         /**
          * Resolves media ids submitted through controller `addMediaItems` into playable server-backed items.
@@ -2994,12 +2800,29 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>,
         ): ListenableFuture<MutableList<MediaItem>> {
-            val trace = autoTraceFor(controller.packageName)
-            logAutoItems(trace, "onAddMediaItems", "asked", mediaItems)
+            val trace = autoTraces.forController(controller.packageName, CAR_PACKAGES)
+            autoTraces.logItems(trace, "onAddMediaItems", "asked", mediaItems)
+            if (!onControllerCommand(ResumeInvalidation.MediaChanged)) return Futures.immediateCancelledFuture()
+            val claim = controllerQueueResolution.capture()
             return future {
+                controllerQueueResolution.requireCurrent(claim)
                 val trusted = controller.isThisApplication()
-                val matches = mediaItems.mapNotNull { item -> resolvePlayable(item, trusted)?.let { item to it } }
-                val resolved = matches.map { (_, playable) -> playable }.toMutableList()
+                val matches = mediaItems.mapNotNull { item ->
+                    if (trusted && MediaItems.isReadyToPlay(item)) {
+                        Triple(item, item, null)
+                    } else {
+                        AutoLibrary.resolve(item.mediaId)?.let { target ->
+                            controllerQueueResolution.prepareForRequest(claim, target.bookId, target.startAt)
+                        }?.let { prepared -> Triple(item, prepared.queue.item, prepared) }
+                    }
+                }
+                val prepared = matches.firstOrNull()?.third
+                if (prepared == null) {
+                    controllerQueueResolution.requireCurrent(claim)
+                } else {
+                    controllerQueueResolution.acceptPrepared(claim, prepared)
+                }
+                val resolved = matches.map { it.second }.toMutableList()
                 logSelection(
                     callback = "onAddMediaItems",
                     asked = mediaItems,
@@ -3011,7 +2834,7 @@ class PlaybackService : MediaLibraryService() {
                     ),
                     trace = trace,
                 )
-                logAutoItems(trace, "onAddMediaItems", "returned", resolved)
+                autoTraces.logItems(trace, "onAddMediaItems", "returned", resolved)
                 resolved
             }
         }
@@ -3031,8 +2854,8 @@ class PlaybackService : MediaLibraryService() {
             startIndex: Int,
             startPositionMs: Long,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-            val trace = autoTraceFor(controller.packageName)
-            logAutoItems(
+            val trace = autoTraces.forController(controller.packageName, CAR_PACKAGES)
+            autoTraces.logItems(
                 trace = trace,
                 callback = "onSetMediaItems",
                 direction = "asked",
@@ -3045,8 +2868,10 @@ class PlaybackService : MediaLibraryService() {
             AutoLibrary.profileSelectionOf(mediaItems)?.let { profileId ->
                 return selectProfileFromRow(session, controller, profileId)
             }
+            if (!onControllerCommand(ResumeInvalidation.MediaChanged)) return Futures.immediateCancelledFuture()
+            val claim = controllerQueueResolution.capture()
             return future {
-                setMediaItems(session, controller, mediaItems, startIndex, startPositionMs, trace)
+                setMediaItems(session, controller, mediaItems, startIndex, startPositionMs, trace, claim)
             }
         }
 
@@ -3095,8 +2920,10 @@ class PlaybackService : MediaLibraryService() {
             mediaItems: MutableList<MediaItem>,
             startIndex: Int,
             startPositionMs: Long,
-            trace: AutoTrace?,
+            trace: AndroidAutoTraceRecorder.Trace?,
+            claim: ControllerQueueResolution.Claim,
         ): MediaSession.MediaItemsWithStartPosition {
+            controllerQueueResolution.requireCurrent(claim)
             val spokenRequest = mediaItems
                 .firstNotNullOfOrNull { item -> item.requestMetadata.searchQuery?.let { q -> item to q } }
                 ?.takeIf { session.mayBrowse(controller) }
@@ -3104,7 +2931,7 @@ class PlaybackService : MediaLibraryService() {
             val spoken = query?.let { asked -> auto.search(asked).firstOrNull() }
             val selection = when {
                 query != null -> spoken?.let { match ->
-                    resolveQueue(match)
+                    resolveQueue(match, claim)
                 }.let { queue ->
                     Selection(
                         branch = "spoken",
@@ -3131,7 +2958,7 @@ class PlaybackService : MediaLibraryService() {
                 else ->
                     mediaItems
                         .firstNotNullOfOrNull { item ->
-                            resolveQueue(item)?.let { queue -> item to queue }
+                            resolveQueue(item, claim)?.let { queue -> item to queue }
                         }
                         .let { match ->
                             Selection(
@@ -3142,13 +2969,14 @@ class PlaybackService : MediaLibraryService() {
                             )
                         }
             }
+            if (!selection.resolved) controllerQueueResolution.requireCurrent(claim)
             logSelection("onSetMediaItems", mediaItems, selection, trace)
             traceSetMediaItemsResult(trace, selection)
             return selection.answer
         }
 
-        private fun traceSetMediaItemsResult(trace: AutoTrace?, selection: Selection) {
-            logAutoItems(
+        private fun traceSetMediaItemsResult(trace: AndroidAutoTraceRecorder.Trace?, selection: Selection) {
+            autoTraces.logItems(
                 trace = trace,
                 callback = "onSetMediaItems",
                 direction = "returned",
@@ -3172,7 +3000,7 @@ class PlaybackService : MediaLibraryService() {
             callback: String,
             asked: List<MediaItem>,
             selection: Selection,
-            trace: AutoTrace? = null,
+            trace: AndroidAutoTraceRecorder.Trace? = null,
         ) {
             logger.log(
                 LogEvent(
@@ -3191,7 +3019,7 @@ class PlaybackService : MediaLibraryService() {
                 ),
             )
             if (trace != null) {
-                logAuto(
+                autoTraces.log(
                     "Android Auto controller selection resolved",
                     trace,
                     listOf(
@@ -3243,10 +3071,10 @@ class PlaybackService : MediaLibraryService() {
             controller: MediaSession.ControllerInfo,
             isForPlayback: Boolean,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-            val trace = autoTraceFor(controller.packageName)
+            val trace = autoTraces.forController(controller.packageName, CAR_PACKAGES)
             val startedAt = clock.elapsed()
             if (trace != null) {
-                logAuto(
+                autoTraces.log(
                     "Android Auto playback resumption requested",
                     trace,
                     buildList {
@@ -3255,10 +3083,11 @@ class PlaybackService : MediaLibraryService() {
                     },
                 )
             }
-            return future {
-                val result = if (isForPlayback) resumeForPlayback() else describeResumable()
+            val claim = controllerQueueResolution.capture()
+            val resolve: suspend () -> MediaSession.MediaItemsWithStartPosition = {
+                val result = if (isForPlayback) resumption.forPlayback(claim) else resumption.describe(claim)
                 if (trace != null) {
-                    logAutoItems(
+                    autoTraces.logItems(
                         trace = trace,
                         callback = "onPlaybackResumption",
                         direction = "returned",
@@ -3276,66 +3105,15 @@ class PlaybackService : MediaLibraryService() {
                 }
                 result
             }
-        }
-
-        /** The `isForPlayback = true` half: open the book and hand back a queue Media3 immediately plays. */
-        private suspend fun resumeForPlayback(): MediaSession.MediaItemsWithStartPosition {
-            if (lock.isActiveProfileLocked()) {
-                logger.info(LogCategory.Playback, "A playback resume was suppressed while the account was locked")
-                return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
-            }
-            val book = auto.lastPlayedAfter(::refreshResumeAccount)
-            if (lock.isActiveProfileLocked()) {
-                logger.info(LogCategory.Playback, "A playback resume was suppressed after the account locked")
-                return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
-            }
-            val queue = book?.let {
-                openQueue(it.id, startAt = null)
-            }
-            if (queue != null && lock.isActiveProfileLocked()) {
-                logger.info(LogCategory.Playback, "A playback resume was withheld after the account locked")
-                return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
-            }
-            return if (queue == null) {
-                logger.info(LogCategory.Playback, "A resume was requested with nothing to resume")
-                MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
+            return if (isForPlayback) {
+                callbackFutures.submitPlayback(
+                    authorized = { controllerQueueResolution.isUnchanged(claim) },
+                    playable = { it.mediaItems.isNotEmpty() },
+                    block = resolve,
+                )
             } else {
-                // BW-SLEEP-01 — only a successful cold playback restore makes the following Media3 Play passive.
-                passiveResumptionPlayPending = true
-                // Issue #138 — fault injection happens after the real `/play` session was staged above, so
-                // ResumeFreshnessCoordinator still owns the real trusted/server position. Only Media3's
-                // initial local install is replaced with zero, and only this playback-resumption callback
-                // can consume the one-shot diagnostic.
-                val startPositionMs = coldResumeStartPosition.forPlaybackResumption(queue.startPositionMs)
-                logger.info(LogCategory.Playback, "Resuming the last book for a media button")
-                MediaSession.MediaItemsWithStartPosition(listOf(queue.item), 0, startPositionMs)
+                future(resolve)
             }
-        }
-
-        /**
-         * The `isForPlayback = false` half: what *would* resume, described, with nothing opened.
-         *
-         * The same tile the car's recent root shows, because it is the same question asked by a different
-         * surface — see [AutoLibrary.resumeItem]. The position travels in the media id rather than in the
-         * start position, which Media3 discards on this path; it keeps the item self-describing for a
-         * controller that hands it straight back.
-         */
-        private suspend fun describeResumable(): MediaSession.MediaItemsWithStartPosition {
-            if (lock.isActiveProfileLocked()) {
-                logger.info(LogCategory.Playback, "Resumption metadata was withheld while the account was locked")
-                return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
-            }
-            val item = auto.resumeItem()
-            if (item != null && lock.isActiveProfileLocked()) {
-                logger.info(LogCategory.Playback, "Resumption metadata was withheld after the account locked")
-                return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
-            }
-            if (item == null) {
-                logger.info(LogCategory.Playback, "A resumable book was asked for and there is none")
-                return MediaSession.MediaItemsWithStartPosition(emptyList(), 0, 0L)
-            }
-            logger.info(LogCategory.Playback, "Described the resumable book without opening a session")
-            return MediaSession.MediaItemsWithStartPosition(listOf(item), 0, 0L)
         }
 
         /**
@@ -3392,7 +3170,7 @@ class PlaybackService : MediaLibraryService() {
                 .build()
 
             if (controller.isCar()) {
-                logAuto(
+                autoTraces.log(
                     "Android Auto initial playback surface offered",
                     fields = listOf(
                         LogField.Public("playPauseAvailable", playerCommands.contains(Player.COMMAND_PLAY_PAUSE)),
@@ -3412,11 +3190,13 @@ class PlaybackService : MediaLibraryService() {
             controllerInfo: MediaSession.ControllerInfo,
             intent: Intent,
         ): Boolean {
-            @Suppress("DEPRECATION")
-            val keyEvent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
-            } else {
-                intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+            val keyEvent = mediaButtonKeyEvent(intent)
+            if (audioRouteLab.state.value.recording) {
+                audioRouteLab.mediaButtonInput(
+                    keyEvent,
+                    mediaInputController(controllerInfo),
+                    MediaInputEntry.SessionCallback,
+                )
             }
             val inputDevice = keyEvent?.device
             val inputEvidence = MediaButtonInputEvidence.classify(
@@ -3425,7 +3205,7 @@ class PlaybackService : MediaLibraryService() {
                 inputName = inputDevice?.name,
                 outputs = audioOutputs.outputs.value,
             )
-            logAuto(
+            autoTraces.log(
                 "MediaSession hardware media button observed",
                 fields = listOf(
                     LogField.Identifier("controllerPackage", controllerInfo.packageName),
@@ -3441,20 +3221,13 @@ class PlaybackService : MediaLibraryService() {
             // Only cold, empty-player toggles are suspect; genuine PLAY, car intent and warm
             // headset buttons still flow to Media3. This can intentionally require a second
             // PLAY_PAUSE press during the three-second cold-start window.
-            val suppressed = coldStartToggleGate.consume(
-                sinceServiceStart = clock.elapsed() - serviceStartedAt,
-                keyCode = keyEvent?.keyCode ?: -1,
-                keyAction = keyEvent?.action ?: -1,
-                inputDeviceId = keyEvent?.deviceId,
-                hasBluetooth = audioOutputs.outputs.value.any { it.id.startsWith("bluetooth:") },
-                emptyQueue = (player?.mediaItemCount ?: 0) == 0,
-                carConnected = carConnections.isConnected() || projectionState.carConnected ||
-                    controllerInfo.packageName in CAR_PACKAGES,
-            )
+            val suppressed = keyEvent?.let { shouldConsumeColdStartToggle(it, controllerInfo.packageName) } == true
             if (suppressed) {
-                logAuto("Cold virtual Bluetooth toggle consumed before playback resumption")
+                buttonRouting.clear()
+                autoTraces.log("Cold virtual Bluetooth toggle consumed before playback resumption")
                 return true
             }
+            buttonRouting.key(session, controllerInfo, keyEvent)
             return super.onMediaButtonEvent(session, controllerInfo, intent)
         }
 
@@ -3465,7 +3238,7 @@ class PlaybackService : MediaLibraryService() {
             playerCommands: Player.Commands,
         ) {
             if (playerCommands.contains(Player.COMMAND_PLAY_PAUSE)) {
-                logAuto(
+                autoTraces.log(
                     "MediaSession controller transport batch completed",
                     fields = listOf(
                         LogField.Identifier("controllerPackage", controllerInfo.packageName),
@@ -3488,29 +3261,40 @@ class PlaybackService : MediaLibraryService() {
          */
         override fun onPostConnect(session: MediaSession, controller: MediaSession.ControllerInfo) {
             if (!controller.isCar()) return
-            val trace = autoTraceFor(controller.packageName) ?: ensureAutoTrace("post-connect")
+            val trace = autoTraces.forController(
+                controller.packageName,
+                CAR_PACKAGES,
+            ) ?: autoTraces.ensure("post-connect")
             val current = player
             if (current == null) {
-                logAuto("Android Auto post-connect found no Player", trace)
+                autoTraces.log("Android Auto post-connect found no Player", trace)
                 return
             }
-            logAuto(
+            autoTraces.log(
                 "Android Auto post-connect entered",
                 trace,
                 AndroidAutoDiagnostics.playerFields(current),
             )
             if (current.mediaItemCount > 0) {
-                logAuto(
+                autoTraces.log(
                     "Android Auto post-connect kept the existing current item",
                     trace,
                     AndroidAutoDiagnostics.playerFields(current),
                 )
                 return
             }
-            scope.launch { runCarPostConnect(current, trace) }
+            // The accepted-connect request owns both snapshots before any coroutine dispatch.
+            val requestGeneration = controllerCommandGeneration
+            val selectionSequence = currentExplicitSelectionSequence()
+            scope.launch { runCarPostConnect(current, trace, requestGeneration, selectionSequence) }
         }
 
-        private suspend fun runCarPostConnect(current: ExoPlayer, trace: AutoTrace) {
+        private suspend fun runCarPostConnect(
+            current: ExoPlayer,
+            trace: AndroidAutoTraceRecorder.Trace,
+            requestGeneration: Long,
+            selectionSequence: Long,
+        ) {
             val startedAt = clock.elapsed()
             val action = CarConnection.decide(devices, lock, clock.now())
             val actionName = when (action) {
@@ -3519,13 +3303,13 @@ class PlaybackService : MediaLibraryService() {
                 AutoStartAction.Suppressed -> "Suppressed"
                 AutoStartAction.None -> "None"
             }
-            logAuto(
+            autoTraces.log(
                 "Android Auto post-connect policy selected",
                 trace,
                 listOf(LogField.Public("action", actionName)) + AndroidAutoDiagnostics.playerFields(current),
             )
-            carPostConnectRestorer(trace).restore(action, current)
-            logAuto(
+            carPostConnectRestorer(trace, requestGeneration, selectionSequence).restore(action, current)
+            autoTraces.log(
                 "Android Auto post-connect async work completed",
                 trace,
                 buildList {
@@ -3541,50 +3325,55 @@ class PlaybackService : MediaLibraryService() {
             )
         }
 
-        private fun carPostConnectRestorer(trace: AutoTrace?): CarPostConnectRestorer {
-            val requestGeneration = resumeFreshness.currentRequestGeneration()
-            return CarPostConnectRestorer(
-                activeProfileId = auto::activeProfileId,
-                profileGeneration = auto::activeProfileGeneration,
-                isRequestCurrent = { resumeFreshness.currentRequestGeneration() == requestGeneration },
-                isProfileLocked = lock::isActiveProfileLocked,
-                lastPlayedBookId = { auto.lastPlayedAfter(::refreshResumeAccount)?.id },
-                heldResume = { auto.heldResumeAfter(::refreshResumeAccount) },
-                openQueue = { bookId -> prepareQueue(bookId, startAt = null) },
-                acceptQueue = { prepared, authorized, install ->
-                    bookChanges.acceptBook(prepared.session, authorized, install)
-                },
-                observer = object : CarPostConnectRestorer.Observer {
-                    override fun note(message: String, player: Player?) {
-                        if (player == null) {
-                            logAuto(message, trace)
-                        } else {
-                            logAuto(message, trace, AndroidAutoDiagnostics.playerFields(player))
-                        }
+        private fun carPostConnectRestorer(
+            trace: AndroidAutoTraceRecorder.Trace?,
+            requestGeneration: Long,
+            selectionSequence: Long,
+        ): CarPostConnectRestorer = CarPostConnectRestorer(
+            activeProfileId = auto::activeProfileId,
+            profileGeneration = auto::activeProfileGeneration,
+            isRequestCurrent = {
+                controllerCommandGeneration == requestGeneration &&
+                    currentExplicitSelectionSequence() == selectionSequence
+            },
+            commands = playbackCommandEffects,
+            isProfileLocked = lock::isActiveProfileLocked,
+            lastPlayedBookId = { auto.lastPlayedAfter(::refreshResumeAccount)?.id },
+            heldResume = { auto.heldResumeAfter(::refreshResumeAccount) },
+            openQueue = { bookId -> prepareQueue(bookId, startAt = null) },
+            acceptQueue = { prepared, authorized, install ->
+                bookChanges.acceptBook(prepared.session, authorized, install)
+            },
+            observer = object : CarPostConnectRestorer.Observer {
+                override fun note(message: String, player: Player?) {
+                    if (player == null) {
+                        autoTraces.log(message, trace)
+                    } else {
+                        autoTraces.log(message, trace, AndroidAutoDiagnostics.playerFields(player))
                     }
+                }
 
-                    override fun installing(direction: String, item: MediaItem, extraFields: List<LogField>) {
-                        logAutoItems(
-                            trace = trace,
-                            callback = "onPostConnect",
-                            direction = direction,
-                            items = listOf(item),
-                            extraFields = extraFields,
-                        )
-                    }
-                },
-            )
-        }
+                override fun installing(direction: String, item: MediaItem, extraFields: List<LogField>) {
+                    autoTraces.logItems(
+                        trace = trace,
+                        callback = "onPostConnect",
+                        direction = direction,
+                        items = listOf(item),
+                        extraFields = extraFields,
+                    )
+                }
+            },
+        )
 
         private suspend fun refreshResumeAccount() {
-            val trace = activeAutoTrace
-            logAuto(
+            val trace = autoTraces.activeTrace
+            autoTraces.log(
                 "Android Auto resume candidate cache was empty; refreshing account",
                 trace,
             )
             val startedAt = clock.elapsed()
             syncAccount()
-            logAuto(
+            autoTraces.log(
                 "Android Auto resume account refresh completed",
                 trace,
                 listOf(
@@ -3631,25 +3420,6 @@ class PlaybackService : MediaLibraryService() {
             )
         }
 
-        private fun deniedItem(browser: MediaSession.ControllerInfo, callback: String): LibraryResult<MediaItem> {
-            denied(browser, callback)
-            return LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED)
-        }
-
-        private fun deniedList(
-            browser: MediaSession.ControllerInfo,
-            callback: String,
-        ): LibraryResult<ImmutableList<MediaItem>> {
-            denied(browser, callback)
-            return LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED)
-        }
-
-        @Suppress("ForbiddenVoid")
-        private fun deniedVoid(browser: MediaSession.ControllerInfo, callback: String): LibraryResult<Void> {
-            denied(browser, callback)
-            return LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED)
-        }
-
         /**
          * PD-001 / AUTH-005 / #174 — switch to the profile a car selected, by its row or by its media-item
          * command.
@@ -3662,46 +3432,8 @@ class PlaybackService : MediaLibraryService() {
          * racing it (PRODUCT_SPEC 6.5, "atomically"), and the no-op keeps a stray tap from re-arming — and so
          * interrupting — the book that profile is already playing (product priority 1).
          */
-        private suspend fun switchProfileFromCar(profileId: ProfileId?): SessionResult {
-            if (profileId == null) {
-                return SessionResult(
-                    SessionError(SessionError.ERROR_BAD_VALUE, getString(R.string.car_profile_unavailable)),
-                )
-            }
-            return carProfileSwitch.withLock {
-                if (auto.isActiveProfile(profileId)) {
-                    SessionResult(SessionResult.RESULT_SUCCESS)
-                } else {
-                    switchTo(profileId)
-                }
-            }
-        }
-
-        private suspend fun switchTo(profileId: ProfileId): SessionResult =
-            when (val result = switchProfile(profileId)) {
-                is AppResult.Success -> {
-                    if (result.value == SessionStatus.Active) {
-                        // The correctness-critical flush/switch above is awaited. Step 6 remains a courtesy,
-                        // deliberately outside the 500 ms switch budget just like the phone switcher.
-                        scope.launch { restoreProfilePlayback(profileId) }
-                    }
-                    SessionResult(SessionResult.RESULT_SUCCESS)
-                }
-
-                is AppResult.Failure -> {
-                    val message = if (result.error is AppError.Security) {
-                        getString(R.string.car_profile_unlock_phone)
-                    } else {
-                        getString(R.string.car_profile_switch_failed)
-                    }
-                    val code = if (result.error is AppError.Security) {
-                        SessionError.ERROR_PERMISSION_DENIED
-                    } else {
-                        SessionError.ERROR_UNKNOWN
-                    }
-                    SessionResult(SessionError(code, message))
-                }
-            }
+        private suspend fun switchProfileFromCar(profileId: ProfileId?): SessionResult =
+            profileSwitcher.select(profileId)
 
         /** The error code to refuse [customCommand] with, or `null` when this controller may run it. */
         private fun customCommandRefusal(
@@ -3792,6 +3524,8 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private companion object {
+        private const val PLAYBACK_PARAMETER_SCALE = 1_000
+
         /** PRODUCT_SPEC PLAY-004 — "at least every five seconds". */
         const val JOURNAL_INTERVAL_MS = 5_000L
 
@@ -3803,9 +3537,6 @@ class PlaybackService : MediaLibraryService() {
          * and far below any difference another device's listening could produce.
          */
         val ADOPT_TOLERANCE: Duration = 1.seconds
-
-        /** #36/#88 — bind/projection callbacks within this window belong to the same transition trace. */
-        val AUTO_TRACE_REUSE_WINDOW: Duration = 10.seconds
 
         /**
          * How long the seek has to report back before it is treated as lost.

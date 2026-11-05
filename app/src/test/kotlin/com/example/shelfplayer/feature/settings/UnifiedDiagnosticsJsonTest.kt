@@ -40,6 +40,8 @@ class UnifiedDiagnosticsJsonTest {
                 entries = listOf("2026-10-19T12:00:00Z actual-track playing-to=d2:Ambiguous"),
                 route = "selection=Automatic",
                 reportStatus = "playing-to=d2:Ambiguous",
+                inputStatus = "Watching input callbacks",
+                inputDevices = listOf("inputCapture=m1 inputAlias=i1 descriptorAlias=s1 association=Unproven"),
             ),
             classifier = OutputClassifierState(
                 recording = true,
@@ -62,6 +64,8 @@ class UnifiedDiagnosticsJsonTest {
         assertEquals(1, parsed.getInt("schemaVersion"))
         assertTrue(parsed.getJSONObject("recording").getBoolean("unified"))
         assertEquals(1, parsed.getJSONObject("audioRouteLab").getJSONArray("events").length())
+        assertEquals("Watching input callbacks", parsed.getJSONObject("audioRouteLab").getString("inputStatus"))
+        assertEquals(1, parsed.getJSONObject("audioRouteLab").getJSONArray("inputDevices").length())
         assertEquals(1, parsed.getJSONObject("outputClassifier").getJSONArray("current").length())
         assertEquals("Playback", parsed.getJSONArray("eventLog").getJSONObject(0).getString("tag"))
         assertEquals("+25ms hardware Play", parsed.getJSONArray("playbackRace").getString(0))
@@ -83,6 +87,7 @@ class UnifiedDiagnosticsJsonTest {
         )
         assertEquals(0, report.getJSONArray("eventLog").length())
         assertEquals(0, report.getJSONObject("audioRouteLab").getJSONArray("events").length())
+        assertEquals(0, report.getJSONObject("audioRouteLab").getJSONArray("inputDevices").length())
         assertFalse(report.getJSONObject("recording").getBoolean("unified"))
     }
 }

@@ -2,12 +2,13 @@
 <resources>
     <string name="unified_diag_open">Start diagnostikk / JSON-rapport</string>
     <string name="unified_diag_title">Samlet diagnostikk</string>
-    <string name="unified_diag_description">Registrer hendelseslogg, avspillingshendelser, lydrutelogg og utgangsklassifisering samtidig. JSON-rapporten eksporteres bare når du velger Kopier eller Lagre. Ingen enhetsnavn eller adresser samles inn. Bruk mens du står stille.</string>
+    <string name="unified_diag_description">Registrer hendelseslogg, avspillingshendelser, lydrutelogg og utgangsklassifisering samtidig. Tøm alle fjerner disse opptakene og den lagrede krasjrapporten, men beholder avspillingsfremdrift og bibliotekdata. JSON-rapporten eksporteres bare når du velger Kopier eller Lagre. Ingen enhetsnavn eller adresser samles inn. Bruk mens du står stille.</string>
     <string name="unified_diag_recording">Alle diagnostikklogger er aktive</string>
     <string name="unified_diag_stopped">Registrering stoppet</string>
     <string name="unified_diag_start">Start diagnostikk</string>
     <string name="unified_diag_stop">Stopp diagnostikk</string>
     <string name="unified_diag_clear">Tøm alle</string>
+    <string name="unified_diag_clearing">Tømmer diagnosedata…</string>
     <string name="unified_diag_copy_json">Kopier samlet JSON-rapport</string>
     <string name="unified_diag_save_json">Lagre JSON-fil</string>
     <string name="unified_diag_save_success">Diagnostikkfilen er lagret</string>

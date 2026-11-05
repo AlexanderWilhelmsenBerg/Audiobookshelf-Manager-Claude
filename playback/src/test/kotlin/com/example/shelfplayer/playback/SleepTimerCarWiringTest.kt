@@ -5,23 +5,11 @@ import java.io.File
 import kotlin.test.assertTrue
 
 /**
- * PD-002 (2026-10-03) — "A sleep timer should never show in Android Auto." Source-level reachability proof that
- * the live service applies the pure decisions ([SleepTimerMediaMetadata.projectionLabel],
- * `MediaButtonLayout.inPriorityOrder`) on every car transition, as docs/risks.md R-43 requires of wiring.
+ * PD-002 — source-sensitive checks retained only for the narrow MediaSession button/command
+ * wiring. The controller/projection and sleep-connected semantics are now verified by the
+ * production CarProjectionLifecycleTest and CarLifecycleAuthorityTest behavior tests.
  */
 class SleepTimerCarWiringTest {
-
-    @Test
-    fun `connecting a car restores the book title before the car is sent its first state`() {
-        val connected = serviceSource()
-            .substringAfter("private fun onCarControllerConnected(")
-            .substringBefore("private suspend fun handleCarArrival(")
-
-        val counted = connected.indexOf("carConnections.onConnected()")
-        val restored = connected.indexOf("publishMediaButtons()")
-        assertTrue(counted >= 0, "the car must be counted as connected")
-        assertTrue(restored > counted, "buttons and projection must be republished after the car is counted")
-    }
 
     @Test
     fun `the projection label is decided from the car-bound state`() {
@@ -67,22 +55,4 @@ class SleepTimerCarWiringTest {
 
     private fun serviceSource(): String =
         File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackService.kt").readText()
-
-    @Test
-    fun `nightly eligibility receives controller and projection changes`() {
-        val source = serviceSource()
-        val connect = source.substringAfter("private fun onCarControllerConnected(")
-            .substringBefore("private suspend fun handleCarArrival(")
-        val disconnect = source.substringAfter("private fun onCarControllerDisconnected(")
-            .substringBefore("private fun onProjection")
-        assertTrue("synchronizeSleepTimerCarConnection()" in connect)
-        assertTrue("synchronizeSleepTimerCarConnection()" in disconnect)
-        val projection = source.substringAfter("projectionOwnsCarLifecycle = update.current.carConnected")
-            .substringBefore("private fun completeCarDeparture(")
-        assertTrue(projection.split("synchronizeSleepTimerCarConnection()").size >= 3)
-        val adapter = source.substringAfter("private fun synchronizeSleepTimerCarConnection()")
-            .substringBefore("private fun completeCarDeparture(")
-        assertTrue("sleepTimer.onCarConnectionChanged(" in adapter)
-        assertTrue("carConnections.isConnected() || projectionOwnsCarLifecycle" in adapter)
-    }
 }

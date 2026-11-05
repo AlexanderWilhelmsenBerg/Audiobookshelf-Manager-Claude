@@ -1,6 +1,8 @@
 package com.example.shelfplayer.playback
 
 import android.view.KeyEvent
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -10,19 +12,26 @@ import kotlin.time.Duration.Companion.seconds
  * virtual media keys have no trustworthy A/B attribution.
  *
  * During the first three seconds of a newly constructed, empty player, the first virtual
- * toggle is consumed only when Bluetooth is already enumerated and no car is connected.
- * A later intentional button press is not suppressed. Explicit PLAY (126), app controls,
- * and Android Auto remain untouched. The short cold-start trade-off is documented in #273.
+ * toggle for the current live Bluetooth appearances is consumed only when Bluetooth is
+ * enumerated and no car is connected. The process-scoped gate remembers opaque endpoint
+ * tokens across service recreation, so a later deliberate press on the same connection
+ * stays reachable. A newly enumerated appearance rearms protection using the existing
+ * LiveOutputEndpointRegistry tokens; these tokens do not identify the button's origin.
+ * Explicit PLAY (126), app controls, warm/loaded queues and detected car requests pass.
+ * The short cold-start trade-off is documented in #273.
  */
-internal class ColdStartToggleGate(private val window: Duration = 3.seconds) {
+@Singleton
+internal class ColdStartToggleGate @Inject constructor() {
+    private val window: Duration = 3.seconds
     private var awaitingUp = false
+    private var lastSuppressedEndpoints: Set<String>? = null
 
     fun consume(
         sinceServiceStart: Duration,
         keyCode: Int,
         keyAction: Int,
         inputDeviceId: Int?,
-        hasBluetooth: Boolean,
+        bluetoothEndpoints: Set<String>,
         emptyQueue: Boolean,
         carConnected: Boolean,
     ): Boolean {
@@ -34,8 +43,12 @@ internal class ColdStartToggleGate(private val window: Duration = 3.seconds) {
         if (keyAction != KeyEvent.ACTION_DOWN) return false
         val cold = sinceServiceStart >= Duration.ZERO && sinceServiceStart <= window
         val suspect = cold && inputDeviceId != null && inputDeviceId <= 0 &&
-            hasBluetooth && emptyQueue && !carConnected
-        if (suspect) awaitingUp = true
+            bluetoothEndpoints.isNotEmpty() && emptyQueue && !carConnected &&
+            bluetoothEndpoints != lastSuppressedEndpoints
+        if (suspect) {
+            awaitingUp = true
+            lastSuppressedEndpoints = bluetoothEndpoints.toSet()
+        }
         return suspect
     }
 }

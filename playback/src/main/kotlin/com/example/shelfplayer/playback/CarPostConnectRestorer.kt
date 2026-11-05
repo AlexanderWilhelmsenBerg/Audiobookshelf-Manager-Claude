@@ -22,6 +22,7 @@ internal class CarPostConnectRestorer(
     private val activeProfileId: suspend () -> ProfileId?,
     private val profileGeneration: () -> Long,
     private val isRequestCurrent: () -> Boolean = { true },
+    private val commands: PlaybackCommands,
     private val isProfileLocked: suspend () -> Boolean,
     /** The last played book id, after one allowed account refresh when the cache was empty. */
     private val lastPlayedBookId: suspend () -> LibraryItemId?,
@@ -83,12 +84,16 @@ internal class CarPostConnectRestorer(
             observer.note("Android Auto post-connect playable queue was superseded", current)
             return
         }
-        acceptQueue(prepared, { !superseded(current, claim) }) {
-            install(current, prepared.queue, play)
+        var effectsApplied = false
+        val accepted = acceptQueue(prepared, { !superseded(current, claim) }) {
+            effectsApplied = install(current, claim, prepared.queue, play)
+        }
+        if (!accepted || !effectsApplied) {
+            observer.note("Android Auto post-connect output was no longer authorized", current)
         }
     }
 
-    private fun install(current: Player, queue: MediaItems.Queue, play: Boolean) {
+    private fun install(current: Player, claim: Claim, queue: MediaItems.Queue, play: Boolean): Boolean {
         observer.installing(
             direction = "installing",
             item = queue.item,
@@ -97,9 +102,19 @@ internal class CarPostConnectRestorer(
                 LogField.Millis("startAt", queue.startPositionMs),
             ),
         )
-        current.setMediaItem(queue.item, queue.startPositionMs)
-        current.prepare()
-        if (play) current.play()
+        return commands.installAndPrepare(
+            current = current,
+            item = queue.item,
+            startPositionMs = queue.startPositionMs,
+            authorizedBeforeInstall = {
+                profileGeneration() == claim.profileGeneration && isRequestCurrent() && current.mediaItemCount == 0
+            },
+            stillAuthorizedAfterInstall = {
+                profileGeneration() == claim.profileGeneration && isRequestCurrent() &&
+                    current.currentMediaItem == queue.item
+            },
+            startPlaying = play,
+        )
     }
 
     /**

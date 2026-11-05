@@ -1,0 +1,4 @@
+# Fixed non-secret test assertions in immutable published history.
+# Exact commit/path/rule/line only; future commits remain scanned.
+9e929d456e27df7ed05d909d040825e8e5b0bccd:playback/src/test/kotlin/com/example/shelfplayer/playback/PlaybackServiceInputDiagnosticsTest.kt:generic-api-key:47
+9e929d456e27df7ed05d909d040825e8e5b0bccd:playback/src/test/kotlin/com/example/shelfplayer/playback/MediaInputDiagnosticsTest.kt:generic-api-key:62

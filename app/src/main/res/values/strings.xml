@@ -307,10 +307,28 @@
     -->
     <string name="player_output_current">Audio output: %1$s</string>
     <string name="player_output_automatic">Automatic</string>
+    <string name="player_output_car">Android Auto</string>
+    <string name="player_output_selected_device">Selected output</string>
+    <string name="player_output_previous_retained">Previous output choice retained</string>
+    <string name="player_output_unavailable">Output not currently measured</string>
+    <string name="player_output_remote_submix">Remote audio path measured; physical output unverified</string>
+    <string name="player_output_unresolved">Measured output is unknown</string>
+    <string name="player_output_multiple">Multiple measured outputs; destination is ambiguous</string>
+    <string name="player_output_transfer_waiting">Waiting for output verification</string>
+    <string name="player_output_transfer_verifying">Verifying requested output</string>
+    <string name="player_output_transfer_verified">Requested output verified</string>
+    <string name="player_output_delegated">Delegated to Auto — physical output unverified</string>
+    <string name="player_output_transfer_failed">Output transfer failed</string>
     <string name="player_output_selected">Selected</string>
     <!-- PLAY-002 — where the platform says the audio actually went, which is not always what was
          asked for. %1$s is the device name. -->
-    <string name="player_output_playing_here">%1$s — playing here</string>
+    <string name="player_output_playing_here">%1$s — measured output</string>
+    <string name="player_output_keep_here">Keep audio here</string>
+    <string name="player_output_lock_refused">The current audio output could not be verified. Try again while audio is playing.</string>
+    <string name="player_output_kept_here">Keeping audio here</string>
+    <string name="player_output_waiting_here">Waiting for this output</string>
+    <string name="player_output_unverified_here">Output needs verification</string>
+    <string name="player_output_release_lock">Release output lock</string>
     <!-- %1$s is a remaining time such as "1:04:12". -->
     <string name="player_remaining">−%1$s</string>
     <string name="player_book_position">Book · %1$s</string>
@@ -1251,4 +1269,8 @@
     <string name="debug_race_capture_stop">Stop race trace</string>
     <string name="debug_race_capture_copy">Copy race trace</string>
     <string name="debug_race_capture_clear">Clear race trace</string>
+    <string name="settings_headset_button_routing">Headset Play selects its output</string>
+    <string name="settings_headset_button_routing_hint">Use a headset Play command to request its known output, or the only eligible headset during Android Auto. Unknown Bluetooth controls can also come from a car. When off, keep the current output and connection behavior. Manual output controls still work.</string>
+    <string name="settings_sony_tap_detection">Detect Sony WF-1000XM6 taps directly</string>
+    <string name="settings_sony_tap_detection_hint">Opt in to direct tap detection for WF-1000XM6 only. Sony Sound Connect must be uninstalled or disabled in Android settings. BookWave does not disable it for you.</string>
 </resources>

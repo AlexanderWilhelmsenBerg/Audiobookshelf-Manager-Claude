@@ -19,6 +19,7 @@ class FreshnessHistoryTest {
         assertNull(plan.remoteProgressHistoryEvent(ResumeOutcome.Superseded))
         assertNull(plan.remoteProgressHistoryEvent(ResumeOutcome.NotLoaded))
         assertNull(plan.remoteProgressHistoryEvent(ResumeOutcome.WrongBook))
+        assertNull(plan.remoteProgressHistoryEvent(ResumeOutcome.PreparationRefused))
     }
 
     @Test

@@ -162,6 +162,19 @@ class SettingsViewModelTest {
         assertEquals(StartupMode.ResumeOnOpen, playbackSettings.observeSettings().first().startupMode)
     }
 
+    @Test
+    fun `headset settings callbacks store independent choices`() = runTest {
+        val viewModel = viewModel()
+        assertTrue(playbackSettings.observeSettings().first().headsetButtonRouting)
+        assertFalse(playbackSettings.observeSettings().first().sonyTapDetection)
+
+        viewModel.onHeadsetButtonRoutingChanged(false)
+        viewModel.onSonyTapDetectionChanged(true)
+
+        assertFalse(playbackSettings.observeSettings().first().headsetButtonRouting)
+        assertTrue(playbackSettings.observeSettings().first().sonyTapDetection)
+    }
+
     /** PRODUCT_SPEC ROUTE-002 — the list is what the store says, ordered by the store. */
     @Test
     fun `the devices this app has seen are listed`() = runTest {
@@ -557,6 +570,16 @@ internal class FakePlaybackSettings : PlaybackSettingsRepository {
 
     override suspend fun setStartupMode(mode: StartupMode): AppResult<Unit> {
         controls.value = controls.value.copy(startupMode = mode)
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setHeadsetButtonRouting(enabled: Boolean): AppResult<Unit> {
+        controls.value = controls.value.copy(headsetButtonRouting = enabled)
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setSonyTapDetection(enabled: Boolean): AppResult<Unit> {
+        controls.value = controls.value.copy(sonyTapDetection = enabled)
         return AppResult.Success(Unit)
     }
 

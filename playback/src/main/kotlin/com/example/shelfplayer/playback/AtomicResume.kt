@@ -37,7 +37,8 @@ internal interface ResumeTarget {
     /** `true` when the player is idle or holding an error — the two states `play()` cannot leave. */
     fun needsPreparing(): Boolean
 
-    fun prepare()
+    /** Prepare without making audio audible; false refuses subsequent seek/Play effects. */
+    fun prepare(): Boolean
 
     /**
      * Seeks to [position] and suspends until the player reports where it landed, or [timeout] elapses.
@@ -62,6 +63,9 @@ internal enum class ResumeOutcome {
 
     /** The player is on a different book — a Play that raced a book change. Nothing was touched. */
     WrongBook,
+
+    /** Preparation could not retain current, safe playback ownership. Nothing may seek or Play. */
+    PreparationRefused,
 
     /**
      * The seek did not arrive where it was sent, or the player never reported it.
@@ -101,8 +105,7 @@ internal suspend fun ResumeTarget.seekAndResume(
     tolerance: Duration,
     timeout: Duration,
 ): ResumeOutcome {
-    refuse(bookId)?.let { return it }
-    if (needsPreparing()) prepare()
+    prepareCurrentBook(bookId)?.let { return it }
     val landed = seekAndAwait(target, timeout)
     if (landed == null || (landed - target).absoluteValue > tolerance) return ResumeOutcome.SeekLost
     if (!playIfCurrent()) return ResumeOutcome.Superseded
@@ -110,12 +113,13 @@ internal suspend fun ResumeTarget.seekAndResume(
 }
 
 /**
- * The two reasons to touch nothing at all, checked before anything is touched.
- *
- * Split out because a resume with five exits reads as five possible endings; it has two refusals and one
- * course of action, and this is which is which.
+ * Refuse the wrong/empty book before touching it, then require safe preparation before any adopted seek.
  */
-private fun ResumeTarget.refuse(bookId: LibraryItemId): ResumeOutcome? {
+private fun ResumeTarget.prepareCurrentBook(bookId: LibraryItemId): ResumeOutcome? {
     val loaded = loadedBookId() ?: return ResumeOutcome.NotLoaded
-    return ResumeOutcome.WrongBook.takeIf { loaded != bookId }
+    return when {
+        loaded != bookId -> ResumeOutcome.WrongBook
+        needsPreparing() && !prepare() -> ResumeOutcome.PreparationRefused
+        else -> null
+    }
 }

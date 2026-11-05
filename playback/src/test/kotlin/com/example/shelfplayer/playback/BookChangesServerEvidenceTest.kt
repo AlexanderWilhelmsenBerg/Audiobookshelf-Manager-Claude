@@ -95,7 +95,7 @@ class BookChangesServerEvidenceTest {
         try {
             val old = session("old")
             player.setMediaItem(MediaItems.queueFor(old).item, START.inWholeMilliseconds)
-            boundary.sync.attach(player)
+            boundary.sync.attach(player) { it.bookPosition() }
             boundary.timer.attach(object : ForwardingPlayer(player) {
                 // Model audible playback; this case verifies commit ordering rather than decoding.
                 override fun isPlaying(): Boolean = true
@@ -125,7 +125,7 @@ class BookChangesServerEvidenceTest {
             assertEquals(0, sessions.closed)
         } finally {
             boundary.timer.attach(null)
-            boundary.sync.attach(null)
+            boundary.sync.detach()
             player.release()
         }
     }
@@ -170,20 +170,23 @@ class BookChangesServerEvidenceTest {
     ): Boundary {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         val clock = TestAppClock()
+        val volumeEffects = volumeEffectsForTest(dispatcher, clock)
         val sync = SessionSyncCoordinator(
             repository = sessions,
             baseline = baseline,
             clock = clock,
             logger = NO_OP_LOGGER,
+            volumeEffects = volumeEffects,
             applicationScope = backgroundScope,
             mainDispatcher = dispatcher,
         )
         val history = proxy<PlaybackHistoryRepository>()
+        val timers = timerRepository()
         val sleepTimer = SleepTimerController(
-            repository = timerRepository(),
+            repository = timers,
             shakes = ShakeDetector(ApplicationProvider.getApplicationContext<Context>(), NO_OP_LOGGER),
-            sessionSync = sync,
-            history = history,
+            volumeEffects = volumeEffects,
+            history = SleepTimerHistory(timers, history, sync, clock, backgroundScope),
             clock = clock,
             zoneProvider = object : LocalZoneProvider {
                 override fun current() = java.time.ZoneOffset.UTC

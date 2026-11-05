@@ -251,8 +251,26 @@
     <string name="player_collapse">Lukk spilleren</string>
     <string name="player_output_current">Lydutgang: %1$s</string>
     <string name="player_output_automatic">Automatisk</string>
+    <string name="player_output_car">Android Auto</string>
+    <string name="player_output_selected_device">Valgt lydutgang</string>
+    <string name="player_output_previous_retained">Forrige valg av lydutgang beholdes</string>
+    <string name="player_output_unavailable">Lydutgang måles ikke nå</string>
+    <string name="player_output_remote_submix">Ekstern lydrute målt; fysisk lydutgang er ikke bekreftet</string>
+    <string name="player_output_unresolved">Målt lydutgang er ukjent</string>
+    <string name="player_output_multiple">Flere målte lydutganger; målet er tvetydig</string>
+    <string name="player_output_transfer_waiting">Venter på bekreftelse av lydutgang</string>
+    <string name="player_output_transfer_verifying">Bekrefter valgt lydutgang</string>
+    <string name="player_output_transfer_verified">Valgt lydutgang bekreftet</string>
+    <string name="player_output_delegated">Overført til Auto — fysisk lydutgang er ikke bekreftet</string>
+    <string name="player_output_transfer_failed">Overføring av lydutgang mislyktes</string>
+    <string name="player_output_keep_here">Behold lyden her</string>
+    <string name="player_output_lock_refused">Kan ikke bekrefte gjeldende lydutgang. Prøv igjen mens lyden spilles av.</string>
+    <string name="player_output_kept_here">Lyden beholdes her</string>
+    <string name="player_output_waiting_here">Venter på denne lydutgangen</string>
+    <string name="player_output_unverified_here">Lydutgangen må bekreftes</string>
+    <string name="player_output_release_lock">Opphev lås på lydutgang</string>
     <string name="player_output_selected">Valgt</string>
-    <string name="player_output_playing_here">%1$s — spilles her</string>
+    <string name="player_output_playing_here">%1$s — målt lydutgang</string>
     <string name="player_remaining">−%1$s</string>
     <string name="player_book_position">Bok · %1$s</string>
     <string name="player_book_progress">Bokposisjon: %1$s avspilt, %2$s gjenstår</string>
@@ -998,4 +1016,8 @@
     <string name="debug_race_capture_stop">Stopp hendelseslogg</string>
     <string name="debug_race_capture_copy">Kopier hendelseslogg</string>
     <string name="debug_race_capture_clear">Tøm hendelseslogg</string>
+    <string name="settings_headset_button_routing">Spill-knappen på hodesettet velger lydutgang</string>
+    <string name="settings_headset_button_routing_hint">Bruk en Spill-kommando fra hodesettet til å be om den kjente lydutgangen, eller det eneste aktuelle hodesettet under Android Auto. Ukjente Bluetooth-kontroller kan også komme fra en bil. Når dette er av, beholdes gjeldende lydutgang og tilkoblingsatferd. Manuelle lydutgangskontroller virker fortsatt.</string>
+    <string name="settings_sony_tap_detection">Registrer trykk på Sony WF-1000XM6 direkte</string>
+    <string name="settings_sony_tap_detection_hint">Slå på direkte registrering av trykk bare for WF-1000XM6. Sony Sound Connect må være avinstallert eller deaktivert i Android-innstillingene. BookWave deaktiverer ikke appen for deg.</string>
 </resources>

@@ -12,6 +12,7 @@ import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SyncOutcome
@@ -47,10 +48,12 @@ class SessionSyncCoordinator @Inject constructor(
     private val clock: AppClock,
     private val logger: Logger,
     private val rememberedBookRecorder: RememberedBookRecorder = RememberedBookRecorder.None,
+    private val volumeEffects: PlaybackVolumeEffects,
     @param:ApplicationScope private val applicationScope: CoroutineScope,
     @param:Dispatcher(ShelfDispatcher.MainImmediate) private val mainDispatcher: CoroutineDispatcher,
 ) {
     private var player: Player? = null
+    private var effectivePosition: ((Player) -> Duration)? = null
     private var current: Active? = null
     private val listened = ListenedTime()
     private var ticker: Job? = null
@@ -64,15 +67,21 @@ class SessionSyncCoordinator @Inject constructor(
     private val gate = Mutex()
 
     /** Given the player it reads positions from, as the sleep timer is. `null` on teardown. */
-    fun attach(player: Player?) {
+    fun attach(player: Player, effectivePosition: (Player) -> Duration) {
         this.player = player
-        if (player == null) {
-            ticker?.cancel()
-            ticker = null
-        } else {
-            startTicker()
-        }
+        this.effectivePosition = effectivePosition
+        startTicker()
     }
+
+    fun detach() {
+        player = null
+        effectivePosition = null
+        ticker?.cancel()
+        ticker = null
+    }
+
+    internal fun effectiveBookPosition(media: Player): Duration =
+        if (player === media) requireNotNull(effectivePosition).invoke(media) else media.bookPosition()
 
     /**
      * Records the start of a session and does not return until its local outbox row exists.
@@ -91,7 +100,7 @@ class SessionSyncCoordinator @Inject constructor(
             )
             if (opened is AppResult.Success) {
                 withContext(mainDispatcher) {
-                    current = Active(sessionId = opened.value, bookId = session.bookId)
+                    current = Active(sessionId = opened.value, bookId = session.bookId, profileId = session.profileId)
                     listened.reset(clock.elapsed())
                 }
             } else if (opened is AppResult.Failure) {
@@ -129,7 +138,7 @@ class SessionSyncCoordinator @Inject constructor(
                 closeCurrent(SyncTrigger.BookChanged)
                 withContext(mainDispatcher) {
                     if (stillAuthorized()) {
-                        current = Active(opened.value, session.bookId)
+                        current = Active(opened.value, session.bookId, session.profileId)
                         listened.reset(clock.elapsed())
                         accepted()
                         true
@@ -148,13 +157,12 @@ class SessionSyncCoordinator @Inject constructor(
      * moved to [mainDispatcher], so the deliberately non-thread-safe counter remains single-thread confined.
      */
     fun onPlayingChanged(isPlaying: Boolean) {
-        if (isPlaying) rememberedBookRecorder.onPlaying(player?.currentMediaItem)
-        listened.onPlayingChanged(isPlaying, clock.elapsed())
+        observeAudiblePlayback(isPlaying, clock.elapsed())
     }
 
     /** Fire-and-forget form for triggers whose caller does not need the acknowledgement. */
-    fun request(trigger: SyncTrigger) {
-        applicationScope.launch { sync(trigger) }
+    fun request(trigger: SyncTrigger, stillAuthorized: () -> Boolean = { true }) {
+        applicationScope.launch { sync(trigger, stillAuthorized) }
     }
 
     /**
@@ -163,7 +171,8 @@ class SessionSyncCoordinator @Inject constructor(
      * Awaited pause syncs and fire-and-forget interval syncs share [gate], so neither can overtake a book
      * transition or leave the server holding an older position after a newer one.
      */
-    suspend fun sync(trigger: SyncTrigger): Boolean = gate.withLock { syncNow(trigger) }
+    suspend fun sync(trigger: SyncTrigger, stillAuthorized: () -> Boolean = { true }): Boolean =
+        gate.withLock { syncNow(trigger, stillAuthorized) }
 
     /**
      * PRODUCT_SPEC PLAY-004 — captures the final session snapshot before service teardown can detach the player.
@@ -184,11 +193,12 @@ class SessionSyncCoordinator @Inject constructor(
         applicationScope.launch { repository.drainOutbox() }
     }
 
-    private suspend fun syncNow(trigger: SyncTrigger): Boolean {
+    private suspend fun syncNow(trigger: SyncTrigger, stillAuthorized: () -> Boolean = { true }): Boolean {
         val prepared = withContext(mainDispatcher) {
+            if (!stillAuthorized()) return@withContext null
             val active = current ?: return@withContext null
             val snapshot = snapshot() ?: return@withContext null
-            if (snapshot.bookId != active.bookId) {
+            if (!stillAuthorized() || !belongsToActiveSession(snapshot, active)) {
                 logger.debug(
                     LogCategory.Playback,
                     "Skipped a stale player snapshot during session sync",
@@ -268,7 +278,7 @@ class SessionSyncCoordinator @Inject constructor(
             listened.reset(clock.elapsed())
             return null
         }
-        if (snapshot.bookId != active.bookId) {
+        if (!belongsToActiveSession(snapshot, active)) {
             listened.reset(clock.elapsed())
             logger.debug(
                 LogCategory.Playback,
@@ -327,12 +337,19 @@ class SessionSyncCoordinator @Inject constructor(
         val item = media.currentMediaItem
         // Issue #88 — the idle Media3 holder has metadata and a remembered position, but it has never
         // opened a playback session and must never create progress writes merely because a car displayed it.
-        if (item == null || MediaItems.isResumePlaceholder(item)) return null
-        val positionMs = media.currentPosition
-        if (positionMs <= 0L || MediaItems.isSingleFileFallback(item)) return null
+        val position = effectivePosition?.invoke(media)
+        if (item == null || position == null) return null
+        val sameAttachment = media.currentMediaItem === item && player === media
+        if (MediaItems.isResumePlaceholder(item) ||
+            !isPersistablePlaybackPosition(position.inWholeMilliseconds, MediaItems.isSingleFileFallback(item)) ||
+            !sameAttachment
+        ) {
+            return null
+        }
         return Snapshot(
             bookId = MediaItems.bookIdOf(item),
-            position = media.bookPosition(),
+            owner = MediaItems.ownerOf(item),
+            position = position,
             duration = media.bookDuration(),
         )
     }
@@ -376,9 +393,17 @@ class SessionSyncCoordinator @Inject constructor(
         )
     }
 
-    private data class Active(val sessionId: String, val bookId: LibraryItemId)
+    private fun belongsToActiveSession(snapshot: Snapshot, active: Active): Boolean =
+        snapshot.bookId == active.bookId && (snapshot.owner == null || snapshot.owner == active.profileId)
 
-    private data class Snapshot(val bookId: LibraryItemId, val position: Duration, val duration: Duration)
+    private data class Active(val sessionId: String, val bookId: LibraryItemId, val profileId: ProfileId)
+
+    private data class Snapshot(
+        val bookId: LibraryItemId,
+        val owner: ProfileId?,
+        val position: Duration,
+        val duration: Duration,
+    )
 
     private data class PreparedSync(val active: Active, val snapshot: Snapshot, val timeListened: Duration)
 
@@ -387,5 +412,19 @@ class SessionSyncCoordinator @Inject constructor(
     private companion object {
         /** PRODUCT_SPEC PLAY-004 — "approximately every 30 seconds". */
         val REMOTE_SYNC_INTERVAL: Duration = 30.seconds
+    }
+
+    init {
+        volumeEffects.addMuteListener { change ->
+            if (player !== change.player) return@addMuteListener
+            observeAudiblePlayback(change.player.isPlaying, change.elapsed)
+        }
+    }
+
+    private fun observeAudiblePlayback(isPlaying: Boolean, at: Duration) {
+        val currentPlayer = player
+        val audible = isPlaying && !volumeEffects.isRouteMuted(currentPlayer)
+        if (audible) rememberedBookRecorder.onPlaying(currentPlayer?.currentMediaItem)
+        listened.onPlayingChanged(audible, at)
     }
 }
