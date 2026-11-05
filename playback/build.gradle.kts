@@ -40,6 +40,9 @@ dependencies {
     implementation(libs.androidx.media3.datasource.okhttp)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.session)
+    implementation(libs.guava) {
+        because("Playback uses Guava directly; replace Media3's vulnerable transitive version (CVE-2026-102554).")
+    }
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
 

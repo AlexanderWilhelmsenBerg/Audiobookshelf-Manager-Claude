@@ -391,6 +391,7 @@ versions are intentionally not duplicated here; see `/version-control.md`.**
 | androidxWork | Phase 4 |
 | composeBom | Phase 3 |
 | media3 | Phase 4 |
+| guava | Phase 4 security maintenance; direct playback dependency |
 | hilt | Phase 4 |
 | hiltExt | Phase 3/4 |
 | javaxInject | Phase 5 compatibility review |
