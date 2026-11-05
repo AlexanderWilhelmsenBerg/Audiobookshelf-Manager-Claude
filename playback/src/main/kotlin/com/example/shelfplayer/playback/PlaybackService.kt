@@ -403,8 +403,7 @@ class PlaybackService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         activeProfileGeneration = auto::activeProfileGeneration
-        audioOutputs.currentProjection = { carLifecycle.projectionState.carConnected }
-        audioOutputs.confirmedCarAbsent = { carLifecycle.definitelyAbsent }
+        bindOutputContinuity()
         audioOutputs.lastHeardRouteId = { routeOwnership.heardRoute?.outputId }
         serviceStartedAt = clock.elapsed()
         audioRouteLab.serviceStarted()
@@ -898,6 +897,8 @@ class PlaybackService : MediaLibraryService() {
         audioOutputs.positions.clear()
         audioOutputs.currentProjection = { false }
         audioOutputs.confirmedCarAbsent = { false }
+        audioOutputs.retainsInterruptedHeadset = { false }
+        audioOutputs.routeSafetyEvidence = { "observer-unavailable" }
         resumeFreshness.attach(null)
         autoRewind.attach(null)
         sleepTimer.attach(null)
@@ -1853,6 +1854,19 @@ class PlaybackService : MediaLibraryService() {
                 }
             }
         }
+    }
+
+    private fun bindOutputContinuity() {
+        audioOutputs.currentProjection = { carLifecycle.projectionState.carConnected }
+        audioOutputs.confirmedCarAbsent = { carLifecycle.definitelyAbsent }
+        audioOutputs.retainsInterruptedHeadset = { id ->
+            carRecovery.gate.retainsInterruptedHeadset(
+                id,
+                routeOwnership.currentGeneration,
+                currentExplicitSelectionSequence(),
+            )
+        }
+        audioOutputs.routeSafetyEvidence = audioTrackRouteMonitor::currentRouteDiagnostic
     }
 
     private fun syncExplicitOutputIntent() {

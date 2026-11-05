@@ -1,7 +1,8 @@
 # Delayed Android Auto arrival: cleanup/recovery characterization
 
 Requirements: PLAY-002, ROUTE-001; issue #277; baseline `04186e447fc75d2e19c2068661117be4a0793104`.
-This is a tests-only investigation. It changes no playback behavior and does not close hardware acceptance.
+The baseline investigation was tests-only. The subsequent bounded cleanup fix is described below;
+physical acceptance and avoiding the initial pause remain open.
 
 ## Reproduction boundary
 
@@ -32,11 +33,10 @@ a sufficient cause in the production logic; the export alone does not identify t
 - Existing `DisconnectedHeadsetSelectionTest` protects ordinary replacement, locks, refusal and races.
 - Existing transfer/probe tests protect wrong-output verification, cancellation and position restoration.
 
-The test named `known defect - pre-arrival NotConnected cleanup erases delayed recovery` deliberately
-characterizes the current failure. Its green result is **not** acceptance of that behavior. A later fix
-must replace this expectation with successful bounded recovery while retaining the cancellation controls.
-Temporarily requiring `Ready` at the same arrival boundary is the red acceptance probe; restore the
-characterization afterward, without changing production code or disabling any tests.
+At the baseline, `known defect - pre-arrival NotConnected cleanup erases delayed recovery` deliberately
+characterized the failure. Requiring `Ready` instead produced the expected failing acceptance probe.
+The follow-up replaces this expectation with successful bounded recovery, retaining all cancellation
+controls. The updated regression also failed on unchanged production code before the fix was applied.
 
 `AudioTrackRouteQueryTest` also exercises an unchanged, playing AudioTrack that still reports its sink
 while that device is absent from the registry. The production observation becomes `Unresolved`, with
@@ -52,7 +52,7 @@ the initial pause separately with actual route/focus observations. Hardware acce
 headset/car button and dashboard switching, ordinary headset replacement, deliberate Pause, and car
 arrival both while playing and while paused. Neither a passing suite nor these fixtures prove no silence.
 
-## Validation
+## Baseline validation
 
 - The temporary acceptance probe failed exactly once among the six cleanup tests:
   `expected:<Ready> but was:<Rejected>`. No production edit was needed to reproduce it.
@@ -62,3 +62,39 @@ arrival both while playing and while paused. Neither a passing suite nor these f
   the playback suite ran. This includes six cleanup tests, 14 AudioTrack route-query tests, and the
   existing 11 disconnected-headset-selection tests. Seven tests were added in total.
 - `git diff --check` passed; no production-source changes. No device/DHU acceptance was performed.
+
+## Bounded cleanup fix and next device test
+
+Inventory-driven retirement now consults the existing recovery gate before and after its safety pause.
+The second check matters: the real synchronous Media3 pause callback can create the qualified episode.
+Only the same trusted headset, book generation and selection can be retained, within the existing
+30-second absolute deadline. Repeated inventory callbacks do not extend it. No second timer or owner
+is added. Expiry permits cleanup on the next inventory callback; it never issues Play.
+
+Deliberate Play preparation still follows the ordinary retirement path immediately when Auto is positively
+absent. Existing explicit locks, active/unknown Auto and pending route verification remain protected.
+The new tests cover this escape path, exact expiry, identity revocation and the synchronous pause race.
+
+The first pause is deliberately still fail-closed. A new privacy-safe event, `Missing headset before
+route-safety handling`, records `trackBeforePause` before retirement or its fallback pause. It reports
+the current raw AudioTrack route using process-local device aliases/types, or no-track/paused/query-failed/
+replacement evidence. This is diagnostic information only: an unmapped raw sink still cannot authorize
+audible playback. The observer rejects evidence if its track changes during the query.
+
+For hardware comparison, keep the release baseline from main `f829f616` and test the branch debug APK:
+
+1. Clear diagnostics, start headset audio, then connect Android Auto without pressing transport controls.
+2. Record whether it stayed audible, briefly paused and recovered, or stayed paused; export promptly.
+3. Repeat headset Pause/Play, car Pause/Play, then headset Pause/Play and both dashboard output icons.
+4. With Auto disconnected, replace the headset and press Play without manually choosing the new headset.
+5. Connect Auto while deliberately paused; it must remain paused. Repeat a true headset disconnection.
+
+The next no-pause decision uses the new pre-pause track evidence. A raw sink still reported during an
+inventory gap is a lead, not proof of physical audibility. Actual route loss or Media3 focus loss still
+requires safe interruption; this patch does not claim zero silence or successful hardware acceptance.
+
+Implementation validation: the strengthened recovery regression failed on the unmodified baseline, then
+passed with the fix. Formatter and strict `verifyDebug` passed, as did `:playback:testReleaseUnitTest`.
+Debug/shared reports contain 2,951 tests; release playback contains 1,115 tests, all with zero
+failures/errors/skips. Six tests were added, including a newer-selection reentrancy control. Format and
+verification were run separately after the initial combined invocation raced on line-length analysis.

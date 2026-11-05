@@ -228,6 +228,18 @@ class AudioTrackRouteQueryTest {
         assertEquals(AudioTrack.PLAYSTATE_PLAYING, track.queryShadow.trackPlayState)
         assertEquals(fixture.device, track.queryShadow.route, "Android still reports the same sink in this fixture")
         assertEquals(AudioTrackPath.Unresolved, during.path, "missing inventory is not fresh endpoint proof")
+        kotlin.test.assertTrue(fixture.monitor.currentRouteDiagnostic().contains("measured=AudioTrack"))
+        assertEquals(AudioTrackPath.Unresolved, fixture.monitor.currentRouteObservation()?.path)
+    }
+
+    @Test
+    fun `pre-pause diagnostic rejects a track replaced during its route query`() = runTest {
+        val fixture = fixture()
+        val old = fixture.track()
+        fixture.observe(old)
+        val successor = fixture.track()
+        old.queryShadow.onRouteRead = { fixture.observe(successor) }
+        assertEquals("track-replaced-during-query", fixture.monitor.currentRouteDiagnostic())
     }
 
     private fun remoteSubmix(): AudioDeviceInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

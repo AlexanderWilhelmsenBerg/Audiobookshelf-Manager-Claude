@@ -30,8 +30,9 @@ internal class DelayedCarArrivalFixture(private val scope: TestScope) : AutoClos
     private val owner get() = service.routeOwnership
     private val events: Player.Listener
     private val log = mutableListOf<LogEvent>()
+    var identityTrusted = true
     val recovery = CarContinuityRecoveryCoordinator(
-        CarArrivalResumeGate(now = clock::elapsed, trustedIdentity = { it == endpointId }),
+        CarArrivalResumeGate(now = clock::elapsed, trustedIdentity = { identityTrusted && it == endpointId }),
     )
     val selectionSequence get() = router.explicitSelection.value?.sequence ?: 0L
 
@@ -56,8 +57,7 @@ internal class DelayedCarArrivalFixture(private val scope: TestScope) : AutoClos
         events = type.getDeclaredConstructor(PlaybackService::class.java)
             .apply { isAccessible = true }.newInstance(service) as Player.Listener
         player.addListener(events)
-        router.currentProjection = { service.carLifecycle.projectionState.carConnected }
-        router.confirmedCarAbsent = { service.carLifecycle.definitelyAbsent }
+        service.playbackCall("bindOutputContinuity")
         player.playWhenReady = true
         recovery.observePlayingHeadset(inputs())
     }
@@ -82,6 +82,8 @@ internal class DelayedCarArrivalFixture(private val scope: TestScope) : AutoClos
     }
 
     fun returnHeadset() = base.returnHeadset()
+
+    fun advanceTo(at: Duration) = clock.advanceBy(at - clock.elapsed())
 
     fun interrupt(at: Duration, reason: Int): String {
         clock.advanceBy(at - clock.elapsed())

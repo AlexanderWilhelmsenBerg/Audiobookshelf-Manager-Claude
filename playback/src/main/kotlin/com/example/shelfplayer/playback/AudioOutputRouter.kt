@@ -111,6 +111,8 @@ class AudioOutputRouter @Inject constructor(
 
     /** Positive absence evidence from the existing lifecycle owner; Unknown must retain protection. */
     internal var confirmedCarAbsent: () -> Boolean = { false }
+    internal var retainsInterruptedHeadset: (String) -> Boolean = { false }
+    internal var routeSafetyEvidence: () -> String = { "observer-unavailable" }
 
     /** Projection lifecycle edges can change presentation even when the device inventory is unchanged. */
     internal val refreshPresentationForLifecycle: () -> Unit get() = presentationPublisher::refresh
@@ -509,7 +511,14 @@ class AudioOutputRouter @Inject constructor(
 
         // Pause on the player looper before OS default routing can become audible.
         applicationScope.launch(mainDispatcher) {
-            if (_selectedId.value == chosen && handoffs.retireDisconnectedOutput(chosen)) return@launch
+            logger.info(
+                LogCategory.Playback,
+                "Missing headset before route-safety handling",
+                LogField.Public("trackBeforePause", routeSafetyEvidence()),
+            )
+            if (_selectedId.value == chosen && handoffs.retireDisconnectedOutput(chosen, preserveContinuity = true)) {
+                return@launch
+            }
             if (_selectedId.value == chosen && headsetGuard.endpointId == chosen && chosen !in live) {
                 player?.takeIf { it.isPlaying }?.let(headsetGuard::pauseForSafety)
             }
@@ -893,6 +902,9 @@ class AudioOutputRouter @Inject constructor(
 
         override fun disconnectedOutputMayRetire(id: String): Boolean =
             id !in live && !currentProjection() && confirmedCarAbsent()
+
+        override fun retainsInterruptedHeadset(id: String): Boolean =
+            this@AudioOutputRouter.retainsInterruptedHeadset(id)
 
         override fun enqueue(epoch: Long, effect: () -> Unit) {
             applicationScope.launch { preferenceEffects.run(epoch) { effect() } }

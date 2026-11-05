@@ -123,6 +123,16 @@ internal class CarArrivalResumeGate private constructor(
         playingHeadset?.let { beginQualifiedEpisode(it, at) }
     }
 
+    /** Inventory cleanup is not listener intent. Retain only this already qualified, bounded episode. */
+    fun retainsInterruptedHeadset(id: String, generation: Long?, selectionSequence: Long): Boolean {
+        val episode = qualifiedEpisode ?: return false
+        val identity = episode.identity
+        val at = now()
+        return !episode.closed && !requiresFreshPlaybackEvidence && identity.outputId == id &&
+            identity.generation == generation && identity.explicitSelectionSequence == selectionSequence &&
+            at >= episode.startedAt && at < episode.deadline && trustedIdentity(id)
+    }
+
     private fun expireSafetyPause(at: Duration): Boolean {
         val qualified = qualifiedEpisode?.takeUnless { it.closed }
         val expired = if (qualified != null) {
