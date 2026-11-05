@@ -90,10 +90,11 @@ This file is the quick answer to **“what version are we on, what is the newest
 | `hiltExt` (AndroidX Hilt) | 1.3.0 | 1.4.0 | ⛔ Same AndroidX Hilt API 37/AGP 9.2+ gate as navigation-compose. | 3/4 | 2026-09-15 | [AndroidX Hilt releases](https://developer.android.com/jetpack/androidx/releases/hilt) |
 | `javaxInject` | 1 | 1 | ✅ Phase-5 compatibility review complete: current/canonical legacy `javax.inject` artifact with no version migration identified. Reassess only as part of the Hilt/DI migration. | 5 compatibility | 2026-09-16 | [Maven Central](https://central.sonatype.com/artifact/javax.inject/javax.inject) |
 
-## Kotlin runtime, serialization and network stack
+## Kotlin runtime, utilities, serialization and network stack
 
 | Version-catalog key / component | Current in BookWave | Latest stable | Status / next action | Phase | Last checked | Authoritative source |
 | --- | --- | --- | --- | --- | --- | --- |
+| `guava` | 33.8.0-android | 33.8.0-android | Explicit playback dependency replaces Media3's transitive 33.3.1-android. Includes CVE-2026-102554 deserialization fix and the 33.8.0 hash-flooding hardening; retain the Android flavor. | 4 security maintenance | 2026-11-05 | [Guava 33.8.0](https://github.com/google/guava/releases/tag/v33.8.0), [advisory](https://github.com/advisories/GHSA-xxph-c9ww-hj94) |
 | `kotlinxCoroutines` | 1.11.0 | 1.11.0 | ✅ Phase 5 complete at latest stable after cancellation/concurrency regression coverage. Upstream 1.11.0 is built with Kotlin 2.2.20; BookWave remains on Kotlin 2.2.0 pending the gated compiler migration. | 5 | 2026-09-16 | [kotlinx.coroutines releases](https://github.com/Kotlin/kotlinx.coroutines/releases) |
 | `kotlinxSerialization` | 1.9.0 | 1.11.0 | 🎯 Phase 5 complete at the current compiler-compatible frontier. 1.9.0 is the newest stable release aligned with BookWave’s Kotlin 2.2.0 compiler line; 1.10.0+ remains gated until Phase 1/2 re-resolves Kotlin. The 1.12.0-RC prerelease is excluded. | 5 | 2026-09-16 | [kotlinx.serialization releases](https://github.com/Kotlin/kotlinx.serialization/releases) |
 | `okhttp` | 5.4.0 | 5.5.0 | 🎯 Phase 5 complete at the latest stable compatible with BookWave’s accepted API-36 / AGP-8 foundation; merged PR #169 supplied contract-capture and CI evidence, with the required test/smoke pass reported before merge. OkHttp 5.5.0 raises `okhttp-android` to compileSdk 37 and remains gated by ADR-0011. Keep the MockWebServer package migration separate. | 5 | 2026-09-16 | [OkHttp changelog](https://square.github.io/okhttp/changelogs/changelog/) |
