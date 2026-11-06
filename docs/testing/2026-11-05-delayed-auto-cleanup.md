@@ -1,5 +1,60 @@
 # Delayed Android Auto arrival: cleanup/recovery characterization
 
+## 2026-11-06 four-slice continuation (PR305)
+
+APK2259 at e8abc0b5 failed repeated physical arrival continuity despite green CI. Its second connection
+created a new selection during cleanup. The capture does not prove every causal callback, so the new
+regression reproduces a concrete production path: a speaker policy prediction replaces the live heard
+row before the safety pause. Baseline cleanup increments selection 0 to 1 and cancels recovery.
+
+1. Recovery now distinguishes actual non-headset evidence from policy prediction/unknown inventory.
+   Three arrival/departure cycles use real service listeners, router retirement and the one-shot gate.
+2. Router route events enforce safety explicitly; derived publication is passive. Inventory observation,
+   current-track callbacks and playback callbacks retain their independent safety entry points.
+3. The monitor can label fresh, exact Bluetooth track identity as RetainedEndpoint when no selectable
+   appearance exists. Only an already-owned playing, unmuted headset can use this evidence to continue.
+   The registry remains the identity owner; collisions/recycled handles/revocation retire authority.
+4. Explicit transfers keep the existing transaction. Retained identity cannot seek, release mute or
+   count as new destination proof. Tests cover eventual live proof and Pause while waiting.
+
+No second player/session/track, focus request, retry loop, permission or durable state owner is added.
+The existing optional Nearby devices grant is required for exact Bluetooth identity on Android 12+;
+address access needs API28+, and missing/redacted addresses retain fail-closed behavior. SDK34 synthetic
+tests cover the new path. API36 multi-sink classification remains exercised through the production
+classifier; real OEM routing and audio focus remain device acceptance. No ABS API/schema change.
+
+Repowise and jCodeMunch were checked at indexed main f829f616; branch code was inspected directly.
+Repowise cannot resolve e8abc0b5 in its checkout, so exact incremental risk is unavailable, not PASS.
+Its inferred reach recommends the complete playback test suite; no per-test coverage map is available.
+The service receives no new policy or source growth. Playback state, checkpoint, progress, sleep timer,
+profile and button attribution remain with their existing owners. Dual-book playback is deferred.
+
+### Local software verification
+
+Formatter, strict `verifyDebug -Pshelfplayer.warningsAsErrors=true` and
+`:playback:testReleaseUnitTest` passed on 2026-11-06. Reports contain 2,967 debug/shared tests and
+1,131 release playback tests, with zero failures, errors or skips; 16 regressions were added.
+The three-cycle recovery test failed against e8abc0b5 with selection 0 unexpectedly becoming 1.
+Temporarily removing preservation and restoring transport effects in publication produced three
+expected failures: raw retained-track evidence, continuing through an inventory gap, and passive
+publication. All fixes were restored before the full gate. The final gate also covers output locks,
+wrong/unknown/multiple routes, permission/collision loss, newer selection/book/Pause, diagnostics off,
+one transfer restoration and the existing S01-S22/service/progress/sleep regression suites.
+Static-check findings in initial runs were fixed without suppressions or gate changes.
+
+### Device acceptance for the next debug APK
+
+Clear diagnostics before testing. With one headset and Nearby devices enabled, perform three complete
+Auto connection/departure cycles while playing. Measure audible gaps, then test headset Play, dashboard
+Play, headset Play and both output icons. No skipped/jumbled narration or speaker spill is acceptable.
+Repeat with diagnostics disabled; reconnect while deliberately paused and verify no automatic start.
+Test real headset removal/replacement outside Auto and a normal notification/focus interruption.
+Export promptly after any failure and record the APK version. Under one second remains the owner's
+latency target; software route timestamps do not establish audible acceptance. Do not merge for green CI
+alone. Exact SHA, CI and APK results are recorded on PR305 after verification.
+
+## Earlier baseline and first cleanup correction
+
 Requirements: PLAY-002, ROUTE-001; issue #277; baseline `04186e447fc75d2e19c2068661117be4a0793104`.
 The baseline investigation was tests-only. The subsequent bounded cleanup fix is described below;
 physical acceptance and avoiding the initial pause remain open.

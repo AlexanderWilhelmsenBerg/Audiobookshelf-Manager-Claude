@@ -162,11 +162,12 @@ internal class CarArrivalResumeGate private constructor(
         currentGeneration: Long?,
         explicitSelectionSequence: Long,
     ) {
-        // This method is invoked only after the service positively observes current playback.
-        // A previous Pause cannot authorize automatic recovery until audio has genuinely played again.
-        requiresFreshPlaybackEvidence = false
-        safetyPausedAt = null
-        qualifiedEpisode = null
+        val evidence = heardRoute?.evidence
+        if (evidence == RouteHeardEvidence.FrameworkPolicyWhilePlaying ||
+            evidence == RouteHeardEvidence.SelectedPreferenceWhilePlaying
+        ) {
+            return
+        }
         val identity = identityOf(
             heardRoute = heardRoute,
             headsetId = headsetId,
@@ -174,6 +175,12 @@ internal class CarArrivalResumeGate private constructor(
             explicitSelectionSequence = explicitSelectionSequence,
             captureTrust = true,
         )
+        // Inventory churn can replace the live heard row with a speaker policy prediction while the
+        // AudioTrack is unresolved. That is neither audible progress nor proof of a route move.
+        if (identity == null && heardRoute?.evidence != RouteHeardEvidence.ActualAudioTrackWhilePlaying) return
+        requiresFreshPlaybackEvidence = false
+        safetyPausedAt = null
+        qualifiedEpisode = null
         when {
             identity != null -> playingHeadset = identity
             heardRoute != null -> playingHeadset = null

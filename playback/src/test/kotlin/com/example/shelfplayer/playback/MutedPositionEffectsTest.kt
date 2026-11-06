@@ -394,6 +394,7 @@ class MutedPositionEffectsTest {
             observation = path?.let { AudioTrackObservation(epoch, it) }
             routes = when (path) {
                 is AudioTrackPath.Endpoint -> setOf(path.id)
+                is AudioTrackPath.RetainedEndpoint -> emptySet()
                 null -> null
                 AudioTrackPath.RemoteSubmix, AudioTrackPath.Unresolved, AudioTrackPath.Multiple -> emptySet()
             }

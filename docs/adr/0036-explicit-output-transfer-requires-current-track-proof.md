@@ -36,8 +36,12 @@ churn do not authorize expiration. This corrects 2244's departed Car proof block
 it is not an input-origin association or automatic headset rebinding. The
 [2244 assessment](../testing/output-2244-regression.md) records the narrower acceptance scope.
 
-Current-track observations use the existing AudioTrack observer epoch and retain four distinct paths: one
-mapped endpoint, RemoteSubmix, unresolved, or multiple sinks. Endpoint confirmation requires a fresh unique
+Current-track observations use the existing AudioTrack observer epoch and distinguish one live mapped
+endpoint, a retained exact identity absent from inventory, RemoteSubmix, unresolved, or multiple sinks.
+The 2026-11-06 continuation uses retained identity only to preserve an already-owned audible headset;
+it cannot release a muted probe/transfer, create a lock or authorize Play. Fresh actual track identity
+and valid permission are required on every preservation check; cached identity alone is insufficient.
+Endpoint confirmation for transfer requires a fresh unique
 exact live mapping with no collision. Explicit Speaker is a valid endpoint request; an unexpected speaker
 is a mismatch. Explicit Car requires positive current projection context and an adequate current measured
 path. RemoteSubmix can establish delegation to Auto in that context, never a particular physical speaker.

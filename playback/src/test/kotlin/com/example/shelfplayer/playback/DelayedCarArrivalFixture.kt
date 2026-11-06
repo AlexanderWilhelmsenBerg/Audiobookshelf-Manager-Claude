@@ -4,6 +4,7 @@ import androidx.media3.common.Player
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.testing.TestAppClock
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
@@ -82,6 +83,38 @@ internal class DelayedCarArrivalFixture(private val scope: TestScope) : AutoClos
     }
 
     fun returnHeadset() = base.returnHeadset()
+
+    fun observeSpeakerPrediction() {
+        val predicted = requireNotNull(
+            OutputDevices.outputOf(android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, null),
+        ).copy(
+            isActive = true,
+            activitySource = AudioOutputActivitySource.FrameworkMediaPolicy,
+        )
+        owner.onOutputsChanged(listOf(predicted), isPlaying = true)
+        service.playbackCall("observeCarContinuityHeadset", List::class.java, listOf(predicted))
+    }
+
+    fun resumeMeasuredPlayback() {
+        returnHeadset()
+        player.playWhenReady = true
+        val measured = router.outputs.value.map {
+            it.copy(
+                activitySource = AudioOutputActivitySource.PlayingAudioTrack,
+            )
+        }
+        owner.onPlaybackObserved(measured)
+        service.playbackCall("observeCarContinuityHeadset", List::class.java, measured)
+    }
+
+    fun depart(at: Duration): CarArrivalResumeGate.Decision {
+        advanceTo(at)
+        val decision = recovery.gate.onProjectionDeparture(at, owner.currentGeneration, selectionSequence)
+        service.carLifecycle.onControllerDisconnected()
+        service.carLifecycle.onFinalLegacyControllerDeparture()
+        projection(AndroidAutoProjectionMonitor.State.NotConnected)
+        return decision
+    }
 
     fun advanceTo(at: Duration) = clock.advanceBy(at - clock.elapsed())
 

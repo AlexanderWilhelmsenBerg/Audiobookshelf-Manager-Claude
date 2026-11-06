@@ -22,6 +22,44 @@ import kotlin.time.Duration.Companion.seconds
 @Config(sdk = [34])
 class DelayedCarArrivalCleanupTest {
     @Test
+    fun `prediction during interruption cannot reset expiry or revive deliberate Pause`() = runTest {
+        DelayedCarArrivalFixture(this).use { fixture ->
+            fixture.safetyPause()
+            fixture.advanceTo(5.seconds)
+            fixture.observeSpeakerPrediction()
+            fixture.interrupt(6.seconds, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
+            val target = assertNotNull(fixture.arrive(10.seconds).target)
+            assertEquals(30.seconds, target.deadline)
+            fixture.listenerPause()
+            fixture.observeSpeakerPrediction()
+            assertFalse(fixture.assess(target).mayPlay)
+        }
+    }
+
+    @Test
+    fun `three arrival departure cycles retain measured identity across speaker prediction gaps`() = runTest {
+        DelayedCarArrivalFixture(this).use { fixture ->
+            repeat(3) { cycle ->
+                val start = (cycle * 20).seconds
+                fixture.advanceTo(start)
+                fixture.projection(AndroidAutoProjectionMonitor.State.NotConnected)
+                fixture.observeSpeakerPrediction()
+                fixture.removeHeadset()
+                assertEquals(0L, fixture.selectionSequence, "prediction cannot turn cleanup into listener intent")
+                fixture.returnHeadset()
+                fixture.interrupt(start + 1.seconds, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
+                val target = assertNotNull(fixture.arrive(start + 3.seconds).target)
+                assertTrue(fixture.assess(target).mayPlay)
+                assertFalse(fixture.assess(target).mayPlay)
+                fixture.resumeMeasuredPlayback()
+                fixture.interrupt(start + 10.seconds, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
+                assertEquals(CarArrivalResumeGate.Status.Ready, fixture.depart(start + 11.seconds).status)
+                fixture.resumeMeasuredPlayback()
+            }
+        }
+    }
+
+    @Test
     fun `pre-arrival NotConnected cleanup preserves bounded delayed recovery`() = runTest {
         DelayedCarArrivalFixture(this).use { fixture ->
             fixture.projection(AndroidAutoProjectionMonitor.State.NotConnected)

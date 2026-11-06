@@ -242,13 +242,48 @@ class AudioTrackRouteQueryTest {
         assertEquals("track-replaced-during-query", fixture.monitor.currentRouteDiagnostic())
     }
 
+    @Test
+    fun `fresh exact Bluetooth identity survives inventory gap only as preservation evidence`() = runTest {
+        val fixture = fixture(trusted = true)
+        val track = fixture.track()
+        fixture.observe(track)
+        val live = assertNotNull(fixture.monitor.currentRouteObservation())
+        fixture.registry.reconcile(emptyList())
+        assertEquals(
+            live.copy(path = AudioTrackPath.RetainedEndpoint(fixture.endpointId)),
+            fixture.monitor.currentRouteObservation(),
+        )
+        assertEquals(emptySet(), fixture.monitor.currentRouteIds(), "retained identity cannot release a muted probe")
+        track.queryShadow.trackPlayState = AudioTrack.PLAYSTATE_PAUSED
+        assertNull(fixture.monitor.currentRouteObservation())
+        track.queryShadow.trackPlayState = AudioTrack.PLAYSTATE_PLAYING
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            shadowOf(RuntimeEnvironment.getApplication()).denyPermissions(android.Manifest.permission.BLUETOOTH_CONNECT)
+        }
+        assertEquals(AudioTrackPath.Unresolved, fixture.monitor.currentRouteObservation()?.path)
+    }
+
+    @Test
+    fun `retained identity never bypasses track replacement and collision checks`() = runTest {
+        val fixture = fixture(trusted = true)
+        val old = fixture.track()
+        fixture.observe(old)
+        fixture.registry.reconcile(emptyList())
+        old.queryShadow.onRouteRead = { fixture.observe(fixture.track()) }
+        assertNull(fixture.monitor.currentRouteObservation())
+        val observation = fixture.registry.observationOf(fixture.device)
+        fixture.registry.reconcile(listOf(observation, observation.copy(platformId = observation.platformId + 1)))
+        fixture.registry.reconcile(emptyList())
+        assertEquals(AudioTrackPath.Unresolved, fixture.monitor.currentRouteObservation()?.path)
+    }
+
     private fun remoteSubmix(): AudioDeviceInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_REMOTE_SUBMIX).build()
     } else {
         error("RemoteSubmix fixture requires SDK31 or later")
     }
 
-    private fun TestScope.fixture(): Fixture {
+    private fun TestScope.fixture(trusted: Boolean = false): Fixture {
         val context = RuntimeEnvironment.getApplication()
         val clock = TestAppClock()
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -264,9 +299,16 @@ class AudioTrackRouteQueryTest {
         )
         val lab = AudioRouteLab(context, EventLog(clock), clock, router, backgroundScope, dispatcher)
         val device = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP).build()
+        if (trusted) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                shadowOf(context).grantPermissions(android.Manifest.permission.BLUETOOTH_CONNECT)
+            }
+            val port = org.robolectric.util.ReflectionHelpers.getField<Any>(device, "mPort")
+            org.robolectric.util.ReflectionHelpers.setField(port, "mAddress", "10:AB:33:44:55:66")
+        }
         val registry = LiveOutputEndpointRegistry()
         val endpoint = registry.reconcile(
-            listOf(LiveOutputEndpointRegistry.Observation(device.id, device.type, device.productName?.toString())),
+            listOf(registry.observationOf(device)),
         ).single()
         return Fixture(AudioTrackRouteMonitor(context, lab, clock, registry), device, endpoint.id, lab, registry)
     }
