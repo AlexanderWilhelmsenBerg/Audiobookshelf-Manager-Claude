@@ -100,13 +100,18 @@ internal class OutputHandoffEffects(private val source: Source) {
         selectionScope(origin, selection, epoch) && canRetireOutput(id) && origin.player?.playWhenReady == false
 
     private fun disconnectedOutputOrigin(id: String, preserveContinuity: Boolean): Origin? {
-        fun retained() = preserveContinuity && source.retainsInterruptedHeadset(id)
-        if (!canRetireOutput(id) || retained()) return null
-        val origin = prepareOrigin() ?: return null
-        return origin.takeIf {
-            canRetireOutput(id) && unchanged(it) && it.player?.let(source.guard::pauseForSafety) == true &&
-                unchanged(it) && canRetireOutput(id) && !retained() && unchanged(it)
-        }
+        if (!canRetireOutput(id) || (preserveContinuity && source.retainsInterruptedHeadset(id))) return null
+        val origin = prepareOrigin()?.takeIf { canRetireOutput(id) && unchanged(it) } ?: return null
+        // Pausing can synchronously create a continuity episode or deliver newer listener intent.
+        if (origin.player?.let(source.guard::pauseForSafety) != true) return null
+        return origin.takeIf { mayRetireAfterSafetyPause(it, id, preserveContinuity) }
+    }
+
+    private fun mayRetireAfterSafetyPause(origin: Origin, id: String, preserveContinuity: Boolean): Boolean {
+        if (!unchanged(origin) || !canRetireOutput(id)) return false
+        if (preserveContinuity && source.retainsInterruptedHeadset(id)) return false
+        // The continuity callback itself may invalidate the origin; keep this final scope check.
+        return unchanged(origin)
     }
 
     private fun canRetireOutput(id: String): Boolean {

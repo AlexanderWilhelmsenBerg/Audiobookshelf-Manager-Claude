@@ -23,11 +23,21 @@ address access needs API28+, and missing/redacted addresses retain fail-closed b
 tests cover the new path. API36 multi-sink classification remains exercised through the production
 classifier; real OEM routing and audio focus remain device acceptance. No ABS API/schema change.
 
-Repowise and jCodeMunch were checked at indexed main f829f616; branch code was inspected directly.
-Repowise cannot resolve e8abc0b5 in its checkout, so exact incremental risk is unavailable, not PASS.
-Its inferred reach recommends the complete playback test suite; no per-test coverage map is available.
-The service receives no new policy or source growth. Playback state, checkpoint, progress, sleep timer,
-profile and button attribution remain with their existing owners. Dual-book playback is deferred.
+Repowise's initial branch lookup failed, but the subsequent refresh compared main f829f616 to be07e3f9:
+changed-code structural health was 8.96 to 8.88, with complexity findings in isMeasuredHeadset (11)
+and disconnectedOutputOrigin (9). These are maintainability findings, not runtime defect proof.
+jCodeMunch remains indexed at main; current branch source and callers were inspected directly.
+Repowise's inferred reach recommends the complete playback suite; no per-test coverage map is available.
+The full PR adds service callback wiring and teardown in e8abc0b5; be07e3f9 adds no service changes.
+Playback state, checkpoint, progress, sleep timer, profile and button attribution remain with their
+existing owners. Dual-book playback is deferred.
+
+The review cleanup separates retained-headset proof from live eligibility and makes the safety pause
+an explicit retirement stage. Post-pause and post-continuity-callback scope checks retain their original
+short-circuit order. No routing policy, state owner or test expectation changes. Existing interruption,
+newer-selection, inventory-gap and transfer regressions guard this behavior-preserving cleanup.
+Cleanup verification: formatter, strict verifyDebug and release playback tests passed on 2026-11-06.
+The initial Detekt return-count finding was corrected without a suppression or rule change.
 
 ### Local software verification
 

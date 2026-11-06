@@ -311,12 +311,16 @@ class AudioOutputRouter @Inject constructor(
         val first = currentTrackObservation() ?: return false
         val second = currentTrackObservation()
         val liveProof = first.path == AudioTrackPath.Endpoint(id) && isEligibleLockOutput(id)
-        val retainedProof = first.path == AudioTrackPath.RetainedEndpoint(id) &&
-            id !in live && localOutputs.retainsIdentity(id) &&
-            _selectedId.value == id && headsetGuard.endpointId == id && headsetGuard.currentProbe == null
+        val retainedProof = hasRetainedHeadsetProof(id, first.path)
         return (liveProof || retainedProof) && first == second &&
             !volumeEffects.isRouteMuted(context.player) && isCurrentLockContext(context)
     }
+
+    /** Retained identity preserves existing ownership only; it cannot authorize a new route or probe. */
+    private fun hasRetainedHeadsetProof(id: String, path: AudioTrackPath): Boolean =
+        path == AudioTrackPath.RetainedEndpoint(id) &&
+            id !in live && localOutputs.retainsIdentity(id) &&
+            _selectedId.value == id && headsetGuard.endpointId == id && headsetGuard.currentProbe == null
 
     private fun preservesMissingHeadset(id: String): Boolean = id !in live && isMeasuredHeadset(id)
 
