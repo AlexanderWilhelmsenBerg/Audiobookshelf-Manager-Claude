@@ -58,6 +58,35 @@ inventory refresh nor an output lock and does not enter the changed paths. It pa
 isolation and in the final full gate. The intermittent refusal is recorded, not diagnosed as fixed;
 neither the 50ms allowance nor test assertions were changed.
 
+### Real-Media3 failure diagnostics
+
+The integration fixture now records a bounded test-only trace (128 rows, 512 characters per event)
+and attaches it to the original failure before teardown. Find `Media3 transfer trace` in the failed
+JUnit XML/HTML report; CI already includes these reports in the `quality-reports` failure artifact.
+Successful runs do not print the trace. No production code, timer, permission or settling limit changes.
+
+The trace captures existing transfer-stage/completion logs, preparation/restore boundaries, seek
+callbacks, settling-refusal signed position delta, held/current positions, playback/mute/speed state,
+synthetic route proof and ownership generations. Message creation, playback-thread delivery/return,
+and subsequent main-thread preparation/restore events have independent virtual-ms and wall-us clocks.
+Creation is not an exact send timestamp; the real PlayerMessage is retained unchanged. Delivery
+callbacks record message metadata only and never query ExoPlayer from its playback thread.
+
+Some production paths still collapse to Refused without a distinct reason. The last stage, restoration
+result and snapshots are evidence, not an invented timeout diagnosis. A deterministic diagnostic test
+exercises the existing settling-refusal callback beyond 50ms; helper tests cover bounded history,
+independent clocks, field filtering and preserving the original failure when its snapshot is unavailable.
+Recording adds observational overhead and does not establish the cause of the original intermittent failure.
+
+Diagnostic validation: six focused tests passed. A temporary deliberate assertion failure in the real
+explicit-transfer test exported all three transfer stages, both message deliveries, positions and clocks
+in the JUnit report before teardown. The forced failure was removed before final verification. Its
+Robolectric queued-runnables warning also appeared after the deliberate failure, so that warning alone
+does not diagnose the original refusal. Formatter, strict verifyDebug and release playback tests passed:
+2,972 debug/shared tests and 1,136 release playback tests, zero failures/errors/skips. Initial static
+analysis findings were fixed using the existing clock abstraction and explicit missing-value formatting,
+without suppressions. This addition is test/documentation-only; APK2261's runtime remains unchanged.
+
 ### Local software verification
 
 Formatter, strict `verifyDebug -Pshelfplayer.warningsAsErrors=true` and
