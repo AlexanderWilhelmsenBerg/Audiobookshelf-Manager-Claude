@@ -39,6 +39,25 @@ newer-selection, inventory-gap and transfer regressions guard this behavior-pres
 Cleanup verification: formatter, strict verifyDebug and release playback tests passed on 2026-11-06.
 The initial Detekt return-count finding was corrected without a suppression or rule change.
 
+### Inventory-only lock revalidation
+
+The logic review reproduced a status defect at 9e5be960: repeated inventory callbacks marked an
+otherwise preserved lock Waiting. Equal output rows do not emit through StateFlow, so the service
+collector could not restore Active without an unrelated track/playback event. Inventory preservation
+now invokes the existing scoped lock verifier on the player dispatcher. It reads fresh proof instead
+of setting Active directly; newer intent, pending probes and invalid evidence keep their safeguards.
+Retained proof also leaves the guard's missing-endpoint flag and disappearance window intact; only
+live route proof can treat the endpoint as present again.
+The new inventory-only regression fails before the fix (expected Active, actual Waiting), repeats
+unchanged inventory without track callbacks, asserts no pause/preference/mute or selection changes,
+and then verifies a wrong route still pauses and leaves the target locked in Waiting.
+Final verification passed: formatter, strict verifyDebug and release playback tests; 2,968 debug/shared
+and 1,132 release playback tests, with zero failures/errors/skips. One earlier full run returned Refused
+instead of Verified in the existing real-Media3 explicit-transfer test. Its fixture has neither an
+inventory refresh nor an output lock and does not enter the changed paths. It passed unchanged in
+isolation and in the final full gate. The intermittent refusal is recorded, not diagnosed as fixed;
+neither the 50ms allowance nor test assertions were changed.
+
 ### Local software verification
 
 Formatter, strict `verifyDebug -Pshelfplayer.warningsAsErrors=true` and

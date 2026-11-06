@@ -507,6 +507,8 @@ class AudioOutputRouter @Inject constructor(
         // Preserve fresh exact track evidence, otherwise pause before default routing can become audible.
         applicationScope.launch(mainDispatcher) {
             if (preservesMissingHeadset(chosen)) {
+                // Equal inventory rows do not wake the service collector; renew proof at this event boundary.
+                verifyOutputLock()
                 if (!alreadyMissing) {
                     logger.info(
                         LogCategory.Playback,
@@ -710,7 +712,8 @@ class AudioOutputRouter @Inject constructor(
         val measured = first == setOf(lock.outputId) && second == first && isEligibleLockOutput(lock.outputId)
         if ((measured || preservesMissingHeadset(lock.outputId)) && isCurrentOutputLock(lock, context)) {
             outputIntentOwner.activateProof(lock, context.generation, context.effectEpoch)
-            headsetGuard.protect(lock.outputId)
+            // Retained proof keeps ownership active, but does not mean the inventory endpoint returned.
+            if (measured) headsetGuard.protect(lock.outputId)
         } else {
             outputIntentOwner.markUnverified(lock)
             if (headsetGuard.endpointId != lock.outputId) headsetGuard.protect(lock.outputId)

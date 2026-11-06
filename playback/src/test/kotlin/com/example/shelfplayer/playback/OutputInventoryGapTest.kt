@@ -21,6 +21,37 @@ import kotlin.test.assertTrue
 @Config(sdk = [34])
 class OutputInventoryGapTest {
     @Test
+    fun `inventory callbacks alone renew a preserved lock and still reject route loss`() = runTest {
+        val fixture = fixture()
+        val id = fixture.prepareGap(locked = true)
+        val selection = fixture.router.explicitSelection.value
+        repeat(3) {
+            fixture.router.playbackCall("refresh")
+            runCurrent()
+            assertEquals(OutputIntentOwner.LockPhase.Active, fixture.router.outputLock.value?.phase)
+            assertEquals(id, fixture.router.outputLock.value?.outputId)
+            assertEquals(selection, fixture.router.explicitSelection.value)
+            assertTrue(fixture.guardOwner().endpointMissing, "retained proof is not endpoint reappearance")
+        }
+        val published = fixture.router.outputs.value
+        val grace = fixture.guardOwner().disappearanceGrace
+        fixture.router.playbackCall("refresh")
+        runCurrent()
+        assertEquals(published, fixture.router.outputs.value, "equal rows cannot wake the service collector")
+        assertEquals(OutputIntentOwner.LockPhase.Active, fixture.router.outputLock.value?.phase)
+        assertEquals(grace, fixture.guardOwner().disappearanceGrace, "repeated callbacks must not restart grace")
+        assertTrue(fixture.pauseThreads.isEmpty())
+        assertTrue(fixture.preferredRequests.isEmpty())
+        assertTrue(fixture.volumeChanges.isEmpty())
+        fixture.router.currentTrackObservation = { AudioTrackObservation(3, AudioTrackPath.RemoteSubmix) }
+        fixture.router.playbackCall("refresh")
+        runCurrent()
+        assertTrue(fixture.pauseThreads.isNotEmpty())
+        assertEquals(OutputIntentOwner.LockPhase.Waiting, fixture.router.outputLock.value?.phase)
+        assertEquals(id, fixture.router.outputLock.value?.outputId)
+    }
+
+    @Test
     fun `existing output lock survives an exact gap but still pauses on a wrong track route`() = runTest {
         val fixture = fixture()
         val id = fixture.prepareGap(locked = true)
