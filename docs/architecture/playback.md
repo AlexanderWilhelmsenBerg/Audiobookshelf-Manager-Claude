@@ -5,6 +5,31 @@
 
 This document is the compact entry point for BookWave's playback correctness architecture. Detailed ADRs, bug investigations and reviews remain the evidence for why these rules exist.
 
+## One active output, multiple available destinations
+
+The #277 continuation keeps one ExoPlayer, MediaLibrarySession and Media3 focus owner. The existing
+AndroidLocalOutputAdapter and LiveOutputEndpointRegistry describe available destinations; they do not
+open silent audio tracks. Auto connection state remains in CarLifecycleAuthority, selection/transfer
+state in OutputIntentOwner, and actual playing-track evidence in AudioTrackRouteMonitor.
+
+Router events explicitly evaluate safety before publishing derived output state. Publication itself is
+passive. A framework prediction cannot erase a previously measured headset recovery candidate or refresh
+an interrupted episode. A measured different sink, newer listener intent and book/profile teardown retain
+their cancellation authority.
+
+During an inventory omission, a fresh exact process-private Bluetooth identity from the current playing
+AudioTrack is represented as RetainedEndpoint. This may preserve the already-owned, unmuted headset only
+with two equal current observer samples, current player/book/selection scope and valid identity access.
+It is not selectable inventory, new-lock authority, transfer success or permission to start/unmute audio.
+Missing/redacted/revoked/colliding identity, multiple sinks, changed observer or mismatch still fail closed.
+No timer or cached route alone permits continued audio.
+
+Explicit switches retain OutputHandoffEffects and OutputTransferTransaction: mute, prove the live target,
+restore once, and recheck scope/route/position before release. The 50ms position bound is unchanged.
+Dual-book playback and independent simultaneous outputs remain deferred. Device acceptance, including
+audible interruption duration, remains separate from software verification; see the
+[continuity test record](../testing/2026-11-05-delayed-auto-cleanup.md).
+
 ## Core principle: evidence is not authority
 
 BookWave receives playback facts from several places:

@@ -3,6 +3,11 @@
 **Classification:** Current captured-contract matrix with explicitly source-scoped evidence.
 **Reconciled:** 2026-10-07; server verification dates below are unchanged. PR #238 is merged. Phase 2 Garmin delivery uses the existing Media3/profile/lock owners and adds no ABS endpoint, response field, Room schema or tested server version.
 
+The 2026-11-06 PR305 routing continuation changes only local playing-track evidence and recovery.
+It adds no server endpoint, response field, schema, permission or tested Audiobookshelf version.
+Platform compatibility and pending device acceptance are recorded in the
+[continuity test log](testing/2026-11-05-delayed-auto-cleanup.md).
+
 `PRODUCT_SPEC 19` requires this file to record the server versions tested, the capabilities detected,
 known endpoint differences, the fixtures used, and the date last verified.
 

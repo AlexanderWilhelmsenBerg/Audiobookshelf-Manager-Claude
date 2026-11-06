@@ -4,6 +4,7 @@ import androidx.media3.common.Player
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.testing.TestAppClock
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
@@ -30,8 +31,9 @@ internal class DelayedCarArrivalFixture(private val scope: TestScope) : AutoClos
     private val owner get() = service.routeOwnership
     private val events: Player.Listener
     private val log = mutableListOf<LogEvent>()
+    var identityTrusted = true
     val recovery = CarContinuityRecoveryCoordinator(
-        CarArrivalResumeGate(now = clock::elapsed, trustedIdentity = { it == endpointId }),
+        CarArrivalResumeGate(now = clock::elapsed, trustedIdentity = { identityTrusted && it == endpointId }),
     )
     val selectionSequence get() = router.explicitSelection.value?.sequence ?: 0L
 
@@ -56,8 +58,7 @@ internal class DelayedCarArrivalFixture(private val scope: TestScope) : AutoClos
         events = type.getDeclaredConstructor(PlaybackService::class.java)
             .apply { isAccessible = true }.newInstance(service) as Player.Listener
         player.addListener(events)
-        router.currentProjection = { service.carLifecycle.projectionState.carConnected }
-        router.confirmedCarAbsent = { service.carLifecycle.definitelyAbsent }
+        service.playbackCall("bindOutputContinuity")
         player.playWhenReady = true
         recovery.observePlayingHeadset(inputs())
     }
@@ -82,6 +83,40 @@ internal class DelayedCarArrivalFixture(private val scope: TestScope) : AutoClos
     }
 
     fun returnHeadset() = base.returnHeadset()
+
+    fun observeSpeakerPrediction() {
+        val predicted = requireNotNull(
+            OutputDevices.outputOf(android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, null),
+        ).copy(
+            isActive = true,
+            activitySource = AudioOutputActivitySource.FrameworkMediaPolicy,
+        )
+        owner.onOutputsChanged(listOf(predicted), isPlaying = true)
+        service.playbackCall("observeCarContinuityHeadset", List::class.java, listOf(predicted))
+    }
+
+    fun resumeMeasuredPlayback() {
+        returnHeadset()
+        player.playWhenReady = true
+        val measured = router.outputs.value.map {
+            it.copy(
+                activitySource = AudioOutputActivitySource.PlayingAudioTrack,
+            )
+        }
+        owner.onPlaybackObserved(measured)
+        service.playbackCall("observeCarContinuityHeadset", List::class.java, measured)
+    }
+
+    fun depart(at: Duration): CarArrivalResumeGate.Decision {
+        advanceTo(at)
+        val decision = recovery.gate.onProjectionDeparture(at, owner.currentGeneration, selectionSequence)
+        service.carLifecycle.onControllerDisconnected()
+        service.carLifecycle.onFinalLegacyControllerDeparture()
+        projection(AndroidAutoProjectionMonitor.State.NotConnected)
+        return decision
+    }
+
+    fun advanceTo(at: Duration) = clock.advanceBy(at - clock.elapsed())
 
     fun interrupt(at: Duration, reason: Int): String {
         clock.advanceBy(at - clock.elapsed())

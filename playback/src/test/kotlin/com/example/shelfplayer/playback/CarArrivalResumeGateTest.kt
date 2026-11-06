@@ -1,6 +1,7 @@
 package com.example.shelfplayer.playback
 
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import com.example.shelfplayer.core.model.playback.AudioOutputRole
 import com.example.shelfplayer.core.model.playback.DeviceKind
 import org.junit.Test
@@ -298,7 +299,14 @@ class CarArrivalResumeGateTest {
             explicitSelectionSequence = 0,
         )
 
-        owner.onPlaybackObserved(listOf(speaker.copy(isActive = true)))
+        owner.onPlaybackObserved(
+            listOf(
+                speaker.copy(
+                    isActive = true,
+                    activitySource = AudioOutputActivitySource.PlayingAudioTrack,
+                ),
+            ),
+        )
         gate.observePlayingHeadset(
             heardRoute = owner.heardRoute,
             headsetId = owner.headsetForCar(listOf(speaker)),

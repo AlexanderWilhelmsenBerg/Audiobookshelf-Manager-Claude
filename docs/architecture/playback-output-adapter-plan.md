@@ -2,6 +2,12 @@
 
 **Status:** Owner approved; implementation and verification in progress. See the
 [implementation and acceptance record](../testing/output-adapter-continuity.md).
+**2026-11-06 continuation:** The owner approved four narrow slices on PR305: repeated recovery,
+passive candidate publication, exact current-track preservation during inventory gaps, and regression
+verification of the existing single-player transaction. The implementation and current hardware limits
+are recorded in [the continuation test log](../testing/2026-11-05-delayed-auto-cleanup.md).
+Earlier PR/combined-branch references below are historical. Dual-book playback is deferred.
+
 **Date:** 30 October 2026.
 **Primary implementation lane:** Playback & Lifecycle. Android System & Auto reviews platform seams;
 Architecture & Integration and Test & Acceptance review boundaries and acceptance, sequentially.

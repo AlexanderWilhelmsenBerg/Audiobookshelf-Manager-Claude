@@ -111,6 +111,8 @@ class AudioOutputRouter @Inject constructor(
 
     /** Positive absence evidence from the existing lifecycle owner; Unknown must retain protection. */
     internal var confirmedCarAbsent: () -> Boolean = { false }
+    internal var retainsInterruptedHeadset: (String) -> Boolean = { false }
+    internal var routeSafetyEvidence: () -> String = { "observer-unavailable" }
 
     /** Projection lifecycle edges can change presentation even when the device inventory is unchanged. */
     internal val refreshPresentationForLifecycle: () -> Unit get() = presentationPublisher::refresh
@@ -154,7 +156,7 @@ class AudioOutputRouter @Inject constructor(
     private val collidingOutputIds: Set<String> get() = localOutputs.collidingOutputIds
     private val measuredHeadsetProtection = MeasuredHeadsetProtection(
         applicationScope, preferenceEffects, localOutputs, headsetGuard, outputIntentOwner, _selectedId,
-        player = { player }, routes = { currentTrackRoutes() }, publish = ::publish,
+        player = { player }, routes = { currentTrackRoutes() }, publish = ::refreshRouteEvidence,
     )
 
     /** Process-scoped live endpoints; never key physical routing by persistent name-based policy ID. */
@@ -255,7 +257,7 @@ class AudioOutputRouter @Inject constructor(
         _selectedId.value = proof.outputId
         headsetGuard.protect(proof.outputId)
         measuredHeadsetProtection.clear()
-        publish()
+        refreshRouteEvidence()
         return true
     }
 
@@ -308,9 +310,19 @@ class AudioOutputRouter @Inject constructor(
         val context = currentLockContext() ?: return false
         val first = currentTrackObservation() ?: return false
         val second = currentTrackObservation()
-        return first.path == AudioTrackPath.Endpoint(id) && first == second &&
-            isEligibleLockOutput(id) && !volumeEffects.isRouteMuted(context.player) && isCurrentLockContext(context)
+        val liveProof = first.path == AudioTrackPath.Endpoint(id) && isEligibleLockOutput(id)
+        val retainedProof = hasRetainedHeadsetProof(id, first.path)
+        return (liveProof || retainedProof) && first == second &&
+            !volumeEffects.isRouteMuted(context.player) && isCurrentLockContext(context)
     }
+
+    /** Retained identity preserves existing ownership only; it cannot authorize a new route or probe. */
+    private fun hasRetainedHeadsetProof(id: String, path: AudioTrackPath): Boolean =
+        path == AudioTrackPath.RetainedEndpoint(id) &&
+            id !in live && localOutputs.retainsIdentity(id) &&
+            _selectedId.value == id && headsetGuard.endpointId == id && headsetGuard.currentProbe == null
+
+    private fun preservesMissingHeadset(id: String): Boolean = id !in live && isMeasuredHeadset(id)
 
     /**
      * Reasserts already-owned routing when a car arrives.
@@ -347,7 +359,7 @@ class AudioOutputRouter @Inject constructor(
                 headsetGuard.protect(id)
                 measuredHeadsetProtection.markRequested(id, epoch)
                 _selectedId.value = id
-                publish()
+                refreshRouteEvidence()
                 apply(id, epoch)
                 true
             }
@@ -378,7 +390,7 @@ class AudioOutputRouter @Inject constructor(
         // never opened BookWave's output chooser and selectedId was Automatic.
         if (_selectedId.value == null) _selectedId.value = id
         headsetGuard.protect(id)
-        publish()
+        refreshRouteEvidence()
     }
 
     /** Protects the exact current playing route accepted by the service's generation-bound route owner. */
@@ -404,7 +416,7 @@ class AudioOutputRouter @Inject constructor(
         if (active.preferredDeviceRequested && explicitSelection.value?.outputId == null) {
             applicationScope.launch { apply(null, epoch) }
         }
-        publish()
+        refreshRouteEvidence()
     }
 
     private fun choose(id: String?, destination: OutputIntentOwner.Destination) {
@@ -425,7 +437,7 @@ class AudioOutputRouter @Inject constructor(
         if (_selectedId.value != id) return@run
         val target = player ?: return@run
         if (!localOutputs.requestPreference(target, id)) return@run
-        publish()
+        refreshRouteEvidence()
         val routed = routedIds()
         logger.info(
             LogCategory.Playback,
@@ -445,38 +457,22 @@ class AudioOutputRouter @Inject constructor(
         // Keep the delayed observation as a fallback for silent platform changes, off the recovery path.
         // It never certifies a route and cannot publish a superseded request.
         applicationScope.launch(mainDispatcher) {
-            preferenceEffects.afterSettle(epoch, ROUTE_SETTLE_DELAY) { publish() }
+            preferenceEffects.afterSettle(epoch, ROUTE_SETTLE_DELAY) { refreshRouteEvidence() }
         }
     }
 
     /** Observe a car-driven OS route change independently of output-preference requests. */
     private suspend fun resettleAfterDelay() {
         delay(ROUTE_SETTLE_DELAY)
-        publish()
+        refreshRouteEvidence()
     }
 
     /**
-     * PRODUCT_SPEC PLAY-002 / ROUTE-002 — re-read the route when something moved it that this class cannot see.
-     *
-     * ### Why a car needs this
-     *
-     * `routedIds()` is only ever consulted from [publish], and [publish] is only reached from [attach], from
-     * [refresh] — which the framework drives through `AudioDeviceCallback.onAudioDevicesAdded/Removed` — and
-     * from an explicit [select]. **A car binding is none of those.** Android Auto activating an A2DP link
-     * that was already connected moves the route without adding or removing a device, so no callback fires,
-     * nothing re-reads the route, and the output state stays whatever it was before the drive started.
-     *
-     * That is why a device run reported the Car action never lighting: the fact `AudioOutputRoles.buttons`
-     * depends on was never refreshed at the one moment it changed. ADR-0029 §8 claimed "a republish of the
-     * button preferences, which the service already does when the route moves" — true only for moves that
-     * come with a device event, which this one does not. The republish happened; the *route* behind it was
-     * stale. Fifth correction of that shape on this branch.
-     *
-     * Twice, because the route is not settled the instant the controller binds — the same reason [apply]
-     * ends in [settle], and the same delay.
+     * Auto can move an existing route without an inventory callback. Evaluate safety and publish
+     * immediately, with one delayed observation for silent platform changes; neither observation issues Play.
      */
     fun resettle() {
-        publish()
+        refreshRouteEvidence()
         applicationScope.launch { resettleAfterDelay() }
     }
 
@@ -490,7 +486,7 @@ class AudioOutputRouter @Inject constructor(
             chosen != null && chosen == headsetGuard.endpointId && headsetGuard.endpointMissing ->
                 onGuardedHeadsetReappeared(chosen)
         }
-        publish()
+        refreshRouteEvidence()
     }
 
     private fun onDisconnectedSelection(chosen: String, connectedIds: Set<String>) {
@@ -507,18 +503,36 @@ class AudioOutputRouter @Inject constructor(
             return
         }
 
-        // Pause on the player looper before OS default routing can become audible.
+        val alreadyMissing = headsetGuard.markMissing()
+        // Preserve fresh exact track evidence, otherwise pause before default routing can become audible.
         applicationScope.launch(mainDispatcher) {
-            if (_selectedId.value == chosen && handoffs.retireDisconnectedOutput(chosen)) return@launch
+            if (preservesMissingHeadset(chosen)) {
+                // Equal inventory rows do not wake the service collector; renew proof at this event boundary.
+                verifyOutputLock()
+                if (!alreadyMissing) {
+                    logger.info(
+                        LogCategory.Playback,
+                        "Preserved playing headset through inventory gap",
+                    )
+                }
+                return@launch
+            }
+            logger.info(
+                LogCategory.Playback,
+                "Missing headset before route-safety handling",
+                LogField.Public("trackBeforePause", routeSafetyEvidence()),
+            )
+            if (_selectedId.value == chosen && handoffs.retireDisconnectedOutput(chosen, preserveContinuity = true)) {
+                return@launch
+            }
             if (_selectedId.value == chosen && headsetGuard.endpointId == chosen && chosen !in live) {
                 player?.takeIf { it.isPlaying }?.let(headsetGuard::pauseForSafety)
             }
         }
-        val alreadyMissing = headsetGuard.markMissing()
         if (alreadyMissing || headsetGuard.disappearanceGrace != null) return
         logger.info(
             LogCategory.Playback,
-            "Car continuity headset disappeared; preserving selection while paused",
+            "Car continuity headset absent from inventory; retaining owned destination",
             LogField.Public("kind", kindOf(chosen)),
         )
         headsetGuard.startGrace {
@@ -678,8 +692,7 @@ class AudioOutputRouter @Inject constructor(
     /** AudioTrack can change sinks without an AudioManager device-list callback. */
     internal fun onActualTrackRouteChanged() {
         verifyOutputLock()
-        pauseUnsafeGuardedPlayback()
-        publish()
+        refreshRouteEvidence()
     }
 
     /** Observation-only; a lock can be revalidated but this path never issues Play. */
@@ -696,9 +709,11 @@ class AudioOutputRouter @Inject constructor(
         val first = currentTrackRoutes()
         val second = currentTrackRoutes()
         if (!isCurrentOutputLock(lock, context)) return
-        if (first == setOf(lock.outputId) && second == first && isEligibleLockOutput(lock.outputId)) {
+        val measured = first == setOf(lock.outputId) && second == first && isEligibleLockOutput(lock.outputId)
+        if ((measured || preservesMissingHeadset(lock.outputId)) && isCurrentOutputLock(lock, context)) {
             outputIntentOwner.activateProof(lock, context.generation, context.effectEpoch)
-            headsetGuard.protect(lock.outputId)
+            // Retained proof keeps ownership active, but does not mean the inventory endpoint returned.
+            if (measured) headsetGuard.protect(lock.outputId)
         } else {
             outputIntentOwner.markUnverified(lock)
             if (headsetGuard.endpointId != lock.outputId) headsetGuard.protect(lock.outputId)
@@ -716,20 +731,26 @@ class AudioOutputRouter @Inject constructor(
             if (!isCurrentOutputLock(lock, context)) return@launch
             val finalRoute = currentTrackRoutes()
             if (!isCurrentOutputLock(lock, context)) return@launch
+            if (preservesMissingHeadset(lock.outputId) || !isCurrentOutputLock(lock, context)) return@launch
             if (finalRoute != setOf(lock.outputId) || !isEligibleLockOutput(lock.outputId)) {
                 headsetGuard.pauseForSafety(context.player)
             }
         }
     }
 
+    /** Routing events explicitly evaluate safety before publishing passive presentation. */
+    private fun refreshRouteEvidence() {
+        pauseUnsafeGuardedPlayback()
+        publish()
+    }
+
+    /** Discovery/presentation never applies a preference, pauses, seeks, mutes or issues Play. */
     private fun publish() {
         // One publication must not mix a measured sink with a later policy/preference observation.
-        // This snapshot describes presentation; the guard below still reads fresh actual-track proof
-        // on Media3's dispatcher before deciding whether playback may become audible.
+        // Safety belongs to refreshRouteEvidence and the playback/track callbacks, not this projection.
         val actual = currentTrackRoutes()
         val predicted = if (actual == null) routedIds() else null
         val chosen = _selectedId.value
-        pauseUnsafeGuardedPlayback()
         _outputs.value = OutputActivityProjection.rows(availableOutputs(), actual, predicted, chosen)
         applicationScope.launch(mainDispatcher) {
             _canKeepAudioHere.value = currentLockTarget() != null
@@ -764,7 +785,7 @@ class AudioOutputRouter @Inject constructor(
     }
 
     private fun observeGuardedEndpoint() {
-        // The route-settle coroutine and AudioDeviceCallback may call publish() off the
+        // The route-settle coroutine and AudioDeviceCallback may call refreshRouteEvidence() off the
         // ExoPlayer application looper. Even reading isPlaying there crashes Media3.
         // Check only our own routing state before dispatching; every Player access,
         // including the initial isPlaying read, belongs on MainImmediate.
@@ -775,6 +796,7 @@ class AudioOutputRouter @Inject constructor(
         applicationScope.launch(mainDispatcher) {
             if (!isCurrentGuard(epoch, target, guarded)) return@launch
             val current = target
+            if (preservesMissingHeadset(guarded)) return@launch
             // A framework media-policy prediction is never proof of this AudioTrack's
             // physical sink. In particular, a paused-to-Play car reconnect can report
             // a predicted headset while the actual track is RemoteSubmix or unobservable.
@@ -886,13 +908,16 @@ class AudioOutputRouter @Inject constructor(
             val id = selection.outputId
             if (id == null) headsetGuard.clearOwnership() else headsetGuard.protect(id)
             _selectedId.value = id
-            publish()
+            refreshRouteEvidence()
         }
 
         override fun releasedRouteId(): String? = lastHeardRouteId()
 
         override fun disconnectedOutputMayRetire(id: String): Boolean =
             id !in live && !currentProjection() && confirmedCarAbsent()
+
+        override fun retainsInterruptedHeadset(id: String): Boolean =
+            this@AudioOutputRouter.retainsInterruptedHeadset(id)
 
         override fun enqueue(epoch: Long, effect: () -> Unit) {
             applicationScope.launch { preferenceEffects.run(epoch) { effect() } }
@@ -902,7 +927,7 @@ class AudioOutputRouter @Inject constructor(
             localOutputs.requestPreference(player, outputId)
 
         override fun changed() {
-            publish()
+            refreshRouteEvidence()
         }
     }
 

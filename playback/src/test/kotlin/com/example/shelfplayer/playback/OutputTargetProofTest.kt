@@ -8,6 +8,14 @@ class OutputTargetProofTest {
     private val targets = OutputProofTargets(setOf("headset", "speaker", "car"), setOf("car"), projection = true)
 
     @Test
+    fun `retained playing identity cannot release a new transfer even with stale eligible inventory`() {
+        val observed = AudioTrackObservation(4, AudioTrackPath.RetainedEndpoint("headset"))
+        for (destination in listOf(OutputIntentOwner.Destination.Output, OutputIntentOwner.Destination.Car)) {
+            assertNull(OutputTargetProof.evaluate(request(destination, "headset"), observed, observed, targets))
+        }
+    }
+
+    @Test
     fun `an exact live endpoint includes explicit Speaker but refuses an ineligible target`() {
         for (id in listOf("headset", "speaker")) {
             val request = request(OutputIntentOwner.Destination.Output, id)
