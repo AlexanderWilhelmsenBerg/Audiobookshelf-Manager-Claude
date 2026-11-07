@@ -51,6 +51,7 @@ class DelayedCarArrivalCleanupTest {
                 val target = assertNotNull(fixture.arrive(start + 3.seconds).target)
                 assertTrue(fixture.assess(target).mayPlay)
                 assertFalse(fixture.assess(target).mayPlay)
+                fixture.recovery.notePlayIssued(target)
                 fixture.resumeMeasuredPlayback()
                 fixture.interrupt(start + 10.seconds, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
                 assertEquals(CarArrivalResumeGate.Status.Ready, fixture.depart(start + 11.seconds).status)

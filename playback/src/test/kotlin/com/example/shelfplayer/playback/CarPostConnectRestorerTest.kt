@@ -60,6 +60,23 @@ class CarPostConnectRestorerTest {
         override fun installing(direction: String, item: MediaItem, extraFields: List<LogField>) = Unit
     }
 
+    @Test
+    fun `Never holder refuses inherited Play when output protection refuses installation`() = runBlocking {
+        player.playWhenReady = true
+        val guarded = PlaybackCommandEffects(
+            currentPlayer = { player },
+            itemGeneration = { itemGeneration },
+            isAttached = { it === player },
+            protectOutput = { _, _, _ -> ManualPlayProtection.Denied },
+        )
+
+        restorer(commands = guarded).restore(AutoStartAction.None, player)
+
+        assertEquals(0, player.mediaItemCount)
+        assertEquals(0, openedQueues)
+        assertEquals(Player.STATE_IDLE, player.playbackState)
+    }
+
     private fun restorer(
         lastPlayed: suspend () -> LibraryItemId? = { BOOK },
         heldResume: suspend () -> AutoLibrary.HeldResume? = { held },

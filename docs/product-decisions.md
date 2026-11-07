@@ -438,6 +438,18 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-07 owner refinement (governor continuation).** The approved implementation plan supersedes
+the original one-claim-per-arrival restriction below with at most three single-use automatic Play claims
+within the same original 30-second episode. A further claim requires a distinct route-safety interruption
+after actual same-headset playback was confirmed for the preceding claim, connected Auto and unchanged
+trusted identity/book/selection scope. It does not require a second connection event. Duplicates,
+inventory return and failed/unproven attempts cannot rearm or extend the deadline. Departure pairing
+uses its own fresh interruption timestamp. Listener Pause and newer intent retain precedence.
+All playback orchestration is coordinated through a service-scoped governor and focused helpers,
+retaining existing durable owners, one player/session and Media3 focus ownership. Deliver on a separate
+draft PR dependent on PR305. [Architecture](architecture/playback-governor.md);
+[implementation and acceptance](testing/2026-11-07-playback-governor.md). Hardware acceptance remains open.
+
 **Owner decision:** 2026-11-01. Optional Nearby devices access is requested only from the phone output
 chooser to recognize an exact headset across Android handle churn. No scan/location access; denial
 preserves basic playback and explicit output selection. Permission never starts playback. Full unique

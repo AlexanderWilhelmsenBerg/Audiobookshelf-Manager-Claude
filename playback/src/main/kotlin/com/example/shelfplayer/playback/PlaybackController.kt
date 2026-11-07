@@ -113,16 +113,16 @@ class PlaybackController @Inject constructor(
     fun selectOutput(
         id: String?,
         destination: OutputDestination = if (id == null) OutputDestination.Automatic else OutputDestination.Output,
-    ) = when (destination) {
-        OutputDestination.Automatic -> audioOutputs.select(null)
-        OutputDestination.Car -> audioOutputs.selectCar()
-        OutputDestination.Output -> if (id != null) audioOutputs.select(id) else Unit
+    ) {
+        audioOutputs.commands.select(id, destination)
     }
 
-    fun keepAudioHere(): Boolean = audioOutputs.keepAudioHere()
+    fun keepAudioHere(): Boolean = audioOutputs.commands.keepHere()
 
     /** Release is the existing explicit Automatic command, with the same ordering and cancellation. */
-    fun releaseOutputLock() = audioOutputs.select(null)
+    fun releaseOutputLock() {
+        audioOutputs.commands.select(null, OutputDestination.Automatic)
+    }
 
     private val connectionMutex = Mutex()
     private var connectionGeneration = 0L
