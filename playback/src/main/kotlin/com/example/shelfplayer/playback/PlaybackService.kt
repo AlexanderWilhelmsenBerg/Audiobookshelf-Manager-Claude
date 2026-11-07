@@ -827,6 +827,10 @@ class PlaybackService : MediaLibraryService() {
 
     private fun clearCarContinuity() = governor.contextChanged()
 
+    private val carConnectionRefresh by lazy {
+        CarConnectionRefreshWindow(clock) { attempt -> carProjection.refreshConnection(attempt) }
+    }
+
     private fun onControllerTransportRequest(requestedPlay: Boolean, current: ExoPlayer): Boolean =
         governor.transport(requestedPlay, current)
 
@@ -876,6 +880,7 @@ class PlaybackService : MediaLibraryService() {
                 override fun transportIntent() = sleepTimer.onControllerTransportIntent()
                 override fun stopped() = audioOutputs.outputIntentOwner.onPlaybackStopped()
                 override fun cancelContinuity(preserveHeard: Boolean) {
+                    carConnectionRefresh.cancel()
                     carResumeEffects.cancelPending()
                     if (preserveHeard) carRecovery.cancelPending() else carRecovery.cancelAll()
                     carRecovery.clearAwaiting()
@@ -886,7 +891,10 @@ class PlaybackService : MediaLibraryService() {
                 override fun prepareTransport(play: Boolean, player: ExoPlayer) = prepareControllerRoute(play, player)
                 override fun synchronizeOutput() = syncExplicitOutputIntent()
                 override fun cancelResumeEffect() = carResumeEffects.cancelPending()
-                override fun observedPlay() = carRecovery.cancelPending()
+                override fun observedPlay() {
+                    carConnectionRefresh.cancel()
+                    carRecovery.cancelPending()
+                }
                 override fun paused(userInitiated: Boolean) = autoRewind.onPaused(wasUserInitiated = userInitiated)
                 override fun platformInterruption(reason: Int) = onCarPlatformInterruption(reason)
                 override fun safetyInterruption() {
@@ -926,6 +934,7 @@ class PlaybackService : MediaLibraryService() {
             focusLoss,
         )
         logCarContinuityDecision(source, decision)
+        if (focusLoss) carConnectionRefresh.onFocusLoss(scope, decision)
         decision.target
             ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
             ?.let(carResumeEffects::onRecoveryReady)
@@ -2066,6 +2075,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun onCarControllerConnected(controllerPackage: String) {
+        carConnectionRefresh.cancel()
         val trace = autoTraces.ensure("controller-connect")
         val carWasConnected = carConnections.isConnected()
         val carArrivedAt = if (carWasConnected) null else clock.elapsed()
@@ -2142,6 +2152,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun onCarProjectionUpdate(update: AndroidAutoProjectionMonitor.Update) {
+        if (update.current.carConnected) carConnectionRefresh.cancel()
         val previous = update.previous
         val trace = if (update.current.carConnected || previous?.carConnected == true) {
             autoTraces.ensure("projection-state")

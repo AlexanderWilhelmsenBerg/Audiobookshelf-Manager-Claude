@@ -284,7 +284,7 @@ class CarProjectionLifecycleTest {
     private fun TestScope.fixture(initialState: Int? = 2, controllerBindings: Int = 2): Fixture =
         Fixture(backgroundScope, StandardTestDispatcher(testScheduler), initialState, controllerBindings)
 
-    private class Fixture(
+    internal class Fixture(
         scope: CoroutineScope,
         dispatcher: CoroutineDispatcher,
         initialState: Int?,
@@ -323,6 +323,16 @@ class CarProjectionLifecycleTest {
                 volumeEffects = volumeEffects,
             )
             service.clock = clock
+            service.carProjection = monitor
+            service.resumeFreshness = ResumeFreshnessCoordinator(
+                unused(),
+                unused(),
+                ResumeBaseline(),
+                com.example.shelfplayer.domain.realtime.RealtimeProgressEvidenceStore(),
+                logger,
+                scope,
+                dispatcher,
+            )
             service.audioRouteLab =
                 AudioRouteLab(context, EventLog(clock), clock, service.audioOutputs, scope, dispatcher)
             service.volumeEffects = volumeEffects
@@ -364,6 +374,17 @@ class CarProjectionLifecycleTest {
             provider.state = state
             context.sendBroadcast(Intent(AndroidAutoProjectionMonitor.ACTION_CAR_CONNECTION_UPDATED))
             shadowOf(Looper.getMainLooper()).idle()
+        }
+
+        fun providerStateWithoutBroadcast(state: Int?) {
+            provider.state = state
+        }
+
+        fun cancelListenerIntent() = service.governor.contextChanged()
+
+        fun interruptionReads(): Int = events.count {
+            it.message == "Android Auto projection state read" &&
+                it.public("trigger")?.startsWith("interruption-") == true
         }
 
         fun armDeparture() {

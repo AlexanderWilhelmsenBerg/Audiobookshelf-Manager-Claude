@@ -77,6 +77,26 @@ If actual routing becomes unavailable or wrong, safety still pauses. Recovery us
 muted probe, position checkpoint and actual AudioTrack proof before unmute. Registry availability is
 not physical output proof. No extra AudioTrack, second player or zero-silence guarantee is introduced.
 
+### Early projection observation
+
+An eligible arrival focus loss can precede both the car's media-session bind and its projection broadcast.
+While the existing gate is Armed with `FocusLossWaitingForBoundary`, CarConnectionRefreshWindow requests
+read-only provider refreshes at 0, 250, 750, 1500, 2500, 4000 and 6000 ms. These are observation times,
+not playback delays. Duplicate interruptions cannot restart or extend the burst. The window owns no
+connection truth and cannot issue Play, request focus, select a device or create another AudioTrack.
+
+AndroidAutoProjectionMonitor remains the one provider adapter. Reads are serialized and concurrent
+requests coalesce to one pending refresh; service cancellation discards suspended results. Provider
+latency may outlast the observation window. Only actual state changes reach the existing lifecycle
+authority. Initial/Unknown results and unchanged observations do not manufacture an arrival.
+Controller connection, positive projection, observed Play, listener/context invalidation and teardown
+cancel future refresh requests. A read already in flight may still report genuine lifecycle state;
+it cannot restore cancelled recovery eligibility or beat newer intent.
+
+This can shorten recovery only if the provider exposes Projection before the delayed broadcast/bind.
+It cannot prevent Android focus loss or prove that another process has released focus. Media3 remains
+the sole focus owner. See the [focus investigation procedure](../testing/2026-11-07-early-auto-observation.md).
+
 ## Evidence and delivery
 
 Diagnostics correlate process-local episode/attempt numbers, phase, decision reason, remaining lifetime

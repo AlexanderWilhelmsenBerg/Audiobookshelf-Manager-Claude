@@ -44,6 +44,7 @@ internal class PlaybackServiceFixtureSetup(
             mainDispatcher = dispatcher,
         )
         service.clock = clock
+        service.carProjection = AndroidAutoProjectionMonitor(context, dispatcher, logger, clock)
         service.coldStartToggleGate = ColdStartToggleGate()
         service.logger = logger
         service.applicationScope = scope.backgroundScope
