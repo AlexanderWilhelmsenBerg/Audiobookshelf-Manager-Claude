@@ -419,16 +419,11 @@ class CarProjectionLifecycleTest {
                 .invoke(service, listOf(original))
         }
 
-        /** Only delegates the real PlayerEvents focus adapter; no mock player or fake policy. */
+        /** Delegates the service platform-interruption adapter used by the governor; no fake policy. */
         fun reportFocusLossFromPlayerListener() {
-            val type = PlaybackService::class.java.declaredClasses
-                .single { it.simpleName == "PlayerEvents" }
-            val listener = type.getDeclaredConstructor(PlaybackService::class.java)
+            PlaybackService::class.java.getDeclaredMethod("onCarPlatformInterruption", Int::class.javaPrimitiveType)
                 .apply { isAccessible = true }
-                .newInstance(service)
-            type.getDeclaredMethod("onCarPlatformInterruption", Int::class.javaPrimitiveType)
-                .apply { isAccessible = true }
-                .invoke(listener, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
+                .invoke(service, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
         }
 
         fun focusDecisions(): List<LogEvent> = decisions("audio-focus-loss")

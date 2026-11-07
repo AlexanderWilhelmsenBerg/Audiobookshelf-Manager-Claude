@@ -9,6 +9,10 @@ checkpoints below explain earlier implementation decisions, not the live PR queu
 
 ## Decision
 
+The [governor continuation](playback-governor.md) adds a common command-arbitration boundary before
+these effects and bounded arrival-episode recovery. It retains this transfer transaction, actual-route
+proof and position bounds; one recovery claim still permits only one raw Play.
+
 Keep OutputIntentOwner as the intent/selection authority, the existing Probe as the sole transient
 claim/checkpoint owner, and PlaybackVolumeEffects as the volume writer. Retain one ExoPlayer,
 MediaLibrarySession, endpoint registry and Media3 focus owner. The transaction completion driver owns

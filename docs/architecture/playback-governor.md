@@ -1,0 +1,89 @@
+# Playback governor
+
+**Status:** Implementation candidate, dependent on draft PR305. Physical acceptance remains open.
+**Owner decision:** 2026-11-07; PLAY-001/002/004/008/009, ROUTE-001/002; preserve S01-S22.
+
+## Responsibility and execution
+
+PlaybackGovernor arbitrates synchronous listener commands and observed interruptions on the existing
+Media3 player thread. PlaybackService owns the single ExoPlayer, MediaLibrarySession and service lifetime.
+There is no suspending command mailbox: Pause, safety muting and invalidation cannot wait for REST,
+Room or a route probe. Media3 remains the sole focus owner.
+
+The governor coordinates existing authorities instead of mirroring player state:
+
+| Authority | Owned truth |
+| --- | --- |
+| OutputIntentOwner | Listener destination, selection sequence, output lock and transfer |
+| LiveOutputEndpointRegistry | Live endpoints and process-private exact identity |
+| AudioTrackRouteMonitor | Actual current track observations |
+| CarContinuityRecoveryCoordinator and its gate | Episode, attempt eligibility and single-use claims |
+| ResumeFreshnessCoordinator | Freshness evidence and resume request generations |
+| SleepTimerController | Timer phase, schedule and grace request authority |
+| BookChanges / SessionSyncCoordinator | Ordered book acceptance, journal/session/outbox and progress |
+
+PlaybackResumeEffects orders held-book materialization, sleep authorization, freshness and final resume.
+The governor captures command/profile/player authorization before this work suspends. Existing selection
+and resume generations are checked at the corresponding specialist boundaries. Materialization may
+legitimately replace a metadata holder within the same command; it cannot authorize another profile or
+newer request. History recording remains with its current owner.
+
+## Entry paths
+
+| Entry | Arbitration and effects |
+| --- | --- |
+| Phone, notification, headset and Auto standard transport | MediaSession forwarding player -> governor -> resume/movement specialists |
+| Phone chooser and Keep/Release | PlaybackOutputCommands -> attached governor -> existing router/intent owner |
+| Dashboard output actions | Governor output command -> existing router/intent owner |
+| Sleep grace | Governor -> PlaybackResumeEffects -> shared freshness and command gate |
+| Raw focus/noisy/safety/user/end observations | Typed interpretation -> governor -> continuity/rewind owners |
+| Book/queue change and teardown | Governor cancels pending effects; existing generations revoke suspended results |
+| Retry, device policy and automatic series advance | Existing scoped DeferredPlaybackWork -> guarded command effects |
+| Auto paused holder / explicit holder materialization | Guarded install-only command, without prepare or Play |
+
+Physical input evidence is captured before the controller command generation advances. Unknown input
+stays unknown. The dispatcher does not strengthen Bluetooth inference or bypass an output lock.
+The output command port stores only a service callback. Detached selection keeps existing intent-only
+behavior and never starts a service or queues a future Play. Detachment is identity-scoped so an older
+service cannot clear a successor's command handler.
+
+PlaybackCommands remains the raw activation/install boundary. Install-only and install-and-prepare
+share attachment, authorization and inherited-Play protection. Seek/Stop/queue mutations still use the
+forwarding player's position checkpoint boundary and governor invalidation before Media3 effects.
+Do not redirect internal position compensation through user-command invalidation: the handoff's single
+checkpoint owner already scopes it.
+
+## Bounded recovery
+
+An arrival episode retains the exact previously measured headset and its book/selection scope. Its
+absolute deadline is 30 seconds from the earliest qualifying interruption; this is not a waiting delay.
+The initial trusted-arrival allowance is preserved. A successful route recovery does not reset the
+deadline or attempt count.
+
+At most three automatic Play claims are permitted: the initial claim and two further interruptions.
+Rearming requires the same headset to have been measured while actually playing after the preceding
+issued Play, current ownership/trust, connected Auto, and a new route-safety interruption. It does not
+require another connection event inside the already confirmed episode. Duplicate callbacks, preferred
+device acceptance, playWhenReady and inventory return cannot rearm. Failed or unproven attempts cannot
+retry themselves.
+
+Each attempt is single-use and scope-bound. Episode lifetime and focus/boundary pairing use separate
+clocks. Departure terminates arrival work and retains the existing conservative six-second pairing
+rules using the fresh departure event, never an old safety-pause timestamp. No generic reconnect Play
+is introduced. Explicit Pause, Stop, seek, output/book/profile change and teardown retain precedence.
+
+Healthy verified headset playback is preserved without preference resets, seeks or artificial delay.
+If actual routing becomes unavailable or wrong, safety still pauses. Recovery uses the existing player,
+muted probe, position checkpoint and actual AudioTrack proof before unmute. Registry availability is
+not physical output proof. No extra AudioTrack, second player or zero-silence guarantee is introduced.
+
+## Evidence and delivery
+
+Diagnostics correlate process-local episode/attempt numbers, phase, decision reason, remaining lifetime
+and Play-issued versus audible-confirmed outcomes. No Bluetooth address, device name, media metadata or
+identity correlation key is added. A playing-track observation is software evidence, not an acoustic
+measurement or proof of physical button origin.
+
+See [the implementation and acceptance record](../testing/2026-11-07-playback-governor.md). Unit and
+service tests establish ordering and cancellation; repeated stationary car tests establish audibility,
+actual destination and interruption duration. Main and PR305 remain unchanged until explicitly merged.

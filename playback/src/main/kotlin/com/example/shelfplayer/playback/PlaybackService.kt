@@ -297,7 +297,7 @@ class PlaybackService : MediaLibraryService() {
         PlaybackCommandEffects(
             currentPlayer = { player },
             itemGeneration = { mediaItemGeneration },
-            isAttached = audioOutputs::isAttachedPlayer,
+            isAttached = { governor.acceptingCommands && audioOutputs.isAttachedPlayer(it) },
             protectOutput = { expectedPlayer, willStartAudio, holdForSeek ->
                 audioOutputs.protectManualPlayOnGuardedHeadset(expectedPlayer, willStartAudio, holdForSeek)
             },
@@ -368,7 +368,8 @@ class PlaybackService : MediaLibraryService() {
      * Issue #36 — one owner correlates measured audio-focus loss with car arrival or final departure.
      *
      * The route recovery can tolerate Android's transient device-list omission but can target only the exact
-     * headset captured by this policy. continuityPlayAwaiting is diagnostic only; it never authorizes Play.
+     * headset captured by this policy. An issued attempt needs actual-route and active-playback proof;
+     * awaiting Play alone never authorizes another attempt.
      */
     private val carContinuity = CarArrivalResumeGate(
         now = { clock.elapsed() },
@@ -475,6 +476,7 @@ class PlaybackService : MediaLibraryService() {
 
     internal fun installPositionCheckpointHandlers() {
         positionEffects.install()
+        audioOutputs.commands.attach(outputDispatch)
     }
 
     private val positionEffects by lazy(LazyThreadSafetyMode.NONE) {
@@ -820,68 +822,120 @@ class PlaybackService : MediaLibraryService() {
         allowEffects = { callbackFutures.playerEffectsAllowed() },
     )
 
-    /** New controller movement supersedes all suspended work, even without a raw player callback. */
-    private fun onControllerCommand(origin: ResumeInvalidation): Boolean {
-        buttonRouting.clear()
-        val movement = when (origin) {
-            ResumeInvalidation.MediaChanged -> PlaybackMovement.MediaChanged
-            ResumeInvalidation.Seek, ResumeInvalidation.NotificationSkip -> PlaybackMovement.Seek
-            ResumeInvalidation.Pause, ResumeInvalidation.Stop, ResumeInvalidation.AutoRewind -> null
-        }
-        if (movement != null) {
-            val finished = positionEffects.before(movement) ?: return false
-            finished()
-        }
-        controllerCommandGeneration += 1
-        val expected = positionEffects.authority()
-        val current = player
-        if (origin == ResumeInvalidation.Stop) audioOutputs.outputIntentOwner.onPlaybackStopped()
-        resumeFreshness.invalidate(origin)
-        sleepTimer.onResumeInvalidation(origin)
-        clearCarContinuity()
-        return player === current && positionEffects.authority() == expected
-    }
+    /** All controller entry paths share the governor's synchronous arbitration. */
+    private fun onControllerCommand(origin: ResumeInvalidation): Boolean = governor.invalidate(origin)
 
-    /** Actual listener/book/queue/service boundaries retire the existing claim and its pending effects. */
-    private fun clearCarContinuity() {
-        carResumeEffects.cancelPending()
-        carRecovery.cancelAll()
-        carRecovery.clearAwaiting()
-    }
+    private fun clearCarContinuity() = governor.contextChanged()
 
-    /** External transport is newer listener intent even when Media3 emits no raw state transition. */
-    private fun onControllerTransportRequest(requestedPlay: Boolean, current: ExoPlayer): Boolean {
-        val buttonDestination = buttonRouting.transport(requestedPlay, session, current)
-        controllerCommandGeneration += 1
-        val expected = positionEffects.authority()
-        logControllerTransportRequest(requestedPlay, current)
-        val accepted = routeExplicitCarPlay(requestedPlay, current) && buttonRouting.apply(buttonDestination)
-        if (buttonDestination != null) {
-            autoTraces.log(
-                "Media-button output request",
-                fields = listOf(
-                    LogField.Public("evidence", buttonDestination.evidence),
-                    LogField.Public(
-                        "result",
-                        when {
-                            audioOutputs.outputLock.value != null -> "locked"
-                            accepted -> "accepted"
-                            else -> "refused"
-                        },
+    private fun onControllerTransportRequest(requestedPlay: Boolean, current: ExoPlayer): Boolean =
+        governor.transport(requestedPlay, current)
+
+    /** Capture physical-input evidence before advancing the existing command generation. */
+    private fun prepareControllerRoute(requestedPlay: Boolean, current: ExoPlayer): () -> Boolean {
+        val destination = buttonRouting.transport(requestedPlay, session, current)
+        return {
+            logControllerTransportRequest(requestedPlay, current)
+            val accepted = routeExplicitCarPlay(requestedPlay, current) && buttonRouting.apply(destination)
+            if (destination != null) {
+                autoTraces.log(
+                    "Media-button output request",
+                    fields = listOf(
+                        LogField.Public("evidence", destination.evidence),
+                        LogField.Public(
+                            "result",
+                            when {
+                                audioOutputs.outputLock.value != null -> "locked"
+                                accepted -> "accepted"
+                                else -> "refused"
+                            },
+                        ),
                     ),
-                ),
-            )
+                )
+            }
+            if (accepted && destination != null) syncExplicitOutputIntent()
+            accepted
         }
-        if (accepted && buttonDestination != null) syncExplicitOutputIntent()
-        // Duplicate Pause still matters. Automatic continuity uses the raw player and bypasses this boundary.
-        sleepTimer.onControllerTransportIntent()
-        carResumeEffects.cancelPending()
-        if (requestedPlay) carRecovery.cancelPending() else carRecovery.cancelAll()
-        carRecovery.clearAwaiting()
-        return accepted && player === current && positionEffects.authority() == expected
     }
+
+    internal val governor by lazy(LazyThreadSafetyMode.NONE) {
+        PlaybackGovernor(
+            object : PlaybackGovernor.Source {
+                override fun player() = this@PlaybackService.player
+                override fun authority() = positionEffects.authority()
+                override fun advanceCommand() {
+                    controllerCommandGeneration += 1
+                }
+                override fun finishMovement(movement: PlaybackMovement): Boolean {
+                    val finished = positionEffects.before(movement) ?: return false
+                    finished()
+                    return true
+                }
+                override fun clearButtonInput() = buttonRouting.clear()
+                override fun invalidateResume(origin: ResumeInvalidation) = resumeFreshness.invalidate(origin)
+                override fun invalidateSleep(origin: ResumeInvalidation) = sleepTimer.onResumeInvalidation(origin)
+                override fun transportIntent() = sleepTimer.onControllerTransportIntent()
+                override fun stopped() = audioOutputs.outputIntentOwner.onPlaybackStopped()
+                override fun cancelContinuity(preserveHeard: Boolean) {
+                    carResumeEffects.cancelPending()
+                    if (preserveHeard) carRecovery.cancelPending() else carRecovery.cancelAll()
+                    carRecovery.clearAwaiting()
+                }
+                override fun cancelRetry() {
+                    pendingRecoveryRetry?.cancel()
+                }
+                override fun prepareTransport(play: Boolean, player: ExoPlayer) = prepareControllerRoute(play, player)
+                override fun synchronizeOutput() = syncExplicitOutputIntent()
+                override fun cancelResumeEffect() = carResumeEffects.cancelPending()
+                override fun observedPlay() = carRecovery.cancelPending()
+                override fun paused(userInitiated: Boolean) = autoRewind.onPaused(wasUserInitiated = userInitiated)
+                override fun platformInterruption(reason: Int) = onCarPlatformInterruption(reason)
+                override fun safetyInterruption() {
+                    val decision = carRecovery.routeSafetyPause(clock.elapsed(), continuityInputs())
+                    if (decision != null) {
+                        logCarContinuityDecision("route-safety-repeat", decision)
+                        decision.target?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
+                            ?.let(carResumeEffects::onRecoveryReady)
+                    }
+                }
+            },
+            resumeEffects,
+        )
+    }
+
+    /**
+     * Platform pause is observable once; becoming-noisy can suppress a later focus-loss transition.
+     * The gate pairs either event with a car lifecycle boundary before any automatic Play.
+     */
+    private fun onCarPlatformInterruption(reason: Int) {
+        val focusLoss = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
+        val source = if (focusLoss) "audio-focus-loss" else "becoming-noisy"
+        val trace = autoTraces.ensure(source)
+        autoTraces.log(
+            "Android Auto lifecycle input",
+            trace,
+            buildList {
+                add(LogField.Public("event", source))
+                addAll(AndroidAutoDiagnostics.playerFields(player))
+                addAll(carSnapshotFields())
+            },
+        )
+        syncExplicitOutputIntent()
+        val decision = carRecovery.platformInterruption(
+            clock.elapsed(),
+            continuityInputs(),
+            focusLoss,
+        )
+        logCarContinuityDecision(source, decision)
+        decision.target
+            ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
+            ?.let(carResumeEffects::onRecoveryReady)
+        if (!focusLoss) carRecovery.clearAwaiting()
+    }
+
+    private val outputDispatch: (() -> Boolean) -> Boolean = { effect -> governor.output(effect) }
 
     override fun onDestroy() {
+        governor.close()
         buttonRouting.close()
         routeObservationEffects.detach()
         audioOutputs.outputIntentOwner.releaseRuntime()
@@ -906,6 +960,7 @@ class PlaybackService : MediaLibraryService() {
         carProjection.stop()
         clearCarContinuity()
         audioOutputs.detach()
+        audioOutputs.commands.detach(outputDispatch)
         journal?.cancel()
         sleepTimerWatch?.cancel()
         skipWatch?.cancel()
@@ -1162,29 +1217,26 @@ class PlaybackService : MediaLibraryService() {
         explicit: Boolean,
         stillAuthorized: () -> Boolean = { true },
         bypassFreshness: Boolean = false,
-    ): Boolean {
-        // Sleep-grace Play enters directly; its output owner must be captured before any suspension.
-        val selectionSequence = currentExplicitSelectionSequence()
-        val authorized = { stillAuthorized() && currentExplicitSelectionSequence() == selectionSequence }
-        // Issue #88 — BookChanges.onBookOpened invalidates sleep Play claims. Materialize the display-only
-        // holder first so the claim below belongs to the real book generation it is authorizing.
-        if (!authorized() || !materializeHeldResume(authorized)) return false
-        val sleepPlayRequest = sleepTimer.onPlayRequest(explicit)
-        if (!authorized()) {
-            sleepTimer.clearPlayRequest(sleepPlayRequest)
-            return false
-        }
-        val requestedPlay = if (bypassFreshness) {
-            resumeLoadedCurrent(authorized)
-        } else {
-            when (val prepared = resumeFreshness.preparePlay()) {
-                ResumePlayPreparation.Bypass -> resumeLoadedCurrent(authorized)
-                ResumePlayPreparation.Superseded -> false
-                is ResumePlayPreparation.Ready -> applyFreshnessPlan(prepared.plan, authorized)
-            }
-        }
-        if (!requestedPlay) sleepTimer.clearPlayRequest(sleepPlayRequest)
-        return requestedPlay
+    ): Boolean = governor.resume(explicit, bypassFreshness, stillAuthorized)
+
+    private val resumeEffects by lazy(LazyThreadSafetyMode.NONE) {
+        PlaybackResumeEffects(
+            sleepTimer,
+            resumeFreshness,
+            object : PlaybackResumeEffects.Source {
+                override fun selectionSequence() = currentExplicitSelectionSequence()
+                override suspend fun materialize(authorized: () -> Boolean) = materializeHeldResume(authorized)
+                override suspend fun resumeLoaded(authorized: () -> Boolean) = resumeLoadedCurrent(authorized)
+                override suspend fun resumeAt(
+                    plan: ResumeFreshnessPlan,
+                    position: Duration,
+                    authorized: () -> Boolean,
+                ) = this@PlaybackService.resumeAt(plan, position, authorized)
+                override fun checked(plan: ResumeFreshnessPlan) = recordFreshnessCheck(plan)
+                override fun adopted(plan: ResumeFreshnessPlan, outcome: ResumeOutcome) =
+                    recordRemoteProgress(plan, outcome)
+            },
+        )
     }
 
     /**
@@ -1221,49 +1273,31 @@ class PlaybackService : MediaLibraryService() {
             val allowed = stillAuthorized() && !lock.isActiveProfileLocked() &&
                 target.profileId?.let { auto.isActiveProfile(it) } == true &&
                 prepared.session.profileId == target.profileId
-            val item = player?.currentMediaItem
-            allowed && stillAuthorized() && deferredWork.isMutationCurrent(claim) && item != null &&
-                MediaItems.isResumePlaceholder(item) &&
-                MediaItems.ownerOf(item) == target.profileId && MediaItems.bookIdOf(item) == target.bookId
+            allowed && stillAuthorized() && deferredWork.isMutationCurrent(claim) && isHeldResumeTarget(target)
         }
-        bookChanges.acceptBook(prepared.session, authorized) {
-            claim.player.setMediaItem(prepared.queue.item, prepared.queue.startPositionMs)
-            logger.info(LogCategory.Playback, "Materialized the held resume book for explicit Play")
+        var installed = false
+        val accepted = bookChanges.acceptBook(prepared.session, authorized) {
+            installed = playbackCommandEffects.install(
+                claim.player,
+                prepared.queue.item,
+                prepared.queue.startPositionMs,
+                authorizedBeforeInstall = { stillAuthorized() && deferredWork.isMutationCurrent(claim) },
+                stillAuthorizedAfterInstall = {
+                    stillAuthorized() && deferredWork.isInstalledCurrent(claim, prepared.queue.item)
+                },
+            )
+            if (installed) logger.info(LogCategory.Playback, "Materialized the held resume book for explicit Play")
         }
+        accepted && installed
+    }
+
+    private fun isHeldResumeTarget(target: HeldResumeTarget): Boolean {
+        val item = player?.currentMediaItem ?: return false
+        return MediaItems.isResumePlaceholder(item) && MediaItems.ownerOf(item) == target.profileId &&
+            MediaItems.bookIdOf(item) == target.bookId
     }
 
     private data class HeldResumeTarget(val profileId: ProfileId?, val bookId: LibraryItemId)
-
-    private suspend fun applyFreshnessPlan(
-        plan: ResumeFreshnessPlan,
-        stillAuthorized: () -> Boolean = { true },
-    ): Boolean {
-        return when (val decision = plan.decision) {
-            is ResumeFreshnessDecision.Current ->
-                resumeFreshness.withCurrentPlan(plan) {
-                    if (!stillAuthorized()) {
-                        false
-                    } else {
-                        recordFreshnessCheck(plan)
-                        resumeLoadedCurrent(stillAuthorized)
-                    }
-                } ?: false
-
-            is ResumeFreshnessDecision.Adopt -> {
-                if (!stillAuthorized()) return false
-                val outcome = resumeFreshness.withCurrentPlan(plan) {
-                    if (!stillAuthorized()) {
-                        null
-                    } else {
-                        recordFreshnessCheck(plan)
-                        resumeAt(plan, decision.position, stillAuthorized)
-                    }
-                } ?: return false
-                recordRemoteProgress(plan, outcome)
-                outcome == ResumeOutcome.Resumed
-            }
-        }
-    }
 
     /** Local resume after the shared freshness decision, using the same guarded command boundaries. */
     private suspend fun resumeLoadedCurrent(stillAuthorized: () -> Boolean = { true }): Boolean =
@@ -1518,7 +1552,6 @@ class PlaybackService : MediaLibraryService() {
                 reason,
                 routeSafetyPause = routeSafetyPause,
             )
-            carResumeEffects.cancelPending()
             if (!routeSafetyPause) recordTransport(if (input.isPlay) PlaybackEvent.Play else PlaybackEvent.Pause)
             logger.debug(
                 LogCategory.Playback,
@@ -1526,54 +1559,7 @@ class PlaybackService : MediaLibraryService() {
                 LogField.Public("playWhenReady", playWhenReady.toString()),
                 LogField.Public("reason", input.reasonName),
             )
-            if (input.isPlay) {
-                // New Play supersedes any pending continuity result, including a repeated system Play.
-                carRecovery.cancelPending()
-                return
-            }
-
-            autoRewind.onPaused(wasUserInitiated = input.isUserPause)
-            val interruption = input.interruptionReason
-            if (interruption != null) {
-                onCarPlatformInterruption(interruption)
-            } else if (routeSafetyPause) {
-                carRecovery.routeSafetyPause(clock.elapsed())
-            } else {
-                // An internal safety pause preserves prior heard intent for a later platform/car boundary.
-                // It grants no Play. Deliberate pause, end-of-item and unknown causes still revoke evidence.
-                carRecovery.cancelAll()
-                carRecovery.clearAwaiting()
-            }
-        }
-
-        /**
-         * Platform pause is observable once; becoming-noisy can suppress a later focus-loss transition.
-         * The gate pairs either event with a car lifecycle boundary before any automatic Play.
-         */
-        private fun onCarPlatformInterruption(reason: Int) {
-            val focusLoss = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
-            val source = if (focusLoss) "audio-focus-loss" else "becoming-noisy"
-            val trace = autoTraces.ensure(source)
-            autoTraces.log(
-                "Android Auto lifecycle input",
-                trace,
-                buildList {
-                    add(LogField.Public("event", source))
-                    addAll(AndroidAutoDiagnostics.playerFields(player))
-                    addAll(carSnapshotFields())
-                },
-            )
-            syncExplicitOutputIntent()
-            val decision = carRecovery.platformInterruption(
-                clock.elapsed(),
-                continuityInputs(),
-                focusLoss,
-            )
-            logCarContinuityDecision(source, decision)
-            decision.target
-                ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
-                ?.let(carResumeEffects::onRecoveryReady)
-            if (!focusLoss) carRecovery.clearAwaiting()
+            governor.observeTransport(input, routeSafetyPause)
         }
 
         /**
@@ -1857,6 +1843,26 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun bindOutputContinuity() {
+        carRecovery.onPlayOutcome = { outcome ->
+            autoTraces.log(
+                "Car continuity attempt outcome",
+                fields = listOf(
+                    LogField.Public("episode", outcome.episodeId),
+                    LogField.Public("attempt", outcome.attemptOrdinal),
+                    LogField.Public("phase", outcome.phase.name),
+                    LogField.Public(
+                        "outcome",
+                        when (outcome) {
+                            is CarContinuityRecoveryCoordinator.PlayOutcome.Issued -> "play-issued"
+                            is CarContinuityRecoveryCoordinator.PlayOutcome.AudibleConfirmed -> "audible-confirmed"
+                            is CarContinuityRecoveryCoordinator.PlayOutcome.Refused -> "refused"
+                            is CarContinuityRecoveryCoordinator.PlayOutcome.Stale -> "stale"
+                            is CarContinuityRecoveryCoordinator.PlayOutcome.Cancelled -> "cancelled"
+                        },
+                    ),
+                ),
+            )
+        }
         audioOutputs.currentProjection = { carLifecycle.projectionState.carConnected }
         audioOutputs.confirmedCarAbsent = { carLifecycle.definitelyAbsent }
         audioOutputs.retainsInterruptedHeadset = { id ->
@@ -2049,6 +2055,11 @@ class PlaybackService : MediaLibraryService() {
                 add(LogField.Public("status", decision.status.name))
                 add(LogField.Public("reason", decision.reason.name))
                 add(LogField.Public("kind", decision.target?.outputId?.substringBefore(':') ?: "none"))
+                decision.target?.let { target ->
+                    add(LogField.Public("episode", target.episodeId))
+                    add(LogField.Public("attempt", target.attemptOrdinal))
+                    add(LogField.Public("remainingMs", carRecovery.remainingWindow(target)?.inWholeMilliseconds ?: -1L))
+                }
                 addAll(carSnapshotFields())
             },
         )
@@ -3500,13 +3511,21 @@ class PlaybackService : MediaLibraryService() {
                 in NotificationButtons.carOutputActions -> {
                     // Car is Automatic at the ExoPlayer layer, but it is not generic Automatic at the UI
                     // layer: preserving that semantic intent is what lets projected Auto show #34's state.
-                    audioOutputs.selectCar()
+                    governor.output {
+                        audioOutputs.selectCar()
+                        true
+                    }
                 }
 
                 NotificationButtons.ACTION_CYCLE_HEADSET_OUTPUT ->
                     AudioOutputRoles
                         .nextHeadset(audioOutputs.outputs.value, audioOutputs.selectedId.value)
-                        ?.let(audioOutputs::select)
+                        ?.let { id ->
+                            governor.output {
+                                audioOutputs.select(id)
+                                true
+                            }
+                        }
 
                 AutoLibrary.ACTION_SWITCH_PROFILE -> return future {
                     switchProfileFromCar(AutoLibrary.profileIdOf(args.getString(MediaConstants.EXTRA_KEY_MEDIA_ID)))

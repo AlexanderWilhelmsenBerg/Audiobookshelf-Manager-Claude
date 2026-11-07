@@ -105,6 +105,7 @@ internal class DelayedCarArrivalFixture(private val scope: TestScope) : AutoClos
         }
         owner.onPlaybackObserved(measured)
         service.playbackCall("observeCarContinuityHeadset", List::class.java, measured)
+        recovery.playbackBecameActive(owner.currentGeneration, selectionSequence)
     }
 
     fun depart(at: Duration): CarArrivalResumeGate.Decision {

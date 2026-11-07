@@ -8,6 +8,10 @@ It adds no server endpoint, response field, schema, permission or tested Audiobo
 Platform compatibility and pending device acceptance are recorded in the
 [continuity test log](testing/2026-11-05-delayed-auto-cleanup.md).
 
+The 2026-11-07 dependent governor candidate changes local command arbitration and bounded recovery.
+It adds no endpoint, response field, schema, permission or tested server version. See its
+[implementation and acceptance record](testing/2026-11-07-playback-governor.md).
+
 `PRODUCT_SPEC 19` requires this file to record the server versions tested, the capabilities detected,
 known endpoint differences, the fixtures used, and the date last verified.
 

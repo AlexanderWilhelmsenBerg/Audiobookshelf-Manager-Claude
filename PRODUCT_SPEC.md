@@ -396,7 +396,10 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Android Auto discovery must preserve an already verified, healthy headset route without a preference
   reset or artificial waiting delay. Android focus loss or unavailable actual output still pauses safely.
 - An internal route-safety pause retains prior heard intent for the existing bounded car-continuity
-  decision; it is not listener Pause and cannot alone authorize Play. Listener Pause and newer
+  decision; it is not listener Pause and cannot alone authorize Play outside an already confirmed
+  car-arrival episode. Within that episode, a distinct interruption after verified same-headset playback
+  may use a remaining claim, up to three total and within the original 30-second absolute deadline.
+  Duplicate callbacks and unproven attempts cannot rearm recovery. Listener Pause and newer
   selection/book/profile/player context still invalidate recovery.
 - Exact unique A2DP addresses may correlate endpoint handle changes in process memory only. Missing,
   placeholder or ambiguous identity never falls back to a device name. A real gap invalidates live proof;

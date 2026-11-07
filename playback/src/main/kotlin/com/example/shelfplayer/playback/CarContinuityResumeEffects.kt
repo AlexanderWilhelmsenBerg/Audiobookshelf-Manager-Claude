@@ -52,10 +52,12 @@ internal class CarContinuityResumeEffects(
 
     /** New listener/book/session intent stops suspended work immediately, without clearing a successor's claim. */
     fun cancelPending() {
+        val oldJob = pending
         val target = pendingTarget
-        pending?.cancel()
         pending = null
         pendingTarget = null
+        // Retire our handle before cancellation: a synchronous completion may install a successor.
+        oldJob?.cancel()
         if (target != null) recovery.discard(target)
     }
 

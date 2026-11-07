@@ -54,6 +54,8 @@ class AudioOutputRouter @Inject constructor(
     private val volumeEffects: PlaybackVolumeEffects,
 ) {
 
+    internal val commands = PlaybackOutputCommands(this)
+
     private val _outputs = MutableStateFlow<List<AudioOutput>>(emptyList())
 
     /** Every output connected right now, including speakers needed for route observation. */

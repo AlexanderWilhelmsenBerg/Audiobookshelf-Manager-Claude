@@ -1,6 +1,7 @@
 package com.example.shelfplayer.playback
 
 import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import com.example.shelfplayer.core.model.playback.AudioOutputRole
 import com.example.shelfplayer.core.model.playback.DeviceKind
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,6 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -19,16 +21,17 @@ class CarContinuityRecoveryCoordinatorTest {
         id = "bluetooth:headset",
         displayName = "Headset",
         kind = DeviceKind.Bluetooth,
+        activitySource = AudioOutputActivitySource.PlayingAudioTrack,
         role = AudioOutputRole.Ambiguous,
         isActive = true,
     )
 
-    private fun ready(): Pair<CarContinuityRecoveryCoordinator, CarArrivalResumeGate.Target> {
+    private fun ready(trusted: Boolean = false): Pair<CarContinuityRecoveryCoordinator, CarArrivalResumeGate.Target> {
         val owner = RouteHeardOwnership(OutputIntentOwner()).apply {
             onBookChanged(hasBook = true)
             onPlaybackObserved(listOf(headset))
         }
-        val gate = CarArrivalResumeGate()
+        val gate = if (trusted) CarArrivalResumeGate({ Duration.ZERO }, { true }) else CarArrivalResumeGate()
         val coordinator = CarContinuityRecoveryCoordinator(gate, CarArrivalRouteRecovery(50.milliseconds))
         gate.observePlayingHeadset(owner.heardRoute, headset.id, owner.currentGeneration, 0)
         val focus = gate.onAudioFocusLoss(
@@ -53,6 +56,112 @@ class CarContinuityRecoveryCoordinatorTest {
         assertTrue(first.mayPlay)
         assertFalse(repeated.mayPlay)
         assertEquals(CarArrivalResumeGate.Reason.CandidateInvalidated, repeated.consumed?.reason)
+    }
+
+    @Test
+    fun confirmedArrivalCanRearmOnlyForTwoDistinctRouteSafetyInterruptions() {
+        val (coordinator, first) = ready(trusted = true)
+        assertTrue(
+            coordinator.assess(first, CarContinuityPlayPrecheck.Proceed, first.generation, 0, headset.id).mayPlay,
+        )
+        coordinator.notePlayIssued(first)
+        coordinator.observePlayingHeadset(actualInputs(first))
+        assertEquals(first, coordinator.playbackBecameActive(first.generation, 0))
+
+        val arrivalInputs = inputs(first).copy(headsetId = null, carConnected = true)
+        val secondDecision = coordinator.routeSafetyPause(12.seconds, arrivalInputs)
+        val second = requireNotNull(secondDecision?.target)
+        assertEquals(CarArrivalResumeGate.Status.Ready, secondDecision.status)
+        assertNull(
+            coordinator.routeSafetyPause(12.seconds, arrivalInputs),
+            "a duplicate safety callback cannot rearm the same interruption",
+        )
+        assertTrue(
+            coordinator.assess(second, CarContinuityPlayPrecheck.Proceed, second.generation, 0, headset.id).mayPlay,
+        )
+        coordinator.notePlayIssued(second)
+        coordinator.observePlayingHeadset(actualInputs(first))
+        assertEquals(second, coordinator.playbackBecameActive(second.generation, 0))
+
+        assertNull(
+            coordinator.routeSafetyPause(16.seconds, arrivalInputs.copy(headsetId = "other-headset")),
+            "a positively different endpoint cannot inherit the episode",
+        )
+        val third = requireNotNull(coordinator.routeSafetyPause(16.seconds, arrivalInputs)?.target)
+        assertTrue(
+            coordinator.assess(third, CarContinuityPlayPrecheck.Proceed, third.generation, 0, headset.id).mayPlay,
+        )
+        coordinator.notePlayIssued(third)
+        coordinator.observePlayingHeadset(actualInputs(first))
+        assertEquals(third, coordinator.playbackBecameActive(third.generation, 0))
+
+        assertNull(
+            coordinator.routeSafetyPause(20.seconds, arrivalInputs),
+            "the fourth claim is outside the three-claim budget",
+        )
+    }
+
+    @Test
+    fun routeSafetyCannotRearmUntilActualSameHeadsetPlaybackIsConfirmed() {
+        val (coordinator, first) = ready(trusted = true)
+        assertTrue(
+            coordinator.assess(first, CarContinuityPlayPrecheck.Proceed, first.generation, 0, headset.id).mayPlay,
+        )
+        coordinator.notePlayIssued(first)
+        assertEquals(first, coordinator.playbackBecameActive(first.generation, 0))
+        assertNull(
+            coordinator.routeSafetyPause(12.seconds, inputs(first).copy(carConnected = true)),
+            "player activity without exact route proof is not audible confirmation",
+        )
+
+        val (routeOnly, routeTarget) = ready(trusted = true)
+        assertTrue(
+            routeOnly.assess(
+                routeTarget,
+                CarContinuityPlayPrecheck.Proceed,
+                routeTarget.generation,
+                0,
+                headset.id,
+            ).mayPlay,
+        )
+        routeOnly.observePlayingHeadset(actualInputs(routeTarget))
+        assertNull(
+            routeOnly.routeSafetyPause(12.seconds, inputs(routeTarget).copy(carConnected = true)),
+            "route evidence without active playback is insufficient",
+        )
+    }
+
+    @Test
+    fun qualifiedArrivalRetryCannotOutliveItsOriginalDeadline() {
+        var now = 0.seconds
+        val owner = RouteHeardOwnership(OutputIntentOwner()).apply {
+            onBookChanged(hasBook = true)
+            onPlaybackObserved(listOf(headset))
+        }
+        val gate = CarArrivalResumeGate({ now }, { true })
+        val coordinator = CarContinuityRecoveryCoordinator(gate)
+        val initial = CarContinuityRecoveryCoordinator.Inputs(
+            owner.heardRoute,
+            headset.id,
+            owner.currentGeneration,
+            0,
+            false,
+        )
+        coordinator.observePlayingHeadset(initial)
+        coordinator.platformInterruption(1.seconds, initial, focusLoss = true)
+        val first = requireNotNull(coordinator.carArrival(2.seconds, owner.currentGeneration, 0).target)
+        assertTrue(
+            coordinator.assess(first, CarContinuityPlayPrecheck.Proceed, first.generation, 0, headset.id).mayPlay,
+        )
+        coordinator.notePlayIssued(first)
+        coordinator.observePlayingHeadset(actualInputs(first))
+        assertEquals(first, coordinator.playbackBecameActive(first.generation, 0))
+
+        now = 31.seconds
+        assertNull(
+            coordinator.routeSafetyPause(now, inputs(first).copy(carConnected = true)),
+            "the arrival's original absolute deadline is retained",
+        )
     }
 
     @Test
@@ -200,9 +309,17 @@ class CarContinuityRecoveryCoordinatorTest {
 
     private fun inputs(target: CarArrivalResumeGate.Target) = CarContinuityRecoveryCoordinator.Inputs(
         heardRoute = null,
-        headsetId = null,
+        headsetId = headset.id,
         generation = target.generation,
         selectionSequence = 0,
         carConnected = false,
+    )
+
+    private fun actualInputs(target: CarArrivalResumeGate.Target) = inputs(target).copy(
+        heardRoute = RouteHeardOwnership(OutputIntentOwner()).apply {
+            onBookChanged(hasBook = true)
+            onPlaybackObserved(listOf(headset))
+        }.heardRoute,
+        headsetId = headset.id,
     )
 }

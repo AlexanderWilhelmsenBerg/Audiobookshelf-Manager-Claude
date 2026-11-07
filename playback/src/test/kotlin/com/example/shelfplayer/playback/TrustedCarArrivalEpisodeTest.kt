@@ -36,7 +36,7 @@ class TrustedCarArrivalEpisodeTest {
         var now = Duration.ZERO
         val gate = gate(now = { now }, trusted = { it == headset.id })
 
-        gate.onRouteSafetyPause(0.seconds)
+        gate.onRouteSafetyPause(0.seconds, headset.id, 1, 0, carConnected = false)
         now = 5.seconds
         val focus = gate.onAudioFocusLoss(
             at = now,
@@ -83,7 +83,7 @@ class TrustedCarArrivalEpisodeTest {
         var now = Duration.ZERO
         val gate = gate(now = { now }, trusted = { false })
 
-        gate.onRouteSafetyPause(0.seconds)
+        gate.onRouteSafetyPause(0.seconds, headset.id, 1, 0, carConnected = false)
         now = 5.seconds
         gate.onAudioFocusLoss(
             at = now,
@@ -106,7 +106,7 @@ class TrustedCarArrivalEpisodeTest {
         var now = Duration.ZERO
         var trusted = false
         val gate = gate(now = { now }, trusted = { trusted })
-        gate.onRouteSafetyPause(0.seconds)
+        gate.onRouteSafetyPause(0.seconds, headset.id, 1, 0, carConnected = false)
         trusted = true
         now = 5.seconds
         gate.onAudioFocusLoss(
@@ -197,7 +197,7 @@ class TrustedCarArrivalEpisodeTest {
     fun `departure pair remains six seconds and closes the arrival extension`() {
         var now = Duration.ZERO
         val gate = gate(now = { now }, trusted = { it == headset.id })
-        gate.onRouteSafetyPause(0.seconds)
+        gate.onRouteSafetyPause(0.seconds, headset.id, 1, 0, carConnected = false)
         now = 5.seconds
         gate.onAudioFocusLoss(
             at = now,
@@ -210,9 +210,8 @@ class TrustedCarArrivalEpisodeTest {
 
         val departure = gate.onCarDeparture(10_600.milliseconds, 1, 0)
 
-        assertEquals(CarArrivalResumeGate.Status.Rejected, departure.status)
-        assertEquals(CarArrivalResumeGate.Reason.OutsidePairingWindow, departure.reason)
-        now = 11.seconds
+        assertEquals(CarArrivalResumeGate.Status.Ready, departure.status)
+        now = 12.seconds
         gate.onAudioFocusLoss(
             at = now,
             heardRoute = null,
@@ -221,7 +220,7 @@ class TrustedCarArrivalEpisodeTest {
             explicitSelectionSequence = 0,
             carConnected = false,
         )
-        val lateArrival = gate.onCarArrival(18.seconds, 1, 0)
+        val lateArrival = gate.onCarArrival(19.seconds, 1, 0)
         assertEquals(CarArrivalResumeGate.Status.Rejected, lateArrival.status)
         assertEquals(CarArrivalResumeGate.Reason.OutsidePairingWindow, lateArrival.reason)
     }
@@ -273,7 +272,7 @@ class TrustedCarArrivalEpisodeTest {
     }
 
     private fun readyTarget(gate: CarArrivalResumeGate, setNow: (Duration) -> Unit): CarArrivalResumeGate.Target {
-        gate.onRouteSafetyPause(0.seconds)
+        gate.onRouteSafetyPause(0.seconds, headset.id, 1, 0, carConnected = false)
         setNow(5.seconds)
         gate.onAudioFocusLoss(
             at = 5.seconds,
