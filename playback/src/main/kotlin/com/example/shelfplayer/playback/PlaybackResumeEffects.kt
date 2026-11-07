@@ -23,17 +23,19 @@ internal class PlaybackResumeEffects(
         // Materializing a holder changes book ownership; mint the sleep claim afterwards.
         if (!authorized() || !source.materialize(authorized)) return false
         val sleepRequest = sleep.onPlayRequest(explicit)
-        val requested = authorized() && when {
-            bypassFreshness -> source.resumeLoaded(authorized)
-
-            else -> when (val prepared = freshness.preparePlay()) {
-                ResumePlayPreparation.Bypass -> source.resumeLoaded(authorized)
-                ResumePlayPreparation.Superseded -> false
-                is ResumePlayPreparation.Ready -> apply(prepared.plan, authorized)
-            }
-        }
+        val requested = authorized() && resolveFreshness(bypassFreshness, authorized)
         if (!requested) sleep.clearPlayRequest(sleepRequest)
         return requested
+    }
+
+    private suspend fun resolveFreshness(bypass: Boolean, authorized: () -> Boolean): Boolean = if (bypass) {
+        source.resumeLoaded(authorized)
+    } else {
+        when (val prepared = freshness.preparePlay()) {
+            ResumePlayPreparation.Bypass -> source.resumeLoaded(authorized)
+            ResumePlayPreparation.Superseded -> false
+            is ResumePlayPreparation.Ready -> apply(prepared.plan, authorized)
+        }
     }
 
     private suspend fun apply(plan: ResumeFreshnessPlan, authorized: () -> Boolean): Boolean =

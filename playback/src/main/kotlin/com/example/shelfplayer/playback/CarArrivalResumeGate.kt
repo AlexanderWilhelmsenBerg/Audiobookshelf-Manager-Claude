@@ -191,22 +191,15 @@ internal class CarArrivalResumeGate private constructor(
         if (identity == null && heardRoute?.evidence != RouteHeardEvidence.ActualAudioTrackWhilePlaying) return null
         requiresFreshPlaybackEvidence = false
         safetyPausedAt = null
-        val existingEpisode = qualifiedEpisode
-        var confirmedTarget: Target? = null
-        val retainEpisode = identity != null && evidence == RouteHeardEvidence.ActualAudioTrackWhilePlaying &&
-            existingEpisode != null && !existingEpisode.closed && existingEpisode.identity == identity
-        if (retainEpisode) {
-            val episode = checkNotNull(existingEpisode)
-            val target = episode.issuedTarget
-            if (episode.attempts.observeActualTrack(target)) confirmedTarget = target
-        } else {
-            qualifiedEpisode = null
-        }
-        when {
-            identity != null -> playingHeadset = identity
-            heardRoute != null -> playingHeadset = null
-        }
-        return confirmedTarget
+        playingHeadset = identity
+        return confirmObservedHeadset(identity, evidence == RouteHeardEvidence.ActualAudioTrackWhilePlaying)
+    }
+
+    private fun confirmObservedHeadset(identity: CarContinuityIdentity?, actualTrack: Boolean): Target? {
+        val episode = qualifiedEpisode?.takeIf { !it.closed && it.identity == identity && actualTrack }
+        qualifiedEpisode = episode
+        if (episode == null) return null
+        return episode.issuedTarget?.takeIf { episode.attempts.observeActualTrack(it) }
     }
 
     /**
