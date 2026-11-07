@@ -12,6 +12,10 @@ import kotlin.time.Duration.Companion.milliseconds
 internal class CarConnectionRefreshWindow(private val clock: AppClock, private val refresh: (Int) -> Unit) {
     private var job: Job? = null
 
+    fun onProjection(state: AndroidAutoProjectionMonitor.State) {
+        if (state.carConnected) cancel()
+    }
+
     fun onFocusLoss(scope: CoroutineScope, decision: CarArrivalResumeGate.Decision) {
         if (decision.phase == CarArrivalResumeGate.Phase.Arrival &&
             decision.status == CarArrivalResumeGate.Status.Armed &&

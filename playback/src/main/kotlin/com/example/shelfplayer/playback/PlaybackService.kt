@@ -2152,7 +2152,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun onCarProjectionUpdate(update: AndroidAutoProjectionMonitor.Update) {
-        if (update.current.carConnected) carConnectionRefresh.cancel()
+        carConnectionRefresh.onProjection(update.current)
         val previous = update.previous
         val trace = if (update.current.carConnected || previous?.carConnected == true) {
             autoTraces.ensure("projection-state")
