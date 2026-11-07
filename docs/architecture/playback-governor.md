@@ -97,6 +97,13 @@ This can shorten recovery only if the provider exposes Projection before the del
 It cannot prevent Android focus loss or prove that another process has released focus. Media3 remains
 the sole focus owner. See the [focus investigation procedure](../testing/2026-11-07-early-auto-observation.md).
 
+Service bind, session lookup and controller-connect entry diagnostics add monotonic timestamps and
+classified protocol/controller facts. Generic legacy binds remain unattributed. These observations
+do not start a trace, advance the lifecycle authority or authorize recovery; an existing trace may
+provide correlation. Trace openings also carry the monotonic clock so earlier entries can be aligned
+without mixing phone and desktop wall clocks. No raw intents, extras or controller identifiers are
+added. See the [DHU findings and bounded route checks](../testing/2026-11-07-fast-route-observation.md).
+
 ## Evidence and delivery
 
 Diagnostics correlate process-local episode/attempt numbers, phase, decision reason, remaining lifetime

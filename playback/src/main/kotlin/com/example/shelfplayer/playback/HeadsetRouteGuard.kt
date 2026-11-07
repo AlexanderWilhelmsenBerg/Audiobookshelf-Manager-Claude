@@ -105,6 +105,7 @@ internal class HeadsetRouteGuard(
         var routeTimeout: Job? = null
         var completionJob: Job? = null
         var eligibilityTimeout: Job? = null
+        var observationJob: Job? = null
         val routeUpdates = Channel<Unit>(Channel.CONFLATED)
         var requiresPlaybackBarrier = false
 
@@ -121,6 +122,8 @@ internal class HeadsetRouteGuard(
     internal var onProbeCancelled: ((Probe) -> Unit)? = null
     internal var onProbeSettled: ((Probe, MutedProbeCompletion) -> Unit)? = null
     internal var onExternalPause: ((Probe) -> Unit)? = null
+    internal var canObserveProbe: (Probe) -> Boolean = { true }
+    internal var onProbeObservation: (Probe, Int) -> Unit = { _, _ -> }
 
     private fun retirePausedProbe(target: ExoPlayer) {
         val active = probe?.takeIf { it.player === target } ?: return
@@ -322,13 +325,35 @@ internal class HeadsetRouteGuard(
             discardStaleProbe(active)
             return true
         }
-        if (active.muteClaim == null || !isPlaying || active.completionJob != null) return true
-        if (active.transferRequest != null) {
-            finishProbe(active, verified = true)
-        } else {
-            verifyEndpoint(active, actualRoute, collisions)
+        if (active.muteClaim == null || !isPlaying) return true
+        startRouteChecks(active)
+        if (active.completionJob == null) {
+            if (active.transferRequest != null) {
+                finishProbe(active, verified = true)
+            } else {
+                verifyEndpoint(active, actualRoute, collisions)
+            }
         }
         return true
+    }
+
+    private fun startRouteChecks(active: Probe) {
+        // Explicit handoffs keep their existing observation path. A completed job remains as the
+        // budget marker: repeated callbacks and checkpoint changes cannot restart this burst.
+        if (active.transferRequest != null || active.observationJob != null) return
+        val work = scope.launch(playerDispatcher, start = CoroutineStart.LAZY) {
+            MutedRouteChecks.run(
+                isCurrent = {
+                    ownsReservation(active) && active.canCommit() && canObserveProbe(active) &&
+                        ownsReservation(active) && active.player.playWhenReady
+                },
+                observe = { ordinal ->
+                    onProbeObservation(active, ordinal)
+                },
+            )
+        }
+        active.observationJob = work
+        work.start()
     }
 
     private fun verifyEndpoint(active: Probe, actualRoute: Set<String>?, collisions: Set<String>) {
@@ -492,6 +517,7 @@ internal class HeadsetRouteGuard(
 
     fun quiesceProbe(active: Probe) {
         if (probe !== active) return
+        active.observationJob?.cancel()
         active.eligibilityTimeout?.cancel()
         val work = active.completionJob
         active.completionJob = null
@@ -528,6 +554,7 @@ internal class HeadsetRouteGuard(
     }
 
     private fun cancelProbeJobs(active: Probe) {
+        active.observationJob?.cancel()
         active.eligibilityTimeout?.cancel()
         active.startupTimeout?.cancel()
         active.routeTimeout?.cancel()

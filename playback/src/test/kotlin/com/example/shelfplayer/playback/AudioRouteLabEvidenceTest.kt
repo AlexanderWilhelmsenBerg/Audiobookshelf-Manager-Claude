@@ -13,6 +13,31 @@ import kotlin.test.assertNull
 
 class AudioRouteLabEvidenceTest {
     @Test
+    fun `arrival timing and finite observations survive export without private fields`() {
+        val examples = listOf(
+            "Android Auto connection entry observed" to
+                "stage=service-bind kind=legacy-browser trusted=unknown elapsedRealtime=120",
+            "Android Auto trace started" to "source=audio-focus-loss elapsedRealtime=100 afterTrace=0",
+            "Muted output route observation requested" to "proofEpoch=3 observation=2 completionPending=true",
+        )
+        examples.forEach { (message, fields) ->
+            val rendered = requireNotNull(
+                AudioRouteLabEvidence.event(
+                    LoggedEvent(
+                        Instant.EPOCH,
+                        LogLevel.Info,
+                        "AndroidAuto",
+                        "$message $fields deviceName=PrivateHeadset controllerPackage=private.package",
+                    ),
+                ),
+            )
+            assertContains(rendered, fields)
+            assertFalse(rendered.contains("PrivateHeadset"))
+            assertFalse(rendered.contains("private.package"))
+        }
+    }
+
+    @Test
     fun `proof stages and Car retirement expose captured scope without private metadata`() {
         val preparation = requireNotNull(
             AudioRouteLabEvidence.event(

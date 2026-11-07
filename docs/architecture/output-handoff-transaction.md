@@ -40,6 +40,17 @@ The same driver serves implicit headset probes and explicit transfers. Paused se
 start playback. An existing authorized Play owns any start; the transaction never manufactures Play.
 Waiting is event-driven with bounded failure deadlines, not a fixed settling delay.
 
+An implicit headset probe also owns up to five fresh route-observation requests, nominally 20, 50,
+100, 200 and 300ms after its first observed playing state. These cover a track that becomes readable
+after that callback without another routing event. `MutedRouteChecks` supplies only the finite
+schedule and scoped reads; the guard retains the job and budget marker on the existing probe. Each request rechecks
+attachment, selection, command/book/profile checkpoint authority, eligibility and Play intent.
+Quiescence, cancellation and completion cancel the job; duplicate callbacks cannot restart it.
+The requests feed the existing router/transaction and never authorize audio by elapsed time. Existing
+timeouts, exact post-seek output proof and position limits are unchanged. Explicit transfers do not
+use this burst, and ordinary unmuted playback performs no periodic checks. Observation ordinal and
+proof epoch distinguish this wake-up from normal routing callbacks in diagnostics.
+
 APK2247 confirmed why preparation needs a lead-in: the first explicit Headset request had correct
 destination evidence but became READY 68ms past the held point, exceeding the unchanged 50ms allowance.
 The next explicit request succeeded. Preparation moves startup work before that point; it does not

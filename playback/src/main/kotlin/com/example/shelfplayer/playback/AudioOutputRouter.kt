@@ -138,17 +138,13 @@ class AudioOutputRouter @Inject constructor(
         guard.commitVerifiedProbe = { probe, proof -> handoffs.commit(probe, proof) }
         guard.onProbeCancelled = { probe -> handoffs.cancelled(probe) }
         guard.onExternalPause = { probe -> positions.handlers?.restorePausedProbe(probe) }
+        guard.canObserveProbe = { probe -> positions.handlers?.isAuthorized(probe) == true }
+        guard.onProbeObservation = { probe, ordinal ->
+            MutedRouteChecks.observe(logger, guard, probe, ordinal, currentTrackRoutes, collidingOutputIds)
+        }
         guard.onProbeSettled = { probe, proof ->
             handoffs.settled(probe, proof)
-            logger.info(
-                LogCategory.Playback,
-                "Muted output route proof completed",
-                LogField.Public("confirmation", proof.name),
-                LogField.Public("destination", probe.transferRequest?.selection?.destination?.name ?: "HeldOutput"),
-                LogField.Public("proofEpoch", probe.preferenceEpoch),
-                LogField.Public("requestGeneration", probe.transferRequest?.bookGeneration?.toString() ?: "none"),
-                LogField.Public("requestSelection", probe.transferRequest?.selection?.sequence?.toString() ?: "none"),
-            )
+            MutedRouteDiagnostics.settled(logger, probe, proof)
         }
     }
     private var currentTrackRoutes: () -> Set<String>? = { null }

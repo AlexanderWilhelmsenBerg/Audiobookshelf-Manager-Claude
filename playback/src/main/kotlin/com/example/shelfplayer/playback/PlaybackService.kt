@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import android.os.Process
 import android.view.KeyEvent
 import androidx.annotation.OptIn
@@ -721,7 +722,13 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    override fun onBind(intent: Intent?): IBinder? {
+        autoTraces.connectionEntry("service-bind", CarConnectionEntryKind.forAction(intent?.action))
+        return super.onBind(intent)
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
+        traceControllerEntry("session-lookup", controllerInfo)
         // MediaButtonReceiver starts this service in the foreground before Media3 asks for a session.
         // If the cold-start safety gate consumes that receiver event later in onMediaButtonEvent, no
         // playback starts and Android tears the service down for missing its foreground promotion.
@@ -733,6 +740,14 @@ class PlaybackService : MediaLibraryService() {
             return null
         }
         return session
+    }
+
+    private fun traceControllerEntry(stage: String, controller: MediaSession.ControllerInfo) {
+        autoTraces.connectionEntry(
+            stage,
+            if (controller.packageName in CAR_PACKAGES) "known-car-package" else "other-or-legacy",
+            controller.isTrusted,
+        )
     }
 
     private fun isSuppressedReceiverStart(controllerInfo: MediaSession.ControllerInfo): Boolean {
@@ -3162,6 +3177,7 @@ class PlaybackService : MediaLibraryService() {
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
         ): MediaSession.ConnectionResult {
+            traceControllerEntry("controller-connect", controller)
             if (controller.isCar()) onCarControllerConnected(controller.packageName)
             val access = session.accessFor(controller)
             val commands = when (access) {
