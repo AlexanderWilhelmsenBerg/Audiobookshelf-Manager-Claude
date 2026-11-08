@@ -421,6 +421,11 @@ class PlaybackService : MediaLibraryService() {
         val exoPlayer = players.create(buffer = settings.buffer, focus = settings.focusBehaviour)
             .also { player = it }
         exoPlayer.addListener(PlayerEvents())
+        exoPlayer.addListener(
+            PlaybackFocusDiagnostics(clock) { fields ->
+                autoTraces.log("Playback focus observation", fields = fields + carSnapshotFields())
+            },
+        )
         resumeFreshness.attach(exoPlayer)
         val sessionPlayer = createSessionPlayer(exoPlayer)
         // Issue #91 — controllers see the forwarding player; service-owned timers/sync/routing below keep

@@ -97,6 +97,11 @@ This can shorten recovery only if the provider exposes Projection before the del
 It cannot prevent Android focus loss or prove that another process has released focus. Media3 remains
 the sole focus owner. See the [focus investigation procedure](../testing/2026-11-07-early-auto-observation.md).
 
+The passive `PlaybackFocusDiagnostics` listener correlates Media3 suppression, loss-or-denial and
+playback activity without authorizing recovery. It explicitly marks raw Android focus type and
+requester unavailable; system capture supplies those only where exposed. See
+[focus evidence and capture](../testing/2026-11-08-focus-diagnostics.md).
+
 Service bind, session lookup and controller-connect entry diagnostics add monotonic timestamps and
 classified protocol/controller facts. Generic legacy binds remain unattributed. These observations
 do not start a trace, advance the lifecycle authority or authorize recovery; an existing trace may

@@ -11,6 +11,7 @@ import kotlin.time.Duration.Companion.hours
  */
 internal object AudioRouteLabEvidence {
     private val allowed = mapOf(
+        "Playback focus observation" to "focus-observation",
         "Android Auto connection entry observed" to "connection-entry",
         "Android Auto trace started" to "auto-trace-start",
         "Muted output route observation requested" to "output-observation",
@@ -45,6 +46,8 @@ internal object AudioRouteLabEvidence {
         "proofEpoch", "requestGeneration", "requestSelection",
         "stage", "bufferedSeek", "speedMilli", "pitchMilli",
         "trusted", "elapsedRealtime", "afterTrace", "observation", "completionPending",
+        "focusObservation", "focusEvidence", "androidFocusChange", "focusRequester", "focusRequesterEvidence",
+        "focusSequence", "sinceFocusEvent", "transportReasonCode", "suppressionReasonCode", "audibility",
     )
     private const val MAX_SAFE_FIELDS = 20
     private const val FUTURE_SKEW_SECONDS = 60L

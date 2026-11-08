@@ -13,6 +13,32 @@ import kotlin.test.assertNull
 
 class AudioRouteLabEvidenceTest {
     @Test
+    fun `focus export retains evidence limits and timing without private identifiers`() {
+        val result = requireNotNull(
+            AudioRouteLabEvidence.event(
+                LoggedEvent(
+                    Instant.EPOCH,
+                    LogLevel.Info,
+                    "AndroidAuto",
+                    "Playback focus observation focusObservation=loss-or-denial focusEvidence=media3-derived " +
+                        "androidFocusChange=unavailable focusRequester=unknown focusRequesterEvidence=not-exposed " +
+                        "focusSequence=2 elapsedRealtime=5000ms sinceFocusEvent=4300ms transportReasonCode=2 " +
+                        "suppressionReasonCode=0 audibility=not-measured controllerPackage=private.package " +
+                        "deviceAddress=private-address title=private-title",
+                ),
+            ),
+        )
+        assertContains(result, "focusObservation=loss-or-denial")
+        assertContains(result, "androidFocusChange=unavailable")
+        assertContains(result, "focusRequester=unknown")
+        assertContains(result, "focusEvidence=media3-derived")
+        assertContains(result, "sinceFocusEvent=4300ms")
+        assertContains(result, "suppressionReasonCode=0")
+        assertContains(result, "audibility=not-measured")
+        assertFalse(result.contains("private"))
+    }
+
+    @Test
     fun `arrival timing and finite observations survive export without private fields`() {
         val examples = listOf(
             "Android Auto connection entry observed" to
