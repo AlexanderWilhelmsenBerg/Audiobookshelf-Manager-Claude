@@ -227,8 +227,7 @@ internal class CarArrivalResumeGate private constructor(
         carConnected: Boolean,
     ): Decision {
         // An app safety interruption cannot override a later platform interruption.
-        headsetReturn.clear()
-        if (activeRecovery?.phase == Phase.HeadsetReturn) activeRecovery = null
+        cancelHeadsetReturn()
         // A fresh departure focus callback starts its own conservative pairing clock. An earlier generic
         // safety pause cannot make this new departure callback stale before its projection boundary arrives.
         if (carConnected) finishConfirmedArrival(currentGeneration, explicitSelectionSequence, at)
@@ -602,16 +601,26 @@ internal class CarArrivalResumeGate private constructor(
             ?: if (headsetId != target.outputId) Reason.WrongHeadset else null
         activeRecovery = null
         if (reason != null) return ConsumeResult(accepted = false, reason = reason)
-        if (target.phase == Phase.HeadsetReturn && !headsetReturn.consume(target)) {
+        if (!recordRecoveryClaim(target)) {
             return ConsumeResult(false, Reason.CandidateInvalidated)
         }
-        if (target.phase == Phase.Arrival) {
-            val episode = qualifiedEpisode
-            if (episode != null && episode.issuedTarget === target) {
-                episode.attempts.recordClaim(target)
-            }
-        }
         return ConsumeResult(accepted = true, reason = Reason.Eligible)
+    }
+
+    private fun recordRecoveryClaim(target: Target): Boolean = when (target.phase) {
+        Phase.HeadsetReturn -> headsetReturn.consume(target)
+
+        Phase.Arrival -> {
+            qualifiedEpisode?.takeIf { it.issuedTarget === target }?.attempts?.recordClaim(target)
+            true
+        }
+
+        Phase.Departure -> true
+    }
+
+    private fun cancelHeadsetReturn() {
+        headsetReturn.clear()
+        if (activeRecovery?.phase == Phase.HeadsetReturn) activeRecovery = null
     }
 
     /** Confirmation needs both the exact actual AudioTrack route and the service's active-playback callback. */
@@ -644,7 +653,7 @@ internal class CarArrivalResumeGate private constructor(
     /** A deliberate/non-focus pause or book/session boundary invalidates every continuity fact. */
     fun cancelAll() {
         cancelPending()
-        headsetReturn.clear()
+        cancelHeadsetReturn()
         safetyPausedAt = null
         qualifiedEpisode = null
         requiresFreshPlaybackEvidence = true
