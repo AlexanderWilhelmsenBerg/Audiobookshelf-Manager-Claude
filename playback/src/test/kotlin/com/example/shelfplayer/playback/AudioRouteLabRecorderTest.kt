@@ -152,7 +152,7 @@ class AudioRouteLabRecorderTest {
             volumeEffects = volumeEffectsForTest(dispatcher),
         )
         val lab = AudioRouteLab(context, log, clock, router, backgroundScope, dispatcher)
-        val classifier = OutputClassifier(context, lab)
+        val classifier = OutputClassifier(context, lab, SystemAudioProbe(context, LiveOutputEndpointRegistry(), clock))
         val capture = UnifiedDiagnosticsCapture(context, lab, classifier, log, PlaybackMetricsRecorder(clock))
 
         assertTrue(capture.beginClear())
@@ -166,8 +166,11 @@ class AudioRouteLabRecorderTest {
         capture.finishClear()
         capture.start()
         assertTrue(capture.active.value, "capture can start again after clear completion")
+        assertTrue(classifier.state.value.entries.any { "system-audio" in it }, "Unified capture must reach the probe")
         capture.stop()
         runCurrent()
+        capture.clearAndAwait()
+        assertTrue(classifier.state.value.entries.isEmpty(), "Clear all must remove system probe evidence too")
     }
 
     @Test

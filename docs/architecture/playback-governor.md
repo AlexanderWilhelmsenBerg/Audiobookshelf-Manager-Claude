@@ -121,6 +121,12 @@ added. See the [DHU findings and bounded route checks](../testing/2026-11-07-fas
 
 ## Evidence and delivery
 
+Opt-in `SystemAudioProbe` adds public Bluetooth-profile and system-audio observations through the
+existing OutputClassifier lifetime. It joins process-private exact identities against the existing
+registry and reads the selected/last-heard target; it cannot reconcile endpoints, request focus,
+authorize recovery or call a player. Profile connectivity, streaming and audio mode are observations,
+not route proof or a focus-owner identity. See [scope and acceptance](../testing/2026-11-08-system-audio-probe.md).
+
 Diagnostics correlate process-local episode/attempt numbers, phase, decision reason, remaining lifetime
 and Play-issued versus audible-confirmed outcomes. No Bluetooth address, device name, media metadata or
 identity correlation key is added. A playing-track observation is software evidence, not an acoustic

@@ -1,5 +1,10 @@
 # Audiobookshelf API compatibility
 
+The 2026-11-08 public system-audio probe adds opt-in local Bluetooth profile and audio observations.
+No ABS endpoint, schema, permission or dependency changes. Existing Nearby Devices permission gates
+peer correlation; missing/ambiguous evidence remains unavailable. Hardware acceptance is pending:
+[scope and regression evidence](testing/2026-11-08-system-audio-probe.md).
+
 The 2026-11-08 brief-headset-return candidate adds only a local two-second recovery allowance after
 an app-issued safety pause. It adds no server contract, schema, permission, dependency or tested server
 version. Existing optional Bluetooth identity access is required; missing identity fails closed.

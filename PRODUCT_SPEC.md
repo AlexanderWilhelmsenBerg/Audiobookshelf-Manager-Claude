@@ -408,6 +408,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Exact unique A2DP addresses may correlate endpoint handle changes in process memory only. Missing,
   placeholder or ambiguous identity never falls back to a device name. A real gap invalidates live proof;
   return requires current inventory and fresh actual-track verification, not automatic unmute.
+- Opt-in route diagnostics may correlate public Bluetooth profile snapshots with exact endpoint identity,
+  audio mode and visible playback activity. These observations cannot grant playback/focus ownership or
+  infer button origin. Exports use temporary aliases, never device names, addresses or private identity keys.
 - Reconnecting a route follows the configured per-device policy.
 - The player output chooser can explicitly keep audio on the current output only while a loaded book is
   playing through one fresh, exact mapped AudioTrack route; predicted, missing, conflicting and duplicate
