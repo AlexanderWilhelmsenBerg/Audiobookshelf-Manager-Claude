@@ -2,7 +2,9 @@ package com.example.shelfplayer.playback
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
 import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -98,7 +100,8 @@ class SystemAudioProbeTest {
     @Test
     fun `public playback callback reaches capture but cannot revive it after stop`() {
         val audio = shadowOf(context.getSystemService(AudioManager::class.java))
-        val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).build()
+        val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
         var changes = 0
         probe.start { changes++ }
         shadowOf(Looper.getMainLooper()).idle()
@@ -106,13 +109,48 @@ class SystemAudioProbeTest {
         audio.setActivePlaybackConfigurationsFor(listOf(attributes), true)
         shadowOf(Looper.getMainLooper()).idle()
         assertTrue(changes > initial)
-        assertTrue(probe.sample(emptyList(), null) { "unused" }.any { "visiblePlayers=1" in it })
+        val rows = probe.sample(emptyList(), null) { "unused" }
+        assertTrue(rows.any { "visiblePlayers=1" in it && "usageContent=1/1:1" in it })
+        assertTrue(rows.all { "sampleSequence=" in it && "snapshotCostMs=" in it })
         assertNull(audio.lastAudioFocusRequest)
         probe.stop()
         val stoppedAt = changes
         audio.setActivePlaybackConfigurationsFor(emptyList(), true)
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(stoppedAt, changes)
+    }
+
+    @Test
+    fun `audio attributes are bounded and unavailable audio is not reported as silence`() {
+        val manager = context.getSystemService(AudioManager::class.java)
+        val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).build()
+        shadowOf(manager).setActivePlaybackConfigurationsFor(List(40) { attributes }, false)
+        val row = PublicAudioActivity.read(manager)
+        assertTrue("visiblePlayers=40" in row && "activityTruncated=true" in row)
+        assertTrue("usageContent=1/0:32" in row)
+        assertTrue("activityStatus=unavailable" in PublicAudioActivity.read(null))
+    }
+
+    @Test
+    @SuppressLint("MissingPermission") // Robolectric explicitly grants permission before these synthetic broadcasts.
+    fun `coalesced platform events reach exported rows and cannot survive stop`() {
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(Manifest.permission.BLUETOOTH_CONNECT)
+        probe.start {}
+        context.sendBroadcast(Intent(BluetoothDevice.ACTION_ACL_CONNECTED))
+        context.sendBroadcast(Intent(BluetoothDevice.ACTION_ACL_DISCONNECTED))
+        shadowOf(Looper.getMainLooper()).idle()
+        val rows = probe.sample(emptyList(), null) { "unused" }
+        val events = rows.filter { it.startsWith("bluetooth-event ") }
+        assertEquals(2, events.size)
+        assertTrue("event=acl-connected" in events.first())
+        assertTrue("event=acl-disconnected" in events.last())
+        assertTrue(events.all { "evidence=broadcast-only" in it && "sampleSequence=" in it })
+        context.sendBroadcast(Intent(BluetoothDevice.ACTION_ACL_CONNECTED))
+        shadowOf(Looper.getMainLooper()).idle()
+        probe.stop()
+        probe.start {}
+        assertFalse(probe.sample(emptyList(), null) { "unused" }.any { it.startsWith("bluetooth-event ") })
+        probe.stop()
     }
 
     private fun device(id: Int, address: String): AudioDeviceInfo {

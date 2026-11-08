@@ -1827,3 +1827,8 @@ The existing profile/nonce/foreground guards apply. Missing anchor/session retur
 Legacy watch-entry login remains available, but Android no longer offers password entry.
 
 2026-10-09: Garmin SDK 2.4.0 per-app unregister clears the device listener table; survivor re-registration is required. Native sync progress exposes percentage only; Companion cannot exitTo an Audio Provider. [Evidence and acceptance](testing/2026-10-09-garmin-download-recovery.md).
+
+2026-11-08: The public probe expansion uses existing optional Bluetooth identity access and public
+Android audio/input observations. LE profile observation is API33-gated; no SDK/dependency, server API,
+database schema or permission change. Event/timing exports are additive and diagnostic-only; hardware
+acceptance is pending. [Scope, limitations and tests](testing/2026-11-08-public-probe-expansion.md).

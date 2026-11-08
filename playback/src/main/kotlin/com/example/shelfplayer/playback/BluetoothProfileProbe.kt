@@ -3,8 +3,6 @@ package com.example.shelfplayer.playback
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothA2dp
 import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothHeadset
-import android.bluetooth.BluetoothLeAudio
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
@@ -15,6 +13,7 @@ import android.media.AudioDeviceInfo
 import android.os.Build
 import android.os.Handler
 import androidx.core.content.ContextCompat
+import com.example.shelfplayer.core.common.time.AppClock
 
 /** Public profile observation, never a socket, discovery, connection request or active-device setter. */
 @SuppressLint("MissingPermission") // Access checked at every sampling boundary; revocation fails closed.
@@ -22,7 +21,9 @@ internal class BluetoothProfileProbe(
     private val context: Context,
     private val registry: LiveOutputEndpointRegistry,
     private val main: Handler,
+    clock: AppClock,
 ) {
+    private val events = BluetoothProbeEvents(registry, clock)
     data class Peer(val identity: String?, val streaming: Boolean?)
     data class Snapshot(val profile: String, val status: String, val peers: List<Peer> = emptyList())
     private class Session(val adapter: BluetoothAdapter, val changed: () -> Unit) {
@@ -32,6 +33,12 @@ internal class BluetoothProfileProbe(
     }
 
     private var session: Session? = null
+    val observing: Boolean get() = session?.receiver != null
+
+    fun drainEvents(alias: (String) -> String): List<String> {
+        if (!context.hasBluetoothIdentityAccess()) events.clear()
+        return events.drain(alias)
+    }
 
     fun start(changed: () -> Unit) {
         if (session != null || !context.hasBluetoothIdentityAccess()) return
@@ -78,6 +85,7 @@ internal class BluetoothProfileProbe(
     }
 
     fun stop() {
+        events.clear()
         val retired = session ?: return
         session = null
         retired.receiver?.let { runCatching { context.unregisterReceiver(it) } }
@@ -115,19 +123,18 @@ internal class BluetoothProfileProbe(
     private fun observeBroadcasts(current: Session) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                // Broadcast is a wake-up only: ignore all extras and re-read the public profile proxy.
-                if (session === current) current.changed()
+                if (session !== current) return
+                if (!this@BluetoothProfileProbe.context.hasBluetoothIdentityAccess()) {
+                    stop()
+                } else {
+                    events.record(intent)
+                }
+                // Broadcast evidence is separate from the fresh public snapshot; neither authorizes playback.
+                current.changed()
             }
         }
         val filter = IntentFilter().apply {
-            addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
-            addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
-            addAction(BluetoothA2dp.ACTION_PLAYING_STATE_CHANGED)
-            addAction(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED)
-            addAction(BluetoothHeadset.ACTION_AUDIO_STATE_CHANGED)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                addAction(BluetoothLeAudio.ACTION_LE_AUDIO_CONNECTION_STATE_CHANGED)
-            }
+            BluetoothProbeEvents.actions().keys.forEach(::addAction)
         }
         runCatching {
             // Bluetooth is a privileged sender outside the system UID. All actions are protected.

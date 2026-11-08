@@ -40,7 +40,10 @@ internal class SystemRouteProbeEvidence {
         target: String?,
         hasTarget: Boolean,
     ): List<String> = listOf(
-        "bluetooth-profile profile=${snapshot.profile} status=${snapshot.status} count=${snapshot.peers.size}",
+        "bluetooth-profile profile=${snapshot.profile} status=${snapshot.status} count=${snapshot.peers.size} " +
+            "peers=${snapshot.peers.map {
+                it.identity?.let(::alias) ?: "unavailable"
+            }.sorted().joinToString("+").ifEmpty { "none" }}",
     ) + snapshot.peers.map { peer ->
         val key = peer.identity
         val match = targetMatch(key, target, counts[key] ?: 0, hasTarget)

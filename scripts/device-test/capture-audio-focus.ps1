@@ -21,7 +21,7 @@ $capture = Join-Path $RepoRoot ('build/focus-capture-' + [DateTime]::UtcNow.ToSt
 New-Item -ItemType Directory -Path $capture | Out-Null
 
 function Save-FocusCapture {
-    param([string]$Name, [string[]]$Command, [int]$TimeoutSeconds = 15, [switch]$Streaming)
+    param([string]$Name, [string[]]$Command, [int]$TimeoutSeconds = 15, [switch]$Streaming, [switch]$Optional)
     $info = [Diagnostics.ProcessStartInfo]::new()
     $info.FileName = $Adb
     $info.UseShellExecute = $false
@@ -45,7 +45,11 @@ function Save-FocusCapture {
         $copyErrors.GetAwaiter().GetResult()
         if ((-not $Streaming -and -not $finished) -or ($Streaming -and $finished) -or
             ($finished -and $process.ExitCode -ne 0)) {
-            throw "Capture failed: $Name; inspect its local stderr file."
+            if ($Optional) {
+                Write-Warning "Optional evidence unavailable: $Name; inspect its local output and stderr."
+            } else {
+                throw "Capture failed: $Name; inspect its local stderr file."
+            }
         }
     } finally {
         if ($started -and -not $process.HasExited) { $process.Kill(); $process.WaitForExit() }
@@ -59,15 +63,23 @@ function Save-FocusCapture {
     'Raw private system trace; availability of focus requester/type depends on the phone.') |
     Set-Content -LiteralPath (Join-Path $capture 'capture-info.txt')
 Save-FocusCapture -Name 'audio-before' -Command @('shell', 'dumpsys', 'audio')
+Save-FocusCapture -Name 'audio-policy-before' -Optional -Command @('shell', 'dumpsys', 'media.audio_policy')
+Save-FocusCapture -Name 'bluetooth-before' -Optional -Command @('shell', 'dumpsys', 'bluetooth_manager')
 Save-FocusCapture -Name 'device-uptime-before' -Command @('shell', 'cat', '/proc/uptime')
 Write-Host "Capture starting for $Seconds seconds. Connect Android Auto now; leave playback controls alone."
 try {
     Save-FocusCapture -Name 'focus-logcat' -TimeoutSeconds $Seconds -Streaming -Command @(
         'logcat', '-T', '1', '-v', 'epoch', '-b', 'main', '-b', 'system', '-s',
-        'MediaFocusControl:V', 'AudioService:V', 'AudioFocusManager:V', '*:S'
+        'MediaFocusControl:V', 'AudioService:V', 'AudioFocusManager:V',
+        'AS.AudioDeviceBroker:V', 'AS.AudioDeviceInventory:V', 'AS.BtHelper:V',
+        'AudioDeviceBroker:V', 'AudioDeviceInventory:V', 'BtHelper:V',
+        'ActiveDeviceManager:V', 'A2dpService:V', 'A2dpStateMachine:V',
+        'AvrcpTargetService:V', 'AvrcpTargetJni:V', '*:S'
     )
 } finally {
     Save-FocusCapture -Name 'audio-after' -Command @('shell', 'dumpsys', 'audio')
+    Save-FocusCapture -Name 'audio-policy-after' -Optional -Command @('shell', 'dumpsys', 'media.audio_policy')
+    Save-FocusCapture -Name 'bluetooth-after' -Optional -Command @('shell', 'dumpsys', 'bluetooth_manager')
     Save-FocusCapture -Name 'device-uptime-after' -Command @('shell', 'cat', '/proc/uptime')
     Add-Content -LiteralPath (Join-Path $capture 'capture-info.txt') -Value "endedUtc=$([DateTime]::UtcNow.ToString('O'))"
     Write-Host "Saved locally: $capture. Export BookWave diagnostics separately."

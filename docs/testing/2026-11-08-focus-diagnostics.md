@@ -43,7 +43,8 @@ With an authorised phone attached, run from the repository on Windows:
 
 Begin with narration playing in one headset. When the script prints that capture is starting,
 connect Auto and leave controls untouched through recovery. The script collects a bounded focus
-logcat stream, before/after `dumpsys audio`, uptime and host UTC anchors in a unique ignored build
+logcat stream, before/after `dumpsys audio`, optional `media.audio_policy` and `bluetooth_manager` snapshots,
+uptime and host UTC anchors in a unique ignored build
 directory. It does not clear logs, start playback, change focus, select a route, install an APK,
 start DHU or upload anything. Export the app diagnostics promptly afterward.
 

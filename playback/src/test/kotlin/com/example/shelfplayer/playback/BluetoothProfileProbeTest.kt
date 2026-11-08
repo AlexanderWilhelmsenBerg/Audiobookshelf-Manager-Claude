@@ -8,8 +8,10 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import com.example.shelfplayer.core.testing.TestAppClock
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -82,11 +84,40 @@ class BluetoothProfileProbeTest {
         assertEquals(0, changes)
     }
 
+    @Test
+    fun `public broadcasts reach evidence and permission revocation discards queued identity`() {
+        val f = Fixture()
+        var changes = 0
+        f.probe.start { changes++ }
+        shadowOf(Looper.getMainLooper()).idle()
+        val baseline = changes
+        val context = RuntimeEnvironment.getApplication()
+        context.sendBroadcast(Intent(BluetoothDevice.ACTION_ACL_CONNECTED))
+        context.sendBroadcast(Intent(BluetoothDevice.ACTION_ACL_DISCONNECTED))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(changes >= baseline + 2)
+        val rows = f.probe.drainEvents { "b1" }
+        assertEquals(2, rows.size)
+        assertTrue("acl-connected" in rows[0] && "acl-disconnected" in rows[1])
+        context.sendBroadcast(Intent(BluetoothDevice.ACTION_ACL_CONNECTED))
+        shadowOf(Looper.getMainLooper()).idle()
+        shadowOf(context).denyPermissions(Manifest.permission.BLUETOOTH_CONNECT)
+        f.probe.snapshot()
+        assertTrue(f.probe.drainEvents { "unused" }.isEmpty())
+        assertFalse(f.probe.observing)
+    }
+
     private class Fixture {
         private val context: Context = RuntimeEnvironment.getApplication()
         val adapter: BluetoothAdapter = context.getSystemService(BluetoothManager::class.java).adapter
         val proxy: BluetoothA2dp = Shadow.newInstanceOf(BluetoothA2dp::class.java)
-        val probe = BluetoothProfileProbe(context, LiveOutputEndpointRegistry(), Handler(Looper.getMainLooper()))
+        val probe =
+            BluetoothProfileProbe(
+                context,
+                LiveOutputEndpointRegistry(),
+                Handler(Looper.getMainLooper()),
+                TestAppClock(),
+            )
 
         init {
             shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(Manifest.permission.BLUETOOTH_CONNECT)

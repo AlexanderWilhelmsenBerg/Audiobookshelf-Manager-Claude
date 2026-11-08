@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import android.os.SystemClock
 import android.view.KeyEvent
 import kotlinx.coroutines.CancellationException
 import java.util.UUID
@@ -12,8 +13,13 @@ internal class MediaInputDiagnostics(
     private val emit: (String) -> Unit,
     private val publish: (String, List<String>) -> Unit,
     private val captureId: () -> String = { "m" + UUID.randomUUID().toString().replace("-", "") },
+    private val uptimeMillis: () -> Long = SystemClock::uptimeMillis,
 ) {
-    private class Capture(val id: String, val timeline: MediaInputTimeline = MediaInputTimeline()) {
+    private class Capture(
+        val id: String,
+        val timing: MediaCommandTiming,
+        val timeline: MediaInputTimeline = MediaInputTimeline(),
+    ) {
         var unsubscribe: (() -> Unit)? = null
     }
 
@@ -22,7 +28,7 @@ internal class MediaInputDiagnostics(
     @Synchronized
     fun start() {
         if (active != null) return
-        val capture = Capture(captureId())
+        val capture = Capture(captureId(), MediaCommandTiming(uptimeMillis))
         active = capture
         record(capture, "input-capture-start aliases=CaptureLocal association=Unproven")
         try {
@@ -59,8 +65,9 @@ internal class MediaInputDiagnostics(
     @Synchronized
     fun mediaKey(event: KeyEvent?, controller: MediaInputController, entry: MediaInputEntry) {
         val capture = active ?: return
+        val timing = capture.timing.key(event)
         if (event == null) {
-            record(capture, "input-key entry=$entry keyPresent=false ${controller.fields()}")
+            record(capture, "input-key entry=$entry keyPresent=false $timing ${controller.fields()}")
             return
         }
         val query = read { source.device(event) }
@@ -75,10 +82,8 @@ internal class MediaInputDiagnostics(
             "keyFlags=${event.flags} " +
             "repeat=${event.repeatCount} longPress=${event.isLongPress} cancelled=${event.isCanceled} " +
             "heldMillis=${(event.eventTime - event.downTime).coerceAtLeast(0)} deviceQuery=$resolution"
-        record(
-            capture,
-            "$fields ${controller.fields()} ${device?.let(capture.timeline::eventDevice) ?: "association=Unproven"}",
-        )
+        val deviceFields = device?.let(capture.timeline::eventDevice) ?: "association=Unproven"
+        record(capture, "$fields $timing ${controller.fields()} $deviceFields")
     }
 
     @Synchronized
@@ -86,7 +91,8 @@ internal class MediaInputDiagnostics(
         val capture = active ?: return
         record(
             capture,
-            "input-transport requested=${if (play) "Play" else "Pause"} ${controller.fields()} association=Unproven",
+            "input-transport requested=${if (play) "Play" else "Pause"} ${capture.timing.transport()} " +
+                "${controller.fields()} association=Unproven",
         )
     }
 

@@ -34,4 +34,19 @@ class SystemRouteProbeEvidenceTest {
         assertTrue(first != evidence.alias("first"))
         assertTrue(evidence.size <= 64)
     }
+
+    @Test
+    fun `equal counts still expose peer replacement and missing endpoint does not mean disconnected`() {
+        val evidence = SystemRouteProbeEvidence()
+        fun profile(identity: String) = listOf(
+            BluetoothProfileProbe.Snapshot("a2dp", "observed", listOf(BluetoothProfileProbe.Peer(identity, false))),
+        )
+        val first = evidence.rows(profile("first"), emptyList(), "first", true) { "unused" }
+        val second = evidence.rows(profile("second"), emptyList(), "first", true) { "unused" }
+        assertTrue("count=1 peers=b1" in first.first())
+        assertTrue("count=1 peers=b2" in second.first())
+        assertTrue(first.any { "endpointMatches=0 targetMatch=matches" in it })
+        assertTrue(second.any { "targetMatch=different" in it })
+        assertFalse((first + second).joinToString().contains("first"))
+    }
 }

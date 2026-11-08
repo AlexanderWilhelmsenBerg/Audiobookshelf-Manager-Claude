@@ -21,10 +21,11 @@ again on each sample; denial clears profile proxies and yields no endpoint ident
 
 | Record | Meaning | Not established |
 | --- | --- | --- |
-| `bluetooth-profile` | Public A2DP/HFP and API33+ LE Audio connected-peer snapshots, including pending/unavailable/read-failed states | Physical audibility, a car role, or focus ownership |
+| `bluetooth-profile` | Public A2DP/HFP and API33+ LE Audio connected-peer snapshots with complete bounded alias membership and pending/unavailable/read-failed states | Physical audibility, a car role, or focus ownership |
+| `bluetooth-event` | Public ACL/profile/streaming/HFP-audio broadcast, peer alias, previous/current state and receipt time | A current profile snapshot, a physical button, or permission to route |
 | `bluetooth-peer` | Capture-local peer alias, A2DP streaming flag where available, current endpoint match count | The originating button, which app is streaming, or permission to resume |
 | `endpoint-system-evidence` | A2DP address capability and exact relation to the selected or last-heard retained identity | A usable AudioTrack or a successful handoff |
-| `system-audio` | Audio mode, visible playback-configuration count and callback availability | Player/package identity or focus requester; both remain explicitly unavailable |
+| `system-audio` | Audio mode, visible playback counts, bounded anonymous usage/content histogram and callback availability | Player/package identity or focus requester; both remain explicitly unavailable |
 
 `targetMatch` is `matches`, `different`, `ambiguous`, `unavailable` or `no-target`. Only unique exact
 process-private identity matches qualify as `matches`; there is no name or single-device fallback.
@@ -33,12 +34,17 @@ retains another playback intent. LE profile observation does not extend A2DP end
 LE addresses, groups or hearing aids. Those routing capabilities remain unchanged.
 
 Bluetooth profile proxies query Android's existing service; they do not open a Sony/vendor socket,
-scan, pair, connect a device or set an active device. Protected Bluetooth broadcasts only wake a fresh
-query; their extras do not become evidence. Queued callbacks are fenced by capture lifetime, callbacks
+scan, pair, connect a device or set an active device. Protected Bluetooth broadcasts retain only allow-listed
+numeric states and a private identity mapped to an alias, separately labeled `broadcast-only`, then wake a fresh
+query. They never become route authority. Queued callbacks are fenced by capture lifetime, callbacks
 are coalesced on main, and all observers/proxies are released on stop. There is no timed polling loop.
-Profile reads are bounded to 32 peers and alias memory to 64 keys. Exports contain no address, name,
+Profile reads are bounded to 32 peers, pending broadcast events to 64 with explicit overflow counts, public
+playback attribute summaries to 32 players and alias memory to 64 keys. Exports contain no address, name,
 private digest, native handle, media metadata or raw exception message. Existing classifier output
 aliases join these rows to route inventory; monotonic timestamps join them to focus/track events.
+Sample sequence and query duration distinguish observation latency from the recorded callback time.
+See [expanded probe implementation and research](2026-11-08-public-probe-expansion.md) for the additive
+media-key timing fields, rootless system capture, limitations and follow-up priorities.
 
 ## Regression and acceptance
 

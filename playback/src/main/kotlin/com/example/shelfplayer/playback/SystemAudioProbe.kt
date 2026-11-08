@@ -19,13 +19,14 @@ class SystemAudioProbe @Inject constructor(
     private val clock: AppClock,
 ) {
     private val main = Handler(Looper.getMainLooper())
-    private val bluetooth = BluetoothProfileProbe(context, registry, main)
+    private val bluetooth = BluetoothProfileProbe(context, registry, main, clock)
     private val evidence = SystemRouteProbeEvidence()
     private var changed: (() -> Unit)? = null
     private var playback: AudioManager.AudioPlaybackCallback? = null
     private var mode: AudioManager.OnModeChangedListener? = null
     private var previous = emptySet<String>()
     private var generation = 0L
+    private var sampleSequence = 0L
     private val refresh = Runnable { changed?.invoke() }
 
     internal fun start(onChanged: () -> Unit) {
@@ -50,11 +51,13 @@ class SystemAudioProbe @Inject constructor(
         playback = null
         mode = null
         previous = emptySet()
+        sampleSequence = 0
         evidence.clear()
     }
 
     internal fun sample(outputs: List<AudioDeviceInfo>, targetId: String?, alias: (Int) -> String): List<String> {
         if (changed == null) return emptyList()
+        val started = clock.elapsed()
         val allowed = context.hasBluetoothIdentityAccess()
         bluetooth.start { requestRefresh() }
         val profiles = bluetooth.snapshot()
@@ -72,9 +75,14 @@ class SystemAudioProbe @Inject constructor(
         }
         val target = registry.diagnosticIdentity(targetId).takeIf { allowed }
         val rows = listOf(audioSnapshot()) + evidence.rows(profiles, observations, target, targetId != null, alias)
-        val changes = rows.filter { it !in previous }
+        val changes = bluetooth.drainEvents(evidence::alias) + rows.filter { it !in previous }
         previous = rows.toSet()
-        return changes.map { "$it elapsedRealtime=${clock.elapsed().inWholeMilliseconds}ms" }
+        val sampled = clock.elapsed()
+        val sequence = ++sampleSequence
+        return changes.map {
+            "$it elapsedRealtime=${sampled.inWholeMilliseconds}ms sampleSequence=$sequence " +
+                "snapshotCostMs=${(sampled - started).inWholeMilliseconds}"
+        }
     }
 
     private fun requestRefresh() {
@@ -99,8 +107,9 @@ class SystemAudioProbe @Inject constructor(
     private fun audioSnapshot(): String {
         val manager = context.getSystemService(AudioManager::class.java)
         val audioMode = runCatching { manager?.mode }.getOrNull()?.toString() ?: "unavailable"
-        val count = runCatching { manager?.activePlaybackConfigurations?.size }.getOrNull()?.toString() ?: "unavailable"
-        return "system-audio mode=$audioMode visiblePlayers=$count playbackObserver=${playback != null} " +
+        val activity = PublicAudioActivity.read(manager)
+        return "system-audio mode=$audioMode $activity playbackObserver=${playback != null} " +
+            "bluetoothObserver=${bluetooth.observing} " +
             "modeObserver=${mode != null} focusOwner=unavailable playerIdentity=unavailable evidence=public-snapshot"
     }
 }

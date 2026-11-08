@@ -125,7 +125,11 @@ Opt-in `SystemAudioProbe` adds public Bluetooth-profile and system-audio observa
 existing OutputClassifier lifetime. It joins process-private exact identities against the existing
 registry and reads the selected/last-heard target; it cannot reconcile endpoints, request focus,
 authorize recovery or call a player. Profile connectivity, streaming and audio mode are observations,
-not route proof or a focus-owner identity. See [scope and acceptance](../testing/2026-11-08-system-audio-probe.md).
+not route proof or a focus-owner identity. The bounded `BluetoothProbeEvents` queue preserves callback
+transitions across coalesced reads. `PublicAudioActivity` summarizes anonymous public attributes;
+`MediaCommandTiming` records capture-local input ordering using the key event's uptime clock. These
+adapters have no player or routing mutation dependency. See [scope and acceptance](../testing/2026-11-08-system-audio-probe.md)
+and [probe research](../testing/2026-11-08-public-probe-expansion.md).
 
 Diagnostics correlate process-local episode/attempt numbers, phase, decision reason, remaining lifetime
 and Play-issued versus audible-confirmed outcomes. No Bluetooth address, device name, media metadata or
