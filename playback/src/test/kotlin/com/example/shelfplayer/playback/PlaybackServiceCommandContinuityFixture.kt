@@ -694,6 +694,18 @@ internal class PlaybackServiceCommandContinuityFixture(
     fun pauseForSafetyThroughService(): Boolean =
         router.playbackField<HeadsetRouteGuard>("headsetGuard").pauseForSafety(player)
 
+    fun startHealthyHeadsetWithoutCar() {
+        returnMeasuredHeadset()
+        recovery.cancelAll()
+        player.playWhenReady = true
+        scope.runCurrent()
+        observeAudibleServiceRoute()
+    }
+
+    fun reportPlatformInterruption(reason: Int) {
+        checkNotNull(servicePlayerEvents).onPlayWhenReadyChanged(false, reason)
+    }
+
     fun connectCarSession() {
         service.carLifecycle.onControllerConnected()
     }

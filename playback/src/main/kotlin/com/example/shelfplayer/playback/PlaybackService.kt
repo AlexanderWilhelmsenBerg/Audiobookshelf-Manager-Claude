@@ -911,6 +911,12 @@ class PlaybackService : MediaLibraryService() {
                 override fun prepareTransport(play: Boolean, player: ExoPlayer) = prepareControllerRoute(play, player)
                 override fun synchronizeOutput() = syncExplicitOutputIntent()
                 override fun cancelResumeEffect() = carResumeEffects.cancelPending()
+                override fun retainPendingRecovery(interruptionReason: Int?): Boolean =
+                    interruptionReason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY &&
+                        carRecovery.hasPendingHeadsetReturn(
+                            routeOwnership.currentGeneration,
+                            currentExplicitSelectionSequence(),
+                        )
                 override fun observedPlay() {
                     carConnectionRefresh.cancel()
                     carRecovery.cancelPending()

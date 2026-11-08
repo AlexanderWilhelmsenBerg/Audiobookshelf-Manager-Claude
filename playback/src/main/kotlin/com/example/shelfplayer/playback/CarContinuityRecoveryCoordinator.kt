@@ -106,6 +106,9 @@ internal class CarContinuityRecoveryCoordinator(
     fun isCurrent(target: CarArrivalResumeGate.Target, generation: Long?, selectionSequence: Long): Boolean =
         gate.isCurrent(target, generation, selectionSequence)
 
+    fun hasPendingHeadsetReturn(generation: Long?, selectionSequence: Long): Boolean =
+        gate.pendingHeadsetReturn(generation, selectionSequence) != null
+
     fun remainingWindow(target: CarArrivalResumeGate.Target): Duration? = gate.remainingWindow(target)
 
     fun episodeValid(target: CarArrivalResumeGate.Target): Boolean = gate.episodeValid(target)

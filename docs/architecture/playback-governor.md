@@ -55,6 +55,16 @@ checkpoint owner already scopes it.
 
 ## Bounded recovery
 
+A BookWave safety pause of previously verified active headset playback can issue a `HeadsetReturn`
+claim with an absolute two-second deadline. The recovery gate owns this short allowance through its
+small `HeadsetReturnRecovery` helper; the existing coordinator, effects and router perform the work.
+There is no new reconnect listener, player or transport owner. The same headset must return to inventory
+and pass the existing muted actual-track proof before the deadline. Duplicate safety callbacks cannot
+restart it. A noisy notification during the same gap preserves only the still-unconsumed claim; after
+Play it cannot rearm that attempt. New intent, identity loss and subsequent focus loss revoke it. This is a
+narrow exception to car-boundary pairing, not permission to restart a user-paused book on connection.
+An expired or cancelled short attempt does not consume the separately qualified car-arrival budget.
+
 An arrival episode retains the exact previously measured headset and its book/selection scope. Its
 absolute deadline is 30 seconds from the earliest qualifying interruption; this is not a waiting delay.
 The initial trusted-arrival allowance is preserved. A successful route recovery does not reset the

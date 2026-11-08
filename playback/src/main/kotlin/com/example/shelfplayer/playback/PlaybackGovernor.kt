@@ -23,6 +23,7 @@ internal class PlaybackGovernor(private val source: Source, private val resumeEf
         fun prepareTransport(play: Boolean, player: ExoPlayer): () -> Boolean
         fun synchronizeOutput()
         fun cancelResumeEffect()
+        fun retainPendingRecovery(interruptionReason: Int?): Boolean = false
         fun observedPlay()
         fun paused(userInitiated: Boolean)
         fun platformInterruption(reason: Int)
@@ -101,7 +102,7 @@ internal class PlaybackGovernor(private val source: Source, private val resumeEf
     /** Raw observations carry cause, never a guessed physical controller identity. */
     fun observeTransport(input: PlaybackTransportInput.Interpretation, routeSafetyPause: Boolean) {
         if (closed) return
-        source.cancelResumeEffect()
+        if (!source.retainPendingRecovery(input.interruptionReason)) source.cancelResumeEffect()
         if (input.isPlay) {
             source.observedPlay()
         } else {

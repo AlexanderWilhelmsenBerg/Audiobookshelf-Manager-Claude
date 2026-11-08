@@ -1,5 +1,10 @@
 # Audiobookshelf API compatibility
 
+The 2026-11-08 brief-headset-return candidate adds only a local two-second recovery allowance after
+an app-issued safety pause. It adds no server contract, schema, permission, dependency or tested server
+version. Existing optional Bluetooth identity access is required; missing identity fails closed.
+See [software verification and device acceptance](testing/2026-11-08-headset-return.md).
+
 **Classification:** Current captured-contract matrix with explicitly source-scoped evidence.
 **Reconciled:** 2026-10-07; server verification dates below are unchanged. PR #238 is merged. Phase 2 Garmin delivery uses the existing Media3/profile/lock owners and adds no ABS endpoint, response field, Room schema or tested server version.
 

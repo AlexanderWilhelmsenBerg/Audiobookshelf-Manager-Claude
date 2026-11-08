@@ -4,12 +4,13 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Issue #36 — one continuity owner for the two measured Android Auto lifecycle seams.
+ * One continuity owner for measured Auto lifecycle seams and brief app-issued safety interruptions.
  *
  * Arrival and departure deliberately remain distinct phases:
  *
  * - an arrival focus loss is paired with a car-specific arrival boundary;
  * - a departure focus loss is paired with a car-specific departure boundary.
+ * - an app safety pause may recover its exact headset within two seconds without a car boundary.
  *
  * The exact headset is captured only from route-heard evidence while playback was real. [observePlayingHeadset]
  * keeps the last positively proven headset as stable transition evidence before and during a car session, so
@@ -41,6 +42,7 @@ internal class CarArrivalResumeGate private constructor(
     internal enum class Phase {
         Arrival,
         Departure,
+        HeadsetReturn,
     }
 
     internal enum class Status {
@@ -66,6 +68,7 @@ internal class CarArrivalResumeGate private constructor(
         IdentityUntrusted,
         RecoveryExpired,
         ConfirmedEpisodeInterrupted,
+        SafetyPausedHeadsetReturn,
         Eligible,
     }
 
@@ -97,6 +100,7 @@ internal class CarArrivalResumeGate private constructor(
     private data class ArrivalBoundary(val at: Duration, val identity: CarContinuityIdentity, val deadline: Duration?)
 
     private val evidence = CarContinuityEvidence(pairingWindow, trustedIdentity)
+    private val headsetReturn = HeadsetReturnRecovery(now, trustedIdentity)
 
     private var focusCandidate: FocusCandidate? = null
     private var projectionDeparture: DepartureBoundary? = null
@@ -131,7 +135,12 @@ internal class CarArrivalResumeGate private constructor(
             return Decision(Phase.Arrival, Status.Ready, Reason.ConfirmedEpisodeInterrupted, next)
         }
         playingHeadset?.let { beginQualifiedEpisode(it, at) }
-        return null
+        if (previous != null || qualifiedEpisode?.issuedTarget != null) return null
+        val identity = currentPlayingHeadset(currentGeneration, explicitSelectionSequence)
+            ?.takeIf { it.matches(headsetId, currentGeneration, explicitSelectionSequence) } ?: return null
+        return headsetReturn.issue(identity, at)?.also { activeRecovery = it }?.let {
+            Decision(Phase.HeadsetReturn, Status.Ready, Reason.SafetyPausedHeadsetReturn, it)
+        }
     }
 
     /** Inventory cleanup is not listener intent. Retain only this already qualified, bounded episode. */
@@ -217,6 +226,9 @@ internal class CarArrivalResumeGate private constructor(
         explicitSelectionSequence: Long,
         carConnected: Boolean,
     ): Decision {
+        // An app safety interruption cannot override a later platform interruption.
+        headsetReturn.clear()
+        if (activeRecovery?.phase == Phase.HeadsetReturn) activeRecovery = null
         // A fresh departure focus callback starts its own conservative pairing clock. An earlier generic
         // safety pause cannot make this new departure callback stale before its projection boundary arrives.
         if (carConnected) finishConfirmedArrival(currentGeneration, explicitSelectionSequence, at)
@@ -256,7 +268,10 @@ internal class CarArrivalResumeGate private constructor(
         currentGeneration: Long?,
         explicitSelectionSequence: Long,
         carConnected: Boolean,
-    ): Decision = onAudioFocusLoss(
+    ): Decision = pendingHeadsetReturn(currentGeneration, explicitSelectionSequence)?.let {
+        // Same disconnect, same unconsumed claim. Noisy is not permission for another Play or deadline.
+        Decision(it.phase, Status.Ready, Reason.SafetyPausedHeadsetReturn, it)
+    } ?: onAudioFocusLoss(
         at = at,
         heardRoute = heardRoute,
         headsetId = headsetId,
@@ -351,6 +366,8 @@ internal class CarArrivalResumeGate private constructor(
     /** Pairs arrival focus with only the first controller/projection boundary of this car session. */
     fun onCarArrival(arrivedAt: Duration, currentGeneration: Long?, explicitSelectionSequence: Long): Decision {
         expireSafetyPause(arrivedAt)
+        pendingHeadsetReturn(currentGeneration, explicitSelectionSequence)
+            ?.let { return Decision(it.phase, Status.Ready, Reason.SafetyPausedHeadsetReturn, it) }
         projectionDeparture = null
         if (arrivalRecorded || qualifiedEpisode?.issuedTarget != null) {
             val issued = qualifiedEpisode?.issuedTarget
@@ -546,18 +563,28 @@ internal class CarArrivalResumeGate private constructor(
     }
 
     /** True only while the resolved target remains the single active lifecycle recovery. */
+    fun pendingHeadsetReturn(currentGeneration: Long?, explicitSelectionSequence: Long): Target? =
+        activeRecovery?.takeIf {
+            it.phase == Phase.HeadsetReturn && isCurrent(it, currentGeneration, explicitSelectionSequence)
+        }
+
     fun isCurrent(target: Target, currentGeneration: Long?, explicitSelectionSequence: Long): Boolean =
         activeRecovery === target &&
+            (target.phase != Phase.HeadsetReturn || headsetReturn.valid(target)) &&
             evidence.targetReason(target, currentGeneration, explicitSelectionSequence, now()) == null
 
     /** Remaining time for an eligible qualified arrival route wait; null retains the ordinary route bound. */
     fun remainingWindow(target: Target): Duration? = target.deadline?.minus(now())?.coerceAtLeast(Duration.ZERO)
 
     /** The deadline/identity half of eligibility for async route probes after the one-shot claim is consumed. */
-    fun episodeValid(target: Target): Boolean = target.deadline == null || qualifiedEpisode?.let { episode ->
-        !episode.closed && episode.issuedTarget === target && episode.deadline == target.deadline &&
-            now() < target.deadline && trustedIdentity(target.outputId)
-    } == true
+    fun episodeValid(target: Target): Boolean = if (target.phase == Phase.HeadsetReturn) {
+        headsetReturn.valid(target)
+    } else {
+        target.deadline == null || qualifiedEpisode?.let { episode ->
+            !episode.closed && episode.issuedTarget === target && episode.deadline == target.deadline &&
+                now() < target.deadline && trustedIdentity(target.outputId)
+        } == true
+    }
 
     /**
      * Final one-shot check after routing has secured the exact captured headset.
@@ -575,6 +602,9 @@ internal class CarArrivalResumeGate private constructor(
             ?: if (headsetId != target.outputId) Reason.WrongHeadset else null
         activeRecovery = null
         if (reason != null) return ConsumeResult(accepted = false, reason = reason)
+        if (target.phase == Phase.HeadsetReturn && !headsetReturn.consume(target)) {
+            return ConsumeResult(false, Reason.CandidateInvalidated)
+        }
         if (target.phase == Phase.Arrival) {
             val episode = qualifiedEpisode
             if (episode != null && episode.issuedTarget === target) {
@@ -604,6 +634,7 @@ internal class CarArrivalResumeGate private constructor(
 
     /** A newer Play supersedes pending automatic recovery but does not rewrite route-heard ownership. */
     fun cancelPending() {
+        headsetReturn.cancelPending()
         focusCandidate = null
         firstArrival = null
         projectionDeparture = null
@@ -613,6 +644,7 @@ internal class CarArrivalResumeGate private constructor(
     /** A deliberate/non-focus pause or book/session boundary invalidates every continuity fact. */
     fun cancelAll() {
         cancelPending()
+        headsetReturn.clear()
         safetyPausedAt = null
         qualifiedEpisode = null
         requiresFreshPlaybackEvidence = true

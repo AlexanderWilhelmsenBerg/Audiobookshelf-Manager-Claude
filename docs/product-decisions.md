@@ -438,6 +438,16 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-08 owner refinement (brief headset return).** A BookWave route-safety pause interrupting
+verified healthy headset playback may authorize one recovery of that exact trusted headset within
+two seconds of the pause, without an Auto boundary. Reuse the existing single-use coordinator claim,
+route wait and muted actual-track verification. No fallback to a similarly named device or sole
+Bluetooth candidate. Repeated callbacks cannot extend the deadline. User Pause/Stop, new selection,
+book/profile/player changes, focus loss and identity loss cancel this short attempt. A noisy notification
+during the same gap may retain only the still-unconsumed claim and cannot extend its deadline.
+The longer car-boundary recovery remains separately qualified; ordinary connection is not autoplay.
+This supersedes the boundary-only restriction below solely for this app-issued safety interruption.
+
 **2026-11-07 owner refinement (governor continuation).** The approved implementation plan supersedes
 the original one-claim-per-arrival restriction below with at most three single-use automatic Play claims
 within the same original 30-second episode. A further claim requires a distinct route-safety interruption
