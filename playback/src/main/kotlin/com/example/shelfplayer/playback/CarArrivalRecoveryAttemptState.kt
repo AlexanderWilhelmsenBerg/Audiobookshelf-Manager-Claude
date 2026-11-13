@@ -16,6 +16,9 @@ internal class CarArrivalRecoveryAttemptState {
     val canClaim: Boolean get() = automaticPlayClaims < MAX_AUTOMATIC_PLAY_CLAIMS
     val hasClaim: Boolean get() = automaticPlayClaims > 0
 
+    val hasUnconfirmedPlay: Boolean
+        get() = issuedTarget != null && playIssuedTarget === issuedTarget && !confirmed
+
     val nextAttemptOrdinal: Int get() = automaticPlayClaims + 1
 
     fun issue(target: CarArrivalResumeGate.Target) {

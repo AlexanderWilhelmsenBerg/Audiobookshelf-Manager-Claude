@@ -2,6 +2,8 @@ package com.example.shelfplayer.playback
 
 import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -13,6 +15,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /** Proves route-safety rearming through PlaybackService.PlayerEvents and its real effects owner. */
@@ -21,6 +24,91 @@ import kotlin.time.Duration.Companion.seconds
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class PlaybackServiceSafetyRearmTest {
+    @Test
+    fun `focus retry waits and stays muted until exact track and active playback proof`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { fixture ->
+            startUnconfirmedAttempt(fixture)
+            fixture.interruptUnconfirmedPlayForFocusLoss()
+            runCurrent()
+            assertEquals(2, assertNotNull(fixture.pendingEffectsTarget()).attemptOrdinal)
+            advanceTimeBy(750.milliseconds)
+            fixture.reportPlatformInterruption(
+                androidx.media3.common.Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS,
+            )
+            runCurrent()
+            advanceTimeBy(749.milliseconds)
+            runCurrent()
+            assertEquals(1, fixture.rawPlayCalls)
+            advanceTimeBy(1.milliseconds)
+            runCurrent()
+            assertEquals(2, fixture.rawPlayCalls)
+            assertTrue(fixture.isRouteMuted())
+            fixture.observeAudibleServiceRoute()
+            assertFalse(fixture.isRouteMuted())
+        }
+    }
+
+    @Test
+    fun `third focus attempt waits three seconds and cannot mint a fourth Play`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { fixture ->
+            startUnconfirmedAttempt(fixture)
+            fixture.interruptUnconfirmedPlayForFocusLoss()
+            runCurrent()
+            advanceTimeBy(1500.milliseconds)
+            runCurrent()
+            assertEquals(2, fixture.rawPlayCalls)
+            fixture.interruptUnconfirmedPlayForFocusLoss()
+            runCurrent()
+            assertEquals(3, assertNotNull(fixture.pendingEffectsTarget()).attemptOrdinal)
+            advanceTimeBy(2999.milliseconds)
+            runCurrent()
+            assertEquals(2, fixture.rawPlayCalls)
+            advanceTimeBy(1.milliseconds)
+            runCurrent()
+            assertEquals(3, fixture.rawPlayCalls)
+            fixture.interruptUnconfirmedPlayForFocusLoss()
+            advanceTimeBy(4.seconds)
+            runCurrent()
+            assertEquals(3, fixture.rawPlayCalls)
+            assertFalse(fixture.player.playWhenReady)
+            assertNull(fixture.pendingEffectsTarget())
+        }
+    }
+
+    @Test
+    fun `Pause or Stop during focus backoff cancels the second Play`() = runTest {
+        for (stop in listOf(false, true)) {
+            PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { fixture ->
+                startUnconfirmedAttempt(fixture)
+                fixture.interruptUnconfirmedPlayForFocusLoss()
+                runCurrent()
+                assertNotNull(fixture.pendingEffectsTarget())
+                if (stop) {
+                    assertNull(fixture.forwarding.handleStop().get())
+                } else {
+                    assertNull(fixture.forwarding.handleSetPlayWhenReady(false).get())
+                }
+                advanceTimeBy(4.seconds)
+                runCurrent()
+                assertEquals(1, fixture.rawPlayCalls)
+                assertFalse(fixture.player.playWhenReady)
+                assertNull(fixture.pendingEffectsTarget())
+            }
+        }
+    }
+
+    private fun TestScope.startUnconfirmedAttempt(fixture: PlaybackServiceCommandContinuityFixture) {
+        fixture.installServiceContinuityCallbacks()
+        val target = fixture.actualArrivalTarget()
+        fixture.connectCarSession()
+        val effects = fixture.service.playbackCall("getCarResumeEffects") as CarContinuityResumeEffects
+        effects.onRecoveryReady(target)
+        runCurrent()
+        assertEquals(1, fixture.rawPlayCalls)
+        assertTrue(fixture.isRouteMuted())
+        fixture.advanceElapsedClock(12.seconds)
+    }
+
     @Test
     fun `service does not rearm issued Play until actual route and active proof arrive`() = runTest {
         PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { fixture ->

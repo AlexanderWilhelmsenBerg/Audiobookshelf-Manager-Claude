@@ -75,7 +75,12 @@ Rearming requires the same headset to have been measured while actually playing 
 issued Play, current ownership/trust, connected Auto, and a new route-safety interruption. It does not
 require another connection event inside the already confirmed episode. Duplicate callbacks, preferred
 device acceptance, playWhenReady and inventory return cannot rearm. Failed or unproven attempts cannot
-retry themselves.
+retry themselves through route-safety or inventory callbacks. Under the 2026-11-13 PD-009 refinement,
+a focus-loss observation after issued but unconfirmed arrival Play may rearm within the same budget
+when Auto remains positively connected. Retry targets carry explicit provenance. Effects wait 1.5
+seconds for attempt two or 3 seconds for attempt three, then recheck the claim before securing the
+same endpoint. Duplicate focus callbacks preserve the target and delay. Noisy cancels a queued retry.
+Every attempt must obtain fresh muted actual-track proof, using the existing checkpoint owner.
 
 Each attempt is single-use and scope-bound. Episode lifetime and focus/boundary pairing use separate
 clocks. Departure terminates arrival work and retains the existing conservative six-second pairing

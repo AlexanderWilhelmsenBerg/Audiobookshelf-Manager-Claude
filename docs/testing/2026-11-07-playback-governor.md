@@ -48,6 +48,28 @@ Final local gate (2026-11-07, JDK 21):
 
 ## Stationary device acceptance
 
+### Interrupted arrival Play refinement, 2026-11-13
+
+The initial regression run with the original implementation failed the new issued/unconfirmed
+focus-retry assertion. The focused service tests exercise an interrupted muted probe, replacement
+probe, cancellation by Pause/Stop, duplicate focus callbacks and delayed attempt limits. Gate cases
+also cover disconnected Auto, changed headset/generation/selection, revoked identity, expiry and
+consumed claims without issued Play. The fixture injects Media3 focus-loss events into the service
+listener; it does not reproduce the system focus requester or prove audible output.
+
+Final local validation passed `ktlintFormat verifyDebug :playback:testReleaseUnitTest
+-Pshelfplayer.warningsAsErrors=true`. The duplicate-focus service test also failed before the governor
+was updated to preserve a current pending focus retry. The checked behavior retains the same target
+and original delay; user commands and other interruptions still cancel work.
+
+Physical acceptance must reproduce interruption of the first muted Play after a positive Auto
+connection. Verify attempt two waits 1.5 seconds, attempt three waits 3 seconds, no fourth Play occurs,
+and no attempt unmutes on the wrong route. Pause during either delay must prevent later Play.
+Check failed Auto setup without a positive connection stays paused, initially paused playback stays
+paused, and headset unplug/departure or a new destination cancels pending work. Capture system focus
+alongside app events to determine whether focus becomes available during backoff. No reduction of the
+initial endpoint disappearance or pre-connection pause is claimed by this refinement.
+
 Clear diagnostics, enable capture, use one headset and start narration before connecting Auto.
 Repeat three full arrival/departure cycles and record actual audible gaps. Check that healthy headset
 playback is preserved, or that recovery remains bounded and returns only to the verified headset.

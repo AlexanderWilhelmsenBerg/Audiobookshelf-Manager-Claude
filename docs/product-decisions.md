@@ -438,6 +438,17 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-13 owner refinement (interrupted arrival Play).** After an automatic arrival Play was
+issued but before exact-track and active-playback confirmation, a subsequent Media3 focus-loss
+observation may authorize another attempt while Auto is positively connected. Retain the original
+trusted headset, generation and selection, original 30-second deadline and maximum three Play claims.
+Wait 1.5 seconds before attempt two and 3 seconds before attempt three, then recheck authorization
+and use the existing muted route proof. Duplicate callbacks cannot restart the delay. Noisy/unplug
+events cannot create this retry and cancel a queued retry. Pause, Stop, seek, output/book/profile
+change, departure and teardown retain precedence. This supersedes the failed/unproven rearm restriction
+below only for an issued Play interrupted by focus loss. Media3 retains focus ownership. Timing is an
+experimental recovery policy, with physical-car acceptance pending and focus requester still unknown.
+
 **2026-11-08 owner refinement (brief headset return).** A BookWave route-safety pause interrupting
 verified healthy headset playback may authorize one recovery of that exact trusted headset within
 two seconds of the pause, without an Auto boundary. Reuse the existing single-use coordinator claim,

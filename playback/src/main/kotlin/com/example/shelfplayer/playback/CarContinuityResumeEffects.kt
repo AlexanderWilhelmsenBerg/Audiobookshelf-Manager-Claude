@@ -6,10 +6,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * One recovery-to-Play transaction, using the existing CarContinuityRecoveryCoordinator's claim.
@@ -35,6 +37,10 @@ internal class CarContinuityResumeEffects(
 ) {
     private var pending: Job? = null
     private var pendingTarget: CarArrivalResumeGate.Target? = null
+
+    fun hasPendingFocusRetry(): Boolean = pending?.isActive == true && pendingTarget?.let {
+        it.retryAfterFocusLoss && recovery.isCurrent(it, owner.currentGeneration, selectionSequence())
+    } == true
 
     fun onArrival(decision: CarArrivalResumeGate.Decision?) = scheduleBoundary(decision, preserveHeadset = true)
 
@@ -215,6 +221,19 @@ internal class CarContinuityResumeEffects(
         try {
             val recoveryJob = currentCoroutineContext().job
             currentCoroutineContext().ensureActive()
+            if (target.retryAfterFocusLoss) {
+                val backoff = if (target.attemptOrdinal == 2) 1500.milliseconds else 3000.milliseconds
+                log(
+                    "Car continuity waiting before interrupted Play retry",
+                    listOf(
+                        LogField.Public("episode", target.episodeId),
+                        LogField.Public("attempt", target.attemptOrdinal),
+                        LogField.Millis("retryDelay", backoff.inWholeMilliseconds),
+                    ),
+                )
+                delay(backoff)
+                if (!recovery.isCurrent(target, owner.currentGeneration, selectionSequence())) return
+            }
             if (currentPlayer()?.playWhenReady == true) {
                 log("Car lifecycle left active playback intent with Media3")
                 return

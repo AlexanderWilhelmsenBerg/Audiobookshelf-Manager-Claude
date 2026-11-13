@@ -261,6 +261,78 @@ class TrustedCarArrivalEpisodeTest {
         assertEquals(0, reassertions, "measured return is sufficient; no route rewrite is needed")
     }
 
+    @Test
+    fun `issued unconfirmed Play can retry focus loss twice within the original episode`() {
+        var now = Duration.ZERO
+        val gate = gate(now = { now }, trusted = { true })
+        var target = readyTarget(gate, { now = it })
+        val deadline = target.deadline
+        repeat(3) { index ->
+            assertTrue(gate.consumeRecovery(target, 1, headset.id, 0).accepted)
+            gate.markRecoveryPlayIssued(target)
+            now += 2.seconds
+            val decision = gate.onAudioFocusLoss(now, null, headset.id, 1, 0, true)
+            if (index < 2) {
+                target = assertNotNull(decision.target)
+                assertEquals(CarArrivalResumeGate.Status.Ready, decision.status)
+                assertEquals(index + 2, target.attemptOrdinal)
+                assertEquals(deadline, target.deadline)
+                val duplicate = gate.onAudioFocusLoss(now, null, headset.id, 1, 0, true)
+                assertSame(target, duplicate.target)
+            } else {
+                assertEquals(CarArrivalResumeGate.Status.Rejected, decision.status)
+                assertNull(decision.target)
+            }
+        }
+    }
+
+    @Test
+    fun `interrupted attempt cannot retry without connected car valid scope trust and lifetime`() {
+        for (invalid in listOf(
+            "disconnected",
+            "generation",
+            "selection",
+            "headset",
+            "trust",
+            "expired",
+            "pause",
+            "noPlay",
+        )) {
+            var now = Duration.ZERO
+            var trusted = true
+            val gate = gate(now = { now }, trusted = { trusted })
+            val target = readyTarget(gate, { now = it })
+            assertTrue(gate.consumeRecovery(target, 1, headset.id, 0).accepted)
+            if (invalid != "noPlay") gate.markRecoveryPlayIssued(target)
+            if (invalid == "trust") trusted = false
+            if (invalid == "pause") gate.cancelAll()
+            now = if (invalid == "expired") 30.seconds else 12.seconds
+            val decision = gate.onAudioFocusLoss(
+                now,
+                null,
+                if (invalid == "headset") "another" else headset.id,
+                if (invalid == "generation") 2 else 1,
+                if (invalid == "selection") 1 else 0,
+                invalid != "disconnected",
+            )
+            assertEquals(CarArrivalResumeGate.Status.Rejected, decision.status, invalid)
+        }
+    }
+
+    @Test
+    fun `noisy after issued Play cannot schedule a focus retry`() {
+        var now = Duration.ZERO
+        val gate = gate(now = { now }, trusted = { true })
+        val target = readyTarget(gate, { now = it })
+        assertTrue(gate.consumeRecovery(target, 1, headset.id, 0).accepted)
+        gate.markRecoveryPlayIssued(target)
+        now = 12.seconds
+        assertEquals(
+            CarArrivalResumeGate.Status.Rejected,
+            gate.onAudioBecomingNoisy(now, null, headset.id, 1, 0, true).status,
+        )
+    }
+
     private fun gate(now: () -> Duration, trusted: (String) -> Boolean): CarArrivalResumeGate {
         val owner = RouteHeardOwnership(OutputIntentOwner()).apply {
             onBookChanged(hasBook = true)

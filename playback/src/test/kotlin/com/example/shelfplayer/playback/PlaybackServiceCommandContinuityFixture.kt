@@ -706,6 +706,18 @@ internal class PlaybackServiceCommandContinuityFixture(
         checkNotNull(servicePlayerEvents).onPlayWhenReadyChanged(false, reason)
     }
 
+    fun interruptUnconfirmedPlayForFocusLoss() {
+        val events = checkNotNull(servicePlayerEvents)
+        // Set the backing player paused without mislabelling the injected Media3 focus callback as user Pause.
+        player.removeListener(events)
+        try {
+            player.pause()
+        } finally {
+            player.addListener(events)
+        }
+        reportPlatformInterruption(Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
+    }
+
     fun connectCarSession() {
         service.carLifecycle.onControllerConnected()
     }

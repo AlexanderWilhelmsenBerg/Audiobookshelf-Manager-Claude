@@ -911,12 +911,17 @@ class PlaybackService : MediaLibraryService() {
                 override fun prepareTransport(play: Boolean, player: ExoPlayer) = prepareControllerRoute(play, player)
                 override fun synchronizeOutput() = syncExplicitOutputIntent()
                 override fun cancelResumeEffect() = carResumeEffects.cancelPending()
-                override fun retainPendingRecovery(interruptionReason: Int?): Boolean =
-                    interruptionReason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY &&
+                override fun retainPendingRecovery(interruptionReason: Int?): Boolean = when (interruptionReason) {
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS -> carResumeEffects.hasPendingFocusRetry()
+
+                    Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY ->
                         carRecovery.hasPendingHeadsetReturn(
                             routeOwnership.currentGeneration,
                             currentExplicitSelectionSequence(),
                         )
+
+                    else -> false
+                }
                 override fun observedPlay() {
                     carConnectionRefresh.cancel()
                     carRecovery.cancelPending()

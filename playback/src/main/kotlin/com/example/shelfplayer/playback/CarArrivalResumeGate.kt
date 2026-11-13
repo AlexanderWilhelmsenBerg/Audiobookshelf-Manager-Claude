@@ -68,6 +68,7 @@ internal class CarArrivalResumeGate private constructor(
         IdentityUntrusted,
         RecoveryExpired,
         ConfirmedEpisodeInterrupted,
+        UnconfirmedPlayInterrupted,
         SafetyPausedHeadsetReturn,
         Eligible,
     }
@@ -84,6 +85,7 @@ internal class CarArrivalResumeGate private constructor(
         val deadline: Duration? = null,
         val episodeId: Long = 0,
         val attemptOrdinal: Int = 1,
+        val retryAfterFocusLoss: Boolean = false,
     )
 
     internal data class Decision(val phase: Phase, val status: Status, val reason: Reason, val target: Target? = null)
@@ -242,6 +244,18 @@ internal class CarArrivalResumeGate private constructor(
                 reason = if (expired) Reason.OutsidePairingWindow else Reason.NoFreshPlaybackAfterIntentReset,
             )
         }
+        val retry = qualifiedEpisode?.retryInterruptedPlay(
+            at,
+            headsetId,
+            currentGeneration,
+            explicitSelectionSequence,
+            carConnected,
+            trustedIdentity,
+        )
+        if (retry != null) {
+            activeRecovery = retry
+            return Decision(Phase.Arrival, Status.Ready, Reason.UnconfirmedPlayInterrupted, retry)
+        }
         return onEligibleAudioFocusLoss(
             at = at,
             heardRoute = heardRoute,
@@ -270,14 +284,19 @@ internal class CarArrivalResumeGate private constructor(
     ): Decision = pendingHeadsetReturn(currentGeneration, explicitSelectionSequence)?.let {
         // Same disconnect, same unconsumed claim. Noisy is not permission for another Play or deadline.
         Decision(it.phase, Status.Ready, Reason.SafetyPausedHeadsetReturn, it)
-    } ?: onAudioFocusLoss(
-        at = at,
-        heardRoute = heardRoute,
-        headsetId = headsetId,
-        currentGeneration = currentGeneration,
-        explicitSelectionSequence = explicitSelectionSequence,
-        carConnected = carConnected,
-    )
+    } ?: if (qualifiedEpisode?.blocksNoisyRetry == true) {
+        cancelAll()
+        Decision(Phase.Arrival, Status.Rejected, Reason.CandidateInvalidated)
+    } else {
+        onAudioFocusLoss(
+            at = at,
+            heardRoute = heardRoute,
+            headsetId = headsetId,
+            currentGeneration = currentGeneration,
+            explicitSelectionSequence = explicitSelectionSequence,
+            carConnected = carConnected,
+        )
+    }
 
     /** The existing bounded arrival/departure correlation, only after a fresh audible-play observation. */
     private fun onEligibleAudioFocusLoss(
@@ -684,28 +703,11 @@ internal class CarArrivalResumeGate private constructor(
     )
 
     private fun beginQualifiedEpisode(identity: CarContinuityIdentity, at: Duration): CarArrivalEpisode? {
-        val existing = qualifiedEpisode
-        return if (existing == null) {
-            startQualifiedEpisode(identity, at)
-        } else {
-            updateQualifiedEpisode(existing, identity, at)
-        }
-    }
-
-    private fun updateQualifiedEpisode(
-        episode: CarArrivalEpisode,
-        identity: CarContinuityIdentity,
-        at: Duration,
-    ): CarArrivalEpisode? {
-        if (episode.closed || episode.identity != identity) return null
-        val earlierStart = minOf(episode.startedAt, safetyPausedAt ?: at, at)
-        if (earlierStart >= episode.startedAt) return episode
-        val earlier = episode.copy(
-            startedAt = earlierStart,
-            deadline = earlierStart + QUALIFIED_ARRIVAL_WINDOW,
-        )
+        val existing = qualifiedEpisode ?: return startQualifiedEpisode(identity, at)
+        val earlier = existing.startingEarlier(identity, minOf(safetyPausedAt ?: at, at), QUALIFIED_ARRIVAL_WINDOW)
+            ?: return null
         qualifiedEpisode = earlier
-        revisePendingArrivalDeadline(identity, earlier)
+        if (earlier !== existing) revisePendingArrivalDeadline(identity, earlier)
         return earlier
     }
 
@@ -739,19 +741,10 @@ internal class CarArrivalResumeGate private constructor(
         }
     }
 
-    private fun issueArrivalRecovery(identity: CarContinuityIdentity, deadline: Duration?): Target =
-        identity.target(Phase.Arrival, deadline).let { base ->
-            val episode = qualifiedEpisode?.takeIf { it.identity == identity }
-            base.copy(
-                episodeId = episode?.id ?: 0,
-                attemptOrdinal = episode?.attempts?.nextAttemptOrdinal ?: 1,
-            )
-        }.also { target ->
-            activeRecovery = target
-            qualifiedEpisode?.takeIf { it.identity == identity }?.let { episode ->
-                episode.attempts.issue(target)
-            }
-        }
+    private fun issueArrivalRecovery(identity: CarContinuityIdentity, deadline: Duration?): Target = (
+        qualifiedEpisode?.takeIf { it.identity == identity }?.issueTarget()
+            ?: identity.target(Phase.Arrival, deadline)
+        ).also { activeRecovery = it }
 
     private fun finishConfirmedArrival(generation: Long?, sequence: Long, at: Duration? = null) {
         val episode = qualifiedEpisode ?: return
