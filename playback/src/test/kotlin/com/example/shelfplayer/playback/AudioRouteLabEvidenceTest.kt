@@ -13,6 +13,57 @@ import kotlin.test.assertNull
 
 class AudioRouteLabEvidenceTest {
     @Test
+    fun `focus export retains evidence limits and timing without private identifiers`() {
+        val result = requireNotNull(
+            AudioRouteLabEvidence.event(
+                LoggedEvent(
+                    Instant.EPOCH,
+                    LogLevel.Info,
+                    "AndroidAuto",
+                    "Playback focus observation focusObservation=loss-or-denial focusEvidence=media3-derived " +
+                        "androidFocusChange=unavailable focusRequester=unknown focusRequesterEvidence=not-exposed " +
+                        "focusSequence=2 elapsedRealtime=5000ms sinceFocusEvent=4300ms transportReasonCode=2 " +
+                        "suppressionReasonCode=0 audibility=not-measured controllerPackage=private.package " +
+                        "deviceAddress=private-address title=private-title",
+                ),
+            ),
+        )
+        assertContains(result, "focusObservation=loss-or-denial")
+        assertContains(result, "androidFocusChange=unavailable")
+        assertContains(result, "focusRequester=unknown")
+        assertContains(result, "focusEvidence=media3-derived")
+        assertContains(result, "sinceFocusEvent=4300ms")
+        assertContains(result, "suppressionReasonCode=0")
+        assertContains(result, "audibility=not-measured")
+        assertFalse(result.contains("private"))
+    }
+
+    @Test
+    fun `arrival timing and finite observations survive export without private fields`() {
+        val examples = listOf(
+            "Android Auto connection entry observed" to
+                "stage=service-bind kind=legacy-browser trusted=unknown elapsedRealtime=120",
+            "Android Auto trace started" to "source=audio-focus-loss elapsedRealtime=100 afterTrace=0",
+            "Muted output route observation requested" to "proofEpoch=3 observation=2 completionPending=true",
+        )
+        examples.forEach { (message, fields) ->
+            val rendered = requireNotNull(
+                AudioRouteLabEvidence.event(
+                    LoggedEvent(
+                        Instant.EPOCH,
+                        LogLevel.Info,
+                        "AndroidAuto",
+                        "$message $fields deviceName=PrivateHeadset controllerPackage=private.package",
+                    ),
+                ),
+            )
+            assertContains(rendered, fields)
+            assertFalse(rendered.contains("PrivateHeadset"))
+            assertFalse(rendered.contains("private.package"))
+        }
+    }
+
+    @Test
     fun `proof stages and Car retirement expose captured scope without private metadata`() {
         val preparation = requireNotNull(
             AudioRouteLabEvidence.event(

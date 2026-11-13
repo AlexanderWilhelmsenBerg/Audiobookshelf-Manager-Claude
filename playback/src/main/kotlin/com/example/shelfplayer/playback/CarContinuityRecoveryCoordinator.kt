@@ -12,6 +12,42 @@ internal class CarContinuityRecoveryCoordinator(
     val gate: CarArrivalResumeGate,
     private val routeRecovery: CarArrivalRouteRecovery = CarArrivalRouteRecovery(),
 ) {
+    internal sealed interface PlayOutcome {
+        val episodeId: Long
+        val attemptOrdinal: Int
+        val phase: CarArrivalResumeGate.Phase
+
+        data class Issued(
+            override val episodeId: Long,
+            override val attemptOrdinal: Int,
+            override val phase: CarArrivalResumeGate.Phase,
+        ) : PlayOutcome
+
+        data class AudibleConfirmed(
+            override val episodeId: Long,
+            override val attemptOrdinal: Int,
+            override val phase: CarArrivalResumeGate.Phase,
+        ) : PlayOutcome
+
+        data class Refused(
+            override val episodeId: Long,
+            override val attemptOrdinal: Int,
+            override val phase: CarArrivalResumeGate.Phase,
+        ) : PlayOutcome
+
+        data class Stale(
+            override val episodeId: Long,
+            override val attemptOrdinal: Int,
+            override val phase: CarArrivalResumeGate.Phase,
+        ) : PlayOutcome
+
+        data class Cancelled(
+            override val episodeId: Long,
+            override val attemptOrdinal: Int,
+            override val phase: CarArrivalResumeGate.Phase,
+        ) : PlayOutcome
+    }
+
     internal data class Assessment(
         val precheck: CarContinuityPlayPrecheck,
         val consumed: CarArrivalResumeGate.ConsumeResult? = null,
@@ -29,12 +65,15 @@ internal class CarContinuityRecoveryCoordinator(
     )
 
     fun observePlayingHeadset(inputs: Inputs) {
-        gate.observePlayingHeadset(
+        val confirmed = gate.observePlayingHeadset(
             inputs.heardRoute,
             inputs.headsetId,
             inputs.generation,
             inputs.selectionSequence,
         )
+        confirmed?.let { target ->
+            onPlayOutcome(PlayOutcome.AudibleConfirmed(target.episodeId, target.attemptOrdinal, target.phase))
+        }
     }
 
     /** Correlate either Media3 platform interruption with the same car-specific boundary policy. */
@@ -67,6 +106,9 @@ internal class CarContinuityRecoveryCoordinator(
     fun isCurrent(target: CarArrivalResumeGate.Target, generation: Long?, selectionSequence: Long): Boolean =
         gate.isCurrent(target, generation, selectionSequence)
 
+    fun hasPendingHeadsetReturn(generation: Long?, selectionSequence: Long): Boolean =
+        gate.pendingHeadsetReturn(generation, selectionSequence) != null
+
     fun remainingWindow(target: CarArrivalResumeGate.Target): Duration? = gate.remainingWindow(target)
 
     fun episodeValid(target: CarArrivalResumeGate.Target): Boolean = gate.episodeValid(target)
@@ -82,27 +124,42 @@ internal class CarContinuityRecoveryCoordinator(
     val isPlayAwaiting: Boolean get() = awaiting != null
 
     fun cancelPending() {
-        // Media3 invokes playWhenReady before isPlaying. Do not erase the diagnostic
-        // claim on our own successful automatic Play before audible playback is observed.
+        // Media3 invokes playWhenReady before isPlaying. Retain the issued-attempt correlation
+        // until active playback and the exact actual route can confirm it.
         gate.cancelPending()
     }
 
     fun cancelAll() {
         gate.cancelAll()
+        val cancelled = awaiting
         awaiting = null
+        cancelled?.let { target ->
+            onPlayOutcome(PlayOutcome.Cancelled(target.episodeId, target.attemptOrdinal, target.phase))
+        }
     }
 
-    fun routeSafetyPause(at: Duration) {
-        gate.onRouteSafetyPause(at)
+    fun routeSafetyPause(at: Duration, inputs: Inputs): CarArrivalResumeGate.Decision? {
+        val rearmed = gate.onRouteSafetyPause(
+            at = at,
+            headsetId = inputs.headsetId,
+            currentGeneration = inputs.generation,
+            explicitSelectionSequence = inputs.selectionSequence,
+            carConnected = inputs.carConnected,
+        )
         awaiting = null
+        return rearmed
     }
 
     fun playbackBecameActive(generation: Long?, selectionSequence: Long): CarArrivalResumeGate.Target? {
         val candidate = awaiting
         awaiting = null
-        return candidate?.takeIf {
+        val confirmed = candidate?.takeIf {
             it.generation == generation && it.explicitSelectionSequence == selectionSequence
         }
+        if (confirmed != null && gate.confirmRecoveryPlayback(confirmed)) {
+            onPlayOutcome(PlayOutcome.AudibleConfirmed(confirmed.episodeId, confirmed.attemptOrdinal, confirmed.phase))
+        }
+        return confirmed
     }
 
     fun clearAwaiting() {
@@ -119,8 +176,13 @@ internal class CarContinuityRecoveryCoordinator(
     }
 
     fun notePlayIssued(target: CarArrivalResumeGate.Target) {
+        gate.markRecoveryPlayIssued(target)
         awaiting = target
+        onPlayOutcome(PlayOutcome.Issued(target.episodeId, target.attemptOrdinal, target.phase))
     }
+
+    /** Optional diagnostics sink; events contain only bounded policy metadata, never the route identity. */
+    var onPlayOutcome: (PlayOutcome) -> Unit = {}
 
     suspend fun secure(
         target: CarArrivalResumeGate.Target,
@@ -157,18 +219,33 @@ internal class CarContinuityRecoveryCoordinator(
         -> {
             discard(target)
             clearAwaiting(target)
+            onPlayOutcome(PlayOutcome.Refused(target.episodeId, target.attemptOrdinal, target.phase))
             Assessment(precheck)
         }
 
         CarContinuityPlayPrecheck.EmptyQueue -> {
             if (gate.cancelRecovery(target)) gate.cancelAll()
             clearAwaiting(target)
+            onPlayOutcome(PlayOutcome.Refused(target.episodeId, target.attemptOrdinal, target.phase))
             Assessment(precheck)
         }
 
         CarContinuityPlayPrecheck.Proceed -> {
             val consumed = gate.consumeRecovery(target, currentGeneration, securedHeadsetId, selectionSequence)
             if (!consumed.accepted) clearAwaiting(target)
+            if (!consumed.accepted) {
+                val outcome = if (consumed.reason in setOf(
+                        CarArrivalResumeGate.Reason.CandidateInvalidated,
+                        CarArrivalResumeGate.Reason.GenerationChanged,
+                        CarArrivalResumeGate.Reason.ExplicitSelectionChanged,
+                    )
+                ) {
+                    PlayOutcome.Stale(target.episodeId, target.attemptOrdinal, target.phase)
+                } else {
+                    PlayOutcome.Refused(target.episodeId, target.attemptOrdinal, target.phase)
+                }
+                onPlayOutcome(outcome)
+            }
             Assessment(precheck, consumed)
         }
     }

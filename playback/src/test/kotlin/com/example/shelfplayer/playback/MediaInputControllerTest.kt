@@ -21,6 +21,7 @@ class MediaInputControllerTest {
         val examples = mapOf(
             "com.google.android.projection.gearhead" to MediaInputController.Caller.AndroidAuto,
             "com.android.bluetooth" to MediaInputController.Caller.BluetoothService,
+            "com.google.android.googlequicksearchbox" to MediaInputController.Caller.GoogleApp,
             "android.media.session.MediaController" to MediaInputController.Caller.Legacy,
             "com.android.systemui" to MediaInputController.Caller.System,
             "private.oem.controller" to MediaInputController.Caller.External,

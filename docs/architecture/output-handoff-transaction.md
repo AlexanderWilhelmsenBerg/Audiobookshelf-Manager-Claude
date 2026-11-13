@@ -9,6 +9,10 @@ checkpoints below explain earlier implementation decisions, not the live PR queu
 
 ## Decision
 
+The [governor continuation](playback-governor.md) adds a common command-arbitration boundary before
+these effects and bounded arrival-episode recovery. It retains this transfer transaction, actual-route
+proof and position bounds; one recovery claim still permits only one raw Play.
+
 Keep OutputIntentOwner as the intent/selection authority, the existing Probe as the sole transient
 claim/checkpoint owner, and PlaybackVolumeEffects as the volume writer. Retain one ExoPlayer,
 MediaLibrarySession, endpoint registry and Media3 focus owner. The transaction completion driver owns
@@ -35,6 +39,17 @@ For a real destination change:
 The same driver serves implicit headset probes and explicit transfers. Paused selection does not
 start playback. An existing authorized Play owns any start; the transaction never manufactures Play.
 Waiting is event-driven with bounded failure deadlines, not a fixed settling delay.
+
+An implicit headset probe also owns up to five fresh route-observation requests, nominally 20, 50,
+100, 200 and 300ms after its first observed playing state. These cover a track that becomes readable
+after that callback without another routing event. `MutedRouteChecks` supplies only the finite
+schedule and scoped reads; the guard retains the job and budget marker on the existing probe. Each request rechecks
+attachment, selection, command/book/profile checkpoint authority, eligibility and Play intent.
+Quiescence, cancellation and completion cancel the job; duplicate callbacks cannot restart it.
+The requests feed the existing router/transaction and never authorize audio by elapsed time. Existing
+timeouts, exact post-seek output proof and position limits are unchanged. Explicit transfers do not
+use this burst, and ordinary unmuted playback performs no periodic checks. Observation ordinal and
+proof epoch distinguish this wake-up from normal routing callbacks in diagnostics.
 
 APK2247 confirmed why preparation needs a lead-in: the first explicit Headset request had correct
 destination evidence but became READY 68ms past the held point, exceeding the unchanged 50ms allowance.

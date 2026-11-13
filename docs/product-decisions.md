@@ -438,6 +438,39 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-13 owner refinement (interrupted arrival Play).** After an automatic arrival Play was
+issued but before exact-track and active-playback confirmation, a subsequent Media3 focus-loss
+observation may authorize another attempt while Auto is positively connected. Retain the original
+trusted headset, generation and selection, original 30-second deadline and maximum three Play claims.
+Wait 1.5 seconds before attempt two and 3 seconds before attempt three, then recheck authorization
+and use the existing muted route proof. Duplicate callbacks cannot restart the delay. Noisy/unplug
+events cannot create this retry and cancel a queued retry. Pause, Stop, seek, output/book/profile
+change, departure and teardown retain precedence. This supersedes the failed/unproven rearm restriction
+below only for an issued Play interrupted by focus loss. Media3 retains focus ownership. Timing is an
+experimental recovery policy, with physical-car acceptance pending and focus requester still unknown.
+
+**2026-11-08 owner refinement (brief headset return).** A BookWave route-safety pause interrupting
+verified healthy headset playback may authorize one recovery of that exact trusted headset within
+two seconds of the pause, without an Auto boundary. Reuse the existing single-use coordinator claim,
+route wait and muted actual-track verification. No fallback to a similarly named device or sole
+Bluetooth candidate. Repeated callbacks cannot extend the deadline. User Pause/Stop, new selection,
+book/profile/player changes, focus loss and identity loss cancel this short attempt. A noisy notification
+during the same gap may retain only the still-unconsumed claim and cannot extend its deadline.
+The longer car-boundary recovery remains separately qualified; ordinary connection is not autoplay.
+This supersedes the boundary-only restriction below solely for this app-issued safety interruption.
+
+**2026-11-07 owner refinement (governor continuation).** The approved implementation plan supersedes
+the original one-claim-per-arrival restriction below with at most three single-use automatic Play claims
+within the same original 30-second episode. A further claim requires a distinct route-safety interruption
+after actual same-headset playback was confirmed for the preceding claim, connected Auto and unchanged
+trusted identity/book/selection scope. It does not require a second connection event. Duplicates,
+inventory return and failed/unproven attempts cannot rearm or extend the deadline. Departure pairing
+uses its own fresh interruption timestamp. Listener Pause and newer intent retain precedence.
+All playback orchestration is coordinated through a service-scoped governor and focused helpers,
+retaining existing durable owners, one player/session and Media3 focus ownership. Deliver on a separate
+draft PR dependent on PR305. [Architecture](architecture/playback-governor.md);
+[implementation and acceptance](testing/2026-11-07-playback-governor.md). Hardware acceptance remains open.
+
 **Owner decision:** 2026-11-01. Optional Nearby devices access is requested only from the phone output
 chooser to recognize an exact headset across Android handle churn. No scan/location access; denial
 preserves basic playback and explicit output selection. Permission never starts playback. Full unique

@@ -1,5 +1,15 @@
 # Audiobookshelf API compatibility
 
+The 2026-11-08 public system-audio probe adds opt-in local Bluetooth profile and audio observations.
+No ABS endpoint, schema, permission or dependency changes. Existing Nearby Devices permission gates
+peer correlation; missing/ambiguous evidence remains unavailable. Hardware acceptance is pending:
+[scope and regression evidence](testing/2026-11-08-system-audio-probe.md).
+
+The 2026-11-08 brief-headset-return candidate adds only a local two-second recovery allowance after
+an app-issued safety pause. It adds no server contract, schema, permission, dependency or tested server
+version. Existing optional Bluetooth identity access is required; missing identity fails closed.
+See [software verification and device acceptance](testing/2026-11-08-headset-return.md).
+
 **Classification:** Current captured-contract matrix with explicitly source-scoped evidence.
 **Reconciled:** 2026-10-07; server verification dates below are unchanged. PR #238 is merged. Phase 2 Garmin delivery uses the existing Media3/profile/lock owners and adds no ABS endpoint, response field, Room schema or tested server version.
 
@@ -7,6 +17,13 @@ The 2026-11-06 PR305 routing continuation changes only local playing-track evide
 It adds no server endpoint, response field, schema, permission or tested Audiobookshelf version.
 Platform compatibility and pending device acceptance are recorded in the
 [continuity test log](testing/2026-11-05-delayed-auto-cleanup.md).
+
+The 2026-11-07 dependent governor candidate changes local command arbitration and bounded recovery.
+It adds no endpoint, response field, schema, permission or tested server version. See its
+[implementation and acceptance record](testing/2026-11-07-playback-governor.md).
+Its early Auto observation follow-up performs bounded reads of the existing AndroidX car connection
+provider, with no new permissions, audio pipeline or server contract. Earlier provider visibility and
+focus-owner timing remain [device investigations](testing/2026-11-07-early-auto-observation.md).
 
 `PRODUCT_SPEC 19` requires this file to record the server versions tested, the capabilities detected,
 known endpoint differences, the fixtures used, and the date last verified.
@@ -1810,3 +1827,8 @@ The existing profile/nonce/foreground guards apply. Missing anchor/session retur
 Legacy watch-entry login remains available, but Android no longer offers password entry.
 
 2026-10-09: Garmin SDK 2.4.0 per-app unregister clears the device listener table; survivor re-registration is required. Native sync progress exposes percentage only; Companion cannot exitTo an Audio Provider. [Evidence and acceptance](testing/2026-10-09-garmin-download-recovery.md).
+
+2026-11-08: The public probe expansion uses existing optional Bluetooth identity access and public
+Android audio/input observations. LE profile observation is API33-gated; no SDK/dependency, server API,
+database schema or permission change. Event/timing exports are additive and diagnostic-only; hardware
+acceptance is pending. [Scope, limitations and tests](testing/2026-11-08-public-probe-expansion.md).
