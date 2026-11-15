@@ -29,6 +29,7 @@ import kotlin.test.assertTrue
 private const val CALLBACK_TIMEOUT_SECONDS = 5L
 
 @RunWith(RobolectricTestRunner::class)
+@android.annotation.SuppressLint("UseSdkSuppress") // Robolectric @Config selects SDK, not an instrumented runner.
 @RequiresApi(34)
 @Config(
     sdk = [34],

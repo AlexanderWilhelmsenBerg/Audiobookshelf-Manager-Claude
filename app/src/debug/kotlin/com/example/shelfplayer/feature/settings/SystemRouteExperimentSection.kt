@@ -43,9 +43,10 @@ internal fun SystemRouteExperimentSection(viewModel: SystemRouteExperimentViewMo
     SystemRouteExperimentControls(
         state = state,
         onToggle = {
-            if (state.status == SystemRouteStatus.Closed ||
-                state.status == SystemRouteStatus.PermissionRequired ||
-                state.status == SystemRouteStatus.Unavailable
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+                (state.status == SystemRouteStatus.Closed ||
+                    state.status == SystemRouteStatus.PermissionRequired ||
+                    state.status == SystemRouteStatus.Unavailable)
             ) {
                 permission.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN))
             } else {
