@@ -11,6 +11,7 @@ import kotlin.time.Duration.Companion.hours
  */
 internal object AudioRouteLabEvidence {
     private val allowed = mapOf(
+        "Manual system route experiment" to "system-route-experiment",
         "Playback focus observation" to "focus-observation",
         "Android Auto connection entry observed" to "connection-entry",
         "Android Auto trace started" to "auto-trace-start",
@@ -37,6 +38,7 @@ internal object AudioRouteLabEvidence {
         "Muted output verification refused excessive post-seek clock movement" to "position-refusal",
     )
     private val safeFields = setOf(
+        "routeAlias", "elapsedMs",
         "keyCode", "keyAction", "keyInputId", "keyInputSource", "inputOrigin",
         "headsetNameMatches", "requested", "controllerKind", "reason", "phase",
         "status", "kind", "event", "source", "projection", "isPlaying", "playWhenReady",

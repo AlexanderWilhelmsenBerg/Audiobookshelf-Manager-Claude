@@ -438,6 +438,16 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-15 owner refinement (manual diagnostic experiment).** The owner approved the proposed
+diagnostic system-route spike after review of PR #307's hardware findings. Debug builds may declare
+`BLUETOOTH_SCAN` with `neverForLocation`, requesting it with `BLUETOOTH_CONNECT` only when explicitly
+enabling the Audio Route Lab experiment. No discovery, active scanning or location access is permitted.
+An explicit per-route action may request a system-wide Bluetooth media transfer, with one request per
+enabled session, normal audio mode required, and callback/timeout diagnostics using process-local aliases.
+The permission and transfer adapter are absent from release and benchmark builds. This is not approval
+for automatic route take-back or early automatic Play inferred from car Bluetooth connectivity.
+See [procedure and limitations](testing/2026-11-15-system-route-experiment.md). Hardware acceptance pending.
+
 **2026-11-13 owner refinement (interrupted arrival Play).** After an automatic arrival Play was
 issued but before exact-track and active-playback confirmation, a subsequent Media3 focus-loss
 observation may authorize another attempt while Auto is positively connected. Retain the original

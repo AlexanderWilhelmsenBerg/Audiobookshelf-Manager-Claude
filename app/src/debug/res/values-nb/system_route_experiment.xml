@@ -1,0 +1,19 @@
+<resources>
+    <string name="system_route_title">Systemets Bluetooth-ruter (feilsøking)</string>
+    <string name="system_route_explanation">Bruk bare mens du står parkert. Aktivering ber om tilgang til enheter i nærheten; ingen skanning eller posisjon brukes. Bytte av rute påvirker all medielyd på telefonen. Forsøket trykker aldri på Spill av og endrer ikke valgt utgang i BookWave. Start diagnostikkopptak først for å lagre resultatet. Én forespørsel per økt; stopp og aktiver igjen for et nytt forsøk.</string>
+    <string name="system_route_enable">Aktiver ruteforsøk</string>
+    <string name="system_route_disable">Stopp ruteforsøk</string>
+    <string name="system_route_empty">Android viser ingen Bluetooth-systemruter til BookWave.</string>
+    <string name="system_route_transfer">Flytt telefonens medielyd til %1$s</string>
+    <string name="system_route_current">Systemets valgte rute</string>
+    <string name="system_route_closed">Forsøket er av</string>
+    <string name="system_route_unsupported">Krever Android 14 eller nyere</string>
+    <string name="system_route_permission">Forsøket krever tilgang til enheter i nærheten.</string>
+    <string name="system_route_observing">Observerer systemruter; intet bytte forespurt</string>
+    <string name="system_route_requested">Venter på svar fra Android om rutebyttet</string>
+    <string name="system_route_selected">Android meldte at målet er valgt. Dette beviser ikke hørbar avspilling.</string>
+    <string name="system_route_failed">Android avviste rutebyttet</string>
+    <string name="system_route_timeout">Intet samsvarende svar innen fem sekunder. Prøver ikke igjen.</string>
+    <string name="system_route_unavailable">Systemruting er utilgjengelig</string>
+    <string name="system_route_call_blocked">Rutebytte blokkert fordi Androids lydmodus ikke er normal</string>
+</resources>

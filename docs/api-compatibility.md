@@ -1,5 +1,10 @@
 # Audiobookshelf API compatibility
 
+The 2026-11-15 debug-only manual system-route experiment adds no ABS endpoint, schema or dependency.
+It requests optional Nearby devices scan permission without scanning to test public system routing on
+Android 14+. Release/benchmark permission sets are unchanged. Hardware support and acoustic acceptance
+remain pending. See the [stationary procedure](testing/2026-11-15-system-route-experiment.md).
+
 The 2026-11-08 public system-audio probe adds opt-in local Bluetooth profile and audio observations.
 No ABS endpoint, schema, permission or dependency changes. Existing Nearby Devices permission gates
 peer correlation; missing/ambiguous evidence remains unavailable. Hardware acceptance is pending:
