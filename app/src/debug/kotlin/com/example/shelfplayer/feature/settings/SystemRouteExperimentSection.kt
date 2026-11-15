@@ -21,6 +21,12 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.playback.SystemRouteExperimentState
 import com.example.shelfplayer.playback.SystemRouteStatus
 
+private val startableStatuses = setOf(
+    SystemRouteStatus.Closed,
+    SystemRouteStatus.PermissionRequired,
+    SystemRouteStatus.Unavailable,
+)
+
 /** User-driven diagnostic only. Dismissal unregisters observers and never starts playback. */
 @Composable
 internal fun SystemRouteExperimentSection(viewModel: SystemRouteExperimentViewModel = hiltViewModel()) {
@@ -44,9 +50,7 @@ internal fun SystemRouteExperimentSection(viewModel: SystemRouteExperimentViewMo
         state = state,
         onToggle = {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
-                (state.status == SystemRouteStatus.Closed ||
-                    state.status == SystemRouteStatus.PermissionRequired ||
-                    state.status == SystemRouteStatus.Unavailable)
+                state.status in startableStatuses
             ) {
                 permission.launch(arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN))
             } else {
@@ -73,12 +77,7 @@ internal fun SystemRouteExperimentControls(
     ) {
         Text(
             stringResource(
-                if (state.status in setOf(
-                        SystemRouteStatus.Closed,
-                        SystemRouteStatus.PermissionRequired,
-                        SystemRouteStatus.Unavailable,
-                    )
-                ) {
+                if (state.status in startableStatuses) {
                     R.string.system_route_enable
                 } else {
                     R.string.system_route_disable
