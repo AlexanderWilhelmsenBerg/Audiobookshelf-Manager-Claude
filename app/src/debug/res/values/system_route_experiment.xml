@@ -1,10 +1,10 @@
 <resources>
     <string name="system_route_title">System Bluetooth route experiment (debug)</string>
-    <string name="system_route_explanation">Use only while parked. Enabling requests Nearby devices access; no scanning or location is used. Moving a route affects all phone media. This experiment never presses Play or changes BookWave’s selected output. Enable diagnostic recording first to capture results. One request per session; stop and enable again for another trial.</string>
+    <string name="system_route_explanation">Use only while parked. Enabling requests Nearby devices access; no scanning or location is used. Moving a route affects other players on the phone. This experiment never presses Play or changes BookWave’s selected output. Enable diagnostic recording first to capture results. One request per session; stop and enable again for another trial.</string>
     <string name="system_route_enable">Enable route experiment</string>
     <string name="system_route_disable">Stop route experiment</string>
     <string name="system_route_empty">Android exposes no Bluetooth system routes to BookWave.</string>
-    <string name="system_route_transfer">Move phone media to %1$s</string>
+    <string name="system_route_transfer">Move phone playback to %1$s</string>
     <string name="system_route_current">System-selected route</string>
     <string name="system_route_closed">Experiment off</string>
     <string name="system_route_unsupported">Requires Android 14 or later</string>

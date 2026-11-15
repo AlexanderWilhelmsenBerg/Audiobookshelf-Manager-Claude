@@ -35,7 +35,7 @@ is evidence to test, not a guarantee of vendor behavior. Passive LIVE_AUDIO subs
    enabling it leaves narration and the selected destination alone. Names appear only on this local UI.
 4. Connect the car while parked. Note which routes Android exposes. If none appear, record that outcome;
    the app must not guess a target from its name or create a fallback speaker destination.
-5. While the car owns media audio, explicitly press “Move phone media to…” for the intended headset.
+5. While the car owns media audio, explicitly press “Move phone playback to…” for the intended headset.
    This changes the phone's system media routing and can affect other apps. It never presses Play.
 6. Export unified diagnostics and note whether sound returned, the perceived silence, and any manual
    Play or output selections. Android's transfer callback is distinct from actual-track route proof and
@@ -56,3 +56,23 @@ remain in memory. Enabling is not persisted across app/service recreation.
 Hardware acceptance is pending. This change does not establish that inactive Bluetooth routes are visible
 on Samsung, that transfer succeeds, that focus is retained, or that any particular silence duration is
 achievable. Car HFP connectivity is not used to infer the focus requester or authorize automatic Play.
+
+## Software verification, 2026-11-15
+
+- `./gradlew ktlintFormat verifyDebug -Pshelfplayer.warningsAsErrors=true` passed, including lint,
+  detekt, unit tests, coverage checks, debug assembly and release/benchmark compilation.
+- 1,239 playback debug tests passed without failures/errors/skips. Nine tests added across
+  `SystemRouteExperimentTest`, `PlatformSystemRoutePortTest`, `SystemRouteExperimentControlsTest`
+  and the privacy export regression in `AudioRouteLabEvidenceTest`.
+- Counterfactual: removing the single-use guard caused the duplicate-request test to fail; the guard
+  was restored before the passing gate.
+- Merged manifests were inspected: scan permission present with `neverForLocation` in debug, absent
+  from release and benchmark. Caller checks follow Audio Route Lab → debug section → ViewModel → port.
+- Repowise's incremental review analyzed all 12 eligible code files. Two structural advisories remain
+  in the debug controller (`open` complexity 9, `transfer` 11), covering session checks, permission/mode
+  validation and expected platform exceptions. Existing code scores did not worsen. This is advisory
+  structure evidence; test reachability recommendations are inferred. jCodeMunch's main index supplied
+  navigation context; exact candidate files were reviewed locally.
+
+Exact remote SHA and normal PR CI are recorded in PR #308. No hardware, acoustic, TalkBack or physical
+large-font acceptance is claimed by these software checks.
