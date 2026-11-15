@@ -104,8 +104,13 @@ class PlatformSystemRoutePortTest {
     @Suppress("UNUSED_PARAMETER") // Shadow signatures must match the framework's callback API.
     class RouterShadow {
         @Implementation fun getRoutes() = routes
+
         @Implementation fun getSystemController() = controller
-        @Implementation fun transferTo(route: MediaRoute2Info) { requests += route }
+
+        @Implementation fun transferTo(route: MediaRoute2Info) {
+            requests += route
+        }
+
         @Implementation fun registerRouteCallback(
             executor: Executor,
             callback: MediaRouter2.RouteCallback,
@@ -114,18 +119,23 @@ class PlatformSystemRoutePortTest {
             routeCallback = callback
             preference = discovery
         }
+
         @Implementation fun registerTransferCallback(executor: Executor, callback: MediaRouter2.TransferCallback) {
             transferCallback = callback
         }
+
         @Implementation fun registerControllerCallback(executor: Executor, callback: MediaRouter2.ControllerCallback) {
             controllerCallback = callback
         }
+
         @Implementation fun unregisterRouteCallback(callback: MediaRouter2.RouteCallback) {
             if (routeCallback == callback) routeCallback = null
         }
+
         @Implementation fun unregisterTransferCallback(callback: MediaRouter2.TransferCallback) {
             if (transferCallback == callback) transferCallback = null
         }
+
         @Implementation fun unregisterControllerCallback(callback: MediaRouter2.ControllerCallback) {
             if (controllerCallback == callback) controllerCallback = null
         }
@@ -140,14 +150,18 @@ class PlatformSystemRoutePortTest {
             var routeCallback: MediaRouter2.RouteCallback? = null
             var transferCallback: MediaRouter2.TransferCallback? = null
             var controllerCallback: MediaRouter2.ControllerCallback? = null
-            @JvmStatic @Implementation fun getInstance(context: Context): MediaRouter2 = instance
+
+            @JvmStatic @Implementation
+            fun getInstance(context: Context): MediaRouter2 = instance
         }
     }
 
     @Implements(MediaRouter2.RoutingController::class)
     class ControllerShadow {
         @Suppress("FunctionOnlyReturningConstant") // Framework method, fixed identity of the system test controller.
-        @Implementation fun getId() = "system"
+        @Implementation
+        fun getId() = "system"
+
         @Implementation fun getSelectedRoutes() = RouterShadow.selected
     }
 }

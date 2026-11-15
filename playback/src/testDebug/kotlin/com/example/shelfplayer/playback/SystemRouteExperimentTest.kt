@@ -102,7 +102,11 @@ class SystemRouteExperimentTest {
             opens++
             complete = result
         }
-        override fun transfer(id: String) { requests += id }
-        override fun close() { closes++ }
+        override fun transfer(id: String) {
+            requests += id
+        }
+        override fun close() {
+            closes++
+        }
     }
 }

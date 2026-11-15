@@ -15,8 +15,16 @@ import javax.inject.Inject
 import kotlin.time.Duration
 
 enum class SystemRouteStatus {
-    Closed, Unsupported, PermissionRequired, Observing, Requested, Selected, Failed, TimedOut,
-    Unavailable, CallBlocked,
+    Closed,
+    Unsupported,
+    PermissionRequired,
+    Observing,
+    Requested,
+    Selected,
+    Failed,
+    TimedOut,
+    Unavailable,
+    CallBlocked,
 }
 
 data class SystemRouteRow(val alias: String, val displayName: String, val selected: Boolean)
@@ -177,6 +185,8 @@ class SystemRouteExperiment internal constructor(
         mutableState.value = state.value.copy(status = status)
         if (status != SystemRouteStatus.Selected && status != SystemRouteStatus.TimedOut &&
             status != SystemRouteStatus.Failed
-        ) emit(status, 0, 0)
+        ) {
+            emit(status, 0, 0)
+        }
     }
 }
