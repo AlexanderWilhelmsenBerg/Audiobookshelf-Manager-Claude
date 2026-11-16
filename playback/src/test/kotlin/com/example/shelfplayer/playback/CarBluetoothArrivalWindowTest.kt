@@ -59,6 +59,21 @@ class CarBluetoothArrivalWindowTest {
     }
 
     @Test
+    fun `one take-back per car link, independent of the arrival inference`() {
+        assertFalse(window.claimTakeBack(), "no car link, no take-back")
+        window.onCarHandsFreeConnected("car")
+        assertTrue(window.consume())
+
+        assertTrue(window.claimTakeBack())
+        assertFalse(window.claimTakeBack())
+
+        now = 40.seconds
+        window.onCarHandsFreeConnected("car")
+        now = 40.seconds + CarBluetoothArrivalWindow.LIFETIME
+        assertFalse(window.claimTakeBack(), "an expired window cannot be claimed")
+    }
+
+    @Test
     fun `a clock that moved backwards cannot reopen the window`() {
         now = 10.seconds
         window.onCarHandsFreeConnected("car")

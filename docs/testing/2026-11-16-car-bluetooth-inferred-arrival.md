@@ -40,6 +40,48 @@ bind finds the claim already issued and cannot issue a second Play. Each evaluat
 The gate also logs `Car continuity kept headset through a measured other route` when the two-second
 grace from this PR resolves a speaker sample as part of an interruption.
 
+## Automatic take-back experiment (debug builds only)
+
+APK 2277 ran the inferred arrival on hardware: the window opened, the inference fired 1.6 seconds before
+Auto's bind, and Play was issued 0.05 seconds after the headset returned. The pause was 3.5 seconds, the
+time the car held the media device. In the previous run on an older build the car's media profile never
+connected and the pause was 2.0 seconds.
+
+`HeadsetTakeBack` is a seam in the main source set; release builds bind `NoHeadsetTakeBack`. In debug
+builds `SystemRouteHeadsetTakeBack` uses the platform router adapter from the system-route lab:
+
+- While BookWave measures its own track on the headset, it remembers the one Bluetooth system route
+  Android has selected. Nothing is matched by name.
+- On a route-safety pause that yields a trusted return claim, inside an open car window, the service asks
+  for one take-back per car link.
+- The request is made only if both Nearby devices permissions are granted, audio mode is normal, and the
+  remembered route is listed and not selected.
+- Each attempt logs `Headset take-back experiment` with `outcome` (`Requested`, `Selected`, `Failed`,
+  `TimedOut`, `CallBlocked`, `PermissionRequired`, `HeadsetRouteUnknown`, `HeadsetRouteAbsent`,
+  `AlreadySelected`, `Unavailable`), a Bluetooth route count and an elapsed time. No id or name is logged.
+
+The same run showed the two-second return claim issuing a muted Play 32 ms after the safety pause, while
+the displaced headset was still listed; the track went to the car's Bluetooth output and the proof was
+refused. The claim now waits until the output inventory's membership changes, or 0.3 seconds, first.
+
+Regression evidence for this part:
+
+- `SystemRouteHeadsetTakeBackTest` (9, debug): requests only the remembered route, reports the matching
+  selection's duration, ignores other selections and late timeouts, refuses unknown, absent, selected or
+  ambiguous routes, blocks on a call or missing permission, never adopts the car's route after
+  displacement.
+- `PlaybackServiceHeadsetTakeBackTest` (4): one take-back per car link through the real service
+  callbacks, none without a car link, the return claim waits while the displaced headset is listed, and
+  still probes after 0.3 seconds when the inventory never changes.
+- `CarBluetoothArrivalWindowTest`: one take-back claim per link, independent of the arrival inference.
+- Counterfactuals: removing the inventory wait or the take-back call made the matching test fail.
+
+Device acceptance for this part: repeat step 2 above with a debug build. In the export expect
+`Headset take-back experiment outcome=Requested` right after the `routeSafety` pause, then
+`outcome=Selected` with its elapsed time, then the headset returning and one verified resume. If the
+outcome is `PermissionRequired`, enable the experiment once in the Audio Route Lab to grant access. If it
+is `HeadsetRouteUnknown`, the phone did not report a single selected Bluetooth route while playing.
+
 ## Not covered
 
 - The car holding media audio for two to four seconds after it connects. No resume can start before the

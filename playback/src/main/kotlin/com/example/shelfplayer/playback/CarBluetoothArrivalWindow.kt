@@ -17,12 +17,14 @@ internal class CarBluetoothArrivalWindow(private val now: () -> Duration) {
     private var openedAt: Duration? = null
     private var peer: String? = null
     private var consumed = false
+    private var takeBackClaimed = false
 
     /** [peerKey] is a process-private correlation token; it is compared, never logged or stored elsewhere. */
     fun onCarHandsFreeConnected(peerKey: String?) {
         openedAt = now()
         peer = peerKey
         consumed = false
+        takeBackClaimed = false
     }
 
     /** The same car leaving ends its window; an unrelated or unreadable peer does not. */
@@ -41,10 +43,19 @@ internal class CarBluetoothArrivalWindow(private val now: () -> Duration) {
         return true
     }
 
+    /** One route take-back per car link, independent of whether the arrival inference was spent. */
+    fun claimTakeBack(): Boolean {
+        val open = openedAt?.let { now() - it }?.let { it >= Duration.ZERO && it < LIFETIME } == true
+        if (!open || takeBackClaimed) return false
+        takeBackClaimed = true
+        return true
+    }
+
     fun close() {
         openedAt = null
         peer = null
         consumed = false
+        takeBackClaimed = false
     }
 
     internal companion object {

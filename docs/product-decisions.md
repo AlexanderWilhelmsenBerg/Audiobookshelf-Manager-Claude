@@ -438,6 +438,23 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-16 owner refinement (automatic take-back experiment, debug builds only).** With the wait for
+Auto's bind removed, the remaining pause equals how long the car's own Bluetooth holds the active media
+device: measured from nothing to 3.8 seconds across runs. The owner declined the manual transfer button
+and approved testing an automatic take-back in a real arrival. In debug builds only, when a trusted,
+verified headset is paused for route safety within 30 seconds of a car-class hands-free link connecting,
+BookWave may ask Android's system media router once per link to make that headset the active media
+route again. The headset's route is the one Android had selected while BookWave measured its own track
+on that headset; names are never matched. No request is made during a call, without both Nearby devices
+permissions, or when that route is absent or already selected. The transfer moves all media on the phone.
+It never presses Play, changes output intent or touches focus: the existing route wait and muted
+actual-track proof still decide the resume. Release and benchmark builds bind a no-op and do not declare
+`BLUETOOTH_SCAN`. This supersedes the "not approval for automatic route take-back" sentence in the
+2026-11-15 entry for debug builds only; shipping it needs a further decision on the scan permission.
+The short return claim also now waits for the inventory to change, or 0.3 seconds, before probing.
+[Implementation and acceptance](testing/2026-11-16-car-bluetooth-inferred-arrival.md). Hardware
+acceptance pending.
+
 **2026-11-16 owner refinement (car-Bluetooth inferred arrival).** Android Auto was measured requesting
 audio focus three or more seconds before its controller binds, and the car's hands-free Bluetooth link
 about ten seconds before that request. A car-class hands-free link (Bluetooth device class car audio)
