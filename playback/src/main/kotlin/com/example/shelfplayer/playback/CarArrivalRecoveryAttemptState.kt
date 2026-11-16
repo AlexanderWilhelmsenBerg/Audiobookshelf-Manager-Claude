@@ -21,7 +21,12 @@ internal class CarArrivalRecoveryAttemptState {
 
     val nextAttemptOrdinal: Int get() = automaticPlayClaims + 1
 
+    /** Sticky for the episode: its arrival was inferred from a car hands-free link, not an Auto boundary. */
+    var inferredArrival = false
+        private set
+
     fun issue(target: CarArrivalResumeGate.Target) {
+        inferredArrival = inferredArrival || target.inferredArrival
         issuedTarget = target
         playIssuedTarget = null
         routeProofTarget = null

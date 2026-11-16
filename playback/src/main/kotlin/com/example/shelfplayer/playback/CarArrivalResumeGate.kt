@@ -69,6 +69,7 @@ internal class CarArrivalResumeGate private constructor(
         RecoveryExpired,
         ConfirmedEpisodeInterrupted,
         UnconfirmedPlayInterrupted,
+        CarBluetoothMatchedFocusLoss,
         SafetyPausedHeadsetReturn,
         Eligible,
     }
@@ -86,6 +87,7 @@ internal class CarArrivalResumeGate private constructor(
         val episodeId: Long = 0,
         val attemptOrdinal: Int = 1,
         val retryAfterFocusLoss: Boolean = false,
+        val inferredArrival: Boolean = false,
     )
 
     internal data class Decision(val phase: Phase, val status: Status, val reason: Reason, val target: Target? = null)
@@ -178,15 +180,8 @@ internal class CarArrivalResumeGate private constructor(
      */
     private var playingHeadset: CarContinuityIdentity? = null
 
-    /**
-     * First positive measurement of another route while [playingHeadset] was still owned.
-     *
-     * APK 2272 measured the playing track on the phone speaker for tens of milliseconds while Android swapped
-     * the active Bluetooth media device, immediately before the headset endpoint left the inventory. One such
-     * sample is not a listener's route move: it is resolved by the safety pause that follows, or becomes a
-     * real move only when no interruption arrives within [DISPLACEMENT_GRACE].
-     */
-    private var displacedSince: Duration? = null
+    /** One measured other-route sample is settled by the interruption that follows, not treated as a move. */
+    internal val displacement = HeadsetDisplacementGrace(now)
 
     /** Refreshes stable transition evidence only from actual playing-route observations. */
     fun observePlayingHeadset(
@@ -211,31 +206,20 @@ internal class CarArrivalResumeGate private constructor(
         // Inventory churn can replace the live heard row with a speaker policy prediction while the
         // AudioTrack is unresolved. That is neither audible progress nor proof of a route move.
         if (identity == null && heardRoute?.evidence != RouteHeardEvidence.ActualAudioTrackWhilePlaying) return null
-        if (identity == null && isWithinDisplacementGrace()) return null
-        displacedSince = null
+        if (identity == null && playingHeadset != null && displacement.holds()) return null
+        displacement.clear()
         requiresFreshPlaybackEvidence = false
         safetyPausedAt = null
         playingHeadset = identity
         return confirmObservedHeadset(identity, evidence == RouteHeardEvidence.ActualAudioTrackWhilePlaying)
     }
 
-    /** Starts the grace on the first other-route sample; later samples cannot extend it. */
-    private fun isWithinDisplacementGrace(): Boolean {
-        if (playingHeadset == null) return false
-        val since = displacedSince ?: now().also { displacedSince = it }
-        return now() - since in Duration.ZERO..<DISPLACEMENT_GRACE
-    }
-
     /** A measured other route that outlived the grace without an interruption was a genuine route move. */
     private fun settleDisplacement(at: Duration, interruption: Boolean) {
-        val since = displacedSince ?: return
-        val recent = at - since in Duration.ZERO..<DISPLACEMENT_GRACE
-        // A car boundary is not an interruption of playback; leave a recent sample undecided.
-        if (recent && !interruption) return
-        displacedSince = null
-        if (recent) return
-        playingHeadset = null
-        qualifiedEpisode = null
+        if (displacement.settle(at, interruption)) {
+            playingHeadset = null
+            qualifiedEpisode = null
+        }
     }
 
     private fun confirmObservedHeadset(identity: CarContinuityIdentity?, actualTrack: Boolean): Target? {
@@ -433,6 +417,25 @@ internal class CarArrivalResumeGate private constructor(
         } else {
             matchArrivalFocus(candidate, arrivedAt, currentGeneration, explicitSelectionSequence)
         }
+    }
+
+    /**
+     * PD-009 refinement 2026-11-16: a car-class hands-free link that connected moments ago, plus this
+     * measured focus loss of a trusted playing headset, stands in for the Auto boundary.
+     *
+     * Android Auto was measured requesting focus three seconds before its controller binds. This never arms
+     * on its own: it needs the pending trusted focus candidate, and a failed check leaves that candidate for
+     * the real boundary to judge. The caller owns the Bluetooth window and the audio-mode check.
+     */
+    fun onInferredCarArrival(at: Duration, generation: Long?, sequence: Long): Decision? {
+        val focus = focusCandidate?.takeIf { it.phase == Phase.Arrival && it.deadline != null }
+        val episode = qualifiedEpisode?.takeIf { it.awaitsFirstClaim(focus?.identity) }
+        val supported = focus != null && episode != null &&
+            evidence.supportsInferredArrival(focus.identity, focus.at, focus.deadline, at, generation, sequence)
+        if (!supported) return null
+        focusCandidate = null
+        val target = episode.issueTarget(inferredArrival = true).also { activeRecovery = it }
+        return Decision(Phase.Arrival, Status.Ready, Reason.CarBluetoothMatchedFocusLoss, target)
     }
 
     private fun armFirstArrival(
@@ -712,7 +715,7 @@ internal class CarArrivalResumeGate private constructor(
         qualifiedEpisode = null
         requiresFreshPlaybackEvidence = true
         playingHeadset = null
-        displacedSince = null
+        displacement.clear()
     }
 
     private fun currentPlayingHeadset(
@@ -819,8 +822,5 @@ internal class CarArrivalResumeGate private constructor(
          */
         val DEFAULT_PAIRING_WINDOW: Duration = 6.seconds
         val QUALIFIED_ARRIVAL_WINDOW: Duration = 30.seconds
-
-        /** Matches the router's missing-headset grace; a longer-lived other route is a real move. */
-        val DISPLACEMENT_GRACE: Duration = 2.seconds
     }
 }

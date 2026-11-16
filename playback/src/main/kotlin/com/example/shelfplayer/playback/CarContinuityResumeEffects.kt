@@ -38,8 +38,10 @@ internal class CarContinuityResumeEffects(
     private var pending: Job? = null
     private var pendingTarget: CarArrivalResumeGate.Target? = null
 
+    /** A queued retry or inferred-arrival settle belongs to its focus loss; a duplicate callback keeps it. */
     fun hasPendingFocusRetry(): Boolean = pending?.isActive == true && pendingTarget?.let {
-        it.retryAfterFocusLoss && recovery.isCurrent(it, owner.currentGeneration, selectionSequence())
+        (it.retryAfterFocusLoss || it.inferredArrival) &&
+            recovery.isCurrent(it, owner.currentGeneration, selectionSequence())
     } == true
 
     fun onArrival(decision: CarArrivalResumeGate.Decision?) = scheduleBoundary(decision, preserveHeadset = true)
@@ -234,6 +236,12 @@ internal class CarContinuityResumeEffects(
                 delay(backoff)
                 if (!recovery.isCurrent(target, owner.currentGeneration, selectionSequence())) return
             }
+            if (target.inferredArrival) {
+                // Android Auto was measured requesting focus two or three times within 0.3 s as projection
+                // starts. Let that burst pass, or the first Play is taken straight back.
+                delay(INFERRED_ARRIVAL_SETTLE)
+                if (!recovery.isCurrent(target, owner.currentGeneration, selectionSequence())) return
+            }
             if (currentPlayer()?.playWhenReady == true) {
                 log("Car lifecycle left active playback intent with Media3")
                 return
@@ -336,4 +344,9 @@ internal class CarContinuityResumeEffects(
      * allow-listed fields through this callback, never owning a second diagnostic timeline.
      */
     private fun log(message: String, fields: List<LogField> = emptyList()) = trace(message, fields)
+
+    internal companion object {
+        /** Measured burst was 46 ms and 256 ms wide; this is the only wait added before an inferred resume. */
+        val INFERRED_ARRIVAL_SETTLE = 500.milliseconds
+    }
 }

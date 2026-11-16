@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -357,6 +358,21 @@ class PlaybackService : MediaLibraryService() {
         RouteHeardOwnership(audioOutputs.outputIntentOwner)
     }
 
+    /** PD-009 refinement 2026-11-16: a car-class hands-free link may stand in for the Auto boundary. */
+    internal val carBluetoothWindow by lazy(LazyThreadSafetyMode.NONE) {
+        CarBluetoothArrivalWindow { clock.elapsed() }
+    }
+    internal var audioMode: () -> Int? = { getSystemService(AudioManager::class.java)?.mode }
+    private var carBluetoothMonitor: CarBluetoothArrivalMonitor? = null
+    private val carBluetoothInference by lazy(LazyThreadSafetyMode.NONE) {
+        CarBluetoothArrivalInference(carBluetoothWindow, carContinuity, { audioMode() }, { clock.elapsed() }) {
+                message,
+                fields,
+            ->
+            autoTraces.log(message, fields = fields + carSnapshotFields())
+        }
+    }
+
     private val routeObservationEffects by lazy(LazyThreadSafetyMode.NONE) {
         PlaybackRouteObservationEffects(
             currentPlayer = { player },
@@ -468,6 +484,8 @@ class PlaybackService : MediaLibraryService() {
         observeSkipIntervals()
         observeAudioOutputs()
         carProjection.start(scope, ::onCarProjectionUpdate)
+        carBluetoothMonitor = CarBluetoothArrivalMonitor(applicationContext, carBluetoothWindow, logger)
+            .also(CarBluetoothArrivalMonitor::start)
         outputDevices.start(scope, DeviceActions())
         observeBrowseTreeInvalidation()
         logger.info(LogCategory.Playback, "Playback service started")
@@ -965,9 +983,20 @@ class PlaybackService : MediaLibraryService() {
             focusLoss,
         )
         logCarContinuityDecision(source, decision)
-        if (focusLoss) carConnectionRefresh.onFocusLoss(scope, decision)
-        decision.target
-            ?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
+        val inferred = if (focusLoss) {
+            carBluetoothInference.onFocusLoss(
+                decision,
+                routeOwnership.currentGeneration,
+                currentExplicitSelectionSequence(),
+            )
+        } else {
+            null
+        }
+        inferred?.let { logCarContinuityDecision("car-bluetooth-inferred", it) }
+        val effective = inferred ?: decision
+        if (focusLoss) carConnectionRefresh.onFocusLoss(scope, effective)
+        effective.target
+            ?.takeIf { effective.status == CarArrivalResumeGate.Status.Ready }
             ?.let(carResumeEffects::onRecoveryReady)
         if (!focusLoss) carRecovery.clearAwaiting()
     }
@@ -998,6 +1027,8 @@ class PlaybackService : MediaLibraryService() {
         sleepTimer.attach(null)
         unregisterReceiver(wallClockChanges)
         carProjection.stop()
+        carBluetoothMonitor?.stop()
+        carBluetoothMonitor = null
         clearCarContinuity()
         audioOutputs.detach()
         audioOutputs.commands.detach(outputDispatch)
@@ -1901,6 +1932,12 @@ class PlaybackService : MediaLibraryService() {
                         },
                     ),
                 ),
+            )
+        }
+        carRecovery.gate.displacement.onKept = {
+            autoTraces.log(
+                "Car continuity kept headset through a measured other route",
+                fields = carSnapshotFields(),
             )
         }
         audioOutputs.currentProjection = { carLifecycle.projectionState.carConnected }

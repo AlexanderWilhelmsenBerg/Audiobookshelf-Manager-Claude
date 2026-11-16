@@ -22,6 +22,9 @@ internal object AudioRouteLabEvidence {
         "A car connected to the media session" to "car-controller-bound",
         "Car lifecycle continuity decision" to "continuity-decision",
         "Car lifecycle route recovery changed" to "recovery-step",
+        "Car Bluetooth arrival inference" to "car-bluetooth-inference",
+        "Car-class hands-free link connected; arrival window opened" to "car-bluetooth-window",
+        "Car continuity kept headset through a measured other route" to "displacement-kept",
         "Playback was asked to change playWhenReady" to "playback-intent",
         "The audio output was set" to "preferred-output-request",
         "The car output actions were recomputed" to "route-policy-updated",
@@ -48,6 +51,7 @@ internal object AudioRouteLabEvidence {
         "trusted", "elapsedRealtime", "afterTrace", "observation", "completionPending",
         "focusObservation", "focusEvidence", "androidFocusChange", "focusRequester", "focusRequesterEvidence",
         "focusSequence", "sinceFocusEvent", "transportReasonCode", "suppressionReasonCode", "audibility",
+        "windowAge", "audioMode", "outcome",
     )
     private const val MAX_SAFE_FIELDS = 20
     private const val FUTURE_SKEW_SECONDS = 60L

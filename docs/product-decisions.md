@@ -438,6 +438,27 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-16 owner refinement (car-Bluetooth inferred arrival).** Android Auto was measured requesting
+audio focus three or more seconds before its controller binds, and the car's hands-free Bluetooth link
+about ten seconds before that request. A car-class hands-free link (Bluetooth device class car audio)
+connected within the last 30 seconds may therefore stand in for the Auto boundary, for one arrival, when
+Media3 reports focus loss for a trusted, verified, playing headset and Android's audio mode is normal.
+BookWave then waits 0.5 seconds for Auto's burst of focus requests to pass and uses the existing route
+wait and muted actual-track proof. A ringing or active call blocks the inference. The original 30-second
+deadline, three-claim budget and exact-headset rule are unchanged; an inferred Play taken straight back
+may use the existing retry before the bind. Pause, Stop, seek, output/book/profile change and teardown
+retain precedence. Without Nearby devices access the window never opens and the Auto-boundary behavior
+below applies. This is an inference, not car identity: another media app started in the same window
+would lose focus back to BookWave. The owner accepted a short interruption and declined requiring users
+to disable the car's media audio. Media3 retains focus ownership; no scan, extra track or permission.
+[Implementation and acceptance](testing/2026-11-16-car-bluetooth-inferred-arrival.md). Hardware
+acceptance pending.
+
+**2026-11-16 owner refinement (measured other route).** A playing track measured on another route no
+longer clears the verified headset at once. It is treated as part of a safety pause or focus loss that
+follows within two seconds, and as a real route move otherwise. Repeated samples cannot extend the two
+seconds. Recorded after APK 2273 recovered on hardware; that run did not prove the grace was needed.
+
 **2026-11-13 owner refinement (interrupted arrival Play).** After an automatic arrival Play was
 issued but before exact-track and active-playback confirmation, a subsequent Media3 focus-loss
 observation may authorize another attempt while Auto is positively connected. Retain the original
