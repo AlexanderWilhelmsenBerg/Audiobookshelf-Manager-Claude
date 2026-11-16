@@ -23,8 +23,8 @@ internal const val AUDIO_ROUTE_LAB_START = "audio-route-lab-start"
 internal const val AUDIO_ROUTE_LAB_REPORT = "audio-route-lab-report"
 
 /**
- * A manual, stationary hardware test companion. Does not generate sound, route a player, change
- * audio focus or intercept media buttons. Observations are explicitly marked as listener reports.
+ * A stationary hardware test companion. The debug system-route experiment requires an explicit
+ * transfer action. Observations are explicitly marked as listener reports.
  */
 @Composable
 internal fun AudioRouteLabPanel(
@@ -71,6 +71,7 @@ internal fun AudioRouteLabPanel(
         Text(stringResource(R.string.route_lab_route_title), style = MaterialTheme.typography.titleSmall)
         Text(state.route, style = MaterialTheme.typography.bodySmall)
         Text(state.reportStatus, style = MaterialTheme.typography.bodySmall)
+        SystemRouteExperimentSection()
         HorizontalDivider()
         Text(stringResource(R.string.route_lab_steps_title), style = MaterialTheme.typography.titleSmall)
         Text(stringResource(R.string.route_lab_steps_help), style = MaterialTheme.typography.bodySmall)

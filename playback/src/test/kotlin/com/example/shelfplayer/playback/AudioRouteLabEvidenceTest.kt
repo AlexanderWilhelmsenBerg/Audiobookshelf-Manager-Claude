@@ -13,6 +13,26 @@ import kotlin.test.assertNull
 
 class AudioRouteLabEvidenceTest {
     @Test
+    fun `manual system transfer exports aliases and timing without peer metadata`() {
+        val result = requireNotNull(
+            AudioRouteLabEvidence.event(
+                LoggedEvent(
+                    Instant.EPOCH,
+                    LogLevel.Info,
+                    "Playback",
+                    "Manual system route experiment status=Selected routeAlias=1 elapsedMs=350ms " +
+                        "deviceName=private-name routeId=private-id deviceAddress=private-address",
+                ),
+            ),
+        )
+        assertContains(result, "system-route-experiment")
+        assertContains(result, "status=Selected")
+        assertContains(result, "routeAlias=1")
+        assertContains(result, "elapsedMs=350ms")
+        assertFalse("private" in result)
+    }
+
+    @Test
     fun `focus export retains evidence limits and timing without private identifiers`() {
         val result = requireNotNull(
             AudioRouteLabEvidence.event(

@@ -126,6 +126,8 @@ The application must be **offline-first**. Room is the application’s canonical
 - Supporting arbitrary media servers.
 - Full parity with the Audiobookshelf web administration interface.
 - Background Bluetooth scanning for nearby devices.
+- The owner-approved debug system-route experiment may request the scan permission without scanning,
+  solely for explicit system Bluetooth media transfers in Audio Route Lab (PD-009, 2026-11-15).
 - Circumventing Android background-execution or media-playback restrictions.
 - Persisting user passwords after login.
 
