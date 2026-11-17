@@ -33,18 +33,18 @@ class AudioTrackTimingCaptureTest {
     @Test
     fun `callback storm cannot extend burst or restart inside cooldown`() {
         val fixture = Fixture()
-        repeat(20) {
+        repeat(150) {
             fixture.request()
             fixture.advance(200)
         }
-        assertEquals(16, fixture.reads)
+        assertEquals(120, fixture.reads)
         fixture.request()
-        fixture.advance(900)
-        assertEquals(16, fixture.reads)
+        fixture.advance(4_900)
+        assertEquals(120, fixture.reads)
         fixture.advance(100)
         fixture.request()
         fixture.advance(0)
-        assertEquals(17, fixture.reads)
+        assertEquals(121, fixture.reads)
     }
 
     @Test

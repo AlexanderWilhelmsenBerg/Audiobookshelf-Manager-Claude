@@ -1,5 +1,10 @@
 # Audiobookshelf API compatibility
 
+The 2026-11-17 output-stall diagnostic adds the optional `audioRouteLab.stallIncident` export field under
+diagnostic schema version 1. It adds no ABS endpoint/response field, database schema, permission or
+dependency. Debug builds add a take-back comparison preference; release/benchmark keep the no-op.
+See [capture, retention and testing limits](testing/2026-11-17-audio-output-stall-diagnostics.md).
+
 The 2026-11-17 deferred debug system-route take-back correction adds no server endpoint, response field,
 schema, permission or dependency. Build 2279 demonstrated one matching system selection callback on the
 test phone; repeated arrival and exclusive headset audibility are not accepted. Release/benchmark remain

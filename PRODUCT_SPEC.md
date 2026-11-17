@@ -421,6 +421,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   events with exact endpoint identity, audio mode and anonymous playback-usage counts. Media-command
   sequence and delivery timing are temporal evidence only. These observations cannot grant playback/focus ownership or
   infer button origin. Exports use temporary aliases, never device names, addresses or private identity keys.
+- Opt-in output-stall diagnostics may record bounded numeric frame-progress observations and fixed Media3
+  stuck reasons, retaining a privacy-safe first incident separately from the rolling trace until Clear or
+  per-row expiry. No-frame-progress evidence does not authorize recovery or establish acoustic audibility.
 - Reconnecting a route follows the configured per-device policy.
 - The player output chooser can explicitly keep audio on the current output only while a loaded book is
   playing through one fresh, exact mapped AudioTrack route; predicted, missing, conflicting and duplicate

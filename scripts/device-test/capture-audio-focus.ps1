@@ -64,6 +64,7 @@ function Save-FocusCapture {
     Set-Content -LiteralPath (Join-Path $capture 'capture-info.txt')
 Save-FocusCapture -Name 'audio-before' -Command @('shell', 'dumpsys', 'audio')
 Save-FocusCapture -Name 'audio-policy-before' -Optional -Command @('shell', 'dumpsys', 'media.audio_policy')
+Save-FocusCapture -Name 'audio-flinger-before' -Optional -Command @('shell', 'dumpsys', 'media.audio_flinger')
 Save-FocusCapture -Name 'bluetooth-before' -Optional -Command @('shell', 'dumpsys', 'bluetooth_manager')
 Save-FocusCapture -Name 'device-uptime-before' -Command @('shell', 'cat', '/proc/uptime')
 Write-Host "Capture starting for $Seconds seconds. Connect Android Auto now; leave playback controls alone."
@@ -74,11 +75,14 @@ try {
         'AS.AudioDeviceBroker:V', 'AS.AudioDeviceInventory:V', 'AS.BtHelper:V',
         'AudioDeviceBroker:V', 'AudioDeviceInventory:V', 'BtHelper:V',
         'ActiveDeviceManager:V', 'A2dpService:V', 'A2dpStateMachine:V',
-        'AvrcpTargetService:V', 'AvrcpTargetJni:V', '*:S'
+        'AvrcpTargetService:V', 'AvrcpTargetJni:V',
+        'AudioTrack:V', 'AudioFlinger:V', 'AudioPolicyManager:V', 'AudioSink:V',
+        'DefaultAudioSink:V', 'MediaCodecAudioRenderer:V', 'ExoPlayerImplInternal:V', '*:S'
     )
 } finally {
     Save-FocusCapture -Name 'audio-after' -Command @('shell', 'dumpsys', 'audio')
     Save-FocusCapture -Name 'audio-policy-after' -Optional -Command @('shell', 'dumpsys', 'media.audio_policy')
+    Save-FocusCapture -Name 'audio-flinger-after' -Optional -Command @('shell', 'dumpsys', 'media.audio_flinger')
     Save-FocusCapture -Name 'bluetooth-after' -Optional -Command @('shell', 'dumpsys', 'bluetooth_manager')
     Save-FocusCapture -Name 'device-uptime-after' -Command @('shell', 'cat', '/proc/uptime')
     Add-Content -LiteralPath (Join-Path $capture 'capture-info.txt') -Value "endedUtc=$([DateTime]::UtcNow.ToString('O'))"

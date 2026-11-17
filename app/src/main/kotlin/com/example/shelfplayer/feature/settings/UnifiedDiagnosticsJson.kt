@@ -48,6 +48,7 @@ internal object UnifiedDiagnosticsJson {
                 .put("actualTrack", lab.reportStatus)
                 .put("inputStatus", lab.inputStatus)
                 .put("inputDevices", JSONArray(lab.inputDevices))
+                .put("stallIncident", JSONArray(lab.stallIncident))
                 .put("events", JSONArray(lab.entries)),
         )
         put(

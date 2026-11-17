@@ -9,10 +9,11 @@ internal class SystemRouteTakeBackFixture {
     val clock = TestAppClock()
     val window = CarBluetoothArrivalWindow { clock.elapsed() }
     var current = true
+    var enabled = true
     private var linkStarted = false
     val outcomes = mutableListOf<String>()
     val rendered = mutableListOf<String>()
-    val takeBack = SystemRouteHeadsetTakeBack(port, clock) { _, fields ->
+    val takeBack = SystemRouteHeadsetTakeBack(port, clock, enabled = { enabled }) { _, fields ->
         outcomes += fields.filterIsInstance<LogField.Public>().single { it.key == "outcome" }.value
         rendered += fields.joinToString(" ") {
             when (it) {

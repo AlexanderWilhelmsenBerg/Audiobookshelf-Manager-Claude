@@ -152,6 +152,14 @@ and Play-issued versus audible-confirmed outcomes. No Bluetooth address, device 
 identity correlation key is added. A playing-track observation is software evidence, not an acoustic
 measurement or proof of physical button origin.
 
+The optional audio-output stall diagnostic reads the existing player's numeric state and native timing
+samples. A pure frame-progress reducer distinguishes intended Pause/suppression/mute from continued
+Play without frame movement; it has no playback or routing effects. Audio Route Lab owns the bounded,
+TTL-limited first-incident record alongside its rolling trace. The output classifier supplies only its
+already privacy-safe observation snapshot. These diagnostics never grant route, focus or resume authority.
+The debug comparison setting disables only automatic system take-back and defaults to the PR307 behavior.
+See [normal comparison procedure and limits](../testing/2026-11-17-audio-output-stall-diagnostics.md).
+
 See [the implementation and acceptance record](../testing/2026-11-07-playback-governor.md). Unit and
 service tests establish ordering and cancellation; repeated stationary car tests establish audibility,
 actual destination and interruption duration. Main and PR305 remain unchanged until explicitly merged.

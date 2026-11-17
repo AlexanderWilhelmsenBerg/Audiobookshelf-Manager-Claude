@@ -1031,6 +1031,7 @@ class PlaybackService : MediaLibraryService() {
         audioOutputs.confirmedCarAbsent = { false }
         audioOutputs.retainsInterruptedHeadset = { false }
         audioOutputs.routeSafetyEvidence = { "observer-unavailable" }
+        audioTrackRouteMonitor.playbackSnapshot = { null }
         resumeFreshness.attach(null)
         autoRewind.attach(null)
         sleepTimer.attach(null)
@@ -1925,6 +1926,16 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun bindOutputContinuity() {
+        audioTrackRouteMonitor.playbackSnapshot = {
+            player?.let { target ->
+                AudioTrackPlaybackSnapshot(
+                    target.playWhenReady, target.playbackState, target.playbackSuppressionReason,
+                    volumeEffects.isRouteMuted(target), target.currentPosition, target.totalBufferedDuration,
+                    target.isLoading, routeOwnership.currentGeneration, currentExplicitSelectionSequence(),
+                    headsetTakeBack.automaticTransferEnabled,
+                )
+            }
+        }
         carRecovery.onPlayOutcome = { outcome ->
             autoTraces.log(
                 "Car continuity attempt outcome",

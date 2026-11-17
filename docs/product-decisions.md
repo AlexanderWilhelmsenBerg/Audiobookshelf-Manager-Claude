@@ -438,6 +438,14 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-17 owner refinement (diagnostic comparison).** The owner approved a diagnostic follow-up
+on the build-2280 baseline. A debug-only setting, default on, permits ordinary parked connections with
+automatic system headset take-back disabled for comparison. Changing it never initiates a transfer;
+disabled work is rejected before a deferred platform call. Identity access, headset protection, manual
+selection, recovery limits and Media3 focus ownership remain unchanged. The opt-in diagnostic pins the
+first suspected output stall and its safe context; no forced Auto failure or new recovery is required.
+See [capture and comparison procedure](testing/2026-11-17-audio-output-stall-diagnostics.md).
+
 **2026-11-17 owner refinement (deferred system take-back and narrow simplification).** Build 2279
 accepted a system headset transfer on its first arrival, but a second arrival measured a remote mix
 while the system router reported the remembered destination `AlreadySelected`. The owner approved

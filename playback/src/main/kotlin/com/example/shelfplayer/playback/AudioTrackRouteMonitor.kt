@@ -78,14 +78,20 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     private var listener: AudioRouting.OnRoutingChangedListener? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val epoch = AudioTrackObserverEpoch()
-    private val timing = AudioTrackTimingCapture(mainHandler, { lab.state.value.recording }, lab::trackTiming) {
-        clock.elapsed().inWholeMilliseconds
-    }
+    private val timing = AudioTrackTimingCapture(
+        mainHandler,
+        { lab.state.value.recording },
+        { sample -> lab.trackTiming(sample, playbackSnapshot()) },
+        { clock.elapsed().inWholeMilliseconds },
+    )
     private var lastEvidence: String? = null
     private var lastPlaying = false
 
     /** Used only in memory by the route safety guard. Never exported without diagnostic opt-in. */
     var onRouteChanged: (() -> Unit)? = null
+
+    /** Read only on the existing main-handler timing callback, and only during diagnostic opt-in. */
+    var playbackSnapshot: () -> AudioTrackPlaybackSnapshot? = { null }
 
     /** Diagnostic only: raw sink aliases survive inventory gaps but never authorize playback. */
     fun currentRouteDiagnostic(): String {

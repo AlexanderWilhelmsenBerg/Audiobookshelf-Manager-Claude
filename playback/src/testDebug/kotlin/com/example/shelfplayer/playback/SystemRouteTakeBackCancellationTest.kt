@@ -12,6 +12,31 @@ class SystemRouteTakeBackCancellationTest {
     private val f = SystemRouteTakeBackFixture()
 
     @Test
+    fun disabledComparisonModeCannotTransferOrConsumeTheAllowance() {
+        f.verify()
+        f.enabled = false
+        f.port.carTakesOver()
+        f.displace()
+        assertTrue(f.port.requests.isEmpty())
+        assertEquals("Disabled", f.outcomes.last())
+
+        f.enabled = true
+        f.displace()
+        assertEquals(listOf(HEADSET), f.port.requests)
+    }
+
+    @Test
+    fun disablingWhileWaitingRevokesTheDeferredTransfer() {
+        f.verify()
+        f.displace()
+        f.enabled = false
+        f.port.carTakesOver()
+        f.port.changed()
+        assertTrue(f.port.requests.isEmpty())
+        assertEquals("Disabled", f.outcomes.last())
+    }
+
+    @Test
     fun waitingCannotTransferAfterListenerCancellationOrTeardown() {
         for (close in listOf(false, true)) {
             val fixture = SystemRouteTakeBackFixture()

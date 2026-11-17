@@ -9,6 +9,9 @@ package com.example.shelfplayer.playback
  * and muted actual-track proof still decide whether and when playback resumes.
  */
 internal interface HeadsetTakeBack {
+    /** Diagnostic comparison mode; null when this build has no automatic system-route experiment. */
+    val automaticTransferEnabled: Boolean? get() = null
+
     /** Playback is measured on the headset right now; remember which system route that is. */
     fun onHeadsetVerified(endpointId: String, mayRemember: () -> Boolean)
 

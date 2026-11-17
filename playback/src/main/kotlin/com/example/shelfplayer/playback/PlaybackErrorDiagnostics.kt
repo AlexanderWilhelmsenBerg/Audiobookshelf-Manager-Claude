@@ -3,6 +3,7 @@ package com.example.shelfplayer.playback
 import android.media.MediaCodec
 import androidx.annotation.OptIn
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.util.StuckPlayerException
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.mediacodec.MediaCodecDecoderException
@@ -14,7 +15,7 @@ import java.util.IdentityHashMap
 /** PLAY-001/002 diagnostics: never serialize exceptions, formats, names, or media metadata. */
 @OptIn(UnstableApi::class)
 internal object PlaybackErrorDiagnostics {
-    private const val MAX_CAUSES = 8
+    const val MAX_CAUSES = 8
     private val codecDiagnostic = Regex("android\\.media\\.MediaCodec\\.error_(?:neg_)?[0-9]{1,10}")
     private val audioMimeTypes = setOf(
         "audio/mp4a-latm", "audio/mpeg", "audio/opus", "audio/vorbis", "audio/flac",
@@ -41,6 +42,11 @@ internal object PlaybackErrorDiagnostics {
 
     private fun MutableList<LogField>.addDetails(current: Throwable, prefix: String) {
         when (current) {
+            is StuckPlayerException -> {
+                add(LogField.Public("${prefix}StuckType", stuckType(current.stuckType)))
+                add(LogField.Millis("${prefix}Timeout", current.timeoutMs.toLong().coerceAtLeast(0)))
+            }
+
             is ExoPlaybackException -> {
                 add(LogField.Public("${prefix}ExoType", current.type))
                 add(LogField.Public("${prefix}RendererIndex", current.rendererIndex))
@@ -81,7 +87,17 @@ internal object PlaybackErrorDiagnostics {
 
     private fun diagnostic(value: String?): String? = value?.takeIf { codecDiagnostic.matches(it) }
 
+    private fun stuckType(type: Int): String = when (type) {
+        StuckPlayerException.STUCK_BUFFERING_NOT_LOADING -> "BufferingNotLoading"
+        StuckPlayerException.STUCK_BUFFERING_NO_PROGRESS -> "BufferingNoProgress"
+        StuckPlayerException.STUCK_PLAYING_NO_PROGRESS -> "PlayingNoProgress"
+        StuckPlayerException.STUCK_PLAYING_NOT_ENDING -> "PlayingNotEnding"
+        StuckPlayerException.STUCK_SUPPRESSED -> "Suppressed"
+        else -> "Unknown"
+    }
+
     private fun type(error: Throwable): String = when (error) {
+        is StuckPlayerException -> "StuckPlayerException"
         is ExoPlaybackException -> "ExoPlaybackException"
         is MediaCodecDecoderException -> "MediaCodecDecoderException"
         is MediaCodec.CodecException -> "MediaCodec.CodecException"

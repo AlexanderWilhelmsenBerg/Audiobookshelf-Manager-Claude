@@ -13,8 +13,10 @@ import kotlin.time.Duration
 internal class SystemRouteHeadsetTakeBack(
     private val port: SystemRoutePort,
     private val clock: AppClock,
+    private val enabled: () -> Boolean = { true },
     private val log: (String, List<LogField>) -> Unit,
 ) : HeadsetTakeBack {
+    override val automaticTransferEnabled: Boolean get() = enabled()
     private data class Headset(val endpoint: String, val route: String)
     private data class Verified(val endpoint: String, val mayRemember: () -> Boolean)
     private class Attempt(
@@ -106,6 +108,8 @@ internal class SystemRouteHeadsetTakeBack(
     private fun advance() {
         val active = attempt ?: return
         when {
+            !enabled() -> finish(active, "Disabled")
+
             !active.isCurrent() -> finish(active, "Cancelled")
 
             port.availability() != SystemRouteStatus.Observing -> finish(active, "PermissionRequired")
@@ -150,7 +154,7 @@ internal class SystemRouteHeadsetTakeBack(
         finish(active, if (active.isCurrent()) status.name else "Cancelled")
     }
 
-    private fun owns(active: Attempt): Boolean = attempt === active && active.isCurrent()
+    private fun owns(active: Attempt): Boolean = attempt === active && active.isCurrent() && enabled()
 
     private fun finish(active: Attempt, outcome: String) {
         if (attempt !== active) return

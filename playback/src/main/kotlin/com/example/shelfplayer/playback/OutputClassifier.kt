@@ -124,12 +124,18 @@ class OutputClassifier @Inject constructor(
                 )
                 return
             }
+        routeLab.systemIncidentContext = { at ->
+            val snapshot = state.value
+            snapshot.entries.takeLast(STALL_SYSTEM_ROWS) +
+                snapshot.current.take(STALL_CURRENT_ROWS).map { "$at system-current $it" }
+        }
         append("capture-start")
         systemProbe.start { sample("system-change") }
         sample("initial-snapshot")
     }
 
     fun stop() {
+        routeLab.systemIncidentContext = { emptyList() }
         systemProbe.stop()
         if (!stateMutable.value.recording) return
         callback?.let { observer ->
@@ -245,5 +251,7 @@ class OutputClassifier @Inject constructor(
 
     private companion object {
         const val MAX_ROWS = 300
+        const val STALL_SYSTEM_ROWS = 16
+        const val STALL_CURRENT_ROWS = 8
     }
 }

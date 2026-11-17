@@ -167,7 +167,17 @@ class AudioRouteLabRecorderTest {
         capture.start()
         assertTrue(capture.active.value, "capture can start again after clear completion")
         assertTrue(classifier.state.value.entries.any { "system-audio" in it }, "Unified capture must reach the probe")
+        assertTrue(
+            lab.systemIncidentContext(clock.now()).any {
+                "system-audio" in it
+            },
+            "Pinned stalls need the real probe context",
+        )
         capture.stop()
+        assertTrue(
+            lab.systemIncidentContext(clock.now()).isEmpty(),
+            "Stopping capture releases the probe context supplier",
+        )
         runCurrent()
         capture.clearAndAwait()
         assertTrue(classifier.state.value.entries.isEmpty(), "Clear all must remove system probe evidence too")
