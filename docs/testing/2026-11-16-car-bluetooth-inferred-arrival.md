@@ -107,6 +107,45 @@ is `HeadsetRouteUnknown`, the phone did not report a single selected Bluetooth r
 
 ## Stationary device acceptance
 
+### Repeated route loss before the Auto bind (2026-11-17)
+
+Requirements PLAY-002, ROUTE-001/002; owner-approved bounded rearm refinement in PD-009.
+APK 2277 confirmed its inferred arrival's headset route and active playback, then safety-paused again
+when the track moved to a remote mix about 394 ms later, before the trusted Auto bind. The second
+interruption issued no claim; the later bind returned `CandidateInvalidated` and playback stayed paused.
+
+`CarArrivalEpisode.rearm` now accepts either connected Auto or the existing episode's inferred-arrival
+provenance. Its confirmed-route/playback requirement, identity and intent checks, claim budget and
+absolute deadline are unchanged. There is no new timer, focus listener, player, or permission.
+
+`PlaybackServiceInferredSafetyRearmTest` exercises the real service callbacks, command boundary,
+coordinator, resume effects, missing-endpoint wait and muted route proof with the pinned Media3 player:
+
+- The second safety loss works before or after Auto's bind, retaining the same episode, endpoint,
+  generation, selection and deadline. Duplicate safety and bind callbacks cannot issue another Play.
+- A returned endpoint remains muted until fresh route and active-playback evidence arrive.
+- At most three Plays can be claimed before the bind; a fourth interruption and later bind stay paused.
+- Listener Pause while waiting for the missing endpoint cancels the remaining Play.
+- A waiting attempt expires at the original deadline, even if the endpoint then returns and Auto binds.
+- Unconfirmed inferred playback cannot gain a safety retry from inventory return or the later bind.
+
+Counterfactual: on unchanged `33f13f5`, four of the five tests fail at the missing second claim; the
+unconfirmed-play refusal passes. Hardware acceptance of this correction is pending. The service fixture
+injects route loss and platform callbacks; Robolectric does not establish audible headset continuity.
+The exact final SHA, local verification and normal PR CI are recorded on PR #307.
+
+Software verification on 2026-11-17: `ktlintFormat verifyDebug :playback:testReleaseUnitTest
+-Pshelfplayer.warningsAsErrors=true` passed. Playback ran 1,282 debug and 1,264 release tests with zero
+failures, errors or skips. The normal managed checkout was used; actual source formatting checks ran.
+
+For a parked test, clear diagnostics, use one healthy headset, and connect the car without touching
+transport controls. Repeat several times because the failing sequence is order dependent. A second
+safety interruption after a confirmed inferred resume should retain the same episode and deadline and
+use the next claim only once the same headset is available for a new muted proof. Repeat with listener
+Pause during the gap: playback must remain paused through inventory return and the real Auto bind.
+
+### Initial arrival and departure checks
+
 1. Clear diagnostics and start capture. Play a book in one headset with the car off.
 2. Connect the car and leave all controls alone for 30 seconds. Expect a pause when the car takes media
    audio and an automatic resume in the headset shortly after Auto's focus request, before

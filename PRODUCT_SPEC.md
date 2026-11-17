@@ -403,7 +403,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   callbacks. A noisy notification during the same gap may retain only the unconsumed claim; focus loss,
   listener cancellation and lost identity revoke the short attempt.
   Otherwise it retains prior heard intent for the existing bounded car-continuity decision; it is not
-  listener Pause. Within a confirmed car-arrival episode, a distinct interruption after verified same-headset playback
+  listener Pause. Within a qualified car-arrival episode, including an inferred arrival whose exact headset
+  route and active playback were confirmed before Auto binds, a distinct interruption after verified same-headset playback
   may use a remaining claim, up to three total and within the original 30-second absolute deadline.
   Duplicate callbacks and unproven attempts cannot rearm recovery. Listener Pause and newer
   selection/book/profile/player context still invalidate recovery.

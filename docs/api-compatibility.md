@@ -1,5 +1,10 @@
 # Audiobookshelf API compatibility
 
+The 2026-11-17 confirmed-inferred arrival rearm correction is local playback policy only. It adds no
+endpoint, response field, schema, permission, dependency or tested server version. The existing recovery
+episode, claim budget, deadline and muted proof are retained; see the
+[regression and acceptance record](testing/2026-11-16-car-bluetooth-inferred-arrival.md#repeated-route-loss-before-the-auto-bind-2026-11-17).
+
 The 2026-11-15 debug-only manual system-route experiment adds no ABS endpoint, schema or dependency.
 It requests optional Nearby devices scan permission without scanning to test public system routing on
 Android 14+. Release/benchmark permission sets are unchanged. Hardware support and acoustic acceptance

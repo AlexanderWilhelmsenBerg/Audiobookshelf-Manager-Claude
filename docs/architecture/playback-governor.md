@@ -72,7 +72,9 @@ deadline or attempt count.
 
 At most three automatic Play claims are permitted: the initial claim and two further interruptions.
 Rearming requires the same headset to have been measured while actually playing after the preceding
-issued Play, current ownership/trust, connected Auto, and a new route-safety interruption. It does not
+issued Play, current ownership/trust, connected Auto or an already qualified inferred arrival, and a new
+route-safety interruption. A confirmed inferred arrival retains its episode before the actual Auto bind;
+the later controller bind is not required to authorize a remaining claim. It does not
 require another connection event inside the already confirmed episode. Duplicate callbacks, preferred
 device acceptance, playWhenReady and inventory return cannot rearm. Failed or unproven attempts cannot
 retry themselves through route-safety or inventory callbacks. Under the 2026-11-13 PD-009 refinement,

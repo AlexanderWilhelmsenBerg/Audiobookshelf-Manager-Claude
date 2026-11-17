@@ -438,6 +438,16 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-17 owner refinement (confirmed inferred arrival interrupted before Auto binds).** After an
+already qualified inferred arrival has confirmed both exact headset route and active playback, a distinct
+route-safety interruption may rearm that same episode before the real Auto controller binds. This uses
+the existing maximum three automatic Play claims and original absolute 30-second deadline. It cannot
+start a new episode, renew the deadline, retry unconfirmed playback from route safety or bypass fresh
+exact-headset proof. Pause/Stop and newer selection/book/profile/player intent retain precedence.
+Media3 remains the sole focus owner. This extends the connected-Auto condition of the 2026-11-07 entry
+only for an already qualified inferred arrival; ordinary Bluetooth connectivity does not authorize Play.
+See [regression and acceptance](testing/2026-11-16-car-bluetooth-inferred-arrival.md#repeated-route-loss-before-the-auto-bind-2026-11-17).
+
 **2026-11-16 owner refinement (automatic take-back experiment, debug builds only).** With the wait for
 Auto's bind removed, the remaining pause equals how long the car's own Bluetooth holds the active media
 device: measured from nothing to 3.8 seconds across runs. The owner declined the manual transfer button

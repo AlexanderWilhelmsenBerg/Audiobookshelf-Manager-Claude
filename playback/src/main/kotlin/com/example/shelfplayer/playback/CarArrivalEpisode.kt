@@ -48,7 +48,9 @@ internal data class CarArrivalEpisode(
         carConnected: Boolean,
         trusted: (String) -> Boolean,
     ): CarArrivalResumeGate.Target? {
-        if (!carConnected || !identity.matches(headsetId, generation, sequence)) return null
+        // A confirmed inferred arrival can lose its route again before the real Auto bind.
+        val arrived = carConnected || attempts.inferredArrival
+        if (!arrived || !identity.matches(headsetId, generation, sequence)) return null
         if (!mayRepeat(at) || !trusted(identity.outputId)) return null
         return issueTarget()
     }
