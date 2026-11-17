@@ -94,6 +94,15 @@ If actual routing becomes unavailable or wrong, safety still pauses. Recovery us
 muted probe, position checkpoint and actual AudioTrack proof before unmute. Registry availability is
 not physical output proof. No extra AudioTrack, second player or zero-silence guarantee is introduced.
 
+The debug system-route take-back adapter reuses `CarBluetoothArrivalWindow` for its original deadline,
+link identity and single transfer allowance. It holds one deferred/requested attempt, not a second
+recovery policy. Absent or already-selected targets wait for route callbacks; only invoking a transfer
+spends the allowance. The governor cancels pending transfers alongside continuity work, and the adapter
+rechecks captured player, command, generation, selection and link authority before a delayed effect.
+An endpoint's remembered system route is pinned; learning requires positive car absence. Platform
+selection callbacks are diagnostic outcomes, never actual-track proof. See
+[hardware evidence and regressions](../testing/2026-11-17-system-route-take-back.md).
+
 ### Early projection observation
 
 An eligible arrival focus loss can precede both the car's media-session bind and its projection broadcast.

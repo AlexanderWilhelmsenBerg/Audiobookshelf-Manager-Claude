@@ -84,6 +84,12 @@ is `HeadsetRouteUnknown`, the phone did not report a single selected Bluetooth r
 
 ## Not covered
 
+The 2026-11-17 build-2279 hardware run and owner-approved deferred take-back supersede the immediate
+refusal of absent/already-selected system routes above. These states now wait for route callbacks within
+the original link deadline; the allowance is spent only at a transfer invocation. Associations are pinned
+and delayed work follows governor cancellation. See the
+[hardware evidence, regressions and limits](2026-11-17-system-route-take-back.md).
+
 - The car holding media audio for two to four seconds after it connects. No resume can start before the
   headset is the active media device again; the route wait covers it.
 - Head units that report a Bluetooth class other than car audio. They keep the Auto-boundary behavior.

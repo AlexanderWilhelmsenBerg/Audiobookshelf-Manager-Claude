@@ -74,6 +74,31 @@ class CarBluetoothArrivalWindowTest {
     }
 
     @Test
+    fun `deferred take-back uses the original link and spends only on claim`() {
+        window.onCarHandsFreeConnected("car")
+        val deferred = requireNotNull(window.takeBackScope())
+        assertTrue(window.consume(), "inferred Play and system transfer have separate allowances")
+        now = 29.seconds
+        assertTrue(deferred.isCurrent())
+        assertTrue(deferred.claim())
+        assertFalse(deferred.claim())
+        assertNull(window.takeBackScope())
+        now = 30.seconds
+        assertFalse(deferred.isCurrent())
+    }
+
+    @Test
+    fun `old take-back scope cannot claim a replacement connection`() {
+        window.onCarHandsFreeConnected("car")
+        val old = requireNotNull(window.takeBackScope())
+        window.close()
+        window.onCarHandsFreeConnected("car")
+        assertFalse(old.isCurrent())
+        assertFalse(old.claim())
+        assertTrue(requireNotNull(window.takeBackScope()).claim())
+    }
+
+    @Test
     fun `a clock that moved backwards cannot reopen the window`() {
         now = 10.seconds
         window.onCarHandsFreeConnected("car")

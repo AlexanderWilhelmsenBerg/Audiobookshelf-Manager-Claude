@@ -925,6 +925,7 @@ class PlaybackService : MediaLibraryService() {
                 override fun stopped() = audioOutputs.outputIntentOwner.onPlaybackStopped()
                 override fun cancelContinuity(preserveHeard: Boolean) {
                     carConnectionRefresh.cancel()
+                    headsetTakeBack.cancelPending()
                     carResumeEffects.cancelPending()
                     if (preserveHeard) carRecovery.cancelPending() else carRecovery.cancelAll()
                     carRecovery.clearAwaiting()
@@ -958,7 +959,7 @@ class PlaybackService : MediaLibraryService() {
                         logCarContinuityDecision("route-safety-repeat", decision)
                         val ready = decision.target?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }
                         // A trusted headset paused moments after a car link connected: the car took the route.
-                        if (ready != null && carBluetoothWindow.claimTakeBack()) headsetTakeBack.onHeadsetDisplaced()
+                        ready?.let(::requestHeadsetTakeBack)
                         ready?.let(carResumeEffects::onRecoveryReady)
                     }
                 }
@@ -2027,9 +2028,23 @@ class PlaybackService : MediaLibraryService() {
                 routeOwnership.currentGeneration == generation &&
                     routeOwnership.measuredPlayingHeadsetForContinuity(audioOutputs.outputs.value) == headset
             }
-            headsetTakeBack.onHeadsetVerified()
+            headsetTakeBack.onHeadsetVerified(headset) {
+                !carBluetoothWindow.isOpen() && carLifecycle.definitelyAbsent
+            }
         }
         carRecovery.observePlayingHeadset(continuityInputs(outputs))
+    }
+
+    private fun requestHeadsetTakeBack(target: CarArrivalResumeGate.Target) {
+        val scope = carBluetoothWindow.takeBackScope() ?: return
+        val expectedPlayer = player ?: return
+        val command = controllerCommandGeneration
+        headsetTakeBack.onHeadsetDisplaced(target.outputId, scope) {
+            governor.acceptingCommands && player === expectedPlayer &&
+                controllerCommandGeneration == command &&
+                routeOwnership.currentGeneration == target.generation &&
+                currentExplicitSelectionSequence() == target.explicitSelectionSequence
+        }
     }
 
     /**

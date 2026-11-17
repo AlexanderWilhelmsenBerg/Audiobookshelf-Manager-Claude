@@ -6,47 +6,75 @@ import com.example.shelfplayer.core.common.time.AppClock
 import kotlin.time.Duration
 
 /**
- * Debug-only automatic take-back through the public system media router.
- *
- * The headset's route is identified by what Android had selected while BookWave measured its own track on
- * that headset, never by name. A request is made only for that remembered route, only while it is listed and
- * not selected, and only in normal audio mode. The transfer moves all media on the phone, not only
- * BookWave's. Route ids and names stay in memory; the log carries fixed outcomes, a count and a duration.
+ * Debug-only system media transfer. The car window owns eligibility and the one-transfer allowance;
+ * this adapter only waits for a transferable remembered route or observes its requested transfer.
+ * Actual-track verification and playback/focus remain with the existing service owners.
  */
 internal class SystemRouteHeadsetTakeBack(
     private val port: SystemRoutePort,
     private val clock: AppClock,
     private val log: (String, List<LogField>) -> Unit,
 ) : HeadsetTakeBack {
-    private var opened = false
-    private var verified = false
-    private var headsetRoute: String? = null
-    private var pending: Pair<String, Duration>? = null
+    private data class Headset(val endpoint: String, val route: String)
+    private data class Verified(val endpoint: String, val mayRemember: () -> Boolean)
+    private class Attempt(
+        val route: String,
+        val scope: CarBluetoothArrivalWindow.TakeBackScope,
+        val isCurrent: () -> Boolean,
+    ) {
+        var requestedAt: Duration? = null
+        var outcome: String? = null
+    }
 
-    override fun onHeadsetVerified() {
-        verified = true
+    private var opened = false
+    private var verified: Verified? = null
+    private var headset: Headset? = null
+    private var attempt: Attempt? = null
+    private val aliases = mutableMapOf<String, Int>()
+
+    override fun onHeadsetVerified(endpointId: String, mayRemember: () -> Boolean) {
+        if (headset?.endpoint != endpointId) {
+            headset = null
+            attempt = null
+        }
+        verified = Verified(endpointId, mayRemember)
+        // Keep an issued request's correlation if playback returns before the selection callback.
+        if (attempt?.requestedAt == null) attempt = null
         if (open()) remember()
     }
 
-    override fun onHeadsetDisplaced() {
-        verified = false
-        val outcome = when {
-            !open() -> port.availability().name
-            port.audioMode() != AudioManager.MODE_NORMAL -> "CallBlocked"
-            else -> request()
+    override fun onHeadsetDisplaced(
+        endpointId: String,
+        scope: CarBluetoothArrivalWindow.TakeBackScope,
+        isCurrent: () -> Boolean,
+    ) {
+        verified = null
+        if (!scope.isCurrent() || !isCurrent()) return
+        val target = headset?.takeIf { it.endpoint == endpointId }
+        if (!open() || target == null) {
+            report(if (opened) "HeadsetRouteUnknown" else port.availability().name)
+            return
         }
-        report(outcome, elapsed = Duration.ZERO)
+        val existing = attempt
+        if (existing == null || !existing.scope.isCurrent() || !existing.isCurrent()) {
+            attempt = Attempt(target.route, scope, isCurrent)
+        }
+        advance()
+    }
+
+    override fun cancelPending() {
+        attempt = null
+        verified = null
     }
 
     override fun close() {
+        cancelPending()
         if (opened) port.close()
         opened = false
-        verified = false
-        headsetRoute = null
-        pending = null
+        headset = null
+        aliases.clear()
     }
 
-    /** True once the router is being observed; system routes need both Nearby devices permissions. */
     private fun open(): Boolean {
         if (opened) return true
         if (port.availability() != SystemRouteStatus.Observing) return false
@@ -61,57 +89,116 @@ internal class SystemRouteHeadsetTakeBack(
         return opened
     }
 
-    /** Route discovery is asynchronous; the first list may arrive after playback was already verified. */
     private fun onRoutesChanged() {
-        if (verified && headsetRoute == null) remember()
+        remember()
+        advance()
     }
 
     private fun remember() {
-        val selected = bluetoothRoutes().filter { it.selected }
-        if (selected.size == 1) headsetRoute = selected.single().id
+        val measured = verified ?: return
+        // A per-track preference can coexist with a system-selected car. Never relearn the same
+        // endpoint from that selection, or learn a new association during car arrival.
+        if (headset != null || !measured.mayRemember()) return
+        val selected = bluetoothRoutes().singleOrNull { it.selected } ?: return
+        headset = Headset(measured.endpoint, selected.id)
     }
 
-    private fun request(): String {
-        val target = bluetoothRoutes().firstOrNull { it.id == headsetRoute }
-        return when {
-            headsetRoute == null -> "HeadsetRouteUnknown"
+    private fun advance() {
+        val active = attempt ?: return
+        when {
+            !active.scope.isCurrent() || !active.isCurrent() -> finish(active, "Cancelled")
 
-            target == null -> "HeadsetRouteAbsent"
+            port.availability() != SystemRouteStatus.Observing -> finish(active, "PermissionRequired")
 
-            target.selected -> "AlreadySelected"
+            port.audioMode() != AudioManager.MODE_NORMAL -> finish(active, "CallBlocked")
 
-            else -> try {
-                pending = target.id to clock.elapsed()
-                port.transfer(target.id)
-                "Requested"
-            } catch (_: SecurityException) {
-                pending = null
-                "PermissionRequired"
-            } catch (_: IllegalStateException) {
-                pending = null
-                "Unavailable"
-            } catch (_: IllegalArgumentException) {
-                pending = null
-                "Unavailable"
+            active.requestedAt != null -> Unit
+
+            else -> {
+                val target = bluetoothRoutes().firstOrNull { it.id == active.route }
+                when {
+                    target == null -> report("HeadsetRouteAbsent", active)
+                    target.selected -> report("AlreadySelected", active)
+                    else -> transfer(active)
+                }
             }
         }
     }
 
-    /** The port reports every selection change; only the answer to this request is an outcome. */
+    private fun transfer(active: Attempt) {
+        // Reading platform routes can invoke callbacks. Recheck ownership before claiming.
+        if (attempt !== active || !active.isCurrent() || !active.scope.claim()) {
+            finish(active, "Cancelled")
+            return
+        }
+        active.requestedAt = clock.elapsed()
+        report("Requested", active)
+        if (attempt !== active || !active.isCurrent() || !active.scope.isCurrent()) return
+        try {
+            port.transfer(active.route)
+        } catch (_: SecurityException) {
+            finish(active, "PermissionRequired")
+        } catch (_: IllegalStateException) {
+            finish(active, "Unavailable")
+        } catch (_: IllegalArgumentException) {
+            finish(active, "Unavailable")
+        }
+    }
+
     private fun onResult(id: String, status: SystemRouteStatus) {
-        val request = pending?.takeIf { it.first == id } ?: return
-        pending = null
-        report(status.name, clock.elapsed() - request.second)
+        val active = attempt?.takeIf { it.route == id && it.requestedAt != null } ?: return
+        finish(active, if (active.scope.isCurrent() && active.isCurrent()) status.name else "Cancelled")
+    }
+
+    private fun finish(active: Attempt, outcome: String) {
+        if (attempt !== active) return
+        report(outcome, active)
+        if (attempt === active) attempt = null
     }
 
     private fun bluetoothRoutes() = port.routes().filter { it.system && it.bluetooth }
 
-    private fun report(outcome: String, elapsed: Duration) = log(
-        "Headset take-back experiment",
-        listOf(
-            LogField.Public("outcome", outcome),
-            LogField.Count("bluetoothRoutes", if (opened) bluetoothRoutes().size else 0),
-            LogField.Millis("elapsed", elapsed.inWholeMilliseconds.coerceAtLeast(0)),
-        ),
-    )
+    /** Bounded process-local aliases, separate from the manual lab's aliases. */
+    private fun alias(id: String): Int = aliases[id] ?: if (aliases.size < MAX_ROUTE_ALIASES) {
+        (aliases.size + 1).also { aliases[id] = it }
+    } else {
+        0
+    }
+
+    private fun report(outcome: String, active: Attempt? = null) {
+        if (active != null && active.outcome == outcome) return
+        active?.outcome = outcome
+        val routes = if (opened) bluetoothRoutes() else emptyList()
+        val selected = routes.filter { it.selected }
+        val state = when {
+            active == null -> "Idle"
+            active.requestedAt == null -> "Waiting"
+            else -> "Requested"
+        }
+        log(
+            "Headset take-back experiment",
+            listOf(
+                LogField.Public("outcome", outcome),
+                LogField.Public("state", state),
+                LogField.Count("targetRouteAlias", (active?.route ?: headset?.route)?.let(::alias) ?: 0),
+                LogField.Public(
+                    "selectedRouteAliases",
+                    selected.take(MAX_SELECTED_ALIASES).joinToString("_") {
+                        alias(it.id).toString()
+                    }.ifEmpty { "none" },
+                ),
+                LogField.Count("selectedRoutes", selected.size),
+                LogField.Count("bluetoothRoutes", routes.size),
+                LogField.Millis(
+                    "elapsed",
+                    active?.requestedAt?.let { (clock.elapsed() - it).inWholeMilliseconds.coerceAtLeast(0) } ?: 0,
+                ),
+            ),
+        )
+    }
+
+    private companion object {
+        const val MAX_ROUTE_ALIASES = 32
+        const val MAX_SELECTED_ALIASES = 4
+    }
 }

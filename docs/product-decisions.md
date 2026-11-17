@@ -438,6 +438,20 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-17 owner refinement (deferred system take-back and narrow simplification).** Build 2279
+accepted a system headset transfer on its first arrival, but a second arrival measured a remote mix
+while the system router reported the remembered destination `AlreadySelected`. The owner approved
+retaining that take-back until a route callback makes the remembered target transferable, within the
+original car-link window. An absent/already-selected route does not spend the allowance; at most one
+actual transfer invocation is allowed per link, including failed invocations. Disconnect/replacement,
+expiry, listener Pause/Stop and newer output/content/player intent revoke deferred work. Calls and
+permission loss block it. The helper does not extend the deadline or add polling, Play or focus requests.
+The existing window is the single deadline/budget owner. A measured headset-to-system-route association
+is pinned for that endpoint and may only be learned with positive car absence and no active arrival
+window. Capture-local route aliases distinguish remembered and selected system routes without names or
+addresses. Release/benchmark behavior and the existing playback recovery budget/proof are unchanged.
+See [hardware evidence and regressions](testing/2026-11-17-system-route-take-back.md).
+
 **2026-11-17 owner refinement (confirmed inferred arrival interrupted before Auto binds).** After an
 already qualified inferred arrival has confirmed both exact headset route and active playback, a distinct
 route-safety interruption may rearm that same episode before the real Auto controller binds. This uses

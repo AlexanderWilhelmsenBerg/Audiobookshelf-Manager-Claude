@@ -1,5 +1,10 @@
 # Audiobookshelf API compatibility
 
+The 2026-11-17 deferred debug system-route take-back correction adds no server endpoint, response field,
+schema, permission or dependency. Build 2279 demonstrated one matching system selection callback on the
+test phone; repeated arrival and exclusive headset audibility are not accepted. Release/benchmark remain
+no-ops. See [hardware evidence and regression scope](testing/2026-11-17-system-route-take-back.md).
+
 The 2026-11-17 confirmed-inferred arrival rearm correction is local playback policy only. It adds no
 endpoint, response field, schema, permission, dependency or tested server version. The existing recovery
 episode, claim budget, deadline and muted proof are retained; see the

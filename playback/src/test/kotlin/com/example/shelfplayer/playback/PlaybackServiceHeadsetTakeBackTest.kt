@@ -11,6 +11,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -22,18 +25,29 @@ import kotlin.test.assertTrue
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class PlaybackServiceHeadsetTakeBackTest {
-    private class Recorder : HeadsetTakeBack {
+    private class Recorder(private val immediate: Boolean = true) : HeadsetTakeBack {
+        var pending: (() -> Boolean)? = null
         var verified = 0
         var displaced = 0
-        override fun onHeadsetVerified() {
+        override fun onHeadsetVerified(endpointId: String, mayRemember: () -> Boolean) {
             verified++
         }
 
-        override fun onHeadsetDisplaced() {
+        override fun onHeadsetDisplaced(
+            endpointId: String,
+            scope: CarBluetoothArrivalWindow.TakeBackScope,
+            isCurrent: () -> Boolean,
+        ) {
             displaced++
+            pending = { isCurrent() && scope.claim() }
+            if (immediate) pending?.invoke()
         }
 
-        override fun close() = Unit
+        override fun cancelPending() {
+            pending = null
+        }
+
+        override fun close() = cancelPending()
     }
 
     @Test
@@ -97,8 +111,39 @@ class PlaybackServiceHeadsetTakeBackTest {
         }
     }
 
-    private fun start(f: PlaybackServiceCommandContinuityFixture): Recorder {
-        val takeBack = Recorder()
+    @Test
+    fun `listener Pause revokes a deferred system transfer before a route callback`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { f ->
+            val takeBack = start(f, immediate = false)
+            f.service.carBluetoothWindow.onCarHandsFreeConnected("car")
+            assertTrue(f.pauseForSafetyThroughService())
+            val delayed = assertNotNull(takeBack.pending)
+
+            assertNull(f.forwarding.handleSetPlayWhenReady(false).get())
+            runCurrent()
+
+            assertNull(takeBack.pending, "governor listener cancellation reaches the adapter")
+            // A callback already copied by the platform also checks its captured playback authority.
+            assertFalse(delayed())
+        }
+    }
+
+    @Test
+    fun `newer output selection revokes a deferred system transfer`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { f ->
+            val takeBack = start(f, immediate = false)
+            f.service.carBluetoothWindow.onCarHandsFreeConnected("car")
+            assertTrue(f.pauseForSafetyThroughService())
+            val delayed = assertNotNull(takeBack.pending)
+
+            f.selectCar()
+
+            assertFalse(delayed())
+        }
+    }
+
+    private fun start(f: PlaybackServiceCommandContinuityFixture, immediate: Boolean = true): Recorder {
+        val takeBack = Recorder(immediate)
         f.service.headsetTakeBack = takeBack
         f.installServiceContinuityCallbacks()
         f.startHealthyHeadsetWithoutCar()

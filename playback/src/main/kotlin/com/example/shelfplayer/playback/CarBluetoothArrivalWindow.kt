@@ -14,48 +14,55 @@ import kotlin.time.Duration.Companion.seconds
  * Not thread-safe by design: the receiver and the service both run on the main thread.
  */
 internal class CarBluetoothArrivalWindow(private val now: () -> Duration) {
-    private var openedAt: Duration? = null
-    private var peer: String? = null
-    private var consumed = false
-    private var takeBackClaimed = false
+    private class Link(val openedAt: Duration, val peer: String?) {
+        var consumed = false
+        var takeBackClaimed = false
+    }
+
+    private var link: Link? = null
 
     /** [peerKey] is a process-private correlation token; it is compared, never logged or stored elsewhere. */
     fun onCarHandsFreeConnected(peerKey: String?) {
-        openedAt = now()
-        peer = peerKey
-        consumed = false
-        takeBackClaimed = false
+        link = Link(now(), peerKey)
     }
 
     /** The same car leaving ends its window; an unrelated or unreadable peer does not. */
     fun onHandsFreeDisconnected(peerKey: String?) {
-        if (peerKey != null && peerKey == peer) close()
+        if (peerKey != null && peerKey == link?.peer) close()
     }
 
     /** Age of an open, unconsumed window; null once it is closed, spent or older than [LIFETIME]. */
-    fun age(): Duration? = openedAt
-        ?.let { now() - it }
-        ?.takeIf { !consumed && it >= Duration.ZERO && it < LIFETIME }
+    fun age(): Duration? = current()?.takeUnless { it.consumed }?.let { now() - it.openedAt }
 
     fun consume(): Boolean {
-        if (age() == null) return false
-        consumed = true
+        val current = current()?.takeUnless { it.consumed } ?: return false
+        current.consumed = true
         return true
     }
 
     /** One route take-back per car link, independent of whether the arrival inference was spent. */
     fun claimTakeBack(): Boolean {
-        val open = openedAt?.let { now() - it }?.let { it >= Duration.ZERO && it < LIFETIME } == true
-        if (!open || takeBackClaimed) return false
-        takeBackClaimed = true
+        val current = current()?.takeUnless { it.takeBackClaimed } ?: return false
+        current.takeBackClaimed = true
         return true
     }
 
+    /** A delayed route callback cannot borrow a replacement car link or renew its original deadline. */
+    fun takeBackScope(): TakeBackScope? = current()?.takeUnless { it.takeBackClaimed }?.let { expected ->
+        TakeBackScope(
+            isCurrent = { current() === expected },
+            claim = { current() === expected && claimTakeBack() },
+        )
+    }
+
+    class TakeBackScope internal constructor(val isCurrent: () -> Boolean, val claim: () -> Boolean)
+
+    fun isOpen(): Boolean = current() != null
+
+    private fun current(): Link? = link?.takeIf { now() - it.openedAt in Duration.ZERO..<LIFETIME }
+
     fun close() {
-        openedAt = null
-        peer = null
-        consumed = false
-        takeBackClaimed = false
+        link = null
     }
 
     internal companion object {

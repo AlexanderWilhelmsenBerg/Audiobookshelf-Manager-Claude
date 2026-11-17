@@ -55,6 +55,7 @@ internal object AudioRouteLabEvidence {
         "focusObservation", "focusEvidence", "androidFocusChange", "focusRequester", "focusRequesterEvidence",
         "focusSequence", "sinceFocusEvent", "transportReasonCode", "suppressionReasonCode", "audibility",
         "windowAge", "audioMode", "outcome", "bluetoothRoutes", "elapsed",
+        "state", "targetRouteAlias", "selectedRouteAliases", "selectedRoutes",
     )
     private const val MAX_SAFE_FIELDS = 20
     private const val FUTURE_SKEW_SECONDS = 60L

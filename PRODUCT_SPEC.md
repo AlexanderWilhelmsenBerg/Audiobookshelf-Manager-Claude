@@ -388,6 +388,12 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 
 ### PLAY-002 Audio focus and route handling
 
+- The debug-only system headset take-back experiment may wait for route callbacks when the remembered
+  destination is absent or already selected despite actual output disagreement. It retains the original
+  car-link deadline and permits at most one transfer invocation per link. New listener/content intent,
+  disconnect, expiry, calls and permission loss prevent delayed transfer. System selection is not
+  physical output proof; association learning requires positive car absence (PD-009, 2026-11-17).
+
 **Acceptance criteria**
 - The player requests audio focus through Media3.
 - A transient focus loss pauses or ducks according to setting; default is pause.

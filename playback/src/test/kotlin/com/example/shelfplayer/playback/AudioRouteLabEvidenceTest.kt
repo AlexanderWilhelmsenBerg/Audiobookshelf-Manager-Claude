@@ -13,6 +13,27 @@ import kotlin.test.assertNull
 
 class AudioRouteLabEvidenceTest {
     @Test
+    fun `deferred take-back exports selection disagreement with bounded aliases`() {
+        val result = requireNotNull(
+            AudioRouteLabEvidence.event(
+                LoggedEvent(
+                    Instant.EPOCH,
+                    LogLevel.Info,
+                    "AndroidAuto",
+                    "Headset take-back experiment outcome=AlreadySelected state=Waiting " +
+                        "targetRouteAlias=1 selectedRouteAliases=1_2 selectedRoutes=2 bluetoothRoutes=2 " +
+                        "routeId=private-id deviceName=private-name deviceAddress=private-address",
+                ),
+            ),
+        )
+        assertContains(result, "headset-take-back outcome=AlreadySelected state=Waiting")
+        assertContains(result, "targetRouteAlias=1")
+        assertContains(result, "selectedRouteAliases=1_2")
+        assertContains(result, "selectedRoutes=2")
+        assertFalse("private" in result)
+    }
+
+    @Test
     fun `manual system transfer exports aliases and timing without peer metadata`() {
         val result = requireNotNull(
             AudioRouteLabEvidence.event(

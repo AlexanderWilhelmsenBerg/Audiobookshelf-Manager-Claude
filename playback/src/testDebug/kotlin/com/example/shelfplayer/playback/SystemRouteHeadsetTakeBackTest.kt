@@ -1,173 +1,167 @@
 package com.example.shelfplayer.playback
 
 import android.media.AudioManager
-import com.example.shelfplayer.core.common.log.LogField
-import com.example.shelfplayer.core.testing.TestAppClock
+import com.example.shelfplayer.playback.SystemRouteTakeBackFixture.Companion.CAR
+import com.example.shelfplayer.playback.SystemRouteTakeBackFixture.Companion.HEADSET
+import com.example.shelfplayer.playback.SystemRouteTakeBackFixture.Companion.route
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 
-/** PD-009 experiment: only the route selected while the headset was measured may be taken back, once asked. */
+/** PD-009 experiment: only the route associated with measured headset playback may be taken back. */
 class SystemRouteHeadsetTakeBackTest {
-    private val port = Port()
-    private val clock = TestAppClock()
-    private val outcomes = mutableListOf<String>()
-    private val rendered = mutableListOf<String>()
-    private val takeBack = SystemRouteHeadsetTakeBack(port, clock) { _, fields ->
-        outcomes += fields.filterIsInstance<LogField.Public>().single { it.key == "outcome" }.value
-        rendered += fields.joinToString(" ")
-    }
+    private val f = SystemRouteTakeBackFixture()
 
     @Test
     fun displacedHeadsetRouteIsRequestedAndMatchingSelectionReportsDuration() {
-        takeBack.onHeadsetVerified()
-        port.carTakesOver()
+        f.verify()
+        f.port.carTakesOver()
 
-        takeBack.onHeadsetDisplaced()
-        assertEquals(listOf(HEADSET), port.requests)
-        clock.advanceBy(600.milliseconds)
-        port.result(CAR, SystemRouteStatus.Selected)
-        assertEquals(listOf("Requested"), outcomes, "another route's selection is not this request's outcome")
-        port.result(HEADSET, SystemRouteStatus.Selected)
+        f.displace()
+        assertEquals(listOf(HEADSET), f.port.requests)
+        f.clock.advanceBy(600.milliseconds)
+        f.port.result(CAR, SystemRouteStatus.Selected)
+        assertEquals(listOf("Requested"), f.outcomes, "another route's selection is not this request's outcome")
+        f.port.result(HEADSET, SystemRouteStatus.Selected)
 
-        assertEquals(listOf("Requested", "Selected"), outcomes)
-        assertTrue(rendered.last().contains("600"))
-        assertFalse(rendered.joinToString().contains("private"), "route ids never reach the log")
+        assertEquals(listOf("Requested", "Selected"), f.outcomes)
+        assertTrue(f.rendered.last().contains("600"))
+        assertFalse(f.rendered.joinToString().contains("private"), "route ids never reach the log")
     }
 
     @Test
     fun lateTimeoutAfterSelectionIsIgnored() {
-        takeBack.onHeadsetVerified()
-        port.carTakesOver()
-        takeBack.onHeadsetDisplaced()
-        port.result(HEADSET, SystemRouteStatus.Selected)
+        f.verify()
+        f.port.carTakesOver()
+        f.displace()
+        f.port.result(HEADSET, SystemRouteStatus.Selected)
 
-        port.result(HEADSET, SystemRouteStatus.TimedOut)
+        f.port.result(HEADSET, SystemRouteStatus.TimedOut)
 
-        assertEquals(listOf("Requested", "Selected"), outcomes)
+        assertEquals(listOf("Requested", "Selected"), f.outcomes)
     }
 
     @Test
     fun nothingIsRequestedWithoutRememberedHeadsetRoute() {
-        port.carTakesOver()
+        f.port.carTakesOver()
 
-        takeBack.onHeadsetDisplaced()
+        f.displace()
 
-        assertTrue(port.requests.isEmpty())
-        assertEquals(listOf("HeadsetRouteUnknown"), outcomes)
+        assertTrue(f.port.requests.isEmpty())
+        assertEquals(listOf("HeadsetRouteUnknown"), f.outcomes)
     }
 
     @Test
     fun selectedOrUnlistedHeadsetIsLeftAlone() {
-        takeBack.onHeadsetVerified()
-        takeBack.onHeadsetDisplaced()
-        port.routes = listOf(route(CAR, selected = true))
-        takeBack.onHeadsetDisplaced()
+        f.verify()
+        f.displace()
+        f.port.routes = listOf(route(CAR, selected = true))
+        f.displace()
 
-        assertTrue(port.requests.isEmpty())
-        assertEquals(listOf("AlreadySelected", "HeadsetRouteAbsent"), outcomes)
+        assertTrue(f.port.requests.isEmpty())
+        assertEquals(listOf("AlreadySelected", "HeadsetRouteAbsent"), f.outcomes)
     }
 
     @Test
     fun callOrMissingPermissionBlocksRequest() {
-        takeBack.onHeadsetVerified()
-        port.carTakesOver()
-        port.mode = AudioManager.MODE_IN_CALL
-        takeBack.onHeadsetDisplaced()
-        port.mode = AudioManager.MODE_NORMAL
-        takeBack.close()
-        port.status = SystemRouteStatus.PermissionRequired
-        takeBack.onHeadsetDisplaced()
+        f.verify()
+        f.port.carTakesOver()
+        f.port.mode = AudioManager.MODE_IN_CALL
+        f.displace()
+        f.port.mode = AudioManager.MODE_NORMAL
+        f.takeBack.close()
+        f.port.status = SystemRouteStatus.PermissionRequired
+        f.displace()
 
-        assertTrue(port.requests.isEmpty())
-        assertEquals(listOf("CallBlocked", "PermissionRequired"), outcomes)
+        assertTrue(f.port.requests.isEmpty())
+        assertEquals(listOf("CallBlocked", "PermissionRequired"), f.outcomes)
     }
 
     @Test
     fun routesDiscoveredAfterVerificationAreRememberedUntilDisplacement() {
-        port.routes = emptyList()
-        takeBack.onHeadsetVerified()
-        port.routes = listOf(route(HEADSET, selected = true))
-        port.changed()
-        port.carTakesOver()
-        port.changed()
+        f.port.routes = emptyList()
+        f.verify()
+        f.port.routes = listOf(route(HEADSET, selected = true))
+        f.port.changed()
+        f.port.carTakesOver()
+        f.port.changed()
 
-        takeBack.onHeadsetDisplaced()
+        f.displace()
 
-        assertEquals(listOf(HEADSET), port.requests)
+        assertEquals(listOf(HEADSET), f.port.requests)
     }
 
     @Test
     fun carSelectedDuringDiscoveryCannotBecomeHeadsetAfterDisplacement() {
-        port.routes = emptyList()
-        takeBack.onHeadsetVerified()
-        takeBack.onHeadsetDisplaced()
-        port.carTakesOver()
-        port.changed()
-        takeBack.onHeadsetDisplaced()
+        f.port.routes = emptyList()
+        f.verify()
+        f.displace()
+        f.port.carTakesOver()
+        f.port.changed()
+        f.displace()
 
-        assertTrue(port.requests.isEmpty())
-        assertEquals(listOf("HeadsetRouteUnknown", "HeadsetRouteUnknown"), outcomes)
+        assertTrue(f.port.requests.isEmpty())
+        assertEquals(listOf("HeadsetRouteUnknown", "HeadsetRouteUnknown"), f.outcomes)
     }
 
     @Test
     fun twoSelectedBluetoothRoutesAreTooAmbiguousToRemember() {
-        port.routes = listOf(route(HEADSET, selected = true), route(CAR, selected = true))
-        takeBack.onHeadsetVerified()
-        port.carTakesOver()
+        f.port.routes = listOf(route(HEADSET, selected = true), route(CAR, selected = true))
+        f.verify()
+        f.port.carTakesOver()
 
-        takeBack.onHeadsetDisplaced()
+        f.displace()
 
-        assertTrue(port.requests.isEmpty())
+        assertTrue(f.port.requests.isEmpty())
     }
 
     @Test
     fun routerFailureIsReportedAndNothingStaysPending() {
-        takeBack.onHeadsetVerified()
-        port.carTakesOver()
-        port.failTransfer = true
+        f.verify()
+        f.port.carTakesOver()
+        f.port.failTransfer = true
 
-        takeBack.onHeadsetDisplaced()
-        port.result(HEADSET, SystemRouteStatus.Selected)
+        f.displace()
+        f.port.result(HEADSET, SystemRouteStatus.Selected)
 
-        assertEquals(listOf("Unavailable"), outcomes)
+        assertEquals(listOf("Requested", "Unavailable"), f.outcomes)
     }
 
-    private class Port : SystemRoutePort {
-        var status = SystemRouteStatus.Observing
-        var mode = AudioManager.MODE_NORMAL
-        var routes = listOf(route(HEADSET, selected = true))
-        var failTransfer = false
-        val requests = mutableListOf<String>()
-        var changed: () -> Unit = {}
-        var result: (String, SystemRouteStatus) -> Unit = { _, _ -> }
+    @Test
+    fun staleSelectedRouteWaitsForTheSystemSnapshotToCatchUp() {
+        f.verify()
+        f.displace()
+        assertTrue(f.port.requests.isEmpty())
 
-        fun carTakesOver() {
-            routes = listOf(route(HEADSET, selected = false), route(CAR, selected = true))
-        }
+        f.port.carTakesOver()
+        f.port.changed()
+        f.port.changed()
 
-        override fun availability() = status
-        override fun audioMode() = mode
-        override fun routes() = routes
-        override fun open(changed: () -> Unit, result: (String, SystemRouteStatus) -> Unit) {
-            this.changed = changed
-            this.result = result
-        }
-
-        override fun transfer(id: String) {
-            check(!failTransfer)
-            requests += id
-        }
-
-        override fun close() = Unit
+        assertEquals(listOf(HEADSET), f.port.requests)
     }
 
-    private companion object {
-        const val HEADSET = "private-headset"
-        const val CAR = "private-car"
-        fun route(id: String, selected: Boolean) =
-            SystemRouteCandidate(id, "private-name", bluetooth = true, system = true, selected = selected)
+    @Test
+    fun absentRememberedRouteWaitsForDiscoveryInsteadOfGivingUp() {
+        f.verify()
+        f.port.routes = listOf(route(CAR, selected = true))
+        f.displace()
+        f.port.carTakesOver()
+
+        f.port.changed()
+
+        assertEquals(listOf(HEADSET), f.port.requests)
+    }
+
+    @Test
+    fun repeatedHeadsetProofCannotReplaceTheRememberedSystemRouteWithTheCar() {
+        f.verify()
+        f.port.carTakesOver()
+        f.verify()
+
+        f.displace()
+
+        assertEquals(listOf(HEADSET), f.port.requests)
     }
 }
