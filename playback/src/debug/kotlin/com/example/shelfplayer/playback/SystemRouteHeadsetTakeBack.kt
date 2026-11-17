@@ -20,10 +20,12 @@ internal class SystemRouteHeadsetTakeBack(
     private class Attempt(
         val route: String,
         val scope: CarBluetoothArrivalWindow.TakeBackScope,
-        val isCurrent: () -> Boolean,
+        private val contextCurrent: () -> Boolean,
     ) {
         var requestedAt: Duration? = null
         var outcome: String? = null
+
+        fun isCurrent(): Boolean = scope.isCurrent() && contextCurrent()
     }
 
     private var opened = false
@@ -50,15 +52,13 @@ internal class SystemRouteHeadsetTakeBack(
     ) {
         verified = null
         if (!scope.isCurrent() || !isCurrent()) return
-        val target = headset?.takeIf { it.endpoint == endpointId }
-        if (!open() || target == null) {
-            report(if (opened) "HeadsetRouteUnknown" else port.availability().name)
+        if (!open()) {
+            val status = port.availability()
+            report(if (status == SystemRouteStatus.Observing) "Unavailable" else status.name)
             return
         }
-        val existing = attempt
-        if (existing == null || !existing.scope.isCurrent() || !existing.isCurrent()) {
-            attempt = Attempt(target.route, scope, isCurrent)
-        }
+        val target = headset?.takeIf { it.endpoint == endpointId } ?: return report("HeadsetRouteUnknown")
+        attempt = attempt?.takeIf(Attempt::isCurrent) ?: Attempt(target.route, scope, isCurrent)
         advance()
     }
 
@@ -106,7 +106,7 @@ internal class SystemRouteHeadsetTakeBack(
     private fun advance() {
         val active = attempt ?: return
         when {
-            !active.scope.isCurrent() || !active.isCurrent() -> finish(active, "Cancelled")
+            !active.isCurrent() -> finish(active, "Cancelled")
 
             port.availability() != SystemRouteStatus.Observing -> finish(active, "PermissionRequired")
 
@@ -127,13 +127,13 @@ internal class SystemRouteHeadsetTakeBack(
 
     private fun transfer(active: Attempt) {
         // Reading platform routes can invoke callbacks. Recheck ownership before claiming.
-        if (attempt !== active || !active.isCurrent() || !active.scope.claim()) {
+        if (!owns(active) || !active.scope.claim()) {
             finish(active, "Cancelled")
             return
         }
         active.requestedAt = clock.elapsed()
         report("Requested", active)
-        if (attempt !== active || !active.isCurrent() || !active.scope.isCurrent()) return
+        if (!owns(active)) return
         try {
             port.transfer(active.route)
         } catch (_: SecurityException) {
@@ -147,8 +147,10 @@ internal class SystemRouteHeadsetTakeBack(
 
     private fun onResult(id: String, status: SystemRouteStatus) {
         val active = attempt?.takeIf { it.route == id && it.requestedAt != null } ?: return
-        finish(active, if (active.scope.isCurrent() && active.isCurrent()) status.name else "Cancelled")
+        finish(active, if (active.isCurrent()) status.name else "Cancelled")
     }
+
+    private fun owns(active: Attempt): Boolean = attempt === active && active.isCurrent()
 
     private fun finish(active: Attempt, outcome: String) {
         if (attempt !== active) return
