@@ -3,6 +3,7 @@ package com.example.shelfplayer.playback
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.os.Build
 import androidx.media3.common.util.UnstableApi
 import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -197,8 +198,7 @@ private fun PlaybackServiceCommandContinuityFixture.publishPolicyHeadsetRoute(wi
     router.currentTrackObservation = { null }
     router.setPlaybackField("currentTrackRoutes", { null })
     val routes = if (withUnmappedCar) {
-        val car = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_REMOTE_SUBMIX).build()
-        ImmutableList.of(device, car)
+        ImmutableList.of(device, remoteSubmix())
     } else {
         ImmutableList.of(device)
     }
@@ -207,6 +207,12 @@ private fun PlaybackServiceCommandContinuityFixture.publishPolicyHeadsetRoute(wi
     shadowOf(RuntimeEnvironment.getApplication().getSystemService(AudioManager::class.java))
         .setAudioDevicesForAttributes(attributes, routes)
     router.onActualTrackRouteChanged()
+}
+
+private fun remoteSubmix(): AudioDeviceInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_REMOTE_SUBMIX).build()
+} else {
+    error("The remote-mix fixture requires Android 12 or later")
 }
 
 private fun PlaybackServiceCommandContinuityFixture.reportPlayingOnCarDuringProbe() {
