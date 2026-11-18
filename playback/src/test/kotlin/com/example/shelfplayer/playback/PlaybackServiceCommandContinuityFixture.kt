@@ -62,7 +62,7 @@ internal class PlaybackServiceCommandContinuityFixture(
         override fun log(event: LogEvent) = Unit
     }
     private val registry = LiveOutputEndpointRegistry()
-    private val device = AudioDeviceInfoBuilder.newBuilder().setType(deviceType).build()
+    val device: AudioDeviceInfo = AudioDeviceInfoBuilder.newBuilder().setType(deviceType).build()
         .apply {
             val port = org.robolectric.util.ReflectionHelpers.getField<Any>(this, "mPort")
             org.robolectric.util.ReflectionHelpers.setField(port, "mName", "Fixture headset")
@@ -118,7 +118,7 @@ internal class PlaybackServiceCommandContinuityFixture(
     val queueMutationIntents = mutableListOf<Boolean>()
     private val realPlayer = ExoPlayer.Builder(context).build()
     private var reportedPositionMs: Long? = null
-    private var reportedIsPlaying: Boolean? = null
+    var reportedIsPlaying: Boolean? = null
 
     // Observe commands while retaining one real pinned Media3 player and all its normal callbacks.
     val player = java.lang.reflect.Proxy.newProxyInstance(

@@ -23,6 +23,7 @@ internal object AudioRouteLabEvidence {
         "A car connected to the media session" to "car-controller-bound",
         "Car lifecycle continuity decision" to "continuity-decision",
         "Car lifecycle route recovery changed" to "recovery-step",
+        "Car inferred arrival settle finished" to "arrival-settle",
         "Car Bluetooth arrival inference" to "car-bluetooth-inference",
         "Headset take-back experiment" to "headset-take-back",
         "Playback stopped on an error" to "playback-error",

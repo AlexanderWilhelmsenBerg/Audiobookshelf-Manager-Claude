@@ -2147,6 +2147,7 @@ class PlaybackService : MediaLibraryService() {
             scope = scope,
             synchronizeOutputIntent = ::syncExplicitOutputIntent,
             onOutputsChanged = ::republishOutputButtons,
+            inferredArrivalAudioAllowed = { audioMode() == AudioManager.MODE_NORMAL },
         )
     }
 

@@ -2,13 +2,22 @@ package com.example.shelfplayer.playback
 
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.common.log.LogField
+import com.example.shelfplayer.core.model.playback.AudioOutput
+import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
@@ -36,6 +45,7 @@ internal class CarContinuityResumeEffects(
     private val scope: CoroutineScope,
     private val synchronizeOutputIntent: () -> Unit = {},
     private val onOutputsChanged: () -> Unit = {},
+    private val inferredArrivalAudioAllowed: () -> Boolean = { true },
 ) {
     private var pending: Job? = null
     private var pendingTarget: CarArrivalResumeGate.Target? = null
@@ -232,6 +242,73 @@ internal class CarContinuityResumeEffects(
         }
     }
 
+    private suspend fun settleInferredArrival(target: CarArrivalResumeGate.Target): Boolean {
+        val readyEarly = if (target.retryAfterFocusLoss) {
+            delay(INFERRED_ARRIVAL_SETTLE)
+            false
+        } else {
+            awaitEarlyHeadsetPrediction(target.outputId)
+        }
+        if (!recovery.isCurrent(target, owner.currentGeneration, selectionSequence())) return false
+        val allowed = inferredArrivalAudioAllowed()
+        val outcome = when {
+            !allowed -> "blocked-by-audio-mode"
+            readyEarly -> "route-ready"
+            else -> "settle-elapsed"
+        }
+        log("Car inferred arrival settle finished", listOf(LogField.Public("outcome", outcome)) + snapshot())
+        return allowed
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun awaitEarlyHeadsetPrediction(id: String): Boolean = withTimeoutOrNull(INFERRED_ARRIVAL_SETTLE) {
+        val stable = outputs.outputs.map { rows -> predictsHeldHeadset(id, rows) }
+            .distinctUntilChanged().drop(1).transformLatest { ready ->
+                emit(false)
+                if (ready) {
+                    delay(EARLY_HEADSET_STABILITY)
+                    emit(true)
+                }
+            }
+        // Watch for a fresh policy edge while giving the observed focus burst time to pass.
+        val floor = flow {
+            delay(INFERRED_ARRIVAL_EARLIEST)
+            emit(Unit)
+        }
+        floor.combine(stable) { _, ready -> ready }.first { it && predictsHeldHeadset(id, outputs.outputs.value) }
+    } ?: false
+
+    private fun predictsHeldHeadset(id: String, rows: List<AudioOutput>): Boolean {
+        val active = rows.singleOrNull { it.isActive } ?: return false
+        return active.id == id && active.isHeadsetCandidate &&
+            active.activitySource == AudioOutputActivitySource.FrameworkMediaPolicy &&
+            outputs.localOutputs.predictsOnly(id)
+    }
+
+    private suspend fun awaitRecoveryTiming(
+        target: CarArrivalResumeGate.Target,
+        claimedInventory: Set<String>?,
+    ): Boolean {
+        if (target.retryAfterFocusLoss) {
+            val backoff = if (target.attemptOrdinal == 2) 1500.milliseconds else 3000.milliseconds
+            log(
+                "Car continuity waiting before interrupted Play retry",
+                listOf(
+                    LogField.Public("episode", target.episodeId),
+                    LogField.Public("attempt", target.attemptOrdinal),
+                    LogField.Millis("retryDelay", backoff.inWholeMilliseconds),
+                ),
+            )
+            delay(backoff)
+            if (!recovery.isCurrent(target, owner.currentGeneration, selectionSequence())) return false
+        }
+        if (target.phase == CarArrivalResumeGate.Phase.HeadsetReturn && claimedInventory != null) {
+            awaitInventoryAfterSafetyPause(claimedInventory)
+            if (!recovery.isCurrent(target, owner.currentGeneration, selectionSequence())) return false
+        }
+        return !target.inferredArrival || settleInferredArrival(target)
+    }
+
     suspend fun recoverAndResume(target: CarArrivalResumeGate.Target, claimedInventory: Set<String>? = null) {
         // Media3 can hold playWhenReady=true while temporarily suppressing audible playback.
         // It owns focus restoration in that state; issuing another Play or reasserting the output
@@ -239,35 +316,14 @@ internal class CarContinuityResumeEffects(
         try {
             val recoveryJob = currentCoroutineContext().job
             currentCoroutineContext().ensureActive()
-            if (target.retryAfterFocusLoss) {
-                val backoff = if (target.attemptOrdinal == 2) 1500.milliseconds else 3000.milliseconds
-                log(
-                    "Car continuity waiting before interrupted Play retry",
-                    listOf(
-                        LogField.Public("episode", target.episodeId),
-                        LogField.Public("attempt", target.attemptOrdinal),
-                        LogField.Millis("retryDelay", backoff.inWholeMilliseconds),
-                    ),
-                )
-                delay(backoff)
-                if (!recovery.isCurrent(target, owner.currentGeneration, selectionSequence())) return
-            }
-            if (target.phase == CarArrivalResumeGate.Phase.HeadsetReturn && claimedInventory != null) {
-                awaitInventoryAfterSafetyPause(claimedInventory)
-                if (!recovery.isCurrent(target, owner.currentGeneration, selectionSequence())) return
-            }
-            if (target.inferredArrival) {
-                // Android Auto was measured requesting focus two or three times within 0.3 s as projection
-                // starts. Let that burst pass, or the first Play is taken straight back.
-                delay(INFERRED_ARRIVAL_SETTLE)
-                if (!recovery.isCurrent(target, owner.currentGeneration, selectionSequence())) return
-            }
+            if (!awaitRecoveryTiming(target, claimedInventory)) return
             if (currentPlayer()?.playWhenReady == true) {
                 log("Car lifecycle left active playback intent with Media3")
                 return
             }
             val heldHeadset = recoverCarContinuityHeadset(target)
             currentCoroutineContext().ensureActive()
+            if (target.inferredArrival && !inferredArrivalAudioAllowed()) return
             resumeAfterCarContinuity(target, heldHeadset) { current ->
                 recoveryJob.isActive && owner.currentGeneration == target.generation &&
                     selectionSequence() == target.explicitSelectionSequence &&
@@ -366,8 +422,10 @@ internal class CarContinuityResumeEffects(
     private fun log(message: String, fields: List<LogField> = emptyList()) = trace(message, fields)
 
     internal companion object {
-        /** Measured burst was 46 ms and 256 ms wide; this is the only wait added before an inferred resume. */
+        /** Measured focus bursts were 46 ms and 256 ms. Ambiguous or unchanged output keeps the full wait. */
         val INFERRED_ARRIVAL_SETTLE = 500.milliseconds
+        private val INFERRED_ARRIVAL_EARLIEST = 350.milliseconds
+        private val EARLY_HEADSET_STABILITY = 75.milliseconds
 
         /** The inventory followed the route change by 56 ms on hardware; this bounds the wait for it. */
         val HEADSET_RETURN_INVENTORY_SETTLE = 300.milliseconds

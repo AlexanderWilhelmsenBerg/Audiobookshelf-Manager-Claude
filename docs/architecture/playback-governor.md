@@ -94,6 +94,11 @@ If actual routing becomes unavailable or wrong, safety still pauses. Recovery us
 muted probe, position checkpoint and actual AudioTrack proof before unmute. Registry availability is
 not physical output proof. No extra AudioTrack, second player or zero-silence guarantee is introduced.
 
+Inferred arrival observes the router's existing output flow during the focus settle wait. A fresh
+exclusive headset prediction can shorten that wait after a short stability interval. The router
+rechecks the full framework prediction, including unmapped routes, before accepting the early timing.
+The coordinator's claim and the playing-track proof still authorize Play and unmute respectively.
+
 The debug system-route take-back adapter reuses `CarBluetoothArrivalWindow` for its original deadline,
 link identity and single transfer allowance. It holds one deferred/requested attempt, not a second
 recovery policy. Absent or already-selected targets wait for route callbacks; only invoking a transfer

@@ -12,7 +12,7 @@ internal object AudioStallIncidentEvidence {
     private const val PREFIX = "stall-incident "
     private val important = setOf(
         "track-progress", "playback-error", "headset-take-back", "car-bluetooth-window",
-        "continuity-decision", "recovery-step", "output-proof", "playback-intent", "transport-intent",
+        "continuity-decision", "recovery-step", "arrival-settle", "output-proof", "playback-intent", "transport-intent",
         "focus-observation", "preferred-output-request", "output-observation", "transfer-stage",
         "projection-change", "car-controller-bound", "car-controller-unbound",
         "observer-audio-track-attached", "observer-audio-track-released-or-replaced",
