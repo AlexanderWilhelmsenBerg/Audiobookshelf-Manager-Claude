@@ -18,7 +18,7 @@ internal object AudioRouteLabEvidence {
         "Muted output route observation requested" to "output-observation",
         "MediaSession hardware media button observed" to "hardware-button",
         "MediaSession transport request observed" to "transport-intent",
-        "Media3 audible playback changed" to "media3-playback",
+        "Media3 playback activity changed" to "media3-playback",
         "Android Auto projection state changed" to "projection-change",
         "A car connected to the media session" to "car-controller-bound",
         "Car lifecycle continuity decision" to "continuity-decision",

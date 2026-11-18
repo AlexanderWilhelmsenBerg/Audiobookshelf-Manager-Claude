@@ -1,6 +1,11 @@
 # Audiobookshelf API compatibility
 
-The 2026-11-17 output-stall diagnostic adds the optional `audioRouteLab.stallIncident` export field under
+The 2026-11-18 playback diagnostic export moves to schema version 2. Readers of new reports use
+`timeline`, `firstIncident`, `current` and `problems`; version 1 files retain their original shape.
+Both are local diagnostic files and there is no ABS endpoint, database schema or permission change.
+See [export and retention](testing/unified-diagnostics.md).
+
+The 2026-11-17 output-stall diagnostic added the optional `audioRouteLab.stallIncident` export field under
 diagnostic schema version 1. It adds no ABS endpoint/response field, database schema, permission or
 dependency. Debug builds add a take-back comparison preference; release/benchmark keep the no-op.
 See [capture, retention and testing limits](testing/2026-11-17-audio-output-stall-diagnostics.md).

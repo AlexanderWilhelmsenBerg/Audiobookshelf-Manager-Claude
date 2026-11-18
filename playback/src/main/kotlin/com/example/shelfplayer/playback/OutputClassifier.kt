@@ -108,11 +108,11 @@ class OutputClassifier @Inject constructor(
         }
         val observer = object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
-                sample("devices-added")
+                if (callback === this) sample()
             }
 
             override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
-                sample("devices-removed")
+                if (callback === this) sample()
             }
         }
         runCatching { manager.registerAudioDeviceCallback(observer, main) }
@@ -130,8 +130,8 @@ class OutputClassifier @Inject constructor(
                 snapshot.current.take(STALL_CURRENT_ROWS).map { "$at system-current $it" }
         }
         append("capture-start")
-        systemProbe.start { sample("system-change") }
-        sample("initial-snapshot")
+        systemProbe.start(::sample)
+        sample()
     }
 
     fun stop() {
@@ -147,31 +147,19 @@ class OutputClassifier @Inject constructor(
     }
 
     fun clear() {
-        stop()
+        systemProbe.clearEvidence()
+        val current = stateMutable.value
+        if (current.recording) {
+            stateMutable.value = current.copy(entries = emptyList())
+            return
+        }
         previous.clear()
         aliases.clear()
         nextAlias = 0
         stateMutable.value = OutputClassifierState()
     }
 
-    fun refresh() {
-        if (stateMutable.value.recording) sample("manual-snapshot")
-    }
-
-    fun report(version: String): String = buildString {
-        appendLine("BookWave Output Classifier")
-        appendLine("app: $version")
-        appendLine("recording: ${state.value.recording}")
-        appendLine("notes: opt-in, session-only aliases, names/addresses never exported")
-        appendLine("route: policy prediction is not the actual AudioTrack sink")
-        appendLine("classification: observation only; no routing changes")
-        appendLine("[current]")
-        state.value.current.forEach(::appendLine)
-        appendLine("[events]")
-        state.value.entries.forEach(::appendLine)
-    }
-
-    private fun sample(reason: String) {
+    private fun sample() {
         if (!stateMutable.value.recording) return
         val manager = context.getSystemService(AudioManager::class.java) ?: return
         val outputs = runCatching { manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList() }
@@ -217,10 +205,6 @@ class OutputClassifier @Inject constructor(
         recordChanges(seen)
         systemProbe.sample(outputs, routeLab.systemProbeTarget()) { aliases[it] ?: "unmapped" }.forEach(::append)
         val collisions = OutputClassifierFacts.collisions(rows)
-        append(
-            "snapshot reason=$reason outputs=${outputs.size} mappedCollisions=$collisions " +
-                "predictedCount=${predicted?.size ?: -1}",
-        )
         previous.clear()
         previous.putAll(seen)
         stateMutable.value = stateMutable.value.copy(

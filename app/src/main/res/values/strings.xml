@@ -1264,11 +1264,6 @@
     <string name="garmin_watch_login_required">Sign in to BookWave Audio on the watch first, then retry.</string>
     <string name="garmin_resume_download">Resume download</string>
     <string name="garmin_download_percent">%1$d%% downloaded</string>
-    <string name="debug_race_capture_description">Capture playback race (includes the previous two minutes). Start before Android Auto connects, then stop and copy. Redacted; memory-only.</string>
-    <string name="debug_race_capture_start">Start race trace</string>
-    <string name="debug_race_capture_stop">Stop race trace</string>
-    <string name="debug_race_capture_copy">Copy race trace</string>
-    <string name="debug_race_capture_clear">Clear race trace</string>
     <string name="settings_headset_button_routing">Headset Play selects its output</string>
     <string name="settings_headset_button_routing_hint">Use a headset Play command to request its known output, or the only eligible headset during Android Auto. Unknown Bluetooth controls can also come from a car. When off, keep the current output and connection behavior. Manual output controls still work.</string>
     <string name="settings_sony_tap_detection">Detect Sony WF-1000XM6 taps directly</string>

@@ -50,6 +50,13 @@ class SystemAudioProbe @Inject constructor(
         }
         playback = null
         mode = null
+        clearEvidence()
+    }
+
+    /** Clear history and comparison baselines without unregistering any active probe. */
+    internal fun clearEvidence() {
+        main.removeCallbacks(refresh)
+        bluetooth.clearEvents()
         previous = emptySet()
         sampleSequence = 0
         evidence.clear()

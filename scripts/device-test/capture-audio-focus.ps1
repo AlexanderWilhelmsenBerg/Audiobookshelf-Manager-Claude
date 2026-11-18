@@ -71,7 +71,7 @@ Write-Host "Capture starting for $Seconds seconds. Connect Android Auto now; lea
 try {
     Save-FocusCapture -Name 'focus-logcat' -TimeoutSeconds $Seconds -Streaming -Command @(
         'logcat', '-T', '1', '-v', 'epoch', '-b', 'main', '-b', 'system', '-s',
-        'MediaFocusControl:V', 'AudioService:V', 'AudioFocusManager:V',
+        'MediaFocusControl:V', 'AudioService:V', 'AudioFocusManager:V', 'AudioHardening:V',
         'AS.AudioDeviceBroker:V', 'AS.AudioDeviceInventory:V', 'AS.BtHelper:V',
         'AudioDeviceBroker:V', 'AudioDeviceInventory:V', 'BtHelper:V',
         'ActiveDeviceManager:V', 'A2dpService:V', 'A2dpStateMachine:V',

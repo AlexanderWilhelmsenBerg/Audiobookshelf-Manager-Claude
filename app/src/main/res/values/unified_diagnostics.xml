@@ -1,22 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="unified_diag_open">Start diagnostics / JSON report</string>
-    <string name="unified_diag_title">Unified diagnostics</string>
-    <string name="unified_diag_description">Record the event log, playback race, Audio Route Lab and output classifier together. Clear all removes these captures and the retained crash report; it leaves playback progress and library data intact. The structured JSON is exported only when you choose Copy or Save. No names or addresses are collected. Use while stationary.</string>
-    <string name="unified_diag_recording">Recording all diagnostics</string>
+    <string name="about_section_debug">Debug</string>
+    <string name="unified_diag_open">Playback diagnostics</string>
+    <string name="unified_diag_title">Playback diagnostics</string>
+    <string name="unified_diag_description">Record playback, headset and Android Auto events. Clear all removes saved diagnostics and the last crash report. An active recording continues.</string>
+    <string name="unified_diag_recording">Recording</string>
     <string name="unified_diag_stopped">Recording stopped</string>
     <string name="unified_diag_start">Start diagnostics</string>
     <string name="unified_diag_stop">Stop diagnostics</string>
     <string name="unified_diag_clear">Clear all</string>
     <string name="unified_diag_clearing">Clearing diagnostic data…</string>
-    <string name="unified_diag_copy_json">Copy complete JSON report</string>
+    <string name="unified_diag_copy_json">Copy JSON</string>
     <string name="unified_diag_save_json">Save JSON file</string>
     <string name="unified_diag_save_success">Diagnostic JSON file saved</string>
     <string name="unified_diag_save_failed">Could not save the diagnostic JSON file</string>
-    <string name="unified_diag_export_help">One versioned JSON report includes the event log, Debug Console, AudioTrack evidence, route-policy events, output classifier, and race capture. Reports are bounded and remain local until you copy or save them.</string>
-    <string name="unified_diag_restart_title">Restart BookWave for AudioTrack capture?</string>
-    <string name="unified_diag_restart_body">The player must be created after recording starts to observe its actual AudioTrack route. Please pause playback first. Restarting BookWave closes the current playback process and opens the app again. The opt-in recorders start automatically in the new process. Unsaved playback may be interrupted.</string>
-    <string name="unified_diag_restart_yes">Restart BookWave</string>
-    <string name="unified_diag_restart_later">I will restart later</string>
-    <string name="unified_diag_restart_manual">Could not restart automatically. Close BookWave completely and open it again; diagnostic recording remains enabled.</string>
+    <string name="unified_diag_advanced">Route comparison tools</string>
+    <string name="unified_diag_hide_advanced">Hide route comparison tools</string>
+    <string name="unified_diag_skipping">Skipping audio</string>
+    <string name="unified_diag_headset">Headset</string>
 </resources>

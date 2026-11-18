@@ -1,7 +1,6 @@
 package com.example.shelfplayer.playback
 
 import android.content.Context
-import androidx.core.content.edit
 import androidx.media3.common.Player
 import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.LogEvent
@@ -34,7 +33,6 @@ class AudioRouteLabStallIncidentTest {
 
     @Before
     fun clearPrevious() {
-        context.getSharedPreferences("audio-route-lab", Context.MODE_PRIVATE).edit { clear() }
         File(context.noBackupFilesDir, "audio-route-lab.txt").delete()
         File(context.noBackupFilesDir, "audio-route-lab.txt.bak").delete()
     }
@@ -72,7 +70,10 @@ class AudioRouteLabStallIncidentTest {
         val f = Fixture(this)
         f.lab.start()
         f.stall()
+        runCurrent()
+        val file = File(context.noBackupFilesDir, "audio-route-lab.txt")
         assertFalse(f.lab.state.value.stallIncident.isEmpty())
+        assertTrue(file.exists(), "The old incident must have reached storage before Clear")
         f.log.write(LogLevel.Warn, "Playback", "Playback stopped on an error cause1StuckType=PlayingNoProgress")
 
         f.lab.clearAndAwait()
@@ -80,7 +81,7 @@ class AudioRouteLabStallIncidentTest {
 
         assertTrue(f.lab.state.value.stallIncident.isEmpty())
         assertTrue(f.recorder().state.value.stallIncident.isEmpty())
-        assertFalse(File(context.noBackupFilesDir, "audio-route-lab.txt").exists())
+        assertFalse(file.exists())
     }
 
     @Test

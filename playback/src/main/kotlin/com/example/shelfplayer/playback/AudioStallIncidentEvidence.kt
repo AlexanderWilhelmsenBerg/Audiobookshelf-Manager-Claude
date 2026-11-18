@@ -21,6 +21,7 @@ internal object AudioStallIncidentEvidence {
     fun isPinned(row: String): Boolean = row.substringAfter(' ').startsWith(PREFIX)
 
     fun isTrigger(value: String): Boolean = value.startsWith("track-progress event=NoFrameProgress ") ||
+        value == "user-heard=Silence" || value == "user-heard=Skipping" ||
         (value.startsWith("playback-error ") && "StuckType=" in value)
 
     fun retain(
@@ -57,12 +58,12 @@ internal object AudioStallIncidentEvidence {
         return (context + (tail + pin(row, "after")).takeLast(TAIL_ROWS)).take(MAX_ROWS)
     }
 
-    private fun category(row: String): String = row.substringAfter(' ').substringBefore(' ')
+    private fun category(row: String): String = row.substringAfter(' ').substringBefore(' ').substringBefore('=')
 
     private fun isImportant(row: String): Boolean = category(row) in important
 
     private fun pin(row: String, phase: String): String =
         "${row.substringBefore(' ')} $PREFIX" + "phase=$phase ${row.substringAfter(' ')}"
 
-    private val CONTEXT_ONLY = setOf("route-policy", "actual-track")
+    private val CONTEXT_ONLY = setOf("route-policy", "actual-track", "user-heard")
 }

@@ -286,8 +286,6 @@ fun SettingsScreen(
     // PRODUCT_SPEC 14.4 — the debug console, alongside the event log for the same reason it is on this tab:
     // both exist to be *reported*, and the console is the log plus everything around it.
     var isDebugConsoleOpen by rememberSaveable { mutableStateOf(false) }
-    var isAudioRouteLabOpen by rememberSaveable { mutableStateOf(false) }
-    var isOutputClassifierOpen by rememberSaveable { mutableStateOf(false) }
     var isUnifiedDiagnosticsOpen by rememberSaveable { mutableStateOf(false) }
     // The header's own blur source, and it must be *this* one rather than the app-wide state the mini
     // player uses. A haze effect that is a descendant of its own source draws nothing, and the header is
@@ -477,8 +475,6 @@ fun SettingsScreen(
                             diagnostics = DiagnosticsInputs(
                                 onOpenEventLog = { isEventLogOpen = true },
                                 onOpenDebugConsole = { isDebugConsoleOpen = true },
-                                onOpenAudioRouteLab = { isAudioRouteLabOpen = true },
-                                onOpenOutputClassifier = { isOutputClassifierOpen = true },
                                 onOpenUnifiedDiagnostics = { isUnifiedDiagnosticsOpen = true },
                             ),
                             recovery = recovery,
@@ -491,8 +487,6 @@ fun SettingsScreen(
 
     if (isEventLogOpen) EventLogSheet(onDismiss = { isEventLogOpen = false })
     if (isDebugConsoleOpen) DebugConsoleSheet(onDismiss = { isDebugConsoleOpen = false })
-    if (isAudioRouteLabOpen) AudioRouteLabSheet(onDismiss = { isAudioRouteLabOpen = false })
-    if (isOutputClassifierOpen) OutputClassifierSheet(onDismiss = { isOutputClassifierOpen = false })
     if (isUnifiedDiagnosticsOpen) UnifiedDiagnosticsSheet(onDismiss = { isUnifiedDiagnosticsOpen = false })
 }
 
@@ -597,7 +591,6 @@ private fun LazyListScope.aboutTab(
 
     // Keep About about BookWave; historical acceptance telemetry remains in Debug Console.
     item { SectionHeader(text = stringResource(R.string.about_section_debug)) }
-    item { Hint(text = stringResource(R.string.about_debug_body)) }
     item {
         TextButton(onClick = diagnostics.onOpenUnifiedDiagnostics, modifier = Modifier.padding(horizontal = 8.dp)) {
             Text(stringResource(R.string.unified_diag_open))
@@ -611,16 +604,6 @@ private fun LazyListScope.aboutTab(
     item {
         TextButton(onClick = diagnostics.onOpenDebugConsole, modifier = Modifier.padding(horizontal = 8.dp)) {
             Text(stringResource(R.string.debug_console_open))
-        }
-    }
-    item {
-        TextButton(onClick = diagnostics.onOpenAudioRouteLab, modifier = Modifier.padding(horizontal = 8.dp)) {
-            Text(stringResource(R.string.route_lab_open))
-        }
-    }
-    item {
-        TextButton(onClick = diagnostics.onOpenOutputClassifier, modifier = Modifier.padding(horizontal = 8.dp)) {
-            Text(stringResource(R.string.output_classifier_open))
         }
     }
     if (BuildConfig.DEBUG) recoveryTestRows(recovery)
@@ -666,8 +649,6 @@ private fun LazyListScope.recoveryTestRows(inputs: RecoveryTestInputs) {
 data class DiagnosticsInputs(
     val onOpenEventLog: () -> Unit = {},
     val onOpenDebugConsole: () -> Unit = {},
-    val onOpenAudioRouteLab: () -> Unit = {},
-    val onOpenOutputClassifier: () -> Unit = {},
     val onOpenUnifiedDiagnostics: () -> Unit = {},
 )
 

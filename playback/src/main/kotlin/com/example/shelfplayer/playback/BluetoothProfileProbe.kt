@@ -35,6 +35,8 @@ internal class BluetoothProfileProbe(
     private var session: Session? = null
     val observing: Boolean get() = session?.receiver != null
 
+    fun clearEvents() = events.clear()
+
     fun drainEvents(alias: (String) -> String): List<String> {
         if (!context.hasBluetoothIdentityAccess()) events.clear()
         return events.drain(alias)

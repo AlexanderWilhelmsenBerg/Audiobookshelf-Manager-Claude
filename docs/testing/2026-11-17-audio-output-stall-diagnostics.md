@@ -39,9 +39,9 @@ successful captures as well as any naturally occurring failure; do not force an 
 
 ## Ordinary parked comparison
 
-1. Install the diagnostic debug APK. In Audio Route Lab, leave **Automatic headset take-back: on** for
-   the first run (the default preserves build 2280 behavior).
-2. Clear all diagnostics, start recording, and start one headset. Connect the car normally, leave the
+1. Install the diagnostic debug APK. In Playback diagnostics → Route comparison tools, leave
+   **Automatic headset take-back: on** for the first run (the default preserves build 2280 behavior).
+2. Clear all diagnostics, start recording if needed, and start one headset. Connect the car normally, leave the
    controls alone and observe for about a minute. Turn the car off and observe again.
 3. Export diagnostics even if everything worked. Baseline/Advancing and numeric frame movement provide
    the successful comparison. The snapshot records `automaticTakeBack=true/false` (unknown in builds

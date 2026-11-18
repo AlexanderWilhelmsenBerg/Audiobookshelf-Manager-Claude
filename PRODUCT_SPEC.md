@@ -1514,9 +1514,10 @@ Never show stack traces in ordinary UI.
 - Redact authorization, cookies, password fields, tokens in URLs, local filesystem paths, server host, username, media title, and description by default.
 - Debug builds may enable expanded local logging through a developer toggle.
 - Diagnostic export is ZIP/JSON/text with explicit redaction report.
-- Unified diagnostics provides Clear all before a new test: stop recording, clear retained captures,
-  playback diagnostic counters and the saved crash report, and await stored trace deletion before
-  allowing another capture. Clearing must not erase listening progress, history or library data, or
+- Playback diagnostics uses one opt-in capture and one ordered report. Installed playback probes are
+  available without player recreation. Clear all erases retained captures, playback diagnostic counters
+  and the saved crash report, and awaits stored trace deletion before export. An active capture continues.
+  Clearing must not erase listening progress, history or library data, or
   cause an already-handled historical Android crash to reappear on restart.
 - No analytics or crash service by default.
 - Any future crash reporting is opt-in and strips private content.

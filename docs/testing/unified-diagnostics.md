@@ -1,113 +1,58 @@
-# PR #271 — Unified diagnostics and Bluetooth cold-start safety
+# Playback diagnostics
 
-## Scope
+Open **Settings → About → Playback diagnostics**. Start recording with the current player in
+place, including while audio is playing. BookWave attaches the passive AudioTrack observer when the
+player is created. Starting or clearing a capture samples the current track without recreating it
+or changing playback. Detailed recording is opt-in and the choice survives ordinary process recreation.
 
-PR #271 incorporates PR #272's existing passive route lab, output classifier, updated About screen,
-and event-log enhancements. It adds one opt-in recording session and one machine-readable JSON
-clipboard report. No remote uploads, raw Bluetooth identities, server URLs, or media titles.
+Use **Clear all** before a fresh run. It clears the history, first incident, recent app warnings and
+errors, diagnostic counters and stored crash report. It discards previously queued events, awaits
+deletion of the private retained trace and keeps an active capture running. Current route, output and
+input snapshots are observations of the connected system and remain available while recording.
 
-## Hardware recording protocol
+For a parked Bluetooth or Android Auto test:
 
-1. Park the vehicle; pause playback and open Settings → About → Debug → Start diagnostics / JSON report.
-2. Tap **Start diagnostics**. This simultaneously enables the **Audio Route Lab**, **Output
-   Classifier**, and event-log playback-race capture. The opt-in is saved synchronously.
-3. Confirm **Restart BookWave** to install the AudioTrack observer when the next Media3
-   ExoPlayer is created. Restart is explicit because an existing player cannot receive a newly
-   injected `AudioOutputProvider` and modifying playback mid-book violates continuity.
-4. On Android API 28+, the restart trampoline is private, runs in a separate process, closes only the app's main
-   process and reopens the launcher. If the OS does not report the main process or refuses
-   restarting it, the app asks the tester to close/reopen BookWave manually. Diagnostic
-   opt-in survives. On API 26/27, Start diagnostics retains the opt-in but asks for manual close/reopen instead
-   of starting a second app process. Main-process-only initialization uses a PID-based compatibility fallback.
-   This remains a hardware acceptance requirement, not a promise about OEMs.
-5. Open Debug → Unified diagnostics after reboot. The lab's status must say
-   `Installed for this player`, `AudioTrack attached`, or a measured playing route
-   before a test can claim AudioTrack coverage. `Not installed` means no route observation.
-6. Perform Bluetooth A/B and Android Auto arrival/departure tests. Mark physical headset
-   key presses and human-heard destination in the separate Audio Route Lab sheet.
-7. **Stop diagnostics** then use **Save JSON file** to choose a location in Android's
-   system document picker (for example, Downloads), or **Copy complete JSON report**
-   if a clipboard copy is preferred. Both actions produce the same versioned report
-   with redacted Event Log entries, playback-race events, Audio Route Lab rows,
-   Output Classifier rows/snapshots, and Debug Console text. Saving is explicitly
-   user initiated, requires no storage permission, and writes the entire UTF-8 report
-   without a clipboard-size limit. Cancellation creates no file; write errors are
-   reported rather than claiming success. The app never uploads the report.
-   **Clear all** deletes the lab file and clears in-memory captures/logs.
+1. Start with narration audible in the intended headset. Connect and disconnect the car normally.
+2. Use the listener markers for silence, skipping or an unexpected destination. Button A and B mark an
+   upcoming press for timing comparison. They establish temporal correlation only.
+3. Use **Save JSON file** or **Copy JSON**. Stop recording when done. The report stays on the device
+   until the listener exports it. Saving uses Android's document picker and needs no storage permission.
+4. The debug build's **Route comparison tools** still provides the automatic headset take-back switch
+   and the opt-in system route experiment. Settings that affect routing are separate from capture.
 
-## Provenance and privacy
+## Reading the export
 
-- `schema=bookwave.diagnostics`, `schemaVersion=1`. Each event log entry is a JSON
-  object with UTC timestamp, level, tag and already-redacted line.
-- Route Lab and Output Classifier use process/session aliases rather than hardware
-  addresses or names. Diagnostic metadata must never elevate A2DP or remote submix to a
-  uniquely identified headset, car, or physical loudspeaker.
-- The full Event Log is a bounded, in-memory ring; lab retains a private no-backup tail
-  for at most 24 hours; classifier is process local; race capture is bounded.
-- Structured JSON includes raw diagnostic lines **as strings within arrays**, not as
-  executable JSON. Do not treat a guessed source as verified.
-- The optional additive `audioRouteLab.inputStatus` and `inputDevices` fields retain the latest
-  input-capability inventory, including after Stop. `input-key`, `input-transport` and input lifecycle
-  rows are in the existing bounded Route Lab events. Schema version1 remains compatible; older reports
-  omit these new fields. Device IDs are runtime input handles; descriptor ordinals are local to the
-  accompanying `inputCapture`, never a Bluetooth identity or audio-output mapping.
-- Restart loses the old process's in-memory event-log buffer and classifier history.
-  Recording begins again at the new process boundary; old bounded Audio Route Lab file
-  may be recovered. Never merge times from different process runs without checking timestamps.
+`schema=bookwave.diagnostics` and `schemaVersion=2`. Version 1 files remain readable as historical
+exports with a different shape.
 
-## Input and Auto capability capture
+- Build, device Android API, app target API, export time and recording state identify the capture.
+- `current` holds the latest track, route, input and classified output observations.
+- `timeline` combines playback and system changes, sorted by UTC with a source and event name.
+  Stable inventory callbacks do not produce repeated summary rows. Native timing is sampled in a
+  bounded burst and raw timing rows are recorded at roughly one-second intervals, plus detected
+  state changes. Useful native evidence includes frame position, timestamp, speed and underruns.
+- `firstIncident` retains the first frame stall, Media3 stuck reason, or listener-marked silence
+  or skipping and its context. The retained recorder rows are app private and expire after 24 hours.
+- `problems` contains up to forty recent redacted warnings and errors. A sanitized `previousCrash`
+  is included when present. The ordinary Event Log and Debug Console remain available for non-playback
+  support.
 
-Start unified diagnostics and perform the explicit restart above for complete AudioTrack coverage.
-Input observation itself needs no player recreation or new permission. Confirm that exported
-`audioRouteLab.inputStatus` says input callbacks are being watched, or record its explicit unavailable
-status. `inputDevices` contains at most64 entries. Do not infer physical identity from an empty list.
-Note the phone Android version, Android Auto app version and wired/wireless connection in the test
-notes. `controllerVersion` in this export is the Media3/legacy controller-library version, not the
-installed Android Auto app version.
+Match `actual-track` aliases with the system output `trackAlias`. A policy prediction is advisory.
+Remote submix and frame movement cannot prove which physical device was heard. Virtual input events
+identify the sending software where available and cannot prove a physical button or headset identity.
+Output and input aliases are local to the process or capture. The report excludes raw addresses,
+names, descriptors, credentials and media metadata by default.
 
-Perform one action at a time with a stationary car and note the heard destination:
+Android 17 can block playback, volume and focus through background audio hardening. The app records
+the OS and target API for context but Android's raw focus owner, focus result and hardening decision
+are unavailable through the normal app diagnostic path. The optional private
+[`capture-audio-focus.ps1`](../../scripts/device-test/capture-audio-focus.ps1) capture includes
+`dumpsys audio`, AudioFlinger and the `AudioHardening` logcat tag. Start it before testing with the
+screen locked when ADB is available. Raw system captures stay local.
 
-1. Without Auto, mark ButtonA and press headset Pause/Play. Record heard HeadsetA, Car, Phone or Silence.
-2. Connect Auto without touching controls. Mark AndroidAuto and record any pause and destination.
-3. Repeat the marked headset buttons; then mark CarPlay and use the dashboard Pause/Play controls.
-4. With Car selected, repeat ButtonA/headset Pause/Play, then the explicit Headset action. Compare sound,
-   not just dashboard state. Repeat the explicit Car action and steering-wheel controls separately.
-5. Note a timed phone/notification Pause/Play control as a comparison. These can also produce generic
-   session commands. User markers and time adjacency are temporal evidence only.
-6. Pause, turn off/disconnect the car, and confirm no unwanted resume. Repeat reconnect and, where
-   available, a second headset, including one with the same display name. Test notification/background
-   entry and cold receiver entry separately. Capture unsupported/permission-denied outcomes honestly.
-7. Stop diagnostics and save the complete JSON. Check exact build/source against issue #289. Clear
-   removes the retained lab capture; a later capture's aliases must not be joined to the old ones.
-
-Interpret `entry=ReceiverStart` separately from `SessionCallback`; these may be two deliveries of one
-key. `keyScanCode`, `keyFlags`, `repeat`, `heldMillis`, `deviceQuery`, `virtual`, `external`, `deviceSources` and
-`descriptorMatches` describe capabilities and transformations. A shared descriptor can represent
-indistinguishable devices or separate collections. `association=Unproven` stays authoritative.
-`inputKind` distinguishes Virtual, External, BuiltIn and NonVirtual (external status unavailable).
-`vendorId` and `productId` are public model identifiers, with zero meaning unavailable; matching values
-do not identify an individual accessory. These fields require no new permission and do not turn
-virtual media keys into physical headset events or authorize an output transfer.
-`caller=BluetoothService` identifies software forwarding; `caller=AndroidAuto` does not establish a
-physical dashboard gesture. `packageVerified` records whether Media3 verified the reported package;
-controller trust is a separate software-access property. Controller/interface versions distinguish
-legacy/platform adapters. None of these fields establish a physical input-to-output association.
-
-Match `actual-track` output aliases with classifier `trackAlias`, including RemoteSubmix. A mix remains
-an observed system route rather than proof of the final car speaker. Use durable `output-proof`,
-`car-route-intent`, `car-controller-unbound`, generation/selection and position-correction rows to
-correlate effect ordering. `proofEpoch`, `requestGeneration` and `requestSelection` describe the proof's
-captured preference/transfer scope; `none` means no transfer request was present. Raw identifiers,
-descriptors and names are never needed in a public report.
-
-`proof-prepared` distinguishes Initial/Final compensation stages and records `bufferedSeek` with
-captured proof/request scope. `car-intent-retired` records the departed Car request and replacement
-selection sequence. A final-stage overshoot still fails closed. These rows diagnose timing and state
-retirement; they do not establish physical button identity or human-heard audio.
-
-See [platform/related-issue research](../architecture/playback-input-capability-research.md). If the
-app still receives only virtual events, an immediately collected **private** Android bug report may
-help locate where origin is lost; it does not guarantee an app-accessible physical source.
+Android 17's public written-frame counter could distinguish data submitted to AudioTrack from
+the measured playback head. It is a candidate for a later diagnostic revision when BookWave compiles
+against API 37. A measured frame counter provides timing evidence without changing playback or routing.
 
 ## Cold-start virtual toggle guard (#273)
 
@@ -137,7 +82,6 @@ recovery flags without exception messages, codec names or media metadata. See th
   state, absent Bluetooth and physical key, plus the inherited route lab tests.
 - KtLint, Detekt, Android Lint, Robolectric and `verifyDebug` must pass on the exact
   combined head.
-- The process-restart trampoline, AudioTrack observer activation, intentional
-  headset PLAY_PAUSE during cold start, Android Auto Play, headset A/B media controls
-  and absence of speaker leakage require stationary **physical** acceptance.
-- Do not merge #271 or #272 or represent the new behavior as hardware-accepted on CI alone.
+- For hardware acceptance, start and clear the capture while narration is playing. Confirm the book
+  keeps playing and the saved timeline begins with fresh evidence from the same track. Check a cold
+  headset Play/Pause, Android Auto Play and absence of speaker leakage while parked.
