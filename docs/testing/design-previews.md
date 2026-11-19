@@ -33,3 +33,9 @@ cmd /c 'adb exec-out screencap -p > bookwave-home.png'
 ```
 
 Use fixture screenshots for shared design references. For a live-library capture, review visible book metadata, profiles, device names, and status-bar content before sharing.
+
+## API 36 emulator captures
+
+- [Appearance with the Design selector open](design-screenshots/design-selector.png)
+- [Minimal Home in light mode](design-screenshots/minimal-home.png)
+- [Minimal Now Playing in dark mode at 150% text size](design-screenshots/minimal-player.png)
