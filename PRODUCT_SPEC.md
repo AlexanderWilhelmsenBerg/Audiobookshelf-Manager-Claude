@@ -412,6 +412,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   listener Pause. Within a qualified car-arrival episode, including an inferred arrival whose exact headset
   route and active playback were confirmed before Auto binds, a distinct interruption after verified same-headset playback
   may use a remaining claim, up to three total and within the original 30-second absolute deadline.
+  Before a repeat after confirmed playback, require a measured exact headset or sole exact-headset
+  media-policy prediction before starting the muted probe. A listed headset alongside an unresolved
+  car mix does not justify spending this claim.
   Duplicate callbacks and unproven attempts cannot rearm recovery. Listener Pause and newer
   selection/book/profile/player context still invalidate recovery.
 - Exact unique A2DP addresses may correlate endpoint handle changes in process memory only. Missing,
@@ -1519,6 +1522,11 @@ Never show stack traces in ordinary UI.
   and the saved crash report, and awaits stored trace deletion before export. An active capture continues.
   Clearing must not erase listening progress, history or library data, or
   cause an already-handled historical Android crash to reappear on restart.
+- The debug Android Auto diagnostics recorder is independently opt-in. It records numbered connection
+  attempts and redacted playback events through the observed car departure. Car Bluetooth can open an
+  unconfirmed attempt. The report indexes headset presence, failed headset recoveries and time from
+  interruption to verified headset playback. Store the latest 100 attempts from up to 30 days on-device.
+  Clearing the car history keeps any active attempt recording.
 - No analytics or crash service by default.
 - Any future crash reporting is opt-in and strips private content.
 

@@ -52,6 +52,7 @@ class BluetoothEndpointContinuityTest {
         adapter.refresh()
         val headphoneId = requireNotNull(adapter.buttonOutputForAddress(headset))
         assertEquals(headphoneId, adapter.soleButtonHeadset(adapter.buttonCandidates()))
+        assertEquals(true, adapter.headsetPresence())
         classify(car, BluetoothClass.Device.AUDIO_VIDEO_WEARABLE_HEADSET)
         assertEquals(null, adapter.soleButtonHeadset(adapter.buttonCandidates()))
         manager.setOutputDevices(listOf(endpoint(1, headset), endpoint(2, car)))
@@ -61,6 +62,9 @@ class BluetoothEndpointContinuityTest {
         classify(car, BluetoothClass.Device.AUDIO_VIDEO_CAR_AUDIO)
         adapter.refresh()
         assertTrue(adapter.buttonCandidates().isEmpty())
+        assertEquals(false, adapter.headsetPresence())
+        classify(car, BluetoothClass.Device.AUDIO_VIDEO_UNCATEGORIZED)
+        assertEquals(null, adapter.headsetPresence())
     }
 
     @Test

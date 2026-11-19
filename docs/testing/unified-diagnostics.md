@@ -54,6 +54,34 @@ Android 17's public written-frame counter could distinguish data submitted to Au
 the measured playback head. It is a candidate for a later diagnostic revision when BookWave compiles
 against API 37. A measured frame counter provides timing evidence without changing playback or routing.
 
+## Daily Android Auto capture
+
+In a debug build, open **Settings → About → Debug → Android Auto diagnostics** and enable
+**Record car connections** once. BookWave records when its playback service observes a car-class
+hands-free connection, an Android Auto controller, or projection. A hands-free-only candidate that
+never reaches a controller or projection is marked `connection-unconfirmed`. Projection departure
+ends a confirmed attempt, with final controller departure as the fallback when projection was never
+visible. The optional Nearby devices permission enables the earlier car Bluetooth signal. Use general
+Playback diagnostics alongside it when a test needs AudioTrack timing bursts or events before connection.
+
+**Save JSON file** exports the retained attempt history. `attemptIndex` lists attempt numbers, connection
+times, headset presence and failure counts. A verified held headset or an identified wearable output
+counts as present. An ambiguous Bluetooth output or enabling mid-connection can yield unknown.
+`failedHeadsetReconnects` lists
+attempt and reconnect numbers for returns that needed a subsequent Play or never verified an output.
+Look up those numbers under `attempts` for the full events. The button caller identifies software and
+does not identify a physical device. `headsetRecoveryMs` reports count, average, minimum and maximum
+separately for automatic returns and returns after an observed Play. Timing starts at the interruption
+and ends when the original headset is verified on the playing, unmuted AudioTrack. A listener Pause
+or book change excludes the interrupted recovery from those measures.
+
+The history stays in private storage until exported. It is limited to 100 attempts from 30 days and
+keeps the opening events and recent events in each attempt. `droppedEvents` counts older body events
+rotated out of a busy connection. **Clear car history** clears only this report and keeps an active
+attempt recording with its current number. Test consecutive connects with and without a headset, a
+session without physical button presses, and Play/Pause while projection is active. Compare the
+verified returns to what was audible in the headset.
+
 ## Cold-start virtual toggle guard (#273)
 
 Physical 2233 logs showed `KEYCODE_MEDIA_PLAY_PAUSE (85)`, input device -1, as the playback

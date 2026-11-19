@@ -36,6 +36,12 @@ internal class AndroidLocalOutputAdapter(
     fun soleButtonHeadset(ids: Set<String>): String? = buttonInventory.soleHeadset(ids, live)
     fun buttonOutputForAddress(address: String): String? =
         buttonInventory.matchingPeer(address, live, collidingOutputIds)
+
+    /** A car-class Bluetooth endpoint alone must not count as a headset in diagnostic summaries. */
+    fun headsetPresence(): Boolean? {
+        if (live.values.any(buttonInventory::isWearable)) return true
+        return if (collidingOutputIds.isEmpty() && buttonCandidates().isEmpty()) false else null
+    }
     private val _identityCapability = MutableStateFlow(BluetoothIdentityCapability.Empty)
     val identityCapability = _identityCapability.asStateFlow()
 

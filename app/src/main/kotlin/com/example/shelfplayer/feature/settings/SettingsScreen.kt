@@ -287,6 +287,7 @@ fun SettingsScreen(
     // both exist to be *reported*, and the console is the log plus everything around it.
     var isDebugConsoleOpen by rememberSaveable { mutableStateOf(false) }
     var isUnifiedDiagnosticsOpen by rememberSaveable { mutableStateOf(false) }
+    var isAndroidAutoDiagnosticsOpen by rememberSaveable { mutableStateOf(false) }
     // The header's own blur source, and it must be *this* one rather than the app-wide state the mini
     // player uses. A haze effect that is a descendant of its own source draws nothing, and the header is
     // inside the navigation graph the app-wide source covers — the trap that made the navigation capsule
@@ -476,6 +477,7 @@ fun SettingsScreen(
                                 onOpenEventLog = { isEventLogOpen = true },
                                 onOpenDebugConsole = { isDebugConsoleOpen = true },
                                 onOpenUnifiedDiagnostics = { isUnifiedDiagnosticsOpen = true },
+                                onOpenAndroidAutoDiagnostics = { isAndroidAutoDiagnosticsOpen = true },
                             ),
                             recovery = recovery,
                         )
@@ -488,6 +490,9 @@ fun SettingsScreen(
     if (isEventLogOpen) EventLogSheet(onDismiss = { isEventLogOpen = false })
     if (isDebugConsoleOpen) DebugConsoleSheet(onDismiss = { isDebugConsoleOpen = false })
     if (isUnifiedDiagnosticsOpen) UnifiedDiagnosticsSheet(onDismiss = { isUnifiedDiagnosticsOpen = false })
+    if (BuildConfig.DEBUG && isAndroidAutoDiagnosticsOpen) {
+        AndroidAutoDiagnosticsSheet(onDismiss = { isAndroidAutoDiagnosticsOpen = false })
+    }
 }
 
 /**
@@ -596,6 +601,16 @@ private fun LazyListScope.aboutTab(
             Text(stringResource(R.string.unified_diag_open))
         }
     }
+    if (BuildConfig.DEBUG) {
+        item {
+            TextButton(
+                onClick = diagnostics.onOpenAndroidAutoDiagnostics,
+                modifier = Modifier.padding(horizontal = 8.dp),
+            ) {
+                Text(stringResource(R.string.auto_diag_title))
+            }
+        }
+    }
     item {
         TextButton(onClick = diagnostics.onOpenEventLog, modifier = Modifier.padding(horizontal = 8.dp)) {
             Text(stringResource(R.string.event_log_open))
@@ -650,6 +665,7 @@ data class DiagnosticsInputs(
     val onOpenEventLog: () -> Unit = {},
     val onOpenDebugConsole: () -> Unit = {},
     val onOpenUnifiedDiagnostics: () -> Unit = {},
+    val onOpenAndroidAutoDiagnostics: () -> Unit = {},
 )
 
 /**
