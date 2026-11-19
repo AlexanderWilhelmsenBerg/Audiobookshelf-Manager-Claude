@@ -256,6 +256,7 @@ data class PlaybackSettings(
     val headsetButtonRouting: Boolean = true,
     /** Explicit opt-in; direct WF-1000XM6 taps require Sound Connect to be absent or disabled. */
     val sonyTapDetection: Boolean = false,
+    val equalizer: PlaybackEqualizer = PlaybackEqualizer.Original,
 ) {
     companion object {
         val Default = PlaybackSettings()

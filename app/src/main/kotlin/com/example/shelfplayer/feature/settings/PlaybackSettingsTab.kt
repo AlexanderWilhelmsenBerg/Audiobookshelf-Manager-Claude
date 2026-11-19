@@ -13,6 +13,7 @@ import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import com.example.shelfplayer.core.model.playback.FocusBehaviour
+import com.example.shelfplayer.core.model.playback.PlaybackEqualizer
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
@@ -61,6 +62,7 @@ private fun LazyListScope.listeningCard(settings: PlaybackSettings, actions: Pla
                 onSelected = { chosen -> actions.onSkipsChanged(settings.skips.copy(forward = chosen)) },
             )
             AutoRewindRow(settings.autoRewind, actions.onAutoRewindChanged)
+            PlaybackEqualizerRow(settings.equalizer, actions.onEqualizerChanged)
             InlineChoiceRow(
                 label = stringResource(R.string.settings_section_buffer),
                 options = BufferPreset.entries,
@@ -280,6 +282,7 @@ data class PlaybackSettingsActions(
     val onSkipsChanged: (SkipIntervals) -> Unit,
     val onAutoRewindChanged: (AutoRewind) -> Unit,
     val onBufferChanged: (BufferPreset) -> Unit,
+    val onEqualizerChanged: (PlaybackEqualizer) -> Unit = {},
     val onAutoAdvanceSeriesChanged: (Boolean) -> Unit = {},
     val onHeadsetButtonRoutingChanged: (Boolean) -> Unit = {},
     val onSonyTapDetectionChanged: (Boolean) -> Unit = {},

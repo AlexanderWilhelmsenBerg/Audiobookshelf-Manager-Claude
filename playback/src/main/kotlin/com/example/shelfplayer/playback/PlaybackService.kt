@@ -55,6 +55,7 @@ import com.example.shelfplayer.domain.repository.DeviceRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
+import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.domain.usecase.OpenPlaybackSessionUseCase
 import com.example.shelfplayer.domain.usecase.NextInSeriesUseCase
 import com.example.shelfplayer.domain.usecase.RestoreProfilePlaybackUseCase
@@ -436,15 +437,8 @@ class PlaybackService : MediaLibraryService() {
         audioRouteLab.serviceStarted()
         scope = CoroutineScope(SupervisorJob() + mainDispatcher)
         registerWallClockChanges()
-        // PRODUCT_SPEC PLAY-006 — the preset in force when this player is built. Read blocking on the
-        // service's own creation rather than observed: a load control is a construction argument, and the
-        // requirement is that a change applies to the *next* player rather than to this one.
-        // PRODUCT_SPEC PLAY-002 / PLAY-006 — both are construction arguments: Media3 fixes the load control
-        // and the audio attributes when the player is built, so both apply to the *next* player. Read once,
-        // together, rather than as two blocking reads.
         val settings = runBlocking { playbackSettings.observeSettings().first() }
-        val exoPlayer = players.create(buffer = settings.buffer, focus = settings.focusBehaviour)
-            .also { player = it }
+        val exoPlayer = createPlayerFromSettings(settings).also { player = it }
         exoPlayer.addListener(PlayerEvents())
         exoPlayer.addListener(
             PlaybackFocusDiagnostics(clock) { fields ->
@@ -1881,10 +1875,18 @@ class PlaybackService : MediaLibraryService() {
         current.replaceMediaItem(index, replacement)
     }
 
+    private fun createPlayerFromSettings(settings: PlaybackSettings): ExoPlayer {
+        // PLAY-002 / PLAY-006: Media3 fixes focus behaviour and load control when it builds the player.
+        // Read the initial tone together with those construction choices, before the first audio buffer.
+        players.setEqualizer(settings.equalizer)
+        return players.create(buffer = settings.buffer, focus = settings.focusBehaviour)
+    }
+
     private fun observeSkipIntervals() {
         skipWatch = scope.launch {
             playbackSettings.observeSettings().collect { settings ->
                 skips = settings.skips
+                players.setEqualizer(settings.equalizer)
                 buttonRouting.settings(settings)
                 // PRODUCT_SPEC PLAY-002 — read here rather than in its own collector: it comes off the same
                 // flow, and a second `observeSettings()` would be a second cold DataStore read of the same

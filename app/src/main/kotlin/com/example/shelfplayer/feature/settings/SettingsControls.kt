@@ -295,6 +295,7 @@ internal fun SliderRow(
     steps: Int,
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
+    onValueChangeFinished: (() -> Unit)? = null,
 ) {
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(
@@ -314,6 +315,7 @@ internal fun SliderRow(
             onValueChange = onValueChange,
             valueRange = range,
             steps = steps,
+            onValueChangeFinished = onValueChangeFinished,
             modifier = Modifier.semantics { contentDescription = label },
         )
     }

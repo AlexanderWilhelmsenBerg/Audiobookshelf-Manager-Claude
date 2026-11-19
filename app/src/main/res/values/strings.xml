@@ -1273,4 +1273,14 @@
     <string name="settings_headset_button_routing_hint">Use a headset Play command to request its known output, or the only eligible headset during Android Auto. Unknown Bluetooth controls can also come from a car. When off, keep the current output and connection behavior. Manual output controls still work.</string>
     <string name="settings_sony_tap_detection">Detect Sony WF-1000XM6 taps directly</string>
     <string name="settings_sony_tap_detection_hint">Opt in to direct tap detection for WF-1000XM6 only. Sony Sound Connect must be uninstalled or disabled in Android settings. BookWave does not disable it for you.</string>
+    <string name="settings_equalizer">Equalizer</string>
+    <string name="settings_equalizer_preset">Sound preset</string>
+    <string name="settings_equalizer_original">Original</string>
+    <string name="settings_equalizer_warm">Warm Voice</string>
+    <string name="settings_equalizer_clear">Clear Voice</string>
+    <string name="settings_equalizer_custom">Custom</string>
+    <string name="settings_equalizer_bass">Bass</string>
+    <string name="settings_equalizer_presence">Presence</string>
+    <string name="settings_equalizer_treble">Treble</string>
+    <string name="settings_equalizer_gain">%1$+d dB</string>
 </resources>

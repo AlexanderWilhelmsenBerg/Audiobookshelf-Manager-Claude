@@ -16,6 +16,7 @@ import com.example.shelfplayer.core.model.playback.DevicePolicy
 import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.model.playback.KnownDevice
 import com.example.shelfplayer.core.model.playback.NotificationAccess
+import com.example.shelfplayer.core.model.playback.PlaybackEqualizer
 import com.example.shelfplayer.core.model.playback.PlaybackMetrics
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
@@ -334,6 +335,10 @@ class SettingsViewModel @Inject constructor(
 
     fun onBufferPresetChanged(preset: BufferPreset) {
         viewModelScope.launch { playbackSettings.setBufferPreset(preset) }
+    }
+
+    val onEqualizerChanged: (PlaybackEqualizer) -> Unit = { equalizer ->
+        viewModelScope.launch { playbackSettings.setEqualizer(equalizer) }
     }
 
     /** PRODUCT_SPEC PLAY-002 — pause or duck when something interrupts briefly. Takes effect next player. */

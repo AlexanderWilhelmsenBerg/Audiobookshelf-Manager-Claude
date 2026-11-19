@@ -316,6 +316,14 @@ message AppSettings {
   bool sony_tap_detection = 57;
   // SET-002. Stable design keys keep the theme choice independent. Empty resolves to Classic.
   string app_design_key = 58;
+  // PLAY-010. An absent message reads as flat gain on upgrades and fresh installs.
+  AudioEqualizer audio_equalizer = 59;
+}
+
+message AudioEqualizer {
+  sint32 bass_db = 1;
+  sint32 presence_db = 2;
+  sint32 treble_db = 3;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.

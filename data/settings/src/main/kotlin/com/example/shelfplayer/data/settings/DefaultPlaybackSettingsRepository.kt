@@ -20,6 +20,7 @@ import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.FocusBehaviour
+import com.example.shelfplayer.core.model.playback.PlaybackEqualizer
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
@@ -124,6 +125,10 @@ class DefaultPlaybackSettingsRepository @Inject constructor(
 
     override suspend fun setHeadsetButtonRouting(enabled: Boolean): AppResult<Unit> = write {
         settings.setHeadsetButtonRouting(enabled)
+    }
+
+    override suspend fun setEqualizer(equalizer: PlaybackEqualizer): AppResult<Unit> = write {
+        settings.setEqualizer(equalizer)
     }
 
     override suspend fun setSonyTapDetection(enabled: Boolean): AppResult<Unit> = write {

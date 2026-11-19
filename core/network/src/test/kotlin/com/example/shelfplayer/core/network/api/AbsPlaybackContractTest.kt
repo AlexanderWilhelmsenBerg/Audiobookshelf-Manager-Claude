@@ -111,21 +111,17 @@ class AbsPlaybackContractTest {
      * PRODUCT_SPEC 22.5 — the request that produced the fixtures is the request the app sends.
      *
      * The response shape depends on it: `supportedMimeTypes` is what makes the server answer with a
-     * direct play rather than a transcoded stream, and a transcoded session is a shape no fixture
-     * covers. Pinning the body is what stops a well-meaning edit — adding Opus, say — from silently
-     * moving the app onto an unobserved response.
+     * direct play rather than a transcoded stream. The codec probe captures that negotiation for
+     * Ogg Opus, Ogg Vorbis and ADTS AAC.
      */
     @Test
     fun `the play request advertises the mime types the fixtures were captured with`() = runTest {
         openSession("item-play")
 
         val body = json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
-        assertEquals(
-            listOf("audio/mpeg", "audio/mp4", "audio/flac"),
-            body.getValue("supportedMimeTypes").let { types ->
-                types.toString().trim('[', ']').split(',').map { it.trim('"', ' ') }
-            },
-        )
+        val capture = requireNotNull(javaClass.getResource("/compatibility/codec-negotiation.json")).readText()
+        val verifiedTypes = json.parseToJsonElement(capture).jsonObject.getValue("supportedMimeTypes").jsonArray
+        assertEquals(verifiedTypes, body.getValue("supportedMimeTypes").jsonArray)
         assertEquals("exo-player", body.getValue("mediaPlayer").jsonPrimitive.content)
         assertEquals("false", body.getValue("forceDirectPlay").jsonPrimitive.content)
         assertEquals("false", body.getValue("forceTranscode").jsonPrimitive.content)

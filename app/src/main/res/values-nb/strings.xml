@@ -1020,4 +1020,14 @@
     <string name="settings_headset_button_routing_hint">Bruk en Spill-kommando fra hodesettet til å be om den kjente lydutgangen, eller det eneste aktuelle hodesettet under Android Auto. Ukjente Bluetooth-kontroller kan også komme fra en bil. Når dette er av, beholdes gjeldende lydutgang og tilkoblingsatferd. Manuelle lydutgangskontroller virker fortsatt.</string>
     <string name="settings_sony_tap_detection">Registrer trykk på Sony WF-1000XM6 direkte</string>
     <string name="settings_sony_tap_detection_hint">Slå på direkte registrering av trykk bare for WF-1000XM6. Sony Sound Connect må være avinstallert eller deaktivert i Android-innstillingene. BookWave deaktiverer ikke appen for deg.</string>
+    <string name="settings_equalizer">Equalizer</string>
+    <string name="settings_equalizer_preset">Lydprofil</string>
+    <string name="settings_equalizer_original">Original</string>
+    <string name="settings_equalizer_warm">Varm stemme</string>
+    <string name="settings_equalizer_clear">Tydelig stemme</string>
+    <string name="settings_equalizer_custom">Egendefinert</string>
+    <string name="settings_equalizer_bass">Bass</string>
+    <string name="settings_equalizer_presence">Nærvær</string>
+    <string name="settings_equalizer_treble">Diskant</string>
+    <string name="settings_equalizer_gain">%1$+d dB</string>
 </resources>

@@ -15,6 +15,7 @@ import com.example.shelfplayer.core.model.playback.DeviceKind
 import com.example.shelfplayer.core.model.playback.DevicePolicy
 import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.model.playback.KnownDevice
+import com.example.shelfplayer.core.model.playback.PlaybackEqualizer
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.ShakeSensitivity
@@ -533,7 +534,18 @@ class AppSettingsDataSource @Inject constructor(
             autoAdvanceSeries = !stored.autoAdvanceSeriesDisabled,
             headsetButtonRouting = !stored.headsetButtonRoutingDisabled,
             sonyTapDetection = stored.sonyTapDetection,
+            equalizer = with(stored.audioEqualizer) { PlaybackEqualizer(bassDb, presenceDb, trebleDb).bounded() },
         )
+    }
+
+    suspend fun setEqualizer(value: PlaybackEqualizer) {
+        val gains = value.bounded()
+        val equalizer = AudioEqualizer.newBuilder()
+            .setBassDb(gains.bass)
+            .setPresenceDb(gains.presence)
+            .setTrebleDb(gains.treble)
+            .build()
+        dataStore.updateData { current -> current.toBuilder().setAudioEqualizer(equalizer).build() }
     }
 
     suspend fun setHeadsetButtonRouting(enabled: Boolean) {
