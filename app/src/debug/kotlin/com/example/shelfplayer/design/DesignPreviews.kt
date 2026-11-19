@@ -1,11 +1,15 @@
 package com.example.shelfplayer.design
 
 import android.content.res.Configuration.UI_MODE_NIGHT_YES
+import androidx.activity.compose.LocalActivity
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -14,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.core.view.WindowCompat
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.theme.BookWaveDesign
 import com.example.shelfplayer.core.designsystem.theme.ShelfPlayerTheme
@@ -49,7 +54,7 @@ fun MinimalHomeDesignPreview() = HomePreview(BookWaveDesign.Minimal)
 
 @Composable
 private fun HomePreview(design: BookWaveDesign) {
-    ShelfPlayerTheme(design = design) {
+    PreviewTheme(design = design) {
         val cover = previewCoverUri()
         val backdropHaze = rememberHazeState()
         val contentHaze = rememberHazeState()
@@ -117,7 +122,7 @@ fun MinimalPlayerDesignPreview() = PlayerPreview(BookWaveDesign.Minimal)
 
 @Composable
 private fun PlayerPreview(design: BookWaveDesign) {
-    ShelfPlayerTheme(design = design) {
+    PreviewTheme(design = design) {
         val cover = previewCoverUri()
         var playback by remember(cover) { mutableStateOf(DesignPreviewFixtures.playback.copy(artworkUri = cover)) }
         FullPlayer(
@@ -136,14 +141,26 @@ private fun PlayerPreview(design: BookWaveDesign) {
 @Composable
 fun AppearanceDesignPreview() {
     var design by remember { mutableStateOf(AppDesign.Classic) }
-    ShelfPlayerTheme(design = design.visualStyle()) {
-        LazyColumn(modifier = Modifier.appBackdrop(flat = true)) {
+    PreviewTheme(design = design.visualStyle()) {
+        LazyColumn(modifier = Modifier.appBackdrop(flat = true).safeDrawingPadding()) {
             appearanceTab(
                 state = AppearanceUiState(design = design),
                 actions = AppearanceActions(onDesignChanged = { design = it }),
             )
         }
     }
+}
+
+@Composable
+private fun PreviewTheme(design: BookWaveDesign, content: @Composable () -> Unit) {
+    val window = LocalActivity.current?.window
+    val dark = isSystemInDarkTheme()
+    SideEffect {
+        if (window != null) {
+            WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = !dark
+        }
+    }
+    ShelfPlayerTheme(darkTheme = dark, design = design, content = content)
 }
 
 @Composable

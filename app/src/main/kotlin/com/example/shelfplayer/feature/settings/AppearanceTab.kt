@@ -60,8 +60,8 @@ import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
 import com.example.shelfplayer.core.model.settings.ThemeChoice
-import com.example.shelfplayer.ui.visualStyle
 import com.example.shelfplayer.ui.glass.GlassCard
+import com.example.shelfplayer.ui.visualStyle
 import kotlin.math.roundToInt
 
 /** PRODUCT_SPEC SET-002 — the tab that owns the app's appearance and accessibility choices. */

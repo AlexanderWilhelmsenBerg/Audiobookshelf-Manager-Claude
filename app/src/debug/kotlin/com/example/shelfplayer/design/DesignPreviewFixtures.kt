@@ -43,7 +43,13 @@ internal object DesignPreviewFixtures {
     private val secondBook = book("lantern", "The Long Road to Lantern Bay", "Robin Vale")
     private val books = listOf(
         currentBook,
-        secondBook.copy(progress = currentBook.progress?.copy(bookId = secondBook.id, position = 44.minutes)),
+        secondBook.copy(
+            progress = currentBook.progress?.copy(
+                bookId = secondBook.id,
+                position = 44.minutes,
+                updatedAt = Instant.EPOCH,
+            ),
+        ),
         book("winter-map", "The Winter Map", "Jules Pine"),
         book("radio", "Radio at Midnight", "Ari Lake"),
     )

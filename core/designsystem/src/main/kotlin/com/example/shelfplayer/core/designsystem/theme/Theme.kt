@@ -104,10 +104,7 @@ fun ShelfPlayerTheme(
         darkTheme -> dynamicDarkColorScheme(context)
         else -> dynamicLightColorScheme(context)
     }
-    val base = dynamicScheme ?: when (design) {
-        BookWaveDesign.Classic -> if (darkTheme) ShelfDarkColors else ShelfLightColors
-        BookWaveDesign.Minimal -> if (darkTheme) MinimalDarkColors else MinimalLightColors
-    }
+    val base = dynamicScheme ?: design.defaultColors(darkTheme)
     // Without a pack, Material You already is the whole base scheme and must not be re-toned. A bundled
     // pack keeps its authored surfaces, but the wallpaper primary is still the explicitly selected accent.
     val chosenAccent = when {
@@ -125,6 +122,11 @@ fun ShelfPlayerTheme(
             content = content,
         )
     }
+}
+
+private fun BookWaveDesign.defaultColors(dark: Boolean): ColorScheme = when (this) {
+    BookWaveDesign.Classic -> if (dark) ShelfDarkColors else ShelfLightColors
+    BookWaveDesign.Minimal -> if (dark) MinimalDarkColors else MinimalLightColors
 }
 
 /**

@@ -90,9 +90,11 @@ data class AppUiState(
      * force. This remains presentation logic because it answers how the resolved domain values are drawn.
      */
     fun accentArgbFor(isDark: Boolean): Long? {
-        if (design == AppDesign.Minimal) return accent.takeUnless { it == AccentScheme.Default }?.argbFor(isDark)
         val pack = backgroundTheme
-        if (pack != null && accent.belongsTo(pack)) return null
-        return accent.argbFor(isDark)
+        return when {
+            design == AppDesign.Minimal -> accent.takeUnless { it == AccentScheme.Default }?.argbFor(isDark)
+            pack != null && accent.belongsTo(pack) -> null
+            else -> accent.argbFor(isDark)
+        }
     }
 }

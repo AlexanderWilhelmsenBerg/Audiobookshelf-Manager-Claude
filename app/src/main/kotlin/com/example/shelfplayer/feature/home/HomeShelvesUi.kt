@@ -150,34 +150,65 @@ private fun ContinueListeningShelf(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    Button(onClick = { onBookPlaySelected(book.id) }, shape = MaterialTheme.shapes.small) {
+                        Text(stringResource(R.string.player_resume))
+                    }
                 }
-            }
-            Button(
-                onClick = { onBookPlaySelected(book.id) },
-                modifier = Modifier.align(Alignment.End),
-                shape = MaterialTheme.shapes.small,
-            ) {
-                Text(stringResource(R.string.player_resume))
             }
             HorizontalDivider()
         }
         val moreBooks = books.drop(1)
         if (moreBooks.isNotEmpty()) {
-            BookShelfRow(null, moreBooks, onBookSelected, onBookPlaySelected)
+            MoreListeningBooks(moreBooks, onBookSelected, onBookPlaySelected)
+        }
+    }
+}
+
+@Composable
+private fun MoreListeningBooks(
+    books: List<Book>,
+    onBookSelected: (LibraryItemId) -> Unit,
+    onBookPlaySelected: (LibraryItemId) -> Unit,
+) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = BookWaveLayout.ShelfGutter),
+        horizontalArrangement = Arrangement.spacedBy(BookWaveLayout.ShelfCardGap),
+    ) {
+        items(items = books, key = { it.id.value }) { book ->
+            Row(
+                modifier = Modifier.width(216.dp).clickable { onBookSelected(book.id) },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                BookCover(book, modifier = Modifier.width(44.dp))
+                Text(
+                    text = book.title,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                FilledIconButton(onClick = { onBookPlaySelected(book.id) }, shape = RectangleShape) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = stringResource(R.string.shelf_resume_book, book.title),
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
 private fun BookShelfRow(
-    titleRes: Int?,
+    titleRes: Int,
     books: List<Book>,
     onBookSelected: (LibraryItemId) -> Unit,
     onBookPlaySelected: (LibraryItemId) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (titleRes != null) ShelfHeading(text = stringResource(titleRes))
+        ShelfHeading(text = stringResource(titleRes))
         LazyRow(
             contentPadding = PaddingValues(horizontal = BookWaveLayout.ShelfGutter),
             horizontalArrangement = Arrangement.spacedBy(BookWaveLayout.ShelfCardGap),
@@ -276,9 +307,14 @@ private fun ShelfCard(
     onPlay: (() -> Unit)? = null,
     cover: @Composable () -> Unit = {},
 ) {
+    val cardWidth = if (LocalBookWaveDesign.current == BookWaveDesign.Minimal) {
+        BookWaveLayout.MinimalShelfCardWidth
+    } else {
+        BookWaveLayout.ShelfCardWidth
+    }
     GlassCard(
         onClick = onClick,
-        modifier = modifier.width(BookWaveLayout.ShelfCardWidth),
+        modifier = modifier.width(cardWidth),
         shape = RoundedCornerShape(BookWaveLayout.ShelfCardCorner),
     ) {
         Column {
@@ -354,7 +390,17 @@ private fun ShelfCover(
 @Composable
 private fun BookShelfLabels(book: Book, reserveReadings: Boolean) {
     if (reserveReadings) {
-        BookShelfReadings(progress = book.listeningProgress())
+        val progress = book.listeningProgress()
+        if (LocalBookWaveDesign.current == BookWaveDesign.Minimal) {
+            val remaining = progress?.let { (it.duration - it.position).coerceAtLeast(Duration.ZERO) }
+            ReadingText(
+                text = remaining?.let {
+                    stringResource(R.string.shelf_remaining_time, it.readable())
+                }.orEmpty(),
+            )
+        } else {
+            BookShelfReadings(progress = progress)
+        }
     }
     // All three drawn whether or not there is anything to say, so a book with no author or no series is
     // the same height as one with both. A blank line costs what a filled one does.
