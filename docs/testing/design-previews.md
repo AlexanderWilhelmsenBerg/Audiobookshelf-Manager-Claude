@@ -6,7 +6,9 @@ Use the debug previews to iterate on Home, the compact player, Now Playing and t
 
 In Settings → Appearance → Design, choose **Classic** for the existing look, or **Minimal** for square surfaces, an opaque background, a leading Resume action and smaller player artwork. Classic is the default for existing installs and stored keys this app version does not recognize. The selection is saved on the device and can be changed while listening.
 
-The Theme setting still controls brightness, and accent and contrast remain available. Minimal uses a flat background and hides the glass controls. Choosing Classic brings back the saved glass and background options.
+**Editorial** pairs larger cover art and serif book titles on Home and book details with compact artwork, divided controls and tabular times in Now Playing. It uses paper or charcoal surfaces with a shared copper accent. Run `EditorialHomeDesignPreview` and `EditorialPlayerDesignPreview` to compare them.
+
+The Theme setting controls brightness, and accent and contrast remain available. Minimal and Editorial use flat backgrounds. Choosing Classic brings back the saved glass and background options.
 
 Add a stable key to `AppDesign` and localized labels for a new design. Map the key to its Compose style in `BookWaveAppearance.kt`, then add palettes and shapes in `:core:designsystem`. Use the root theme to apply the style without rebuilding navigation or the player.
 
@@ -26,7 +28,7 @@ $previewFile = 'com.example.shelfplayer.design.DesignPreviewsKt'
 adb shell am start -S -W -n $previewActivity --es composable "$previewFile.HomeDesignPreview"
 ```
 
-Once the screen is settled, capture it. Change the composable name and output filename for the other previews. The entry points are `HomeDesignPreview`, `PlayerDesignPreview`, `MinimalHomeDesignPreview`, `MinimalPlayerDesignPreview` and `AppearanceDesignPreview`. The command uses `cmd.exe` to preserve binary PNG bytes on older PowerShell versions.
+Once the screen is settled, capture it. Change the composable name and output filename for the other previews. Use `HomeDesignPreview` and `PlayerDesignPreview` for Classic, prefix either name with `Minimal` or `Editorial` for those presets, or use `AppearanceDesignPreview` for the selector. The command uses `cmd.exe` to preserve binary PNG bytes on older PowerShell versions.
 
 ```powershell
 cmd /c 'adb exec-out screencap -p > bookwave-home.png'
@@ -39,3 +41,5 @@ Use fixture screenshots for shared design references. For a live-library capture
 - [Appearance with the Design selector open](design-screenshots/design-selector.png)
 - [Minimal Home in light mode](design-screenshots/minimal-home.png)
 - [Minimal Now Playing in dark mode at 150% text size](design-screenshots/minimal-player.png)
+- [Editorial Home in light mode](design-screenshots/editorial-home.png)
+- [Editorial Now Playing in dark mode](design-screenshots/editorial-player.png)

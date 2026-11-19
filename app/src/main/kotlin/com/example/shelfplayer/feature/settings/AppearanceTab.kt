@@ -619,6 +619,7 @@ private fun Long.hueDegrees(): Float {
 private fun AppDesign.labelRes(): Int = when (this) {
     AppDesign.Classic -> R.string.settings_design_classic
     AppDesign.Minimal -> R.string.settings_design_minimal
+    AppDesign.Editorial -> R.string.settings_design_editorial
 }
 
 private fun AppTheme.labelRes(): Int = when (this) {

@@ -4,6 +4,7 @@ package com.example.shelfplayer.core.model.settings
 enum class AppDesign(val key: String) {
     Classic("classic"),
     Minimal("minimal"),
+    Editorial("editorial"),
     ;
 
     companion object {

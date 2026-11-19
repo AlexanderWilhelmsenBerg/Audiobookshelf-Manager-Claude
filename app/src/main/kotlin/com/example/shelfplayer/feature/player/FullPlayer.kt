@@ -40,6 +40,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -68,6 +69,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -241,9 +243,7 @@ fun FullPlayer(
                 modifier = Modifier
                     .weight(WEIGHT_FILL, fill = false)
                     .then(
-                        if (LocalBookWaveDesign.current ==
-                            BookWaveDesign.Minimal
-                        ) {
+                        if (LocalBookWaveDesign.current.compactPlayer) {
                             Modifier
                         } else {
                             Modifier.fillMaxWidth()
@@ -291,6 +291,10 @@ private fun ColumnScope.PlayerControls(
     SeekBar(state = state, onSeekTo = actions.onSeekTo)
 
     Spacer(modifier = Modifier.height(4.dp))
+    if (LocalBookWaveDesign.current == BookWaveDesign.Editorial) {
+        HorizontalDivider()
+        Spacer(modifier = Modifier.height(8.dp))
+    }
     TransportRow(state = state, skips = skips, onTogglePlayPause = actions.onTogglePlayPause)
 
     Spacer(modifier = Modifier.height(4.dp))
@@ -497,7 +501,7 @@ private fun PlayerArtwork(state: PlaybackUiState, modifier: Modifier = Modifier)
     Box(
         modifier = modifier
             .widthIn(
-                max = if (design == BookWaveDesign.Minimal) {
+                max = if (design.compactPlayer) {
                     BookWaveLayout.MinimalPlayerArtworkMax
                 } else {
                     BookWaveLayout.PlayerArtworkMax
@@ -537,7 +541,7 @@ private fun NowPlaying(state: PlaybackUiState, modifier: Modifier = Modifier) {
     ) {
         Text(
             text = state.title,
-            style = MaterialTheme.typography.headlineSmall,
+            style = LocalBookWaveDesign.current.bookTitle(MaterialTheme.typography.headlineSmall),
             minLines = 1,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -755,9 +759,14 @@ private fun ThinSlider(
 
 @Composable
 private fun TimeLabel(text: String, modifier: Modifier = Modifier) {
+    val style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
     Text(
         text = text,
-        style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+        style = if (LocalBookWaveDesign.current == BookWaveDesign.Editorial) {
+            style.copy(fontFamily = FontFamily.Monospace)
+        } else {
+            style
+        },
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier,
     )
@@ -878,7 +887,7 @@ private fun SecondaryRow(
 @Composable
 private fun HistoryAction(onClick: () -> Unit) {
     val label = stringResource(R.string.player_history)
-    if (LocalBookWaveDesign.current != BookWaveDesign.Minimal) {
+    if (!LocalBookWaveDesign.current.compactPlayer) {
         FilledTonalIconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
             Icon(imageVector = Icons.Filled.History, contentDescription = label)
         }

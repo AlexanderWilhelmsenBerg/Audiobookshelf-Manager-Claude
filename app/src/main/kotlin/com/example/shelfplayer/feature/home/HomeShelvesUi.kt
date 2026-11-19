@@ -118,7 +118,8 @@ private fun ContinueListeningShelf(
     onBookSelected: (LibraryItemId) -> Unit,
     onBookPlaySelected: (LibraryItemId) -> Unit,
 ) {
-    if (LocalBookWaveDesign.current != BookWaveDesign.Minimal) {
+    val design = LocalBookWaveDesign.current
+    if (!design.featuredResume) {
         BookShelfRow(R.string.shelf_continue_listening, books, onBookSelected, onBookPlaySelected)
         return
     }
@@ -132,11 +133,22 @@ private fun ContinueListeningShelf(
                 horizontalArrangement = Arrangement.spacedBy(BookWaveLayout.ShelfCardGap),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                BookCover(book, modifier = Modifier.width(80.dp), shape = RectangleShape)
+                val coverWidth = if (design == BookWaveDesign.Editorial) {
+                    BookWaveLayout.EditorialResumeCoverWidth
+                } else {
+                    BookWaveLayout.ResumeCoverWidth
+                }
+                BookCover(book, modifier = Modifier.width(coverWidth), shape = RectangleShape)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = book.title,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = design.bookTitle(
+                            if (design == BookWaveDesign.Editorial) {
+                                MaterialTheme.typography.headlineSmall
+                            } else {
+                                MaterialTheme.typography.titleMedium
+                            },
+                        ),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -307,10 +319,10 @@ private fun ShelfCard(
     onPlay: (() -> Unit)? = null,
     cover: @Composable () -> Unit = {},
 ) {
-    val cardWidth = if (LocalBookWaveDesign.current == BookWaveDesign.Minimal) {
-        BookWaveLayout.MinimalShelfCardWidth
-    } else {
-        BookWaveLayout.ShelfCardWidth
+    val cardWidth = when (LocalBookWaveDesign.current) {
+        BookWaveDesign.Classic -> BookWaveLayout.ShelfCardWidth
+        BookWaveDesign.Editorial -> BookWaveLayout.EditorialShelfCardWidth
+        BookWaveDesign.Minimal -> BookWaveLayout.MinimalShelfCardWidth
     }
     GlassCard(
         onClick = onClick,
@@ -391,7 +403,7 @@ private fun ShelfCover(
 private fun BookShelfLabels(book: Book, reserveReadings: Boolean) {
     if (reserveReadings) {
         val progress = book.listeningProgress()
-        if (LocalBookWaveDesign.current == BookWaveDesign.Minimal) {
+        if (LocalBookWaveDesign.current.featuredResume) {
             val remaining = progress?.let { (it.duration - it.position).coerceAtLeast(Duration.ZERO) }
             ReadingText(
                 text = remaining?.let {
@@ -483,11 +495,12 @@ private fun ReadingText(text: String) {
 /** One line of a book card: one line high, and scrolling rather than truncated when it overflows. */
 @Composable
 private fun ShelfLine(text: String, style: TextStyle, muted: Boolean = true) {
-    val sharp = LocalBookWaveDesign.current.sharpEdges
+    val design = LocalBookWaveDesign.current
+    val sharp = design.sharpEdges
     val lines = if (sharp && !muted) 2 else 1
     Text(
         text = text,
-        style = style,
+        style = if (muted) style else design.bookTitle(style),
         color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
         minLines = lines,
         maxLines = lines,

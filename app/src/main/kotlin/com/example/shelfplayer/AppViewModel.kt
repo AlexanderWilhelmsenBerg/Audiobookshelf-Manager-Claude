@@ -92,7 +92,7 @@ data class AppUiState(
     fun accentArgbFor(isDark: Boolean): Long? {
         val pack = backgroundTheme
         return when {
-            design == AppDesign.Minimal -> accent.takeUnless { it == AccentScheme.Default }?.argbFor(isDark)
+            design != AppDesign.Classic -> accent.takeUnless { it == AccentScheme.Default }?.argbFor(isDark)
             pack != null && accent.belongsTo(pack) -> null
             else -> accent.argbFor(isDark)
         }

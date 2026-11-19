@@ -922,6 +922,7 @@
     <string name="settings_section_design">Design</string>
     <string name="settings_design_classic">Klassisk</string>
     <string name="settings_design_minimal">Minimal</string>
+    <string name="settings_design_editorial">Redaksjonell</string>
     <string name="shelf_remaining_time">%1$s igjen</string>
     <string name="settings_blur">Uskarphet</string>
     <string name="settings_blur_value">%1$d dp</string>

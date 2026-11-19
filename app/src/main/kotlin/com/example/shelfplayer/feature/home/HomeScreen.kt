@@ -105,7 +105,6 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfErrorState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
-import com.example.shelfplayer.core.designsystem.theme.BookWaveDesign
 import com.example.shelfplayer.core.designsystem.theme.LocalBookWaveDesign
 import com.example.shelfplayer.core.model.AuthorId
 import com.example.shelfplayer.core.model.LibraryItemId
@@ -800,7 +799,7 @@ private fun HomeAxisBar(
         Box(modifier = Modifier.matchParentSize()) {
             val highlight = Modifier.offset { IntOffset(x = selectionOffset.roundToPx(), y = 0) }.width(tabWidth)
             Box(
-                modifier = if (design != BookWaveDesign.Minimal) {
+                modifier = if (!design.sharpEdges) {
                     highlight.fillMaxHeight().padding(AXIS_SELECTION_INSET).background(
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = AXIS_SELECTION_ALPHA),
                         shape = chromeShape,

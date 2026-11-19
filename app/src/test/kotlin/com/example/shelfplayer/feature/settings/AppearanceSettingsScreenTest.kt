@@ -46,11 +46,12 @@ class AppearanceSettingsScreenTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun `Design offers Classic and Minimal`() {
+    fun `Design offers Minimal and Editorial alongside Classic`() {
         var chosen: AppDesign? = null
         render(actions = AppearanceActions(onDesignChanged = { chosen = it }))
 
         open("Design, Classic")
+        composeRule.onNodeWithText("Editorial").assertIsDisplayed()
         composeRule.onNodeWithText("Minimal").assertIsDisplayed().performClick()
         assertEquals(AppDesign.Minimal, chosen)
     }

@@ -6,4 +6,5 @@ import com.example.shelfplayer.core.model.settings.AppDesign
 internal fun AppDesign.visualStyle(): BookWaveDesign = when (this) {
     AppDesign.Classic -> BookWaveDesign.Classic
     AppDesign.Minimal -> BookWaveDesign.Minimal
+    AppDesign.Editorial -> BookWaveDesign.Editorial
 }

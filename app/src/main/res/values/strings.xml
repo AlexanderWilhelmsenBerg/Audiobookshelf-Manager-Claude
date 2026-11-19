@@ -1175,6 +1175,7 @@
     <string name="settings_section_design">Design</string>
     <string name="settings_design_classic">Classic</string>
     <string name="settings_design_minimal">Minimal</string>
+    <string name="settings_design_editorial">Editorial</string>
     <string name="shelf_remaining_time">%1$s left</string>
     <string name="settings_blur">Blur</string>
     <string name="settings_blur_value">%1$d dp</string>
