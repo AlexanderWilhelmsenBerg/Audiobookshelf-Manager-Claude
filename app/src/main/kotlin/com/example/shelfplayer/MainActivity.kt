@@ -79,6 +79,7 @@ import com.example.shelfplayer.ui.glass.LocalGlassPreferences
 import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
 import com.example.shelfplayer.ui.glass.appBackdrop
 import com.example.shelfplayer.ui.glass.toColorScheme
+import com.example.shelfplayer.ui.visualStyle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
@@ -136,20 +137,7 @@ class MainActivity : ComponentActivity() {
             // PRODUCT_SPEC SET-002 — outside the theme, because it decides what every string below says
             // and the theme only decides what colour it is drawn in.
             AppLocale(language = appState.language) {
-                val theme = appState.resolveTheme()
-                val background = appState.backgroundTheme
-                // A pack supersedes the plain theme, including which ground it is on: its palette was
-                // authored as a set against its own artwork. See `BackgroundTheme`.
-                val isDark = background?.isDark
-                    ?: appState.resolveDarkTheme(systemInDarkTheme = isSystemInDarkTheme())
-                ShelfPlayerTheme(
-                    darkTheme = isDark,
-                    dynamicColor = appState.dynamicColor,
-                    pureBlack = background == null && theme.prefersFlatBackdrop,
-                    accent = appState.accentArgbFor(isDark)?.let(::Color),
-                    textContrast = appState.textContrast.contrast,
-                    override = background?.toColorScheme(),
-                ) {
+                AppAppearance(appState) { glass, flatBackdrop, background ->
                     // The graph is not composed until the start destination is known. Composing it early
                     // and correcting it would show a flash of the wrong screen on every cold start, and
                     // would put a spurious entry in the back stack.
@@ -167,19 +155,8 @@ class MainActivity : ComponentActivity() {
                                 } else {
                                     ShelfDestinations.SIGN_IN
                                 },
-                                // PRODUCT_SPEC SET-002 — resolved once, here, because every frosted
-                                // surface in the app has to agree and the accent is only knowable
-                                // after the theme has decided which ground it is on.
-                                glass = GlassPreferences(
-                                    tint = appState.glassTint.resolvedColor(
-                                        activeAccent = MaterialTheme.colorScheme.primary,
-                                        storedAccentArgb = appState.accent.argbFor(isDark),
-                                    ),
-                                    cardTintEnabled = appState.cardGlassTintEnabled,
-                                    systemTintEnabled = appState.systemGlassTintEnabled,
-                                    blurRadius = appState.glassBlurDp.dp,
-                                ),
-                                flatBackdrop = theme.prefersFlatBackdrop,
+                                glass = glass,
+                                flatBackdrop = flatBackdrop,
                                 backgroundTheme = background,
                                 openDownloadsRequest = downloadsRequest,
                             )
@@ -205,6 +182,39 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_OPEN_DOWNLOADS = "bookwave.open_downloads"
+    }
+}
+
+/** SET-002 — resolve the design and theme together above the navigation and playback surfaces. */
+@Composable
+private fun AppAppearance(
+    state: AppUiState,
+    content: @Composable (glass: GlassPreferences, flatBackdrop: Boolean, background: BackgroundTheme?) -> Unit,
+) {
+    val design = state.design.visualStyle()
+    val pack = state.backgroundTheme
+    val isDark = pack?.isDark ?: state.resolveDarkTheme(systemInDarkTheme = isSystemInDarkTheme())
+    val plainBackdrop = state.resolveTheme().prefersFlatBackdrop
+    val artwork = pack?.takeIf { design.usesGlass }
+    ShelfPlayerTheme(
+        darkTheme = isDark,
+        dynamicColor = state.dynamicColor,
+        pureBlack = pack == null && plainBackdrop,
+        accent = state.accentArgbFor(isDark)?.let(::Color),
+        textContrast = state.textContrast.contrast,
+        override = artwork?.toColorScheme(),
+        design = design,
+    ) {
+        val glass = GlassPreferences(
+            tint = state.glassTint.resolvedColor(
+                activeAccent = MaterialTheme.colorScheme.primary,
+                storedAccentArgb = state.accent.argbFor(isDark),
+            ),
+            cardTintEnabled = state.cardGlassTintEnabled,
+            systemTintEnabled = state.systemGlassTintEnabled,
+            blurRadius = state.glassBlurDp.dp,
+        )
+        content(glass, !design.usesGlass || plainBackdrop, artwork)
     }
 }
 

@@ -105,6 +105,8 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfErrorState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
+import com.example.shelfplayer.core.designsystem.theme.BookWaveDesign
+import com.example.shelfplayer.core.designsystem.theme.LocalBookWaveDesign
 import com.example.shelfplayer.core.model.AuthorId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.SeriesId
@@ -753,6 +755,8 @@ private fun HomeAxisBar(
      * one the design asked for, and it should stay.
      */
     val isStacked = LocalDensity.current.fontScale >= STACK_LABEL_FONT_SCALE
+    val design = LocalBookWaveDesign.current
+    val chromeShape = design.surfaceShape(CircleShape)
     BoxWithConstraints(
         modifier = modifier
             .followHomeAxisBarMotion(motion)
@@ -765,11 +769,11 @@ private fun HomeAxisBar(
             // A floor, not a fixed height. A stacked tab at a large font scale is taller than 46dp, and a
             // capsule that refused to grow would clip the label it just moved to make room for.
             .heightIn(min = AXIS_BAR_HEIGHT)
-            .clip(CircleShape)
+            .clip(chromeShape)
             .systemGlass(
                 state = haze,
                 backgroundColor = MaterialTheme.colorScheme.surface,
-                shape = CircleShape,
+                shape = chromeShape,
             ),
     ) {
         // One geometry for the pill and the tabs. They were computed separately — the pill from the full
@@ -794,16 +798,16 @@ private fun HomeAxisBar(
         // the whole window. `matchParentSize` sizes to the parent **after** the parent is measured, so the
         // pill follows the capsule instead of stretching it.
         Box(modifier = Modifier.matchParentSize()) {
+            val highlight = Modifier.offset { IntOffset(x = selectionOffset.roundToPx(), y = 0) }.width(tabWidth)
             Box(
-                modifier = Modifier
-                    .offset { IntOffset(x = selectionOffset.roundToPx(), y = 0) }
-                    .width(tabWidth)
-                    .fillMaxHeight()
-                    .padding(AXIS_SELECTION_INSET)
-                    .background(
+                modifier = if (design != BookWaveDesign.Minimal) {
+                    highlight.fillMaxHeight().padding(AXIS_SELECTION_INSET).background(
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = AXIS_SELECTION_ALPHA),
-                        shape = CircleShape,
-                    ),
+                        shape = chromeShape,
+                    )
+                } else {
+                    highlight.align(Alignment.BottomStart).height(2.dp).background(MaterialTheme.colorScheme.primary)
+                },
             )
         }
         // `IntrinsicSize.Min` is what makes the capsule content-sized. The row asks its tabs how tall they
@@ -826,7 +830,7 @@ private fun HomeAxisBar(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(),
-                    shape = CircleShape,
+                    shape = chromeShape,
                     color = Color.Transparent,
                     contentColor = if (selected) {
                         MaterialTheme.colorScheme.primary

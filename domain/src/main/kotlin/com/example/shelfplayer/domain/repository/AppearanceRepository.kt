@@ -2,6 +2,7 @@ package com.example.shelfplayer.domain.repository
 
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.settings.AccentScheme
+import com.example.shelfplayer.core.model.settings.AppDesign
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppearanceSettings
 import com.example.shelfplayer.core.model.settings.GlassTint
@@ -20,6 +21,7 @@ interface AppearanceRepository {
     fun observeAppearance(): Flow<AppearanceSettings>
 
     suspend fun setThemeChoice(choice: ThemeChoice): AppResult<Unit>
+    suspend fun setDesign(design: AppDesign): AppResult<Unit>
     suspend fun setAccent(accent: AccentScheme): AppResult<Unit>
     suspend fun setGlassTint(tint: GlassTint): AppResult<Unit>
     suspend fun setCardGlassTintEnabled(enabled: Boolean): AppResult<Unit>

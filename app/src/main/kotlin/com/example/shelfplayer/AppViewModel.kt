@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.settings.AccentScheme
+import com.example.shelfplayer.core.model.settings.AppDesign
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
@@ -44,6 +45,7 @@ class AppViewModel @Inject constructor(appearance: AppearanceRepository, profile
             backgroundTheme = look.backgroundTheme,
             dynamicColor = look.dynamicColor,
             language = look.language,
+            design = look.design,
             serverBaseUrls = servers.associate { it.id to it.baseUrl },
             hasAnyProfile = profiles.isNotEmpty(),
             isResolved = true,
@@ -77,6 +79,7 @@ data class AppUiState(
     val serverBaseUrls: Map<ServerId, String> = emptyMap(),
     val hasAnyProfile: Boolean = false,
     val isResolved: Boolean = false,
+    val design: AppDesign = AppDesign.Classic,
 ) {
     fun resolveDarkTheme(systemInDarkTheme: Boolean): Boolean = theme.isDark ?: systemInDarkTheme
 
@@ -88,7 +91,10 @@ data class AppUiState(
      */
     fun accentArgbFor(isDark: Boolean): Long? {
         val pack = backgroundTheme
-        if (pack != null && accent.belongsTo(pack)) return null
-        return accent.argbFor(isDark)
+        return when {
+            design == AppDesign.Minimal -> accent.takeUnless { it == AccentScheme.Default }?.argbFor(isDark)
+            pack != null && accent.belongsTo(pack) -> null
+            else -> accent.argbFor(isDark)
+        }
     }
 }

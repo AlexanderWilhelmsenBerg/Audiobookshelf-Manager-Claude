@@ -9,6 +9,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
@@ -93,6 +94,7 @@ fun ShelfPlayerTheme(
     accent: Color? = null,
     textContrast: Float? = null,
     override: ColorScheme? = null,
+    design: BookWaveDesign = BookWaveDesign.Classic,
     content: @Composable () -> Unit,
 ) {
     val supportsDynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -102,7 +104,7 @@ fun ShelfPlayerTheme(
         darkTheme -> dynamicDarkColorScheme(context)
         else -> dynamicLightColorScheme(context)
     }
-    val base = dynamicScheme ?: if (darkTheme) ShelfDarkColors else ShelfLightColors
+    val base = dynamicScheme ?: design.defaultColors(darkTheme)
     // Without a pack, Material You already is the whole base scheme and must not be re-toned. A bundled
     // pack keeps its authored surfaces, but the wallpaper primary is still the explicitly selected accent.
     val chosenAccent = when {
@@ -112,11 +114,19 @@ fun ShelfPlayerTheme(
     }
     val grounded = base.grounded(chosenAccent, pureBlack, override)
 
-    MaterialTheme(
-        colorScheme = if (textContrast == null) grounded else grounded.withTextContrast(textContrast),
-        typography = ShelfPlayerTypography,
-        content = content,
-    )
+    CompositionLocalProvider(LocalBookWaveDesign provides design) {
+        MaterialTheme(
+            colorScheme = if (textContrast == null) grounded else grounded.withTextContrast(textContrast),
+            typography = ShelfPlayerTypography,
+            shapes = if (design == BookWaveDesign.Minimal) MinimalShapes else MaterialTheme.shapes,
+            content = content,
+        )
+    }
+}
+
+private fun BookWaveDesign.defaultColors(dark: Boolean): ColorScheme = when (this) {
+    BookWaveDesign.Classic -> if (dark) ShelfDarkColors else ShelfLightColors
+    BookWaveDesign.Minimal -> if (dark) MinimalDarkColors else MinimalLightColors
 }
 
 /**

@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.core.model.settings.AccentScheme
+import com.example.shelfplayer.core.model.settings.AppDesign
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.AppearanceSettings
@@ -55,6 +56,7 @@ class DefaultAppearanceRepository @Inject constructor(
             backgroundThemeId = stored.backgroundThemeId.takeIf { id -> themes.any { it.id == id } },
             dynamicColor = stored.dynamicColor,
             language = AppLanguage.ofTag(stored.appLanguageTag),
+            design = AppDesign.ofKey(stored.appDesignKey),
         )
     }
 
@@ -68,6 +70,8 @@ class DefaultAppearanceRepository @Inject constructor(
         AccentScheme.following(current, pack)?.let { next -> settings.setAccent(next) }
         settings.setBackgroundThemeId(pack?.id)
     }
+
+    override suspend fun setDesign(design: AppDesign): AppResult<Unit> = write { settings.setAppDesign(design) }
 
     override suspend fun setAccent(accent: AccentScheme): AppResult<Unit> = write {
         settings.setAccent(accent)

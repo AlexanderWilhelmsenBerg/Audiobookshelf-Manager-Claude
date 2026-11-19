@@ -919,6 +919,10 @@
     <string name="settings_card_tint">Legg skj\u00e6r p\u00e5 kortene</string>
     <string name="settings_system_tint">Legg skj\u00e6r p\u00e5 linjene og spilleren</string>
     <string name="settings_section_theme">Tema</string>
+    <string name="settings_section_design">Design</string>
+    <string name="settings_design_classic">Klassisk</string>
+    <string name="settings_design_minimal">Minimal</string>
+    <string name="shelf_remaining_time">%1$s igjen</string>
     <string name="settings_blur">Uskarphet</string>
     <string name="settings_blur_value">%1$d dp</string>
     <string name="settings_blur_off">Av</string>

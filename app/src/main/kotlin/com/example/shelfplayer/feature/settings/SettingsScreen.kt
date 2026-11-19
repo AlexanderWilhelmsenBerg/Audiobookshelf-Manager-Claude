@@ -163,6 +163,7 @@ fun SettingsRoute(
             onMessageShown = viewModel::onDebugMessageShown,
         ),
         appearanceActions = AppearanceActions(
+            onDesignChanged = appearanceViewModel::onDesignChanged,
             onThemeChoiceChanged = appearanceViewModel::onThemeChoiceChanged,
             onAccentChanged = appearanceViewModel::onAccentChanged,
             onGlassTintChanged = appearanceViewModel::onGlassTintChanged,

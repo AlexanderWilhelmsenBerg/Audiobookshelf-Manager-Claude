@@ -1,5 +1,6 @@
 package com.example.shelfplayer.ui.glass
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -26,6 +27,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.example.shelfplayer.core.designsystem.theme.LocalBookWaveDesign
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import dev.chrisbanes.haze.HazeState
 import kotlin.math.roundToInt
@@ -53,6 +55,12 @@ internal fun Modifier.cardGlass(
     shape: Shape = RoundedCornerShape(GlassDefaults.CardCornerRadius),
     scaleBlurInput: Boolean = false,
 ): Modifier {
+    val design = LocalBookWaveDesign.current
+    if (!design.usesGlass) {
+        val resolvedShape = design.surfaceShape(shape)
+        return background(MaterialTheme.colorScheme.surface, resolvedShape)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, resolvedShape)
+    }
     val preferences = LocalGlassPreferences.current
     val hazeState = LocalCardHazeState.current
     val hasBlur = hazeState != null
@@ -99,16 +107,17 @@ internal fun GlassCard(
     scaleBlurInput: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val resolvedShape = LocalBookWaveDesign.current.surfaceShape(shape)
     val colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     val elevation = CardDefaults.cardElevation(defaultElevation = 0.dp, pressedElevation = 0.dp)
-    val glass = modifier.cardGlass(shape, scaleBlurInput)
+    val glass = modifier.cardGlass(resolvedShape, scaleBlurInput)
     if (onClick == null) {
-        Card(modifier = glass, shape = shape, colors = colors, elevation = elevation, content = content)
+        Card(modifier = glass, shape = resolvedShape, colors = colors, elevation = elevation, content = content)
     } else {
         Card(
             onClick = onClick,
             modifier = glass,
-            shape = shape,
+            shape = resolvedShape,
             colors = colors,
             elevation = elevation,
             content = content,
@@ -125,6 +134,8 @@ internal fun GlassCard(
  */
 @Composable
 internal fun Modifier.systemGlass(state: HazeState?, backgroundColor: Color, shape: Shape): Modifier {
+    val design = LocalBookWaveDesign.current
+    if (!design.usesGlass) return background(backgroundColor, design.surfaceShape(shape))
     val preferences = LocalGlassPreferences.current
     val tinted = preferences.systemTintEnabled || state == null
     return frostedGlass(
@@ -189,6 +200,8 @@ internal fun Modifier.appBackdrop(flat: Boolean, theme: BackgroundTheme? = null)
     val base = if (theme != null) Color(theme.ground.base) else scheme.surface
     val brush = when {
         theme != null -> null
+
+        !LocalBookWaveDesign.current.usesGlass -> null
 
         flat -> Brush.verticalGradient(listOf(base, base))
 

@@ -2,6 +2,7 @@ package com.example.shelfplayer
 
 import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AccentScheme
+import com.example.shelfplayer.core.model.settings.AppDesign
 import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.core.model.settings.ThemeAccents
@@ -19,6 +20,16 @@ class AppThemeResolutionTest {
     @Test
     fun `the resolved theme is the shell theme`() {
         assertEquals(AppTheme.Amoled, AppUiState(theme = AppTheme.Amoled).resolveTheme())
+    }
+
+    @Test
+    fun `Minimal uses its own default accent and keeps explicit accent choices`() {
+        val minimal = AppUiState(theme = AppTheme.Dark, design = AppDesign.Minimal)
+        val customized = minimal.copy(accent = AccentScheme.of(AccentColor.Plum))
+
+        assertNull(minimal.accentArgbFor(isDark = true))
+        assertEquals(AccentColor.Plum.darkArgb, customized.accentArgbFor(isDark = true))
+        assertEquals(AppTheme.Dark, customized.resolveTheme())
     }
 
     @Test

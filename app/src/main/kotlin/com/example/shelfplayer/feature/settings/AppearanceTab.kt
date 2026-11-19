@@ -52,6 +52,7 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.theme.dynamicAccentColor
 import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AccentScheme
+import com.example.shelfplayer.core.model.settings.AppDesign
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
@@ -60,14 +61,26 @@ import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
 import com.example.shelfplayer.core.model.settings.ThemeChoice
 import com.example.shelfplayer.ui.glass.GlassCard
+import com.example.shelfplayer.ui.visualStyle
 import kotlin.math.roundToInt
 
 /** PRODUCT_SPEC SET-002 — the tab that owns the app's appearance and accessibility choices. */
 internal fun LazyListScope.appearanceTab(state: AppearanceUiState, actions: AppearanceActions) {
     item { TabHeading(text = stringResource(R.string.settings_section_appearance)) }
+    item {
+        SettingsGroup {
+            DropdownRow(
+                label = stringResource(R.string.settings_section_design),
+                options = AppDesign.entries,
+                selected = state.design,
+                labelOf = { design -> stringResource(design.labelRes()) },
+                onSelected = actions.onDesignChanged,
+            )
+        }
+    }
     themeGroup(state, actions)
     colourGroup(state, actions)
-    glassGroup(state, actions)
+    if (state.design.visualStyle().usesGlass) glassGroup(state, actions)
     languageGroup(state, actions)
 }
 
@@ -138,22 +151,7 @@ private fun LazyListScope.colourGroup(state: AppearanceUiState, actions: Appeara
         SettingsGroup {
             AccentColorGridRow(state = state, actions = actions)
 
-            val activeAccent = MaterialTheme.colorScheme.primary
-            val storedAccentArgb = state.accent.argbFor(state.isDark)
-            ColorGridRow(
-                label = stringResource(R.string.settings_tint_colour),
-                options = GlassTint.all(state.backgroundThemes),
-                presentation = ColorGridPresentation(
-                    currentLabel = state.glassTint.label(state.backgroundThemes),
-                    currentColor = state.glassTint.resolvedColor(activeAccent, storedAccentArgb),
-                ),
-                labelOf = { tint -> tint.label(state.backgroundThemes) },
-                argbOf = { tint ->
-                    tint.resolvedColor(activeAccent, storedAccentArgb).toArgb().toUInt().toLong()
-                },
-                isSelected = { tint -> tint == state.glassTint },
-                onSelected = actions.onGlassTintChanged,
-            )
+            if (state.design.visualStyle().usesGlass) GlassTintGridRow(state, actions)
 
             DropdownRow(
                 label = stringResource(R.string.settings_text_contrast),
@@ -164,6 +162,24 @@ private fun LazyListScope.colourGroup(state: AppearanceUiState, actions: Appeara
             )
         }
     }
+}
+
+@Composable
+private fun GlassTintGridRow(state: AppearanceUiState, actions: AppearanceActions) {
+    val activeAccent = MaterialTheme.colorScheme.primary
+    val storedAccentArgb = state.accent.argbFor(state.isDark)
+    ColorGridRow(
+        label = stringResource(R.string.settings_tint_colour),
+        options = GlassTint.all(state.backgroundThemes),
+        presentation = ColorGridPresentation(
+            currentLabel = state.glassTint.label(state.backgroundThemes),
+            currentColor = state.glassTint.resolvedColor(activeAccent, storedAccentArgb),
+        ),
+        labelOf = { tint -> tint.label(state.backgroundThemes) },
+        argbOf = { tint -> tint.resolvedColor(activeAccent, storedAccentArgb).toArgb().toUInt().toLong() },
+        isSelected = { tint -> tint == state.glassTint },
+        onSelected = actions.onGlassTintChanged,
+    )
 }
 
 /**
@@ -598,6 +614,11 @@ private fun Long.hueDegrees(): Float {
         else -> (r - g) / delta + BLUE_SECTOR
     }
     return (raw * HUE_SECTOR_DEGREES + HUE_CIRCLE) % HUE_CIRCLE
+}
+
+private fun AppDesign.labelRes(): Int = when (this) {
+    AppDesign.Classic -> R.string.settings_design_classic
+    AppDesign.Minimal -> R.string.settings_design_minimal
 }
 
 private fun AppTheme.labelRes(): Int = when (this) {

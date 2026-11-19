@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -37,6 +38,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -70,8 +73,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.designsystem.layout.BookWaveLayout
 import com.example.shelfplayer.core.designsystem.layout.hasRoomForTwoPanes
 import com.example.shelfplayer.core.designsystem.layout.windowWidth
+import com.example.shelfplayer.core.designsystem.theme.BookWaveDesign
+import com.example.shelfplayer.core.designsystem.theme.LocalBookWaveDesign
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.domain.playback.ChapterProgress
@@ -159,7 +165,7 @@ fun FullPlayer(
                 .fillMaxSize()
                 .background(playerBackground())
                 .safeDrawingPadding()
-                .padding(horizontal = 24.dp),
+                .padding(horizontal = BookWaveLayout.PlayerGutter),
         ) {
             TopBar(
                 outputs = outputs,
@@ -234,7 +240,15 @@ fun FullPlayer(
                 state = state,
                 modifier = Modifier
                     .weight(WEIGHT_FILL, fill = false)
-                    .fillMaxWidth()
+                    .then(
+                        if (LocalBookWaveDesign.current ==
+                            BookWaveDesign.Minimal
+                        ) {
+                            Modifier
+                        } else {
+                            Modifier.fillMaxWidth()
+                        },
+                    )
                     .align(Alignment.CenterHorizontally),
             )
             PlayerControls(
@@ -304,12 +318,14 @@ private const val CONTROLS_WEIGHT = 0.55f
  * an arbitrary book. The theme's own container colour gives the same lift with none of that.
  */
 @Composable
-private fun playerBackground(): Brush = Brush.verticalGradient(
-    colors = listOf(
-        MaterialTheme.colorScheme.surfaceContainerHigh,
-        MaterialTheme.colorScheme.surface,
-    ),
-)
+private fun playerBackground(): Brush {
+    val scheme = MaterialTheme.colorScheme
+    return if (LocalBookWaveDesign.current.usesGlass) {
+        Brush.verticalGradient(listOf(scheme.surfaceContainerHigh, scheme.surface))
+    } else {
+        SolidColor(scheme.surface)
+    }
+}
 
 /**
  * PRODUCT_SPEC PLAY-001 — one line and one action, shown only while something is blocking the notification.
@@ -477,11 +493,18 @@ private fun TopBar(
  */
 @Composable
 private fun PlayerArtwork(state: PlaybackUiState, modifier: Modifier = Modifier) {
+    val design = LocalBookWaveDesign.current
     Box(
         modifier = modifier
-            .widthIn(max = ARTWORK_MAX)
+            .widthIn(
+                max = if (design == BookWaveDesign.Minimal) {
+                    BookWaveLayout.MinimalPlayerArtworkMax
+                } else {
+                    BookWaveLayout.PlayerArtworkMax
+                },
+            )
             .aspectRatio(1f)
-            .clip(MaterialTheme.shapes.extraLarge)
+            .clip(design.surfaceShape(MaterialTheme.shapes.extraLarge))
             .background(MaterialTheme.colorScheme.surfaceContainerHighest),
         contentAlignment = Alignment.Center,
     ) {
@@ -701,7 +724,10 @@ private fun ThinSlider(
             Spacer(
                 modifier = Modifier
                     .size(THUMB_SIZE)
-                    .background(color = if (enabled) color else colors.disabledThumbColor, shape = CircleShape),
+                    .background(
+                        color = if (enabled) color else colors.disabledThumbColor,
+                        shape = LocalBookWaveDesign.current.surfaceShape(CircleShape),
+                    ),
             )
         },
         track = { sliderState ->
@@ -786,7 +812,7 @@ private fun PlayPauseButton(state: PlaybackUiState, onClick: () -> Unit, modifie
         onClick = onClick,
         modifier = modifier
             .size(PLAY_BUTTON_SIZE)
-            .clip(MaterialTheme.shapes.extraLarge)
+            .clip(LocalBookWaveDesign.current.surfaceShape(MaterialTheme.shapes.extraLarge))
             .background(MaterialTheme.colorScheme.primary),
     ) {
         if (state.isLoading) {
@@ -835,15 +861,7 @@ private fun SecondaryRow(
     ) {
         // History is the audiobook navigation action the listener reaches for most often, so it is first
         // and receives the only filled treatment in this secondary row.
-        FilledTonalIconButton(
-            onClick = actions.onOpenHistory,
-            modifier = Modifier.size(48.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.History,
-                contentDescription = stringResource(R.string.player_history),
-            )
-        }
+        HistoryAction(onClick = actions.onOpenHistory)
         SleepTimerAction(timer = timer, onClick = actions.onOpenSleepTimer)
         SpeedAction(speed = state.speed, onClick = actions.onOpenSpeed)
         if (state.chapters.isNotEmpty()) {
@@ -853,6 +871,24 @@ private fun SecondaryRow(
                 enabled = true,
                 onClick = actions.onOpenChapters,
             )
+        }
+    }
+}
+
+@Composable
+private fun HistoryAction(onClick: () -> Unit) {
+    val label = stringResource(R.string.player_history)
+    if (LocalBookWaveDesign.current != BookWaveDesign.Minimal) {
+        FilledTonalIconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
+            Icon(imageVector = Icons.Filled.History, contentDescription = label)
+        }
+    } else {
+        FilledTonalButton(
+            onClick = onClick,
+            shape = MaterialTheme.shapes.small,
+            contentPadding = PaddingValues(horizontal = 8.dp),
+        ) {
+            Text(text = label, style = MaterialTheme.typography.labelMedium)
         }
     }
 }
@@ -927,6 +963,3 @@ private val THUMB_SIZE = 14.dp
  * two and a half times the skip buttons, which is what the hierarchy needs, and gives back sixteen dp.
  */
 private val PLAY_BUTTON_SIZE = 72.dp
-
-/** Keeps the artwork sane on a tablet, where a full-width square cover would be enormous. */
-private val ARTWORK_MAX = 420.dp
