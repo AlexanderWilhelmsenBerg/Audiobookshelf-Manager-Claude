@@ -1,8 +1,16 @@
 package com.example.shelfplayer.playback
 
+import android.net.Uri
+import android.os.Bundle
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaConstants
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
+import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionError
 import androidx.test.core.app.ApplicationProvider
+import com.example.shelfplayer.core.common.log.LogEvent
+import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.AuthorId
 import com.example.shelfplayer.core.model.LibraryId
@@ -24,15 +32,18 @@ import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.library.Series
 import com.example.shelfplayer.core.model.library.SeriesMembership
+import com.example.shelfplayer.core.testing.TestAppClock
 import com.example.shelfplayer.domain.lock.ProfileActivationGuard
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.usecase.ObserveHomeShelvesUseCase
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -135,6 +146,71 @@ class AutoBrowseTreeTest {
             MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             author.style(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE),
         )
+    }
+
+    @Test
+    fun `an artwork lookup completing after profile switch cannot publish the old browse row`() = runTest {
+        val profiles = StubProfiles(includeSecond = true)
+        books.value = listOf(
+            book("old-book", "Old book", series = membership("old", "Old series", "1")).copy(coverPath = "fixture"),
+        )
+        val firstArtwork = CompletableDeferred<Unit>()
+        val releaseArtwork = CompletableDeferred<Unit>()
+        val artwork = object : AutoArtwork by AutoArtwork.None {
+            override suspend fun book(
+                book: Book,
+                serverBaseUrls: Map<ServerId, String>,
+                offlineCoverUri: String?,
+            ): Uri {
+                firstArtwork.complete(Unit)
+                releaseArtwork.await()
+                return Uri.parse("content://fixture/${book.id.value}")
+            }
+        }
+        val logger = object : Logger {
+            override fun log(event: LogEvent) = Unit
+        }
+        val clock = TestAppClock()
+        val callbacks = LibraryBrowseCallbacks(
+            auto = auto(profiles, artwork = artwork),
+            futures = SessionCallbackFutures(backgroundScope, UnconfinedTestDispatcher(testScheduler), logger),
+            autoTraces = AndroidAutoTraceRecorder(logger, clock) { emptyList() },
+            clock = clock,
+            logger = logger,
+            nowPlaying = { null },
+            player = { null },
+            mayBrowse = { _, _ -> true },
+            carPackages = emptySet(),
+        )
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val player = ExoPlayer.Builder(context).build()
+        val session = MediaLibrarySession.Builder(context, player, object : MediaLibrarySession.Callback {}).build()
+        val controller = MediaSession.ControllerInfo
+            .createTestOnlyControllerInfo("test.controller", 1, 1, 1, 1, false, Bundle(), true)
+        try {
+            val old = callbacks.onGetChildren(session, controller, AutoLibrary.TAB_SERIES, 0, 10, null)
+            runCurrent()
+            assertTrue(firstArtwork.isCompleted, "the old browse request must have entered artwork resolution")
+            profiles.setActiveProfile(ProfileId("profile-2"))
+            books.value = listOf(
+                book("fresh-book", "Fresh book", series = membership("fresh", "Fresh series", "1"))
+                    .copy(coverPath = "fixture"),
+            )
+            releaseArtwork.complete(Unit)
+            runCurrent()
+
+            assertEquals(SessionError.ERROR_INVALID_STATE, old.get().resultCode)
+            val fresh = callbacks.onGetChildren(session, controller, AutoLibrary.TAB_SERIES, 0, 10, null)
+            runCurrent()
+            assertEquals(listOf("Fresh series"), fresh.get().value.orEmpty().titles())
+            assertEquals(
+                Uri.parse("content://fixture/fresh-book"),
+                fresh.get().value?.single()?.mediaMetadata?.artworkUri,
+            )
+        } finally {
+            session.release()
+            player.release()
+        }
     }
 
     /**
@@ -363,6 +439,7 @@ class AutoBrowseTreeTest {
     private fun auto(
         profiles: ProfileRepository = StubProfiles(),
         rememberedId: LibraryItemId? = books.value.firstOrNull { book -> book.progress?.isFinished == false }?.id,
+        artwork: AutoArtwork = AutoArtwork.None,
     ): AutoLibrary {
         val library = StubLibrary(books)
         return AutoLibrary(
@@ -373,7 +450,7 @@ class AutoBrowseTreeTest {
             rememberedBooks = FakeRememberedBooks(rememberedId, PROFILE),
             homeShelves = ObserveHomeShelvesUseCase(profiles, library, UnconfinedTestDispatcher()),
             activation = ProfileActivationGuard { true },
-            artwork = AutoArtwork.None,
+            artwork = artwork,
         )
     }
 
@@ -459,16 +536,27 @@ class AutoBrowseTreeTest {
                 )
             }
         }
+        private val selected = MutableStateFlow(active)
+        private var generation = 0L
 
         override fun observeProfiles(): Flow<List<Profile>> = flowOf(saved)
 
         override fun observeServers(): Flow<List<Server>> = flowOf(emptyList())
 
-        override fun observeActiveProfile(): Flow<Profile?> = flowOf(active)
+        override fun observeActiveProfile(): Flow<Profile?> = selected
 
-        override suspend fun activeProfileId(): ProfileId = PROFILE
+        override suspend fun activeProfileId(): ProfileId = selected.value.id
 
-        override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> = AppResult.Success(Unit)
+        override fun activeProfileGeneration(): Long = generation
+
+        override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> {
+            val next = saved.first { it.id == profileId }
+            if (next.id != selected.value.id) {
+                generation++
+                selected.value = next
+            }
+            return AppResult.Success(Unit)
+        }
     }
 
     private class StubLibrary(private val books: MutableStateFlow<List<Book>>) : LibraryRepository {

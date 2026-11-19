@@ -1308,6 +1308,7 @@ Responsibilities:
 - own a single ExoPlayer;
 - own the MediaLibrarySession;
 - publish browsable content to Android Auto/system;
+- retire in-flight browse and search results when the active profile changes;
 - manage audio focus through Media3;
 - convert domain queue entries to MediaItems;
 - keep playback independent from UI;
