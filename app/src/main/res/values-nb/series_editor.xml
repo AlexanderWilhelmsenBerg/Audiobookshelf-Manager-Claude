@@ -18,5 +18,8 @@
     <string name="series_editor_down">Flytt ned</string>
     <string name="series_editor_indent">Grupper med forrige bok</string>
     <string name="series_editor_outdent">Flytt ut av gruppen</string>
-    <string name="series_editor_partial_save">%1$d av %2$d bokendringer ble lagret. %3$s</string>
+    <plurals name="series_editor_partial_save">
+        <item quantity="one">%1$d av %2$d bokendring ble lagret. %3$s</item>
+        <item quantity="other">%1$d av %2$d bokendringer ble lagret. %3$s</item>
+    </plurals>
 </resources>

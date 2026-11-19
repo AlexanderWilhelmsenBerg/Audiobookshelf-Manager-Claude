@@ -54,6 +54,7 @@ import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -94,7 +95,13 @@ internal fun SeriesEditor(
             val detail = result.error?.summary.orEmpty()
             Text(
                 text = if (result.applied > 0) {
-                    stringResource(R.string.series_editor_partial_save, result.applied, result.total, detail)
+                    pluralStringResource(
+                        R.plurals.series_editor_partial_save,
+                        result.total,
+                        result.applied,
+                        result.total,
+                        detail,
+                    )
                 } else {
                     detail
                 },

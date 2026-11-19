@@ -18,5 +18,8 @@
     <string name="series_editor_down">Move down</string>
     <string name="series_editor_indent">Group with previous book</string>
     <string name="series_editor_outdent">Move out of parts</string>
-    <string name="series_editor_partial_save">Saved %1$d of %2$d book changes. %3$s</string>
+    <plurals name="series_editor_partial_save">
+        <item quantity="one">Saved %1$d of %2$d book change. %3$s</item>
+        <item quantity="other">Saved %1$d of %2$d book changes. %3$s</item>
+    </plurals>
 </resources>
