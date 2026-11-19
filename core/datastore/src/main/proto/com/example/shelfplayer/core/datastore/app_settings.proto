@@ -314,6 +314,8 @@ message AppSettings {
   bool headset_button_routing_disabled = 56;
   // Direct Sony taps are opt-in; absent data keeps detection off.
   bool sony_tap_detection = 57;
+  // SET-002. Stable design keys keep the theme choice independent. Empty resolves to Classic.
+  string app_design_key = 58;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.

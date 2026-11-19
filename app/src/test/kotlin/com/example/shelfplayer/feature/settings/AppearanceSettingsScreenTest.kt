@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AccentScheme
+import com.example.shelfplayer.core.model.settings.AppDesign
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
@@ -43,6 +44,29 @@ class AppearanceSettingsScreenTest {
 
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun `Design offers Classic and Minimal`() {
+        var chosen: AppDesign? = null
+        render(actions = AppearanceActions(onDesignChanged = { chosen = it }))
+
+        open("Design, Classic")
+        composeRule.onNodeWithText("Minimal").assertIsDisplayed().performClick()
+        assertEquals(AppDesign.Minimal, chosen)
+    }
+
+    @Test
+    fun `a saved Minimal design can select Classic again`() {
+        var chosen: AppDesign? = null
+        render(
+            state = AppearanceUiState(design = AppDesign.Minimal),
+            actions = AppearanceActions(onDesignChanged = { chosen = it }),
+        )
+
+        open("Design, Minimal")
+        composeRule.onNodeWithText("Classic").performClick()
+        assertEquals(AppDesign.Classic, chosen)
+    }
 
     @Test
     fun `every look is in one list, the app's own and the packs alike`() {

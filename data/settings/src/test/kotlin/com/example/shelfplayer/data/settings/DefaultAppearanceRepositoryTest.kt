@@ -11,6 +11,7 @@ import com.example.shelfplayer.core.datastore.AppSettings
 import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.datastore.AppSettingsSerializer
 import com.example.shelfplayer.core.datastore.ThemeMode
+import com.example.shelfplayer.core.model.settings.AppDesign
 import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.core.testing.RecordingLogSink
@@ -112,6 +113,28 @@ class DefaultAppearanceRepositoryTest {
         dataStore.updateData { stored -> stored.toBuilder().setAppThemeKey("solarized").build() }
 
         assertEquals(AppTheme.System, repository.observeAppearance().first().theme)
+    }
+
+    @Test
+    fun `an existing install and unknown design key resolve to Classic`() = runTest {
+        assertEquals(AppDesign.Classic, repository.observeAppearance().first().design)
+        dataStore.updateData { it.toBuilder().setAppDesignKey("future-design").build() }
+        assertEquals(AppDesign.Classic, repository.observeAppearance().first().design)
+        assertEquals("future-design", dataStore.data.first().appDesignKey)
+    }
+
+    @Test
+    fun `design selection persists independently of the theme`() = runTest {
+        settings.setAppTheme(AppTheme.Dark)
+
+        repository.setDesign(AppDesign.Minimal)
+        assertEquals(AppDesign.Minimal.key, storeFile.inputStream().use { AppSettings.parseFrom(it) }.appDesignKey)
+        assertEquals(AppDesign.Minimal, repository.observeAppearance().first().design)
+        assertEquals(AppTheme.Dark, repository.observeAppearance().first().theme)
+
+        repository.setDesign(AppDesign.Classic)
+        assertEquals(AppDesign.Classic, repository.observeAppearance().first().design)
+        assertEquals(AppTheme.Dark, repository.observeAppearance().first().theme)
     }
 
     private object EmptyCatalog : BackgroundThemeCatalog {

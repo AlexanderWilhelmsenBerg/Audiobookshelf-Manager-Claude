@@ -1172,6 +1172,10 @@
     <string name="settings_card_tint">Tint the cards</string>
     <string name="settings_system_tint">Tint the bars and the player</string>
     <string name="settings_section_theme">Theme</string>
+    <string name="settings_section_design">Design</string>
+    <string name="settings_design_classic">Classic</string>
+    <string name="settings_design_minimal">Minimal</string>
+    <string name="shelf_remaining_time">%1$s left</string>
     <string name="settings_blur">Blur</string>
     <string name="settings_blur_value">%1$d dp</string>
     <string name="settings_blur_off">Off</string>

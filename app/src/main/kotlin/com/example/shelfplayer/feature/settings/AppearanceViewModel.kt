@@ -3,6 +3,7 @@ package com.example.shelfplayer.feature.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.model.settings.AccentScheme
+import com.example.shelfplayer.core.model.settings.AppDesign
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
@@ -42,6 +43,7 @@ class AppearanceViewModel @Inject constructor(private val appearance: Appearance
                 backgroundThemeId = look.backgroundThemeId,
                 dynamicColor = look.dynamicColor,
                 language = look.language,
+                design = look.design,
             )
         }
         .stateIn(
@@ -49,6 +51,10 @@ class AppearanceViewModel @Inject constructor(private val appearance: Appearance
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
             initialValue = AppearanceUiState(),
         )
+
+    fun onDesignChanged(design: AppDesign) {
+        viewModelScope.launch { appearance.setDesign(design) }
+    }
 
     fun onAccentChanged(accent: AccentScheme) {
         viewModelScope.launch {
@@ -115,4 +121,5 @@ data class AppearanceUiState(
     val dynamicColor: Boolean = false,
     val language: AppLanguage = AppLanguage.System,
     val isDark: Boolean = false,
+    val design: AppDesign = AppDesign.Classic,
 )

@@ -55,6 +55,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.designsystem.layout.BookWaveLayout
+import com.example.shelfplayer.core.designsystem.theme.LocalBookWaveDesign
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.playback.PlaybackUiState
 import com.example.shelfplayer.ui.glass.LocalGlassHazeState
@@ -286,7 +288,7 @@ private fun MiniPlayerPlayPauseButton(state: PlaybackUiState, onClick: () -> Uni
         onClick = onClick,
         modifier = modifier
             .size(CONTROL_SIZE)
-            .clip(CircleShape)
+            .clip(LocalBookWaveDesign.current.surfaceShape(CircleShape))
             .background(MaterialTheme.colorScheme.primary),
     ) {
         if (state.isLoading) {
@@ -326,7 +328,7 @@ private fun MiniPlayerButton(onClick: () -> Unit, content: @Composable () -> Uni
 private fun MiniPlayerArtwork(state: PlaybackUiState, isLoading: Boolean, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .size(ARTWORK_SIZE)
+            .size(BookWaveLayout.MiniPlayerArtwork)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = GLASS_ARTWORK_ALPHA)),
         contentAlignment = Alignment.Center,
     ) {
@@ -392,8 +394,6 @@ internal const val MINI_PLAYER_TEST_TAG = "mini-player-bar"
  */
 internal val MINI_PLAYER_MIN_HEIGHT = 68.dp
 
-/** Square, both of them, now that the bar's height is its content's and nothing may fill it. */
-private val ARTWORK_SIZE = 46.dp
 private val CONTROL_SIZE = 48.dp
 private val TRANSPORT_ICON_SIZE = 28.dp
 private val PLAY_ICON_SIZE = 34.dp

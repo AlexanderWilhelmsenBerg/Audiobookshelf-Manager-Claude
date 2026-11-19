@@ -79,6 +79,7 @@ import com.example.shelfplayer.ui.glass.LocalGlassPreferences
 import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
 import com.example.shelfplayer.ui.glass.appBackdrop
 import com.example.shelfplayer.ui.glass.toColorScheme
+import com.example.shelfplayer.ui.visualStyle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
@@ -138,6 +139,7 @@ class MainActivity : ComponentActivity() {
             AppLocale(language = appState.language) {
                 val theme = appState.resolveTheme()
                 val background = appState.backgroundTheme
+                val design = appState.design.visualStyle()
                 // A pack supersedes the plain theme, including which ground it is on: its palette was
                 // authored as a set against its own artwork. See `BackgroundTheme`.
                 val isDark = background?.isDark
@@ -148,7 +150,8 @@ class MainActivity : ComponentActivity() {
                     pureBlack = background == null && theme.prefersFlatBackdrop,
                     accent = appState.accentArgbFor(isDark)?.let(::Color),
                     textContrast = appState.textContrast.contrast,
-                    override = background?.toColorScheme(),
+                    override = background?.takeIf { design.usesGlass }?.toColorScheme(),
+                    design = design,
                 ) {
                     // The graph is not composed until the start destination is known. Composing it early
                     // and correcting it would show a flash of the wrong screen on every cold start, and
@@ -179,8 +182,8 @@ class MainActivity : ComponentActivity() {
                                     systemTintEnabled = appState.systemGlassTintEnabled,
                                     blurRadius = appState.glassBlurDp.dp,
                                 ),
-                                flatBackdrop = theme.prefersFlatBackdrop,
-                                backgroundTheme = background,
+                                flatBackdrop = !design.usesGlass || theme.prefersFlatBackdrop,
+                                backgroundTheme = background?.takeIf { design.usesGlass },
                                 openDownloadsRequest = downloadsRequest,
                             )
                         }

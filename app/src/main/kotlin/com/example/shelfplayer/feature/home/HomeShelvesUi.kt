@@ -1,6 +1,7 @@
 package com.example.shelfplayer.feature.home
 
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +17,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -33,6 +36,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.designsystem.layout.BookWaveLayout
+import com.example.shelfplayer.core.designsystem.theme.BookWaveDesign
+import com.example.shelfplayer.core.designsystem.theme.LocalBookWaveDesign
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.core.model.library.Book
@@ -63,12 +69,7 @@ internal fun LazyListScope.homeShelves(
 ) {
     if (shelves.continueListening.isNotEmpty()) {
         item(key = "shelf-continue") {
-            BookShelfRow(
-                titleRes = R.string.shelf_continue_listening,
-                books = shelves.continueListening,
-                onBookSelected = onBookSelected,
-                onBookPlaySelected = onBookPlaySelected,
-            )
+            ContinueListeningShelf(shelves.continueListening, onBookSelected, onBookPlaySelected)
         }
     }
     if (shelves.continueSeries.isNotEmpty()) {
@@ -112,18 +113,74 @@ internal fun LazyListScope.homeShelves(
 }
 
 @Composable
+private fun ContinueListeningShelf(
+    books: List<Book>,
+    onBookSelected: (LibraryItemId) -> Unit,
+    onBookPlaySelected: (LibraryItemId) -> Unit,
+) {
+    if (LocalBookWaveDesign.current != BookWaveDesign.Minimal) {
+        BookShelfRow(R.string.shelf_continue_listening, books, onBookSelected, onBookPlaySelected)
+        return
+    }
+
+    val book = books.first()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ShelfHeading(text = stringResource(R.string.shelf_continue_listening))
+        Column(modifier = Modifier.padding(horizontal = BookWaveLayout.ShelfGutter)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { onBookSelected(book.id) },
+                horizontalArrangement = Arrangement.spacedBy(BookWaveLayout.ShelfCardGap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BookCover(book, modifier = Modifier.width(80.dp), shape = RectangleShape)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = book.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val author = book.authors.firstOrNull()
+                    if (author != null) Text(text = author.name, style = MaterialTheme.typography.bodyMedium)
+                    book.listeningProgress()?.let { progress ->
+                        val remaining = (progress.duration - progress.position).coerceAtLeast(Duration.ZERO)
+                        Text(
+                            text = stringResource(R.string.shelf_remaining_time, remaining.readable()),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            Button(
+                onClick = { onBookPlaySelected(book.id) },
+                modifier = Modifier.align(Alignment.End),
+                shape = MaterialTheme.shapes.small,
+            ) {
+                Text(stringResource(R.string.player_resume))
+            }
+            HorizontalDivider()
+        }
+        val moreBooks = books.drop(1)
+        if (moreBooks.isNotEmpty()) {
+            BookShelfRow(null, moreBooks, onBookSelected, onBookPlaySelected)
+        }
+    }
+}
+
+@Composable
 private fun BookShelfRow(
-    titleRes: Int,
+    titleRes: Int?,
     books: List<Book>,
     onBookSelected: (LibraryItemId) -> Unit,
     onBookPlaySelected: (LibraryItemId) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        ShelfHeading(text = stringResource(titleRes))
+        if (titleRes != null) ShelfHeading(text = stringResource(titleRes))
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = BookWaveLayout.ShelfGutter),
+            horizontalArrangement = Arrangement.spacedBy(BookWaveLayout.ShelfCardGap),
         ) {
             // PRODUCT_SPEC 4 — every card in a *row* is the same height, so whether the readings row is
             // drawn is a property of the shelf rather than of each book. A shelf where nothing has been
@@ -166,8 +223,8 @@ private fun SeriesShelfRow(
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ShelfHeading(text = stringResource(R.string.shelf_continue_series))
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = BookWaveLayout.ShelfGutter),
+            horizontalArrangement = Arrangement.spacedBy(BookWaveLayout.ShelfCardGap),
         ) {
             items(items = entries, key = { it.series.id.value }) { entry ->
                 ShelfCard(
@@ -221,8 +278,8 @@ private fun ShelfCard(
 ) {
     GlassCard(
         onClick = onClick,
-        modifier = modifier.width(SHELF_CARD_WIDTH),
-        shape = RoundedCornerShape(SHELF_CARD_CORNER_RADIUS),
+        modifier = modifier.width(BookWaveLayout.ShelfCardWidth),
+        shape = RoundedCornerShape(BookWaveLayout.ShelfCardCorner),
     ) {
         Column {
             ShelfCover(
@@ -253,6 +310,7 @@ private fun ShelfCover(
         if (onPlay != null && playLabel != null) {
             FilledIconButton(
                 onClick = onPlay,
+                shape = LocalBookWaveDesign.current.surfaceShape(RoundedCornerShape(50)),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(8.dp)
@@ -379,14 +437,20 @@ private fun ReadingText(text: String) {
 /** One line of a book card: one line high, and scrolling rather than truncated when it overflows. */
 @Composable
 private fun ShelfLine(text: String, style: TextStyle, muted: Boolean = true) {
+    val sharp = LocalBookWaveDesign.current.sharpEdges
+    val lines = if (sharp && !muted) 2 else 1
     Text(
         text = text,
         style = style,
         color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
-        minLines = 1,
-        maxLines = 1,
-        overflow = TextOverflow.Clip,
-        modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+        minLines = lines,
+        maxLines = lines,
+        overflow = if (sharp) TextOverflow.Ellipsis else TextOverflow.Clip,
+        modifier = if (!sharp) {
+            Modifier.basicMarquee(iterations = Int.MAX_VALUE)
+        } else {
+            Modifier
+        },
     )
 }
 
@@ -447,15 +511,9 @@ private fun ShelfHeading(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
         style = MaterialTheme.typography.titleMedium,
-        modifier = modifier.padding(horizontal = 16.dp),
+        modifier = modifier.padding(horizontal = BookWaveLayout.ShelfGutter),
     )
 }
-
-/** PRODUCT_SPEC 21 — sized in `dp` so it grows with the display density but not with the font scale. */
-private val SHELF_CARD_WIDTH = 160.dp
-
-/** Slightly squarer than the Material card default while keeping the cover's top corners visibly softened. */
-private val SHELF_CARD_CORNER_RADIUS = 8.dp
 
 /* PLAY-001 / PRODUCT_SPEC 21 — a full touch target even when the visible circle reads as an overlay. */
 

@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.example.shelfplayer.core.designsystem.theme.LocalBookWaveDesign
 import com.example.shelfplayer.core.model.library.Book
 
 /**
@@ -40,7 +41,7 @@ internal fun BookCover(book: Book, modifier: Modifier = Modifier, aspect: Float 
     Box(
         modifier = modifier
             .aspectRatio(aspect)
-            .clip(shape)
+            .clip(LocalBookWaveDesign.current.surfaceShape(shape))
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {

@@ -23,6 +23,7 @@ import com.example.shelfplayer.core.model.playback.SleepTimerScheduleSettings
 import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.playback.StartupMode
 import com.example.shelfplayer.core.model.settings.AccentScheme
+import com.example.shelfplayer.core.model.settings.AppDesign
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.GlassBlur
@@ -263,6 +264,10 @@ class AppSettingsDataSource @Inject constructor(
      */
     suspend fun setAccent(accent: AccentScheme) {
         dataStore.updateData { current -> current.toBuilder().setAccentColorKey(accent.key).build() }
+    }
+
+    suspend fun setAppDesign(design: AppDesign) {
+        dataStore.updateData { current -> current.toBuilder().setAppDesignKey(design.key).build() }
     }
 
     /** PRODUCT_SPEC SET-002 (Appearance) — the colour of the wash over every frosted surface. */

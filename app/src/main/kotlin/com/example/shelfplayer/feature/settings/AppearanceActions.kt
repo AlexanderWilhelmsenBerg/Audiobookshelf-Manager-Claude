@@ -2,6 +2,7 @@ package com.example.shelfplayer.feature.settings
 
 import androidx.compose.runtime.Immutable
 import com.example.shelfplayer.core.model.settings.AccentScheme
+import com.example.shelfplayer.core.model.settings.AppDesign
 import com.example.shelfplayer.core.model.settings.AppLanguage
 import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
@@ -29,4 +30,5 @@ data class AppearanceActions(
     val onGlassBlurChanged: (Int) -> Unit = {},
     val onDynamicColorChanged: (Boolean) -> Unit = {},
     val onLanguageChanged: (AppLanguage) -> Unit = {},
+    val onDesignChanged: (AppDesign) -> Unit = {},
 )

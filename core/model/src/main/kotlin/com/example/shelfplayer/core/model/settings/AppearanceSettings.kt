@@ -19,6 +19,7 @@ data class AppearanceSettings(
     val backgroundThemeId: String? = null,
     val dynamicColor: Boolean = false,
     val language: AppLanguage = AppLanguage.System,
+    val design: AppDesign = AppDesign.Classic,
 ) {
     /** The selected bundled pack, or `null` when the app is using one of its plain themes. */
     val backgroundTheme: BackgroundTheme?
