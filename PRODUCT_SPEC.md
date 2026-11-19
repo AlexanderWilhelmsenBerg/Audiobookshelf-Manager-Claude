@@ -412,9 +412,12 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   listener Pause. Within a qualified car-arrival episode, including an inferred arrival whose exact headset
   route and active playback were confirmed before Auto binds, a distinct interruption after verified same-headset playback
   may use a remaining claim, up to three total and within the original 30-second absolute deadline.
-  Before a repeat after confirmed playback, require a measured exact headset or sole exact-headset
-  media-policy prediction before starting the muted probe. A listed headset alongside an unresolved
-  car mix does not justify spending this claim.
+  A repeat after confirmed playback requires the measured or solely predicted exact headset, or its
+  observed disappearance and stable return within the same recovery. A stable return can authorize
+  only the muted probe. Fresh proof from the playing AudioTrack still authorizes unmute.
+  Once physical projection is established, an unused arrival boundary may pair only within the
+  normal six-second window after projection, capped by its original deadline. A later focus loss
+  needs a matching departure before any departure recovery can play.
   Duplicate callbacks and unproven attempts cannot rearm recovery. Listener Pause and newer
   selection/book/profile/player context still invalidate recovery.
 - Exact unique A2DP addresses may correlate endpoint handle changes in process memory only. Missing,

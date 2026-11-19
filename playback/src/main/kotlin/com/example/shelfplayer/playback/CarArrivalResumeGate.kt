@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import com.example.shelfplayer.playback.CarContinuityEvidence.ArrivalBoundary
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -101,7 +102,6 @@ internal class CarArrivalResumeGate private constructor(
         val deadline: Duration?,
     )
     private data class DepartureBoundary(val at: Duration, val identity: CarContinuityIdentity)
-    private data class ArrivalBoundary(val at: Duration, val identity: CarContinuityIdentity, val deadline: Duration?)
 
     private val evidence = CarContinuityEvidence(pairingWindow, trustedIdentity)
     private val headsetReturn = HeadsetReturnRecovery(now, trustedIdentity)
@@ -399,7 +399,13 @@ internal class CarArrivalResumeGate private constructor(
     }
 
     /** Pairs arrival focus with only the first controller/projection boundary of this car session. */
-    fun onCarArrival(arrivedAt: Duration, currentGeneration: Long?, explicitSelectionSequence: Long): Decision {
+    fun onCarArrival(
+        arrivedAt: Duration,
+        currentGeneration: Long?,
+        explicitSelectionSequence: Long,
+        physicalProjection: Boolean = false,
+    ): Decision {
+        if (physicalProjection) firstArrival = firstArrival?.confirmProjection(arrivedAt)
         settleDisplacement(arrivedAt, interruption = false)
         expireSafetyPause(arrivedAt)
         pendingHeadsetReturn(currentGeneration, explicitSelectionSequence)
@@ -413,7 +419,7 @@ internal class CarArrivalResumeGate private constructor(
         arrivalRecorded = true
         val candidate = focusCandidate
         return if (candidate == null) {
-            armFirstArrival(arrivedAt, currentGeneration, explicitSelectionSequence)
+            armFirstArrival(arrivedAt, currentGeneration, explicitSelectionSequence, physicalProjection)
         } else {
             matchArrivalFocus(candidate, arrivedAt, currentGeneration, explicitSelectionSequence)
         }
@@ -442,11 +448,12 @@ internal class CarArrivalResumeGate private constructor(
         arrivedAt: Duration,
         currentGeneration: Long?,
         explicitSelectionSequence: Long,
+        physicalProjection: Boolean,
     ): Decision {
         val heard = currentPlayingHeadset(currentGeneration, explicitSelectionSequence)
             ?: return Decision(Phase.Arrival, Status.Rejected, Reason.NoPendingFocusLoss)
         val episode = beginQualifiedEpisode(heard, arrivedAt)
-        firstArrival = ArrivalBoundary(at = arrivedAt, identity = heard, deadline = episode?.deadline)
+        firstArrival = ArrivalBoundary(arrivedAt, heard, episode?.deadline, arrivedAt.takeIf { physicalProjection })
         activeRecovery = null
         return Decision(
             Phase.Arrival,
@@ -505,14 +512,7 @@ internal class CarArrivalResumeGate private constructor(
     ): Decision? {
         val boundary = firstArrival ?: return null
         firstArrival = null
-        val invalid = evidence.invalidReason(
-            identity = boundary.identity,
-            currentGeneration = currentGeneration,
-            explicitSelectionSequence = explicitSelectionSequence,
-            interval = at - boundary.at,
-            eventAt = at,
-            deadline = boundary.deadline,
-        )
+        val invalid = evidence.invalidArrival(boundary, at, currentGeneration, explicitSelectionSequence)
         if (invalid != null) return null
         val live = identityOf(heardRoute, headsetId, currentGeneration, explicitSelectionSequence)
         if (live != null && live.outputId != boundary.identity.outputId) return null

@@ -26,6 +26,41 @@ import kotlin.time.Duration.Companion.seconds
 @Config(sdk = [34])
 class PlaybackServiceInferredSafetyRearmTest {
     @Test
+    fun `exact headset return can probe silently while car projection still owns the prediction`() = runTest {
+        for (headsetProof in listOf(true, false)) {
+            PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { f ->
+                startAttempt(f, confirm = true)
+                f.connectCarSession()
+                interrupt(f)
+                f.publishPolicyHeadsetRoute(withUnmappedCar = true)
+                f.returnHeadset()
+                runCurrent()
+                assertEquals(1, f.rawPlayCalls)
+
+                advanceTimeBy(151)
+                runCurrent()
+                assertEquals(2, f.rawPlayCalls)
+                assertTrue(f.isRouteMuted())
+                if (headsetProof) {
+                    f.returnMeasuredHeadset()
+                    f.observeAudibleServiceRoute()
+                    assertTrue(f.player.playWhenReady)
+                } else {
+                    var unmutedWhilePlaying = false
+                    f.service.volumeEffects.addMuteListener { change ->
+                        if (!change.muted && f.player.playWhenReady) unmutedWhilePlaying = true
+                    }
+                    f.reportPlayingOnCarDuringProbe()
+                    runCurrent()
+                    assertFalse(f.player.playWhenReady, "a car AudioTrack must fail closed")
+                    assertFalse(unmutedWhilePlaying)
+                }
+                assertEquals(2, f.rawPlayCalls)
+            }
+        }
+    }
+
+    @Test
     fun `second arrival recovery waits out the car mix even while the old headset is listed`() = runTest {
         PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { f ->
             startAttempt(f, confirm = true)

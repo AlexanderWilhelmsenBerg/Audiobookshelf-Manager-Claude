@@ -89,8 +89,12 @@ internal class CarContinuityRecoveryCoordinator(
         )
     }
 
-    fun carArrival(at: Duration, generation: Long?, sequence: Long): CarArrivalResumeGate.Decision =
-        gate.onCarArrival(at, generation, sequence)
+    fun carArrival(
+        at: Duration,
+        generation: Long?,
+        sequence: Long,
+        physicalProjection: Boolean = false,
+    ): CarArrivalResumeGate.Decision = gate.onCarArrival(at, generation, sequence, physicalProjection)
 
     fun carDeparture(
         at: Duration,
@@ -192,6 +196,7 @@ internal class CarContinuityRecoveryCoordinator(
         selectionSequence: () -> Long,
         measured: (String) -> Boolean,
         canProbe: (String) -> Boolean = { false },
+        canProbeReturned: ((String) -> Boolean)? = null,
         onEvent: (CarArrivalRouteRecovery.Event) -> Unit = {},
         reassert: suspend (String) -> Boolean,
     ): String? = routeRecovery.secure(
@@ -201,6 +206,7 @@ internal class CarContinuityRecoveryCoordinator(
         isStillEligible = { gate.isCurrent(target, currentGeneration(), selectionSequence()) },
         measured = measured,
         canProbe = canProbe,
+        canProbeReturned = canProbeReturned,
         onEvent = onEvent,
         recoveryWindowOverride = gate.remainingWindow(target),
         reassert = reassert,

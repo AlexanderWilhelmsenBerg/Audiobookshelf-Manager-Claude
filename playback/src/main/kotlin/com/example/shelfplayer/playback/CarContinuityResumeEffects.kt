@@ -159,7 +159,11 @@ internal class CarContinuityResumeEffects(
     }
 
     private suspend fun recoverCarContinuityHeadset(target: CarArrivalResumeGate.Target): String? {
-        val canProbe: (String) -> Boolean = { id -> canProbeRecoveryTarget(target, id) }
+        val confirmedRetry = target.phase == CarArrivalResumeGate.Phase.Arrival &&
+            target.attemptOrdinal > 1 && !target.retryAfterFocusLoss
+        val canProbe: (String) -> Boolean = { id ->
+            outputs.canProbeHeldHeadset(id) && (!confirmedRetry || outputs.localOutputs.predictsOnly(id))
+        }
         val held = recovery.secure(
             target = target,
             outputs = outputs.outputs,
@@ -168,6 +172,7 @@ internal class CarContinuityResumeEffects(
             selectionSequence = selectionSequence,
             measured = outputs::isMeasuredHeadset,
             canProbe = canProbe,
+            canProbeReturned = if (confirmedRetry) outputs::canProbeHeldHeadset else null,
             onEvent = { event -> logCarContinuityRouteEvent(target, event) },
             reassert = outputs::reassert,
         )
@@ -196,14 +201,6 @@ internal class CarContinuityResumeEffects(
             return null
         }
         return held
-    }
-
-    private fun canProbeRecoveryTarget(target: CarArrivalResumeGate.Target, id: String): Boolean {
-        val afterConfirmedLoss = target.phase == CarArrivalResumeGate.Phase.Arrival &&
-            target.attemptOrdinal > 1 && !target.retryAfterFocusLoss
-        // A repeated safety loss may leave the old headset listed while Android routes to the car mix.
-        // Keep the same claim waiting for the exact headset. Only the silent AudioTrack probe can unmute.
-        return outputs.canProbeHeldHeadset(id) && (!afterConfirmedLoss || outputs.localOutputs.predictsOnly(id))
     }
 
     fun logHeldHeadset(hold: String, phase: CarArrivalResumeGate.Phase? = null) {

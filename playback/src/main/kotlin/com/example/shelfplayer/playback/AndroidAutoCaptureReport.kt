@@ -7,7 +7,8 @@ import java.time.Instant
 /** The compact indexes let readers select relevant attempts before opening their event lists. */
 internal object AndroidAutoCaptureReport {
     fun format(build: String, androidApi: Int, at: Instant, attempts: List<JSONObject>): String {
-        val reconnects = attempts.flatMap(::reconnects)
+        val currentEvidence = attempts.filter(::usesCurrentRecoveryEvidence)
+        val reconnects = currentEvidence.flatMap(::reconnects)
         return JSONObject()
             .put("schema", "bookwave.android-auto-diagnostics")
             .put("schemaVersion", 1)
@@ -15,6 +16,7 @@ internal object AndroidAutoCaptureReport {
             .put("androidApi", androidApi)
             .put("generatedAtUtc", at.toString())
             .put("attemptIndex", JSONArray(attempts.map(::index)))
+            .put("legacyAttemptsExcludedFromRecoveryStats", attempts.size - currentEvidence.size)
             .put("failedHeadsetReconnects", JSONArray(reconnects.filter(::failedAutomaticRecovery)))
             .put(
                 "headsetRecoveryMs",
@@ -29,8 +31,12 @@ internal object AndroidAutoCaptureReport {
     private fun index(attempt: JSONObject): JSONObject = JSONObject().apply {
         for (field in INDEX_FIELDS) put(field, attempt.opt(field) ?: JSONObject.NULL)
         val reconnects = reconnects(attempt)
+        put("recoveryStatsVersion", attempt.optInt("recoveryStatsVersion", 1))
         put("headsetReconnectCount", reconnects.size)
-        put("failedHeadsetReconnectCount", reconnects.count(::failedAutomaticRecovery))
+        put(
+            "failedHeadsetReconnectCount",
+            if (usesCurrentRecoveryEvidence(attempt)) reconnects.count(::failedAutomaticRecovery) else JSONObject.NULL,
+        )
     }
 
     private fun reconnects(attempt: JSONObject): List<JSONObject> {
@@ -48,6 +54,9 @@ internal object AndroidAutoCaptureReport {
     }
 
     private fun failedAutomaticRecovery(row: JSONObject): Boolean = row.getString("outcome") in FAILED_AUTOMATIC
+
+    private fun usesCurrentRecoveryEvidence(attempt: JSONObject): Boolean =
+        attempt.optInt("recoveryStatsVersion") == AndroidAutoCaptureAttempt.RECOVERY_STATS_VERSION
 
     private fun stats(reconnects: List<JSONObject>, outcome: String): JSONObject {
         val times = reconnects.filter { it.getString("outcome") == outcome }.map { it.getLong("elapsedMs") }

@@ -72,8 +72,10 @@ attempt and reconnect numbers for returns that needed a subsequent Play or never
 Look up those numbers under `attempts` for the full events. The button caller identifies software and
 does not identify a physical device. `headsetRecoveryMs` reports count, average, minimum and maximum
 separately for automatic returns and returns after an observed Play. Timing starts at the interruption
-and ends when the original headset is verified on the playing, unmuted AudioTrack. A listener Pause
-or book change excludes the interrupted recovery from those measures.
+and ends when the original headset is verified on the playing, unmuted AudioTrack, including for
+an explicitly selected headset. A listener Pause or book change excludes the interrupted recovery
+from those measures. Reports retain older events and show the number of older attempts excluded
+from the corrected recovery totals in `legacyAttemptsExcludedFromRecoveryStats`.
 
 The history stays in private storage until exported. It is limited to 100 attempts from 30 days and
 keeps the opening events and recent events in each attempt. `droppedEvents` counts older body events

@@ -16,6 +16,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
@@ -27,6 +28,52 @@ import kotlin.time.Duration.Companion.seconds
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], shadows = [AudioRouteLabRecorderTest.AtomicFileRenameShadow::class])
 class AndroidAutoDiagnosticsCaptureTest {
+    @Test
+    fun `existing attempt details stay available without obsolete failure counts entering the export index`() {
+        val at = Instant.parse("2026-11-19T10:00:00Z")
+        val legacy = AndroidAutoCaptureAttempt(1, at, 0.seconds, "projection", true, "headset")
+        legacy.interrupted(at, 0.seconds, "audioFocusLoss")
+        legacy.end(at.plusSeconds(1), 1.seconds, "projection-disconnect")
+        val oldRow = legacy.snapshot(1.seconds).apply { remove("recoveryStatsVersion") }
+
+        val report = JSONObject(AndroidAutoCaptureReport.format("build test", 34, at, listOf(oldRow)))
+        assertEquals(1, report.getInt("legacyAttemptsExcludedFromRecoveryStats"))
+        assertEquals(0, report.getJSONArray("failedHeadsetReconnects").length())
+        assertEquals(1, report.getJSONArray("attempts").getJSONObject(0).getJSONArray("headsetReconnects").length())
+    }
+
+    @Test
+    fun `service counts AudioTrack recovery through an explicit headphone selection`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { player ->
+            player.installServiceContinuityCallbacks()
+            player.startHealthyHeadsetWithoutCar()
+            val clock = player.service.clock as TestAppClock
+            val recorder = AndroidAutoDiagnosticsCapture(
+                RuntimeEnvironment.getApplication(),
+                clock,
+                EventLog(clock),
+                backgroundScope,
+                StandardTestDispatcher(testScheduler),
+            )
+            player.service.androidAutoDiagnostics = recorder
+            recorder.setEnabled(true)
+            recorder.confirmed("projection", true, null)
+            player.service.audioOutputs.outputIntentOwner.select(
+                player.endpointId,
+                OutputIntentOwner.Destination.Output,
+            )
+            player.observeAudibleServiceRoute()
+            recorder.interrupted("routeSafety")
+            clock.advanceBy(700.milliseconds)
+            player.observeAudibleServiceRoute()
+
+            val report = JSONObject(recorder.report("build test"))
+            val stats = report.getJSONObject("headsetRecoveryMs").getJSONObject("automatic")
+            assertEquals(1, stats.getInt("count"))
+            assertEquals(700, stats.getInt("minMs"))
+        }
+    }
+
     @Test
     fun `only records from the first car signal to the end of the same connection`() = runTest {
         val f = Fixture(this)

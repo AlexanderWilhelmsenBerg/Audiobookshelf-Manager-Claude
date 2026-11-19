@@ -215,7 +215,7 @@ private fun remoteSubmix(): AudioDeviceInfo = if (Build.VERSION.SDK_INT >= Build
     error("The remote-mix fixture requires Android 12 or later")
 }
 
-private fun PlaybackServiceCommandContinuityFixture.reportPlayingOnCarDuringProbe() {
+internal fun PlaybackServiceCommandContinuityFixture.reportPlayingOnCarDuringProbe() {
     reportedIsPlaying = true
     val router = service.audioOutputs
     router.currentTrackObservation = { AudioTrackObservation(1, AudioTrackPath.RemoteSubmix) }

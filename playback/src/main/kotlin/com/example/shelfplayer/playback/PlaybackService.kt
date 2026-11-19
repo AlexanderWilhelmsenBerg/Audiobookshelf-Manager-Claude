@@ -2041,17 +2041,18 @@ class PlaybackService : MediaLibraryService() {
             headsetId = routeOwnership.headsetForCar(outputs),
             generation = routeOwnership.currentGeneration,
             selectionSequence = currentExplicitSelectionSequence(),
-            carConnected = carLifecycle.sessionEstablished,
+            carConnected = carLifecycle.sessionEstablished || carLifecycle.projectionOwnsCarLifecycle,
         )
 
     private fun observeCarContinuityHeadset(outputs: List<AudioOutput>) {
+        autoCapture?.takeIf { it.state.value.recordingAttempt != null }?.let { capture ->
+            routeOwnership.headsetForCar(
+                outputs,
+            )?.takeIf(audioOutputs::isMeasuredHeadset)?.let(capture::verifiedHeadset)
+        }
         val generation = routeOwnership.currentGeneration
         val headset = routeOwnership.measuredPlayingHeadsetForContinuity(outputs)
         if (generation != null && headset != null) {
-            val capture = autoCapture
-            if (capture?.state?.value?.recordingAttempt != null && audioOutputs.isMeasuredHeadset(headset)) {
-                capture.verifiedHeadset(headset)
-            }
             audioOutputs.protectMeasuredPlayingHeadset(
                 headset,
                 generation,
@@ -2315,6 +2316,7 @@ class PlaybackService : MediaLibraryService() {
                     at = clock.elapsed(),
                     generation = routeOwnership.currentGeneration,
                     sequence = currentExplicitSelectionSequence(),
+                    physicalProjection = true,
                 )
                 logCarContinuityDecision("projection-connect", decision)
                 carResumeEffects.onArrival(decision)

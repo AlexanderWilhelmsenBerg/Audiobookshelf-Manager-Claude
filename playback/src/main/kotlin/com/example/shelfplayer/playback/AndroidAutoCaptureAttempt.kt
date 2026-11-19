@@ -113,6 +113,7 @@ internal class AndroidAutoCaptureAttempt(
         .put("endReason", ending ?: JSONObject.NULL)
         .put("headsetPresentAtConnect", headsetPresent ?: JSONObject.NULL)
         .put("headsetPlayingAtStart", headsetPlayingAtStart)
+        .put("recoveryStatsVersion", RECOVERY_STATS_VERSION)
         .put("headsetReconnects", JSONArray(reconnects.map { it.json(elapsed, startElapsed) }))
         .put("droppedEvents", dropped)
         .put("events", JSONArray((opening + tail).map(Event::json)))
@@ -149,11 +150,12 @@ internal class AndroidAutoCaptureAttempt(
         }
     }
 
-    private companion object {
-        const val OPENING_ROWS = 96
-        const val TAIL_ROWS = 416
-        const val MAX_RECONNECTS = 64
-        val RECOVERY_OBSERVATION_LIMIT = 30.seconds
-        val CONNECTION_ENDS = setOf("projection-disconnect", "final-car-disconnect", "connection-unconfirmed")
+    companion object {
+        const val RECOVERY_STATS_VERSION = 2
+        private const val OPENING_ROWS = 96
+        private const val TAIL_ROWS = 416
+        private const val MAX_RECONNECTS = 64
+        private val RECOVERY_OBSERVATION_LIMIT = 30.seconds
+        private val CONNECTION_ENDS = setOf("projection-disconnect", "final-car-disconnect", "connection-unconfirmed")
     }
 }
