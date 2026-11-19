@@ -395,12 +395,23 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Playback never unexpectedly moves from headphones to the phone speaker.
 - Android Auto discovery must preserve an already verified, healthy headset route without a preference
   reset or artificial waiting delay. Android focus loss or unavailable actual output still pauses safely.
-- An internal route-safety pause retains prior heard intent for the existing bounded car-continuity
-  decision; it is not listener Pause and cannot alone authorize Play. Listener Pause and newer
+- An internal route-safety pause of verified active headset playback may authorize one silent recovery
+  of that exact trusted headset within two seconds, without waiting for an Auto boundary. Current inventory
+  and fresh actual-track proof are required before unmute. The absolute deadline is not restarted by
+  callbacks. A noisy notification during the same gap may retain only the unconsumed claim; focus loss,
+  listener cancellation and lost identity revoke the short attempt.
+  Otherwise it retains prior heard intent for the existing bounded car-continuity decision; it is not
+  listener Pause. Within a confirmed car-arrival episode, a distinct interruption after verified same-headset playback
+  may use a remaining claim, up to three total and within the original 30-second absolute deadline.
+  Duplicate callbacks and unproven attempts cannot rearm recovery. Listener Pause and newer
   selection/book/profile/player context still invalidate recovery.
 - Exact unique A2DP addresses may correlate endpoint handle changes in process memory only. Missing,
   placeholder or ambiguous identity never falls back to a device name. A real gap invalidates live proof;
   return requires current inventory and fresh actual-track verification, not automatic unmute.
+- Opt-in route diagnostics may correlate public Bluetooth profile snapshots and bounded connection/state
+  events with exact endpoint identity, audio mode and anonymous playback-usage counts. Media-command
+  sequence and delivery timing are temporal evidence only. These observations cannot grant playback/focus ownership or
+  infer button origin. Exports use temporary aliases, never device names, addresses or private identity keys.
 - Reconnecting a route follows the configured per-device policy.
 - The player output chooser can explicitly keep audio on the current output only while a loaded book is
   playing through one fresh, exact mapped AudioTrack route; predicted, missing, conflicting and duplicate

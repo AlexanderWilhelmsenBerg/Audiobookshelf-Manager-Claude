@@ -284,7 +284,7 @@ class CarProjectionLifecycleTest {
     private fun TestScope.fixture(initialState: Int? = 2, controllerBindings: Int = 2): Fixture =
         Fixture(backgroundScope, StandardTestDispatcher(testScheduler), initialState, controllerBindings)
 
-    private class Fixture(
+    internal class Fixture(
         scope: CoroutineScope,
         dispatcher: CoroutineDispatcher,
         initialState: Int?,
@@ -323,6 +323,16 @@ class CarProjectionLifecycleTest {
                 volumeEffects = volumeEffects,
             )
             service.clock = clock
+            service.carProjection = monitor
+            service.resumeFreshness = ResumeFreshnessCoordinator(
+                unused(),
+                unused(),
+                ResumeBaseline(),
+                com.example.shelfplayer.domain.realtime.RealtimeProgressEvidenceStore(),
+                logger,
+                scope,
+                dispatcher,
+            )
             service.audioRouteLab =
                 AudioRouteLab(context, EventLog(clock), clock, service.audioOutputs, scope, dispatcher)
             service.volumeEffects = volumeEffects
@@ -364,6 +374,17 @@ class CarProjectionLifecycleTest {
             provider.state = state
             context.sendBroadcast(Intent(AndroidAutoProjectionMonitor.ACTION_CAR_CONNECTION_UPDATED))
             shadowOf(Looper.getMainLooper()).idle()
+        }
+
+        fun providerStateWithoutBroadcast(state: Int?) {
+            provider.state = state
+        }
+
+        fun cancelListenerIntent() = service.governor.contextChanged()
+
+        fun interruptionReads(): Int = events.count {
+            it.message == "Android Auto projection state read" &&
+                it.public("trigger")?.startsWith("interruption-") == true
         }
 
         fun armDeparture() {
@@ -419,16 +440,11 @@ class CarProjectionLifecycleTest {
                 .invoke(service, listOf(original))
         }
 
-        /** Only delegates the real PlayerEvents focus adapter; no mock player or fake policy. */
+        /** Delegates the service platform-interruption adapter used by the governor; no fake policy. */
         fun reportFocusLossFromPlayerListener() {
-            val type = PlaybackService::class.java.declaredClasses
-                .single { it.simpleName == "PlayerEvents" }
-            val listener = type.getDeclaredConstructor(PlaybackService::class.java)
+            PlaybackService::class.java.getDeclaredMethod("onCarPlatformInterruption", Int::class.javaPrimitiveType)
                 .apply { isAccessible = true }
-                .newInstance(service)
-            type.getDeclaredMethod("onCarPlatformInterruption", Int::class.javaPrimitiveType)
-                .apply { isAccessible = true }
-                .invoke(listener, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
+                .invoke(service, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
         }
 
         fun focusDecisions(): List<LogEvent> = decisions("audio-focus-loss")

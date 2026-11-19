@@ -21,7 +21,10 @@ import com.example.shelfplayer.core.common.time.AppClock
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -72,6 +75,7 @@ internal class AndroidAutoProjectionMonitor @Inject constructor(
     private var scope: CoroutineScope? = null
     private var callback: ((Update) -> Unit)? = null
     private var refreshJob: Job? = null
+    private var queuedTrigger: String? = null
     private var lastState: State? = null
     private var registered = false
 
@@ -136,6 +140,7 @@ internal class AndroidAutoProjectionMonitor @Inject constructor(
     fun stop() {
         refreshJob?.cancel()
         refreshJob = null
+        queuedTrigger = null
         logger.info(
             LogCategory.AndroidAuto,
             "Android Auto projection monitor stopped",
@@ -159,42 +164,56 @@ internal class AndroidAutoProjectionMonitor @Inject constructor(
         lastState = null
     }
 
+    /** The service may ask for an early read; only the provider result can establish a boundary. */
+    fun refreshConnection(attempt: Int) = refresh("interruption-$attempt")
+
     private fun refresh(trigger: String) {
         val owner = scope ?: return
+        queuedTrigger = trigger
         if (refreshJob?.isActive == true) {
             logger.debug(
                 LogCategory.AndroidAuto,
-                "Android Auto projection read was superseded",
+                "Android Auto projection read was coalesced",
                 LogField.Public("trigger", trigger),
             )
+            return
         }
-        refreshJob?.cancel()
-        refreshJob = owner.launch {
-            val startedAt = clock.elapsed()
-            val result = withContext(ioDispatcher) { readState() }
-            val elapsed = (clock.elapsed() - startedAt).inWholeMilliseconds.coerceAtLeast(0L)
-            logger.log(
-                LogEvent(
-                    level = LogLevel.Info,
-                    category = LogCategory.AndroidAuto,
-                    message = "Android Auto projection state read",
-                    fields = buildList {
-                        add(LogField.Public("trigger", trigger))
-                        add(LogField.Public("state", result.state.name))
-                        result.raw?.let { add(LogField.Public("raw", it)) }
-                        add(LogField.Public("reason", result.reason))
-                        add(LogField.Public("providerVisible", result.providerVisible))
-                        result.failureClass?.let { add(LogField.Public("failure", it)) }
-                        add(LogField.Millis("elapsed", elapsed))
-                    },
-                ),
-            )
-
-            val previous = lastState
-            if (result.state != previous) {
-                lastState = result.state
-                callback?.invoke(Update(previous = previous, current = result.state))
+        refreshJob = owner.launch(start = CoroutineStart.LAZY) {
+            while (queuedTrigger != null) {
+                currentCoroutineContext().ensureActive()
+                val next = requireNotNull(queuedTrigger)
+                queuedTrigger = null
+                readAndPublish(next)
             }
+        }
+        refreshJob?.start()
+    }
+
+    private suspend fun readAndPublish(trigger: String) {
+        val startedAt = clock.elapsed()
+        val result = withContext(ioDispatcher) { readState() }
+        val elapsed = (clock.elapsed() - startedAt).inWholeMilliseconds.coerceAtLeast(0L)
+        logger.log(
+            LogEvent(
+                level = LogLevel.Info,
+                category = LogCategory.AndroidAuto,
+                message = "Android Auto projection state read",
+                fields = buildList {
+                    add(LogField.Public("trigger", trigger))
+                    add(LogField.Public("state", result.state.name))
+                    result.raw?.let { add(LogField.Public("raw", it)) }
+                    add(LogField.Public("reason", result.reason))
+                    add(LogField.Public("providerVisible", result.providerVisible))
+                    result.failureClass?.let { add(LogField.Public("failure", it)) }
+                    add(LogField.Millis("elapsed", elapsed))
+                },
+            ),
+        )
+
+        val previous = lastState
+        if (result.state != previous) {
+            lastState = result.state
+            callback?.invoke(Update(previous = previous, current = result.state))
         }
     }
 

@@ -40,13 +40,29 @@ internal class AndroidAutoTraceRecorder(
         log(
             "Android Auto trace started",
             trace,
-            listOf(LogField.Public("source", source)) + openingFields(),
+            listOf(
+                LogField.Public("source", source),
+                LogField.Millis("elapsedRealtime", now.inWholeMilliseconds),
+            ) + openingFields(),
         )
         return trace
     }
 
     fun forController(controllerPackage: String, carPackages: Set<String>): Trace? =
         activeTrace?.takeIf { controllerPackage in carPackages }
+
+    /** Passive entry timing, including generic legacy binds; never creates a trace or car authority. */
+    fun connectionEntry(stage: String, kind: String, trusted: Boolean? = null) {
+        log(
+            "Android Auto connection entry observed",
+            fields = listOf(
+                LogField.Public("stage", stage),
+                LogField.Public("kind", kind),
+                LogField.Public("trusted", trusted?.toString() ?: "unknown"),
+                LogField.Millis("elapsedRealtime", clock.elapsed().inWholeMilliseconds),
+            ),
+        )
+    }
 
     fun log(
         message: String,

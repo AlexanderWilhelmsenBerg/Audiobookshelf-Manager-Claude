@@ -88,6 +88,7 @@ internal object OutputClassifierFacts {
 class OutputClassifier @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val routeLab: AudioRouteLab,
+    private val systemProbe: SystemAudioProbe,
 ) {
     private val stateMutable = MutableStateFlow(OutputClassifierState())
     val state: StateFlow<OutputClassifierState> = stateMutable.asStateFlow()
@@ -124,10 +125,12 @@ class OutputClassifier @Inject constructor(
                 return
             }
         append("capture-start")
+        systemProbe.start { sample("system-change") }
         sample("initial-snapshot")
     }
 
     fun stop() {
+        systemProbe.stop()
         if (!stateMutable.value.recording) return
         callback?.let { observer ->
             context.getSystemService(AudioManager::class.java)?.unregisterAudioDeviceCallback(observer)
@@ -206,6 +209,7 @@ class OutputClassifier @Inject constructor(
             collisionKey
         }
         recordChanges(seen)
+        systemProbe.sample(outputs, routeLab.systemProbeTarget()) { aliases[it] ?: "unmapped" }.forEach(::append)
         val collisions = OutputClassifierFacts.collisions(rows)
         append(
             "snapshot reason=$reason outputs=${outputs.size} mappedCollisions=$collisions " +

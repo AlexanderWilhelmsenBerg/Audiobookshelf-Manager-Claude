@@ -117,6 +117,9 @@ class AudioRouteLab @Inject constructor(
 
     internal fun deviceAlias(platformId: Int): String = deviceTimeline.aliasFor(platformId)
 
+    /** Read the existing owners; diagnostic capture never retains another copy of playback intent. */
+    internal fun systemProbeTarget(): String? = outputs.selectedId.value ?: outputs.lastHeardRouteId()
+
     internal fun mediaButtonInput(event: KeyEvent?, controller: MediaInputController, entry: MediaInputEntry) {
         mediaInput.mediaKey(event, controller, entry)
     }

@@ -9,6 +9,15 @@ internal interface PlaybackCommands {
 
     fun play(current: Player, stillAuthorized: () -> Boolean, beforeRawPlay: () -> Unit = {}): Boolean
 
+    /** A paused holder/materialization uses the same authorization without preparing or starting audio. */
+    fun install(
+        current: Player,
+        item: MediaItem,
+        startPositionMs: Long,
+        authorizedBeforeInstall: () -> Boolean,
+        stillAuthorizedAfterInstall: () -> Boolean,
+    ): Boolean
+
     /** Installs a newly accepted queue and makes it ready only while the originating request still owns it. */
     fun installAndPrepare(
         current: Player,
@@ -58,13 +67,12 @@ internal class PlaybackCommandEffects(
         return true
     }
 
-    override fun installAndPrepare(
+    override fun install(
         current: Player,
         item: MediaItem,
         startPositionMs: Long,
         authorizedBeforeInstall: () -> Boolean,
         stillAuthorizedAfterInstall: () -> Boolean,
-        startPlaying: Boolean,
     ): Boolean {
         val beforeInstall = itemGeneration()
         // Installing a paused/armed queue must not inherit a stale playWhenReady from an empty player.
@@ -76,7 +84,19 @@ internal class PlaybackCommandEffects(
         val installed = {
             current.currentMediaItem == item && stillAuthorizedAfterInstall()
         }
-        if (!isCurrent(current, installedGeneration, installed)) return false
+        return isCurrent(current, installedGeneration, installed)
+    }
+
+    override fun installAndPrepare(
+        current: Player,
+        item: MediaItem,
+        startPositionMs: Long,
+        authorizedBeforeInstall: () -> Boolean,
+        stillAuthorizedAfterInstall: () -> Boolean,
+        startPlaying: Boolean,
+    ): Boolean {
+        if (!install(current, item, startPositionMs, authorizedBeforeInstall, stillAuthorizedAfterInstall)) return false
+        val installed = { current.currentMediaItem == item && stillAuthorizedAfterInstall() }
         if (!prepare(current, installed)) return false
         return !startPlaying || play(current, installed)
     }

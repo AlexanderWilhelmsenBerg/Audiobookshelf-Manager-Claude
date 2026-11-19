@@ -58,6 +58,14 @@ class LiveOutputEndpointRegistry @Inject constructor() {
 
     internal fun bluetoothIdentity(type: Int, address: String?): String? = bluetooth.key(type, address)
 
+    /** Read-only diagnostic join. The private key must never be exported or used as new Play authority. */
+    @Synchronized
+    internal fun diagnosticIdentity(id: String?): String? = if (identityAccess && id != null) {
+        retained.entries.firstOrNull { it.value == id }?.key
+    } else {
+        null
+    }
+
     @Synchronized
     fun reconcile(observations: List<Observation>): List<Endpoint> {
         val grouped = observations.groupBy(Observation::platformId)

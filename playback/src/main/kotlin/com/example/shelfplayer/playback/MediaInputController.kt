@@ -12,7 +12,7 @@ internal data class MediaInputController(
     val trusted: Boolean? = null,
     val packageVerified: Boolean? = null,
 ) {
-    enum class Caller { Unattributed, AndroidAuto, BluetoothService, SameApp, System, Legacy, External }
+    enum class Caller { Unattributed, AndroidAuto, BluetoothService, GoogleApp, SameApp, System, Legacy, External }
 
     fun fields(): String = "caller=$caller controllerVersion=${version ?: "unknown"} " +
         "interfaceVersion=${interfaceVersion ?: "unknown"} controllerTrusted=${trusted ?: "unknown"} " +
@@ -29,6 +29,7 @@ internal data class MediaInputController(
             val caller = when {
                 controller.packageName in carPackages -> Caller.AndroidAuto
                 controller.packageName == "com.android.bluetooth" -> Caller.BluetoothService
+                controller.packageName == "com.google.android.googlequicksearchbox" -> Caller.GoogleApp
                 controller.uid == ownUid -> Caller.SameApp
                 controller.packageName in setOf("android", "com.android.systemui") -> Caller.System
                 controller.packageName == "android.media.session.MediaController" -> Caller.Legacy

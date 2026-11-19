@@ -45,7 +45,7 @@ class IdleResumeWiringTest {
         assertTrue("currentExplicitSelectionSequence() == selectionSequence" in restorerFactory)
         assertTrue("commands = playbackCommandEffects" in restorerFactory)
         assertTrue("AutoStartAction.None -> holdLastBook(current, claim)" in restorer)
-        assertTrue("current.setMediaItem(held.item, held.startPositionMs)" in restorer)
+        assertTrue("commands.install(" in restorer.substringAfter("private suspend fun holdLastBook"))
     }
 
     @Test
@@ -63,13 +63,14 @@ class IdleResumeWiringTest {
     @Test
     fun `held item is materialized before freshness may prepare or play it`() {
         val source = serviceSource()
-        val play = source
-            .substringAfter("private suspend fun performFreshnessPlay")
-            .substringBefore("private suspend fun applyFreshnessPlan")
-
-        val materialize = play.indexOf("materializeHeldResume")
-        val sleepClaim = play.indexOf("sleepTimer.onPlayRequest")
-        val freshness = play.indexOf("resumeFreshness.preparePlay")
+        assertTrue("governor.resume(explicit, bypassFreshness, stillAuthorized)" in source)
+        val governor = File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackGovernor.kt").readText()
+        assertTrue("resumeEffects.resume(explicit, bypassFreshness, authorized)" in governor)
+        assertTrue("= materializeHeldResume(authorized)" in source)
+        val play = File("src/main/kotlin/com/example/shelfplayer/playback/PlaybackResumeEffects.kt").readText()
+        val materialize = play.indexOf("source.materialize(authorized)")
+        val sleepClaim = play.indexOf("sleep.onPlayRequest")
+        val freshness = play.indexOf("freshness.preparePlay")
         assertTrue(materialize >= 0, "Play must recognize the metadata-only holder")
         assertTrue(sleepClaim > materialize, "the sleep Play claim must belong to the materialized book generation")
         assertTrue(freshness > sleepClaim, "freshness/prepare must see the fresh playable queue, not the holder")

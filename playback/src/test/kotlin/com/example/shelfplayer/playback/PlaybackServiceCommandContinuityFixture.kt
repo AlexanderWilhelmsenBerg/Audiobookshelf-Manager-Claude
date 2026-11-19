@@ -8,7 +8,6 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
-import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.AppResult
@@ -18,17 +17,11 @@ import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
-import com.example.shelfplayer.core.model.playback.SleepTimerSettings
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import com.example.shelfplayer.core.testing.TestAppClock
-import com.example.shelfplayer.domain.playback.ResumeBaseline
-import com.example.shelfplayer.domain.realtime.RealtimeProgressEvidenceStore
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
-import com.example.shelfplayer.domain.repository.ProfileRepository
-import com.example.shelfplayer.domain.repository.SessionSyncRepository
-import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -38,7 +31,6 @@ import kotlinx.coroutines.test.runCurrent
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.shadows.AudioDeviceInfoBuilder
 import java.lang.reflect.Proxy
-import java.time.ZoneId
 import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 import kotlin.test.assertEquals
@@ -57,8 +49,13 @@ internal fun playbackFixtureItem(id: String): MediaItem =
 internal class PlaybackServiceCommandContinuityFixture(
     private val scope: TestScope,
     deviceType: Int = AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+    private val seedActualPlayback: Boolean = false,
 ) : AutoCloseable {
-    private val context = RuntimeEnvironment.getApplication()
+    private val context = RuntimeEnvironment.getApplication().also {
+        if (seedActualPlayback && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            org.robolectric.Shadows.shadowOf(it).grantPermissions(android.Manifest.permission.BLUETOOTH_CONNECT)
+        }
+    }
     private val dispatcher = StandardTestDispatcher(scope.testScheduler)
     private val clock = TestAppClock()
     private val logger = object : Logger {
@@ -69,9 +66,26 @@ internal class PlaybackServiceCommandContinuityFixture(
         .apply {
             val port = org.robolectric.util.ReflectionHelpers.getField<Any>(this, "mPort")
             org.robolectric.util.ReflectionHelpers.setField(port, "mName", "Fixture headset")
+            if (seedActualPlayback) {
+                org.robolectric.util.ReflectionHelpers.setField(
+                    port,
+                    "mAddress",
+                    "11:22:33:44:55:66",
+                )
+            }
         }
     private val endpoint = registry.reconcile(
-        listOf(LiveOutputEndpointRegistry.Observation(device.id, device.type, device.productName?.toString())),
+        listOf(
+            if (seedActualPlayback) {
+                registry.observationOf(device)
+            } else {
+                LiveOutputEndpointRegistry.Observation(
+                    device.id,
+                    device.type,
+                    device.productName?.toString(),
+                )
+            },
+        ),
     ).single()
     private val headset = endpoint.output.copy(id = endpoint.id, isActive = true)
     val endpointId: String get() = endpoint.id
@@ -104,6 +118,7 @@ internal class PlaybackServiceCommandContinuityFixture(
     val queueMutationIntents = mutableListOf<Boolean>()
     private val realPlayer = ExoPlayer.Builder(context).build()
     private var reportedPositionMs: Long? = null
+    private var reportedIsPlaying: Boolean? = null
 
     // Observe commands while retaining one real pinned Media3 player and all its normal callbacks.
     val player = java.lang.reflect.Proxy.newProxyInstance(
@@ -134,6 +149,12 @@ internal class PlaybackServiceCommandContinuityFixture(
         ) {
             return@newProxyInstance reportedPositionMs
         }
+        if (method.name == "isPlaying" && reportedIsPlaying != null) {
+            return@newProxyInstance reportedIsPlaying
+        }
+        if (method.name == "getPlaybackState" && reportedIsPlaying == true) {
+            return@newProxyInstance Player.STATE_READY
+        }
         method.invoke(realPlayer, *args.orEmpty())
     } as ExoPlayer
     private val volumeEffects = volumeEffectsForTest(dispatcher, clock)
@@ -154,6 +175,7 @@ internal class PlaybackServiceCommandContinuityFixture(
     val forwarding: ResumeFreshnessPlayer
     var rawPlayTransitions = 0
         private set
+    private var servicePlayerEvents: Player.Listener? = null
 
     init {
         player.addListener(object : Player.Listener {
@@ -168,11 +190,21 @@ internal class PlaybackServiceCommandContinuityFixture(
                 rawPlayTransitions++
             }
         })
-        configureService()
+        PlaybackServiceFixtureSetup(
+            service, router, registry, player, volumeEffects, scope, dispatcher, clock, logger,
+        ).configure()
         configureRouter()
         service.installPositionCheckpointHandlers()
         owner.onBookChanged(hasBook = true)
-        owner.onPlaybackObserved(listOf(headset))
+        owner.onPlaybackObserved(
+            listOf(
+                if (seedActualPlayback) {
+                    headset.copy(activitySource = AudioOutputActivitySource.PlayingAudioTrack, isActive = true)
+                } else {
+                    headset
+                },
+            ),
+        )
         val inputs = CarContinuityRecoveryCoordinator.Inputs(
             owner.heardRoute,
             headset.id,
@@ -198,83 +230,6 @@ internal class PlaybackServiceCommandContinuityFixture(
     fun configurePostConnectRace() = selectionSupport.configurePostConnectRace()
 
     fun libraryCallback() = selectionSupport.libraryCallback()
-
-    private fun configureService() {
-        val baseline = ResumeBaseline()
-        val sync = SessionSyncCoordinator(
-            unusedPlaybackDependency<SessionSyncRepository>(),
-            baseline,
-            clock,
-            logger,
-            volumeEffects = volumeEffects,
-            applicationScope = scope.backgroundScope,
-            mainDispatcher = dispatcher,
-        )
-        service.clock = clock
-        service.coldStartToggleGate = ColdStartToggleGate()
-        service.logger = logger
-        service.applicationScope = scope.backgroundScope
-        service.mainDispatcher = dispatcher
-        service.audioOutputs = router
-        service.audioRouteLab =
-            AudioRouteLab(context, EventLog(clock), clock, router, scope.backgroundScope, dispatcher)
-        service.volumeEffects = volumeEffects
-        service.audioTrackRouteMonitor = AudioTrackRouteMonitor(
-            context,
-            service.audioRouteLab,
-            clock,
-            registry,
-        )
-        service.setPlaybackField("activeProfileGeneration", { 0L })
-        service.carConnections = CarConnections(clock)
-        service.resumeFreshness = ResumeFreshnessCoordinator(
-            unusedPlaybackDependency<PlaybackRepository>(),
-            unusedPlaybackDependency<ProfileRepository>(),
-            baseline,
-            RealtimeProgressEvidenceStore(),
-            logger,
-            scope.backgroundScope,
-            dispatcher,
-        )
-        service.sleepTimer = sleepTimer(sync)
-        service.sessionSync = sync
-        service.resumeBaseline = baseline
-        service.setPlaybackField("scope", scope.backgroundScope)
-        service.setPlaybackField("player", player)
-    }
-
-    private fun sleepTimer(sync: SessionSyncCoordinator): SleepTimerController {
-        val timers = playbackDependencyProxy<SleepTimerRepository> { method ->
-            when (method) {
-                "observeSettings" -> flowOf(SleepTimerSettings.Default)
-                else -> error("Unexpected sleep repository call: $method")
-            }
-        }
-        return SleepTimerController(
-            repository = timers,
-            shakes = playbackDependencyProxy<ShakeSource> { method ->
-                when (method) {
-                    "isSensing" -> false
-                    else -> error("Unexpected shake call: $method")
-                }
-            },
-            volumeEffects = volumeEffects,
-            history = SleepTimerHistory(
-                timers,
-                unusedPlaybackDependency<PlaybackHistoryRepository>(),
-                sync,
-                clock,
-                scope.backgroundScope,
-            ),
-            clock = clock,
-            zoneProvider = object : LocalZoneProvider {
-                override fun current(): ZoneId = ZoneId.of("UTC")
-            },
-            logger = logger,
-            applicationScope = scope.backgroundScope,
-            mainDispatcher = dispatcher,
-        )
-    }
 
     private fun configureRouter() {
         volumeEffects.attach(player)
@@ -642,8 +597,138 @@ internal class PlaybackServiceCommandContinuityFixture(
         router.playbackField<MutableStateFlow<List<AudioOutput>>>("_outputs").value = listOf(headset)
     }
 
+    fun returnMeasuredHeadset() {
+        if (seedActualPlayback) {
+            org.robolectric.Shadows.shadowOf(context.getSystemService(android.media.AudioManager::class.java))
+                .setOutputDevices(listOf(device))
+        }
+        returnHeadset()
+        router.playbackField<MutableStateFlow<List<AudioOutput>>>("_outputs").value = listOf(
+            headset.copy(activitySource = AudioOutputActivitySource.PlayingAudioTrack, isActive = true),
+        )
+        router.setPlaybackField(
+            "currentTrackObservation",
+            { AudioTrackObservation(1, AudioTrackPath.Endpoint(endpointId)) },
+        )
+        router.setPlaybackField("currentTrackRoutes", { setOf(endpointId) })
+    }
+
+    fun installServiceContinuityCallbacks() {
+        service.history = playbackDependencyProxy<PlaybackHistoryRepository> { method ->
+            check(method.substringBefore('-') == "record") { "Unexpected history call: $method" }
+            Unit
+        }
+        service.autoRewind = AutoRewindController(
+            playbackDependencyProxy<PlaybackSettingsRepository> { method ->
+                when (method) {
+                    "observeSettings" -> flowOf(PlaybackSettings())
+                    else -> error("Unexpected playback settings call: $method")
+                }
+            },
+            clock,
+            unusedPlaybackDependency<PlaybackHistoryRepository>(),
+            logger,
+            scope.backgroundScope,
+        )
+        service.playbackCall("bindOutputContinuity")
+        val events = PlaybackService::class.java.declaredClasses.single { it.simpleName == "PlayerEvents" }
+            .getDeclaredConstructor(PlaybackService::class.java)
+            .apply { isAccessible = true }
+            .newInstance(service) as Player.Listener
+        servicePlayerEvents = events
+        player.addListener(events)
+    }
+
+    fun observeAudibleServiceRoute() {
+        reportedIsPlaying = true
+        // Robolectric does not render audio: deliver the active event to both attached production listeners.
+        val guard = router.playbackField<HeadsetRouteGuard>("headsetGuard")
+        checkNotNull(guard.currentPlayerListener).onIsPlayingChanged(true)
+        scope.runCurrent()
+        assertFalse(volumeEffects.isRouteMuted(player), "exact track proof must settle the real guarded probe")
+        checkNotNull(servicePlayerEvents).onIsPlayingChanged(true)
+        assertEquals(endpointId, guard.endpointId)
+    }
+
+    fun removeHeadsetFromInventory() {
+        reportedIsPlaying = false
+        if (seedActualPlayback) {
+            org.robolectric.Shadows.shadowOf(context.getSystemService(android.media.AudioManager::class.java))
+                .setOutputDevices(emptyList())
+        }
+        router.localOutputs.setPlaybackField("live", emptyMap<String, AudioDeviceInfo>())
+        router.playbackField<MutableStateFlow<List<AudioOutput>>>("_outputs").value = emptyList()
+        router.setPlaybackField("currentTrackObservation", { null })
+        router.setPlaybackField("currentTrackRoutes", { null })
+    }
+
+    fun actualArrivalTarget(): CarArrivalResumeGate.Target {
+        check(target.episodeId > 0) { "This scenario requires the trusted, bounded arrival path" }
+        returnMeasuredHeadset()
+        val inputs = CarContinuityRecoveryCoordinator.Inputs(
+            heardRoute = owner.heardRoute,
+            headsetId = endpointId,
+            generation = owner.currentGeneration,
+            selectionSequence = 0,
+            carConnected = false,
+        )
+        recovery.observePlayingHeadset(inputs)
+        return target
+    }
+
+    fun pendingEffectsTarget(): CarArrivalResumeGate.Target? =
+        (service.playbackCall("getCarResumeEffects") as CarContinuityResumeEffects)
+            .playbackField("pendingTarget")
+
+    fun issueAndConfirmRecoveryPlay(target: CarArrivalResumeGate.Target) {
+        assertTrue(
+            recovery.assess(target, CarContinuityPlayPrecheck.Proceed, target.generation, 0, endpointId).mayPlay,
+        )
+        assertTrue(
+            service.playbackCommandEffects.play(player, { true }) { recovery.notePlayIssued(target) },
+            "the service command boundary must issue the claimed first Play",
+        )
+        observeAudibleServiceRoute()
+    }
+
+    fun pauseForSafetyThroughService(): Boolean =
+        router.playbackField<HeadsetRouteGuard>("headsetGuard").pauseForSafety(player)
+
+    fun startHealthyHeadsetWithoutCar() {
+        returnMeasuredHeadset()
+        recovery.cancelAll()
+        player.playWhenReady = true
+        scope.runCurrent()
+        observeAudibleServiceRoute()
+    }
+
+    fun reportPlatformInterruption(reason: Int) {
+        checkNotNull(servicePlayerEvents).onPlayWhenReadyChanged(false, reason)
+    }
+
+    fun interruptUnconfirmedPlayForFocusLoss() {
+        val events = checkNotNull(servicePlayerEvents)
+        // Set the backing player paused without mislabelling the injected Media3 focus callback as user Pause.
+        player.removeListener(events)
+        try {
+            player.pause()
+        } finally {
+            player.addListener(events)
+        }
+        reportPlatformInterruption(Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
+    }
+
+    fun connectCarSession() {
+        service.carLifecycle.onControllerConnected()
+    }
+
+    fun advanceElapsedClock(duration: Duration) {
+        clock.advanceBy(duration)
+    }
+
     override fun close() {
         effects.cancelPending()
+        servicePlayerEvents?.let(player::removeListener)
         router.detach()
         player.release()
     }

@@ -60,11 +60,15 @@ class MediaInputDiagnosticsTest {
         assertContains(buttonRecord, "deviceQuery=Missing")
         assertContains(buttonRecord, "caller=BluetoothService")
         assertContains(buttonRecord, "association=Unproven")
+        assertContains(buttonRecord, "inputSequence=1")
+        assertContains(buttonRecord, "deliveryAgeMs=")
         assertFalse("Headset" in buttonRecord)
 
         fixture.trace.transport(true, MediaInputController(MediaInputController.Caller.AndroidAuto))
         assertContains(fixture.rows.last(), "caller=AndroidAuto")
         assertContains(fixture.rows.last(), "association=Unproven")
+        assertContains(fixture.rows.last(), "inputSequence=2")
+        assertContains(fixture.rows.last(), "correlation=temporal-only")
         fixture.trace.mediaKey(null, MediaInputController(), MediaInputEntry.ReceiverStart)
         assertContains(fixture.rows.last(), "keyPresent=false")
     }

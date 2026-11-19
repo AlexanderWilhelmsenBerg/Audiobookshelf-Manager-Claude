@@ -104,7 +104,7 @@ internal class DeferredPlaybackWork(
         return accepted && effectsApplied
     }
 
-    private fun isInstalledCurrent(claim: Claim, item: MediaItem): Boolean {
+    fun isInstalledCurrent(claim: Claim, item: MediaItem): Boolean {
         val active = currentPlayer() ?: return false
         return active === claim.player && active.currentMediaItem == item &&
             commandGeneration() == claim.command && profileGeneration() == claim.profile &&

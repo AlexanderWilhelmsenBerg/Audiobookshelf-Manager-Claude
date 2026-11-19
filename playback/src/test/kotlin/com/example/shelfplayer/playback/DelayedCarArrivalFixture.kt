@@ -66,6 +66,9 @@ internal class DelayedCarArrivalFixture(private val scope: TestScope) : AutoClos
     fun projection(state: AndroidAutoProjectionMonitor.State) = service.carLifecycle.onProjectionReported(state)
 
     fun safetyPause() {
+        // Model the inventory gap before its safety pause. Leaving a live headset here would now
+        // legitimately start the short return probe, instead of this fixture's delayed-arrival case.
+        base.removeHeadsetFromInventory()
         router.positions.guard.pauseForSafety(player)
         scope.runCurrent()
     }
@@ -105,6 +108,7 @@ internal class DelayedCarArrivalFixture(private val scope: TestScope) : AutoClos
         }
         owner.onPlaybackObserved(measured)
         service.playbackCall("observeCarContinuityHeadset", List::class.java, measured)
+        recovery.playbackBecameActive(owner.currentGeneration, selectionSequence)
     }
 
     fun depart(at: Duration): CarArrivalResumeGate.Decision {

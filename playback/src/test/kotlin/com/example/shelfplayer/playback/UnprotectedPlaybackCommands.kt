@@ -5,6 +5,18 @@ import androidx.media3.common.Player
 
 /** Explicit command double for policy tests that do not model Android output protection. */
 internal class UnprotectedPlaybackCommands : PlaybackCommands {
+    override fun install(
+        current: Player,
+        item: MediaItem,
+        startPositionMs: Long,
+        authorizedBeforeInstall: () -> Boolean,
+        stillAuthorizedAfterInstall: () -> Boolean,
+    ): Boolean {
+        if (!authorizedBeforeInstall()) return false
+        current.setMediaItem(item, startPositionMs)
+        return stillAuthorizedAfterInstall()
+    }
+
     override fun prepare(current: Player, stillAuthorized: () -> Boolean, holdForSeek: Boolean): Boolean {
         if (!stillAuthorized() || (holdForSeek && current.playWhenReady)) return false
         current.prepare()

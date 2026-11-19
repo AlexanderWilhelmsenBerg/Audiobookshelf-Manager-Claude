@@ -5,6 +5,12 @@
 
 This document is the compact entry point for BookWave's playback correctness architecture. Detailed ADRs, bug investigations and reviews remain the evidence for why these rules exist.
 
+The 2026-11-07 [governor continuation](playback-governor.md) is a separate implementation candidate
+dependent on PR305. It centralizes command/interruption arbitration and introduces bounded repeated
+arrival recovery; it does not change the single-player or specialist state-ownership boundaries.
+Its [verification record](../testing/2026-11-07-playback-governor.md) distinguishes software results
+from pending physical acceptance.
+
 ## One active output, multiple available destinations
 
 The #277 continuation keeps one ExoPlayer, MediaLibrarySession and Media3 focus owner. The existing

@@ -457,6 +457,34 @@ class CarArrivalResumeGateTest {
     }
 
     @Test
+    fun `fresh departure focus uses its own pairing clock after old arrival safety pause`() {
+        val owner = heardOnBuds()
+        val gate = connectedOnBuds(owner)
+        gate.onRouteSafetyPause(
+            at = 2.seconds,
+            headsetId = buds.id,
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = false,
+        )
+
+        val focus = gate.onAudioFocusLoss(
+            at = 14.seconds,
+            heardRoute = owner.heardRoute,
+            headsetId = owner.headsetForCar(listOf(buds, car)),
+            currentGeneration = owner.currentGeneration,
+            explicitSelectionSequence = 0,
+            carConnected = true,
+        )
+        assertEquals(CarArrivalResumeGate.Status.Armed, focus.status)
+
+        val departure = gate.onProjectionDeparture(14.3.seconds, owner.currentGeneration, 0)
+
+        assertEquals(CarArrivalResumeGate.Status.Ready, departure.status)
+        assertEquals(CarArrivalResumeGate.Phase.Departure, departure.phase)
+    }
+
+    @Test
     fun `deliberately paused book cannot arm departure continuity`() {
         val owner = heardOnBuds()
         val gate = connectedOnBuds(owner)

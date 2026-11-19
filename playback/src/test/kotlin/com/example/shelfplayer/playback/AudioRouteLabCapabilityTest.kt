@@ -129,6 +129,6 @@ class AudioRouteLabCapabilityTest {
             volumeEffects = volumeEffectsForTest(dispatcher),
         )
         val lab = AudioRouteLab(context, EventLog(clock), clock, router, scope.backgroundScope, dispatcher)
-        val classifier = OutputClassifier(context, lab)
+        val classifier = OutputClassifier(context, lab, SystemAudioProbe(context, LiveOutputEndpointRegistry(), clock))
     }
 }

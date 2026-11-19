@@ -225,6 +225,7 @@ class MutedPositionEffectsTest {
         var pauses = 0
         var plays = 0
         var measurements = 0
+        var onMeasurement: () -> Unit = {}
         var routes: Set<String>? = setOf(outputId)
         var failBarrier = false
         var failPreference = false
@@ -347,6 +348,7 @@ class MutedPositionEffectsTest {
                 router,
                 {
                     measurements++
+                    onMeasurement()
                     routes
                 },
             )

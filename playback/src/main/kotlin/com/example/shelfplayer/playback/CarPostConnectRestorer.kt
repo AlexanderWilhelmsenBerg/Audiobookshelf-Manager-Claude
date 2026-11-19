@@ -137,8 +137,18 @@ internal class CarPostConnectRestorer(
             item = held.item,
             extraFields = listOf(LogField.Millis("startAt", held.startPositionMs)),
         )
-        current.setMediaItem(held.item, held.startPositionMs)
-        observer.note("A car connected and the last book was held for display", current)
+        val installed = commands.install(
+            current,
+            held.item,
+            held.startPositionMs,
+            authorizedBeforeInstall = {
+                profileGeneration() == claim.profileGeneration && isRequestCurrent() && current.mediaItemCount == 0
+            },
+            stillAuthorizedAfterInstall = {
+                profileGeneration() == claim.profileGeneration && isRequestCurrent()
+            },
+        )
+        if (installed) observer.note("A car connected and the last book was held for display", current)
     }
 
     private suspend fun superseded(current: Player, claim: Claim): Boolean {
