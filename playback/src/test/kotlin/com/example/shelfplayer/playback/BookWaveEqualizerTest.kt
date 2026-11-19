@@ -2,6 +2,7 @@ package com.example.shelfplayer.playback
 
 import androidx.annotation.OptIn
 import androidx.media3.common.C
+import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.AudioProcessor.AudioFormat
 import androidx.media3.common.audio.AudioProcessor.StreamMetadata
 import androidx.media3.common.util.UnstableApi
@@ -27,6 +28,15 @@ class BookWaveEqualizerTest {
         configure(channels = 2)
         val samples = shortArrayOf(Short.MIN_VALUE, 90, -15, Short.MAX_VALUE, 0, 0)
         assertContentEquals(samples, process(samples))
+    }
+
+    @Test
+    fun `Media3 can pump the shared empty buffer before the first PCM frame`() {
+        configure()
+        processor.queueInput(AudioProcessor.EMPTY_BUFFER)
+        assertFalse(processor.output.hasRemaining())
+        val pcm = shortArrayOf(-6, 12, 0, -3)
+        assertContentEquals(pcm, process(pcm))
     }
 
     @Test

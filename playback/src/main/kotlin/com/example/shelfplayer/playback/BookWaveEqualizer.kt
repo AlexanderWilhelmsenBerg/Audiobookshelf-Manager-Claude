@@ -44,6 +44,9 @@ internal class BookWaveEqualizer(private val settings: () -> PlaybackEqualizer) 
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
+        // Media3 pumps the shared EMPTY_BUFFER when only downstream output needs draining.
+        if (!inputBuffer.hasRemaining()) return
+
         val next = settings()
         if (selected != next) {
             val fraction = fadeFraction()
