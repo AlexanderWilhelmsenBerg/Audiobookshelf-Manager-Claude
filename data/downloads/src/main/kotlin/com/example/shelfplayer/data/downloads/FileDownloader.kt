@@ -104,6 +104,15 @@ class FileDownloader @Inject constructor(
             volumeUuid = storageVolumeUuid,
             committedUris = committedUris,
         )
+        val destination = storage.finalFor(part)
+        val recovered = DownloadCommitCheckpoint.recover(part, destination, file)
+        val recoveredIsReadable = recovered != null && verifier.isReadable(destination)
+        currentCoroutineContext().ensureActive()
+        if (recovered != null && recoveredIsReadable) {
+            if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
+            return publishCompleted(serverId, itemId, part, recovered)
+        }
+        if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
         val onDisk = storage.bytesOnDisk(part)
 
         // Two conditions for even attempting a resume: bytes on disk, and a validator to guard them with.
@@ -234,6 +243,25 @@ class FileDownloader @Inject constructor(
             return AppResult.Failure(problem)
         }
 
+        val stored = manifestFile.copy(
+            uri = destination.toURI().toString(),
+            state = DownloadState.Complete,
+            expectedBytes = outcome.totalBytes ?: manifestFile.expectedBytes,
+            downloadedBytes = part.length(),
+            mimeType = outcome.contentType ?: manifestFile.mimeType,
+            eTag = outcome.eTag ?: manifestFile.eTag,
+            lastModified = outcome.lastModified ?: manifestFile.lastModified,
+        )
+        val checkpoint = try {
+            DownloadCommitCheckpoint.prepare(part, manifestFile, stored)
+                .also { currentCoroutineContext().ensureActive() }
+        } catch (cancelled: CancellationException) {
+            withContext(NonCancellable) { onVerificationCancelled() }
+            throw cancelled
+        }
+        if (checkpoint.isFailure()) return AppResult.Failure(checkpoint.error)
+        if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
+
         val committed = storage.commit(part)
             ?: return AppResult.Failure(
                 if (ownerAvailable()) {
@@ -243,16 +271,8 @@ class FileDownloader @Inject constructor(
                 },
             )
 
-        val stored = manifestFile.copy(
-            uri = committed.toURI().toString(),
-            state = DownloadState.Complete,
-            expectedBytes = outcome.totalBytes ?: manifestFile.expectedBytes,
-            downloadedBytes = committed.length(),
-            mimeType = outcome.contentType ?: manifestFile.mimeType,
-            eTag = outcome.eTag ?: manifestFile.eTag,
-            lastModified = outcome.lastModified ?: manifestFile.lastModified,
-        )
-        record(serverId, itemId, stored)
+        val published = publishCompleted(serverId, itemId, part, stored)
+        if (published.isFailure()) return published
 
         logger.info(
             LogCategory.Sync,
@@ -260,7 +280,21 @@ class FileDownloader @Inject constructor(
             LogField.Count("bytes", committed.length().coerceAtMost(Int.MAX_VALUE.toLong()).toInt()),
             LogField.Public("resumed", outcome.wasResumed.toString()),
         )
-        return AppResult.Success(stored)
+        return published
+    }
+
+    private suspend fun publishCompleted(
+        serverId: ServerId,
+        itemId: LibraryItemId,
+        part: File,
+        file: OfflineFile,
+    ): AppResult<OfflineFile> = when (val written = repository.updateFile(serverId, itemId, file)) {
+        is AppResult.Failure -> written
+
+        is AppResult.Success -> {
+            DownloadCommitCheckpoint.clear(part)
+            AppResult.Success(file)
+        }
     }
 
     /**

@@ -674,6 +674,8 @@ Each known output device has one of these policies:
 - Temporary parts use `.part` naming and are not playable.
 - A book becomes `Downloaded` only after all required audio tracks, cover, and offline manifest are committed.
 - Atomic commit prevents a crash from creating a false complete state.
+- If the process stops after committing a track, the next attempt may publish that file only after verifying
+  the same copy, volume, validators, length, local digest and media readability.
 - User can pause, resume, cancel, retry, and remove a download.
 - Canceling removes temporary files after confirmation or after a cleanup grace period.
 - A failed part retries with exponential backoff and jitter.
