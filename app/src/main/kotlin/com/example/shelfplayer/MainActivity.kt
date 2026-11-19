@@ -137,7 +137,6 @@ class MainActivity : ComponentActivity() {
             // PRODUCT_SPEC SET-002 — outside the theme, because it decides what every string below says
             // and the theme only decides what colour it is drawn in.
             AppLocale(language = appState.language) {
-                val theme = appState.resolveTheme()
                 val background = appState.backgroundTheme
                 val design = appState.design.visualStyle()
                 // A pack supersedes the plain theme, including which ground it is on: its palette was
@@ -147,7 +146,7 @@ class MainActivity : ComponentActivity() {
                 ShelfPlayerTheme(
                     darkTheme = isDark,
                     dynamicColor = appState.dynamicColor,
-                    pureBlack = background == null && theme.prefersFlatBackdrop,
+                    pureBlack = background == null && appState.resolveTheme().prefersFlatBackdrop,
                     accent = appState.accentArgbFor(isDark)?.let(::Color),
                     textContrast = appState.textContrast.contrast,
                     override = background?.takeIf { design.usesGlass }?.toColorScheme(),
@@ -182,7 +181,7 @@ class MainActivity : ComponentActivity() {
                                     systemTintEnabled = appState.systemGlassTintEnabled,
                                     blurRadius = appState.glassBlurDp.dp,
                                 ),
-                                flatBackdrop = !design.usesGlass || theme.prefersFlatBackdrop,
+                                flatBackdrop = !design.usesGlass || appState.resolveTheme().prefersFlatBackdrop,
                                 backgroundTheme = background?.takeIf { design.usesGlass },
                                 openDownloadsRequest = downloadsRequest,
                             )
