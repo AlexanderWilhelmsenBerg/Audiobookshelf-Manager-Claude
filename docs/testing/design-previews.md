@@ -43,3 +43,10 @@ Use fixture screenshots for shared design references. For a live-library capture
 - [Minimal Now Playing in dark mode at 150% text size](design-screenshots/minimal-player.png)
 - [Editorial Home in light mode](design-screenshots/editorial-home.png)
 - [Editorial Now Playing in dark mode](design-screenshots/editorial-player.png)
+
+## Series Editor preview
+
+Launch `com.example.shelfplayer.design.SeriesEditorPreviewKt.SeriesEditorPreview` with the same ADB
+activity. The fixture has books 1, 2, 3 and 5 and a missing book at 4. Drag book 2 up and right onto
+book 1, reorder the two parts, and drag one part to the left to separate it. Tap a handle to exercise
+the reorder menu. The preview keeps edits in memory for the session.

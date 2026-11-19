@@ -17,6 +17,7 @@ import com.example.shelfplayer.domain.repository.MetadataRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.SeriesSequenceRepository
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
 import dagger.Binds
 import dagger.Module
@@ -68,6 +69,10 @@ interface LibraryDataModule {
     @Binds
     @Singleton
     fun bindsMetadataRepository(impl: DefaultMetadataRepository): MetadataRepository
+
+    @Binds
+    @Singleton
+    fun bindsSeriesSequenceRepository(impl: DefaultMetadataRepository): SeriesSequenceRepository
 
     @Binds
     @Singleton

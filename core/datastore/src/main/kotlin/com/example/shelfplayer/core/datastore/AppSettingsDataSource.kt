@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.playback.AutoRewind
@@ -190,6 +191,27 @@ class AppSettingsDataSource @Inject constructor(
 
     suspend fun setShelfSortOrder(profileId: ProfileId, order: String) {
         updateProfile(profileId) { current -> current.setShelfSortOrder(order) }
+    }
+
+    fun observeMissingSeriesBooks(profileId: ProfileId, seriesId: SeriesId): Flow<Set<Int>> = settings.map { current ->
+        current.profileSettingsMap[profileId.value]?.missingSeriesBooksMap?.get(seriesId.value)
+            ?.numbersList?.filter { it > 0 }?.toSet().orEmpty()
+    }.distinctUntilChanged()
+
+    suspend fun setMissingSeriesBooks(profileId: ProfileId, seriesId: SeriesId, numbers: Set<Int>): Boolean {
+        val updated = dataStore.updateData { current ->
+            if (current.activeProfileId != profileId.value) return@updateData current
+            val existing = current.profileSettingsMap[profileId.value] ?: ProfileSettings.getDefaultInstance()
+            val profile = existing.toBuilder()
+            if (numbers.isEmpty()) {
+                profile.removeMissingSeriesBooks(seriesId.value)
+            } else {
+                val missing = MissingSeriesBooks.newBuilder().addAllNumbers(numbers.sorted()).build()
+                profile.putMissingSeriesBooks(seriesId.value, missing)
+            }
+            current.toBuilder().putProfileSettings(profileId.value, profile.build()).build()
+        }
+        return updated.activeProfileId == profileId.value
     }
 
     /**

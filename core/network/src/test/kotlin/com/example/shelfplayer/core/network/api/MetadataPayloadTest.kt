@@ -3,10 +3,14 @@ package com.example.shelfplayer.core.network.api
 import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
 import com.example.shelfplayer.core.model.library.SeriesEdit
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -96,6 +100,23 @@ class MetadataPayloadTest {
 
         val series = assertIs<JsonArray>(assertIs<JsonObject>(body["metadata"])["series"])
         assertEquals(JsonNull, assertIs<JsonObject>(series.single())["sequence"])
+    }
+
+    @Test
+    fun `a multipart sequence matches the captured update and preserves the other membership`() {
+        val capture = requireNotNull(javaClass.getResource("/compatibility/series-sequence-update.json")).readText()
+        val fixture = Json.parseToJsonElement(capture).jsonObject
+        val request = fixture.getValue("request").jsonArray
+        val memberships = request.map { entry ->
+            val series = entry.jsonObject
+            SeriesEdit(series.getValue("name").jsonPrimitive.content, series.getValue("sequence").jsonPrimitive.content)
+        }
+
+        val body = MetadataPayload.of(form().copy(series = memberships), setOf(BookMetadataField.Series))
+        val metadata = body.getValue("metadata").jsonObject
+        assertEquals(setOf("series"), metadata.keys)
+        assertEquals(request, metadata.getValue("series"))
+        assertEquals(request, fixture.getValue("after"))
     }
 
     @Test

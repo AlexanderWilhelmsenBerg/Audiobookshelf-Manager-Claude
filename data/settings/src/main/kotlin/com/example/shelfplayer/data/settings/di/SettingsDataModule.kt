@@ -9,6 +9,7 @@ import com.example.shelfplayer.data.settings.DefaultPlaybackDeviceIdentity
 import com.example.shelfplayer.data.settings.DefaultPlaybackSettingsRepository
 import com.example.shelfplayer.data.settings.DefaultPreferencesRepository
 import com.example.shelfplayer.data.settings.DefaultRememberedBookRepository
+import com.example.shelfplayer.data.settings.DefaultSeriesOrderRepository
 import com.example.shelfplayer.data.settings.DefaultSleepTimerRepository
 import com.example.shelfplayer.domain.repository.AppearanceRepository
 import com.example.shelfplayer.domain.repository.DeviceRepository
@@ -16,6 +17,7 @@ import com.example.shelfplayer.domain.repository.DiagnosticsRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.PreferencesRepository
 import com.example.shelfplayer.domain.repository.RememberedBookRepository
+import com.example.shelfplayer.domain.repository.SeriesOrderRepository
 import com.example.shelfplayer.domain.repository.SleepTimerRepository
 import com.example.shelfplayer.domain.settings.BackgroundThemeCatalog
 import dagger.Binds
@@ -51,6 +53,10 @@ interface SettingsDataModule {
     @Binds
     @Singleton
     fun bindsPreferencesRepository(impl: DefaultPreferencesRepository): PreferencesRepository
+
+    @Binds
+    @Singleton
+    fun bindsSeriesOrderRepository(impl: DefaultSeriesOrderRepository): SeriesOrderRepository
 
     @Binds
     @Singleton

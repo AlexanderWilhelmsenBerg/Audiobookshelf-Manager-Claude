@@ -351,6 +351,13 @@ message ProfileSettings {
   // Empty is intentionally meaningful: an upgraded profile has no trustworthy local ownership evidence,
   // and server progress timestamps must never be used to invent one.
   string remembered_book_id = 4;
+
+  // LIB-005. Missing book numbers belong to this profile and series on this device.
+  map<string, MissingSeriesBooks> missing_series_books = 5;
+}
+
+message MissingSeriesBooks {
+  repeated int32 numbers = 1;
 }
 
 // PRODUCT_SPEC ROUTE-002 — one output device this app has seen.

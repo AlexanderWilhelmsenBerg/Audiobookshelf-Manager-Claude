@@ -11,9 +11,11 @@ import com.example.shelfplayer.core.database.dao.LibraryWriteDao
 import com.example.shelfplayer.core.database.dao.MetadataDraftDao
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.MetadataDraftEntity
+import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
@@ -23,9 +25,11 @@ import com.example.shelfplayer.core.model.library.MatchCandidate
 import com.example.shelfplayer.core.model.library.MetadataProvider
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.CoverUpload
+import com.example.shelfplayer.domain.library.SeriesSequenceChange
 import com.example.shelfplayer.domain.repository.LibraryRepository
 import com.example.shelfplayer.domain.repository.MetadataRepository
 import com.example.shelfplayer.domain.repository.MetadataSaveResult
+import com.example.shelfplayer.domain.repository.SeriesSequenceRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -66,7 +70,8 @@ class DefaultMetadataRepository @Inject constructor(
     private val clock: AppClock,
     private val logger: Logger,
     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
-) : MetadataRepository {
+) : MetadataRepository,
+    SeriesSequenceRepository {
 
     override fun observeDraft(profileId: ProfileId, bookId: LibraryItemId): Flow<BookMetadataEdit?> =
         draftDao.observe(profileId.value, bookId.value).map { entity -> entity?.let(::decodeOrForget) }
@@ -143,6 +148,45 @@ class DefaultMetadataRepository @Inject constructor(
         mimeType: String,
     ): AppResult<Book> = withContext(ioDispatcher) {
         refreshFrom(profileId, gateway.management.uploadCover(profileId, bookId, CoverUpload(bytes, mimeType)))
+    }
+
+    override suspend fun changeSequence(
+        profileId: ProfileId,
+        seriesId: SeriesId,
+        change: SeriesSequenceChange,
+    ): AppResult<Unit> = withContext(ioDispatcher) {
+        val book = when (val fresh = reload(profileId, change.bookId)) {
+            is AppResult.Failure -> return@withContext fresh
+            is AppResult.Success -> fresh.value
+        }
+        val index = book.seriesMemberships.indexOfFirst { it.series.id == seriesId }
+        val sequence = book.seriesMemberships.getOrNull(index)?.sequence?.raw
+        if (sequence == change.after) return@withContext AppResult.Success(Unit)
+        if (sequence != change.before) {
+            return@withContext AppResult.Failure(AppError.Conflict("A series position changed on the server."))
+        }
+
+        // The wire field replaces the array. Send the other memberships from this fresh item
+        // verbatim and keep any saved book-editor draft for its own conflict check.
+        val edit = BookMetadataEdit.of(book)
+        val memberships = edit.series.mapIndexed { row, membership ->
+            if (row == index) membership.copy(sequence = change.after) else membership
+        }
+        when (
+            val saved = gateway.management.updateMetadata(
+                profileId,
+                book.id,
+                edit.copy(series = memberships),
+                setOf(BookMetadataField.Series),
+            )
+        ) {
+            is AppResult.Failure -> saved
+
+            is AppResult.Success -> {
+                saved.value.book?.let { store(profileId, it) }
+                AppResult.Success(Unit)
+            }
+        }
     }
 
     override suspend fun removeCover(profileId: ProfileId, bookId: LibraryItemId): AppResult<Book> =

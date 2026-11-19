@@ -370,6 +370,19 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Local and remote availability are independently visible.
 - Privileged actions appear only when allowed.
 
+### LIB-005 Series editor
+
+**Acceptance criteria**
+
+- Accounts with book metadata edit access can open Edit from an accessible series. Drag a row vertically
+  to reorder it, sideways onto a book to group parts, or sideways out of a group to promote it.
+  The same actions are available through the row's reorder menu.
+- A missing book can occupy an explicit number. Placeholders are saved per profile and series on the device.
+  A real book with that number takes its place in the series view.
+- Save sends changed sequence values through the existing book metadata operation and preserves each book's
+  other series memberships. The editor reports partial saves and can retry the remaining changes.
+- Placeholders can be saved offline. Book metadata edits require a connection and a current grant.
+
 ---
 
 ## EPIC PLAY — Playback

@@ -1310,6 +1310,12 @@ That settles how MGR-001's *"On success, Room updates immediately and then refre
 work: **the refresh is the response.** A follow-up `GET` would be a request for data the client already
 holds, with a window in which the two could disagree.
 
+The current adapter re-reads the expanded item before replacing its local snapshot, because playback
+also needs track metadata. In a 2.36.0 capture for LIB-005, the app updated one membership using
+`4.01 (Part 1)` and sent the latest second membership alongside it at `9.5`. The following expanded
+GET returned both strings exactly. See [the sanitized capture](../core/network/src/test/resources/compatibility/series-sequence-update.json).
+The editor sends one item's series array per request. A missing slot stays in the profile's device settings.
+
 ### The two scans are not the same kind of operation
 
 An **item** scan is synchronous and reports a conclusion: `{"result": "UPTODATE"}`. A **library** scan
