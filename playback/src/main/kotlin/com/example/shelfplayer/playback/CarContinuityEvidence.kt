@@ -58,6 +58,17 @@ internal class CarContinuityEvidence(
         else -> null
     }
 
+    /** The pending focus loss is still trusted, in scope and inside its original deadline at [at]. */
+    fun supportsInferredArrival(
+        identity: CarContinuityIdentity,
+        focusAt: Duration,
+        deadline: Duration?,
+        at: Duration,
+        currentGeneration: Long?,
+        explicitSelectionSequence: Long,
+    ): Boolean = trustedIdentity(identity.outputId) &&
+        invalidReason(identity, currentGeneration, explicitSelectionSequence, at - focusAt, at, deadline) == null
+
     fun targetReason(
         target: Target,
         currentGeneration: Long?,

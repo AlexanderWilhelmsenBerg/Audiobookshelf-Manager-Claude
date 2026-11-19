@@ -438,6 +438,78 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-17 owner refinement (deferred system take-back and narrow simplification).** Build 2279
+accepted a system headset transfer on its first arrival, but a second arrival measured a remote mix
+while the system router reported the remembered destination `AlreadySelected`. The owner approved
+retaining that take-back until a route callback makes the remembered target transferable, within the
+original car-link window. An absent/already-selected route does not spend the allowance; at most one
+actual transfer invocation is allowed per link, including failed invocations. Disconnect/replacement,
+expiry, listener Pause/Stop and newer output/content/player intent revoke deferred work. Calls and
+permission loss block it. The helper does not extend the deadline or add polling, Play or focus requests.
+The existing window is the single deadline/budget owner. A measured headset-to-system-route association
+is pinned for that endpoint and may only be learned with positive car absence and no active arrival
+window. Capture-local route aliases distinguish remembered and selected system routes without names or
+addresses. Release/benchmark behavior and the existing playback recovery budget/proof are unchanged.
+See [hardware evidence and regressions](testing/2026-11-17-system-route-take-back.md).
+
+**2026-11-17 owner refinement (confirmed inferred arrival interrupted before Auto binds).** After an
+already qualified inferred arrival has confirmed both exact headset route and active playback, a distinct
+route-safety interruption may rearm that same episode before the real Auto controller binds. This uses
+the existing maximum three automatic Play claims and original absolute 30-second deadline. It cannot
+start a new episode, renew the deadline, retry unconfirmed playback from route safety or bypass fresh
+exact-headset proof. Pause/Stop and newer selection/book/profile/player intent retain precedence.
+Media3 remains the sole focus owner. This extends the connected-Auto condition of the 2026-11-07 entry
+only for an already qualified inferred arrival; ordinary Bluetooth connectivity does not authorize Play.
+See [regression and acceptance](testing/2026-11-16-car-bluetooth-inferred-arrival.md#repeated-route-loss-before-the-auto-bind-2026-11-17).
+
+**2026-11-16 owner refinement (automatic take-back experiment, debug builds only).** With the wait for
+Auto's bind removed, the remaining pause equals how long the car's own Bluetooth holds the active media
+device: measured from nothing to 3.8 seconds across runs. The owner declined the manual transfer button
+and approved testing an automatic take-back in a real arrival. In debug builds only, when a trusted,
+verified headset is paused for route safety within 30 seconds of a car-class hands-free link connecting,
+BookWave may ask Android's system media router once per link to make that headset the active media
+route again. The headset's route is the one Android had selected while BookWave measured its own track
+on that headset; names are never matched. No request is made during a call, without both Nearby devices
+permissions, or when that route is absent or already selected. The transfer moves all media on the phone.
+It never presses Play, changes output intent or touches focus: the existing route wait and muted
+actual-track proof still decide the resume. Release and benchmark builds bind a no-op and do not declare
+`BLUETOOTH_SCAN`. This supersedes the "not approval for automatic route take-back" sentence in the
+2026-11-15 entry for debug builds only; shipping it needs a further decision on the scan permission.
+The short return claim also now waits for the inventory to change, or 0.3 seconds, before probing.
+[Implementation and acceptance](testing/2026-11-16-car-bluetooth-inferred-arrival.md). Hardware
+acceptance pending.
+
+**2026-11-16 owner refinement (car-Bluetooth inferred arrival).** Android Auto was measured requesting
+audio focus three or more seconds before its controller binds, and the car's hands-free Bluetooth link
+about ten seconds before that request. A car-class hands-free link (Bluetooth device class car audio)
+connected within the last 30 seconds may therefore stand in for the Auto boundary, for one arrival, when
+Media3 reports focus loss for a trusted, verified, playing headset and Android's audio mode is normal.
+BookWave then waits 0.5 seconds for Auto's burst of focus requests to pass and uses the existing route
+wait and muted actual-track proof. A ringing or active call blocks the inference. The original 30-second
+deadline, three-claim budget and exact-headset rule are unchanged; an inferred Play taken straight back
+may use the existing retry before the bind. Pause, Stop, seek, output/book/profile change and teardown
+retain precedence. Without Nearby devices access the window never opens and the Auto-boundary behavior
+below applies. This is an inference, not car identity: another media app started in the same window
+would lose focus back to BookWave. The owner accepted a short interruption and declined requiring users
+to disable the car's media audio. Media3 retains focus ownership; no scan, extra track or permission.
+[Implementation and acceptance](testing/2026-11-16-car-bluetooth-inferred-arrival.md). Hardware
+acceptance pending.
+
+**2026-11-16 owner refinement (measured other route).** A playing track measured on another route no
+longer clears the verified headset at once. It is treated as part of a safety pause or focus loss that
+follows within two seconds, and as a real route move otherwise. Repeated samples cannot extend the two
+seconds. Recorded after APK 2273 recovered on hardware; that run did not prove the grace was needed.
+
+**2026-11-15 owner refinement (manual diagnostic experiment).** The owner approved the proposed
+diagnostic system-route spike after review of PR #307's hardware findings. Debug builds may declare
+`BLUETOOTH_SCAN` with `neverForLocation`, requesting it with `BLUETOOTH_CONNECT` only when explicitly
+enabling the Audio Route Lab experiment. No discovery, active scanning or location access is permitted.
+An explicit per-route action may request a system-wide Bluetooth media transfer, with one request per
+enabled session, normal audio mode required, and callback/timeout diagnostics using process-local aliases.
+The permission and transfer adapter are absent from release and benchmark builds. This is not approval
+for automatic route take-back or early automatic Play inferred from car Bluetooth connectivity.
+See [procedure and limitations](testing/2026-11-15-system-route-experiment.md). Hardware acceptance pending.
+
 **2026-11-13 owner refinement (interrupted arrival Play).** After an automatic arrival Play was
 issued but before exact-track and active-playback confirmation, a subsequent Media3 focus-loss
 observation may authorize another attempt while Auto is positively connected. Retain the original

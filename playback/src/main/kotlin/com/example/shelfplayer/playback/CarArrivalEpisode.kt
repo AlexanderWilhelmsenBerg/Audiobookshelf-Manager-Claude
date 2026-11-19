@@ -33,6 +33,11 @@ internal data class CarArrivalEpisode(
 ) {
     val issuedTarget: CarArrivalResumeGate.Target? get() = attempts.issuedTarget
     val unconfirmedTarget: CarArrivalResumeGate.Target? get() = issuedTarget.takeUnless { attempts.confirmed }
+
+    /** Open, for this exact identity, and no automatic Play claimed yet. */
+    fun awaitsFirstClaim(candidate: CarContinuityIdentity?): Boolean =
+        !closed && identity == candidate && issuedTarget == null
+
     val blocksNoisyRetry: Boolean get() = attempts.hasUnconfirmedPlay || unconfirmedTarget?.retryAfterFocusLoss == true
 
     fun rearm(
@@ -43,7 +48,9 @@ internal data class CarArrivalEpisode(
         carConnected: Boolean,
         trusted: (String) -> Boolean,
     ): CarArrivalResumeGate.Target? {
-        if (!carConnected || !identity.matches(headsetId, generation, sequence)) return null
+        // A confirmed inferred arrival can lose its route again before the real Auto bind.
+        val arrived = carConnected || attempts.inferredArrival
+        if (!arrived || !identity.matches(headsetId, generation, sequence)) return null
         if (!mayRepeat(at) || !trusted(identity.outputId)) return null
         return issueTarget()
     }
@@ -59,18 +66,23 @@ internal data class CarArrivalEpisode(
         carConnected: Boolean,
         trusted: (String) -> Boolean,
     ): CarArrivalResumeGate.Target? {
-        if (!carConnected || !identity.matches(headsetId, generation, sequence)) return null
+        // An inferred arrival already stood in for the boundary; its interrupted Play may use the budget.
+        val arrived = carConnected || attempts.inferredArrival
+        if (!arrived || !identity.matches(headsetId, generation, sequence)) return null
         if (closed || !withinLifetime(at)) return null
         if (!attempts.hasUnconfirmedPlay || !attempts.canClaim || !trusted(identity.outputId)) return null
         return issueTarget(retryAfterFocusLoss = true)
     }
 
-    fun issueTarget(retryAfterFocusLoss: Boolean = false): CarArrivalResumeGate.Target =
-        identity.target(CarArrivalResumeGate.Phase.Arrival, deadline).copy(
-            episodeId = id,
-            attemptOrdinal = attempts.nextAttemptOrdinal,
-            retryAfterFocusLoss = retryAfterFocusLoss,
-        ).also(attempts::issue)
+    fun issueTarget(
+        retryAfterFocusLoss: Boolean = false,
+        inferredArrival: Boolean = false,
+    ): CarArrivalResumeGate.Target = identity.target(CarArrivalResumeGate.Phase.Arrival, deadline).copy(
+        episodeId = id,
+        attemptOrdinal = attempts.nextAttemptOrdinal,
+        retryAfterFocusLoss = retryAfterFocusLoss,
+        inferredArrival = inferredArrival,
+    ).also(attempts::issue)
 
     fun startingEarlier(identity: CarContinuityIdentity, at: Duration, window: Duration): CarArrivalEpisode? {
         if (closed || this.identity != identity) return null

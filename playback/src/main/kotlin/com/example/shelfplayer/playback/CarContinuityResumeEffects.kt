@@ -8,9 +8,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -38,8 +40,10 @@ internal class CarContinuityResumeEffects(
     private var pending: Job? = null
     private var pendingTarget: CarArrivalResumeGate.Target? = null
 
+    /** A queued retry or inferred-arrival settle belongs to its focus loss; a duplicate callback keeps it. */
     fun hasPendingFocusRetry(): Boolean = pending?.isActive == true && pendingTarget?.let {
-        it.retryAfterFocusLoss && recovery.isCurrent(it, owner.currentGeneration, selectionSequence())
+        (it.retryAfterFocusLoss || it.inferredArrival) &&
+            recovery.isCurrent(it, owner.currentGeneration, selectionSequence())
     } == true
 
     fun onArrival(decision: CarArrivalResumeGate.Decision?) = scheduleBoundary(decision, preserveHeadset = true)
@@ -53,7 +57,8 @@ internal class CarContinuityResumeEffects(
             return
         }
         if (pending?.isActive == true && pendingTarget === target) return
-        launchWork(target) { recoverAndResume(target) }
+        val inventory = inventoryIds()
+        launchWork(target) { recoverAndResume(target, inventory) }
     }
 
     /** New listener/book/session intent stops suspended work immediately, without clearing a successor's claim. */
@@ -214,7 +219,20 @@ internal class CarContinuityResumeEffects(
             selectionSequence(),
         )
 
-    suspend fun recoverAndResume(target: CarArrivalResumeGate.Target) {
+    private fun inventoryIds(): Set<String> = outputs.outputs.value.mapTo(mutableSetOf()) { it.id }
+
+    /**
+     * APK 2277 issued the short return Play 32 ms after the safety pause, while the displaced headset was
+     * still listed, and the muted track went to the car's Bluetooth output. Let the inventory catch up with
+     * the route change first: proceed on its next membership change, or after a short bound when none comes.
+     */
+    private suspend fun awaitInventoryAfterSafetyPause(claimed: Set<String>) {
+        withTimeoutOrNull(HEADSET_RETURN_INVENTORY_SETTLE) {
+            outputs.outputs.first { rows -> rows.mapTo(mutableSetOf()) { it.id } != claimed }
+        }
+    }
+
+    suspend fun recoverAndResume(target: CarArrivalResumeGate.Target, claimedInventory: Set<String>? = null) {
         // Media3 can hold playWhenReady=true while temporarily suppressing audible playback.
         // It owns focus restoration in that state; issuing another Play or reasserting the output
         // would only disturb a player that is already committed to continuing.
@@ -232,6 +250,16 @@ internal class CarContinuityResumeEffects(
                     ),
                 )
                 delay(backoff)
+                if (!recovery.isCurrent(target, owner.currentGeneration, selectionSequence())) return
+            }
+            if (target.phase == CarArrivalResumeGate.Phase.HeadsetReturn && claimedInventory != null) {
+                awaitInventoryAfterSafetyPause(claimedInventory)
+                if (!recovery.isCurrent(target, owner.currentGeneration, selectionSequence())) return
+            }
+            if (target.inferredArrival) {
+                // Android Auto was measured requesting focus two or three times within 0.3 s as projection
+                // starts. Let that burst pass, or the first Play is taken straight back.
+                delay(INFERRED_ARRIVAL_SETTLE)
                 if (!recovery.isCurrent(target, owner.currentGeneration, selectionSequence())) return
             }
             if (currentPlayer()?.playWhenReady == true) {
@@ -336,4 +364,12 @@ internal class CarContinuityResumeEffects(
      * allow-listed fields through this callback, never owning a second diagnostic timeline.
      */
     private fun log(message: String, fields: List<LogField> = emptyList()) = trace(message, fields)
+
+    internal companion object {
+        /** Measured burst was 46 ms and 256 ms wide; this is the only wait added before an inferred resume. */
+        val INFERRED_ARRIVAL_SETTLE = 500.milliseconds
+
+        /** The inventory followed the route change by 56 ms on hardware; this bounds the wait for it. */
+        val HEADSET_RETURN_INVENTORY_SETTLE = 300.milliseconds
+    }
 }

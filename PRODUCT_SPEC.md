@@ -126,6 +126,8 @@ The application must be **offline-first**. Room is the application’s canonical
 - Supporting arbitrary media servers.
 - Full parity with the Audiobookshelf web administration interface.
 - Background Bluetooth scanning for nearby devices.
+- The owner-approved debug system-route experiment may request the scan permission without scanning,
+  solely for explicit system Bluetooth media transfers in Audio Route Lab (PD-009, 2026-11-15).
 - Circumventing Android background-execution or media-playback restrictions.
 - Persisting user passwords after login.
 
@@ -386,6 +388,12 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 
 ### PLAY-002 Audio focus and route handling
 
+- The debug-only system headset take-back experiment may wait for route callbacks when the remembered
+  destination is absent or already selected despite actual output disagreement. It retains the original
+  car-link deadline and permits at most one transfer invocation per link. New listener/content intent,
+  disconnect, expiry, calls and permission loss prevent delayed transfer. System selection is not
+  physical output proof; association learning requires positive car absence (PD-009, 2026-11-17).
+
 **Acceptance criteria**
 - The player requests audio focus through Media3.
 - A transient focus loss pauses or ducks according to setting; default is pause.
@@ -401,7 +409,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   callbacks. A noisy notification during the same gap may retain only the unconsumed claim; focus loss,
   listener cancellation and lost identity revoke the short attempt.
   Otherwise it retains prior heard intent for the existing bounded car-continuity decision; it is not
-  listener Pause. Within a confirmed car-arrival episode, a distinct interruption after verified same-headset playback
+  listener Pause. Within a qualified car-arrival episode, including an inferred arrival whose exact headset
+  route and active playback were confirmed before Auto binds, a distinct interruption after verified same-headset playback
   may use a remaining claim, up to three total and within the original 30-second absolute deadline.
   Duplicate callbacks and unproven attempts cannot rearm recovery. Listener Pause and newer
   selection/book/profile/player context still invalidate recovery.
