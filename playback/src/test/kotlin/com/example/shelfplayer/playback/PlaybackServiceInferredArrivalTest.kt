@@ -192,7 +192,7 @@ class PlaybackServiceInferredArrivalTest {
     }
 }
 
-private fun PlaybackServiceCommandContinuityFixture.publishPolicyHeadsetRoute(withUnmappedCar: Boolean = false) {
+internal fun PlaybackServiceCommandContinuityFixture.publishPolicyHeadsetRoute(withUnmappedCar: Boolean = false) {
     reportedIsPlaying = false
     val router = service.audioOutputs
     router.currentTrackObservation = { null }

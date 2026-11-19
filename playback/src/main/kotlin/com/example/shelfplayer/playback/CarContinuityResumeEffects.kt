@@ -159,6 +159,7 @@ internal class CarContinuityResumeEffects(
     }
 
     private suspend fun recoverCarContinuityHeadset(target: CarArrivalResumeGate.Target): String? {
+        val canProbe: (String) -> Boolean = { id -> canProbeRecoveryTarget(target, id) }
         val held = recovery.secure(
             target = target,
             outputs = outputs.outputs,
@@ -166,7 +167,7 @@ internal class CarContinuityResumeEffects(
             currentGeneration = { owner.currentGeneration },
             selectionSequence = selectionSequence,
             measured = outputs::isMeasuredHeadset,
-            canProbe = outputs::canProbeHeldHeadset,
+            canProbe = canProbe,
             onEvent = { event -> logCarContinuityRouteEvent(target, event) },
             reassert = outputs::reassert,
         )
@@ -186,7 +187,7 @@ internal class CarContinuityResumeEffects(
                     target,
                     owner.currentGeneration,
                     selectionSequence(),
-                ) && outputs.canProbeHeldHeadset(target.outputId)
+                ) && canProbe(target.outputId)
             ) {
                 log("Car lifecycle will verify original headset silently")
                 return target.outputId
@@ -195,6 +196,14 @@ internal class CarContinuityResumeEffects(
             return null
         }
         return held
+    }
+
+    private fun canProbeRecoveryTarget(target: CarArrivalResumeGate.Target, id: String): Boolean {
+        val afterConfirmedLoss = target.phase == CarArrivalResumeGate.Phase.Arrival &&
+            target.attemptOrdinal > 1 && !target.retryAfterFocusLoss
+        // A repeated safety loss may leave the old headset listed while Android routes to the car mix.
+        // Keep the same claim waiting for the exact headset. Only the silent AudioTrack probe can unmute.
+        return outputs.canProbeHeldHeadset(id) && (!afterConfirmedLoss || outputs.localOutputs.predictsOnly(id))
     }
 
     fun logHeldHeadset(hold: String, phase: CarArrivalResumeGate.Phase? = null) {

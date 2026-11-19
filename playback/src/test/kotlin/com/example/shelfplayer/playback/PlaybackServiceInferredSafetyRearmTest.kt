@@ -26,6 +26,28 @@ import kotlin.time.Duration.Companion.seconds
 @Config(sdk = [34])
 class PlaybackServiceInferredSafetyRearmTest {
     @Test
+    fun `second arrival recovery waits out the car mix even while the old headset is listed`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { f ->
+            startAttempt(f, confirm = true)
+            f.connectCarSession()
+            f.publishPolicyHeadsetRoute(withUnmappedCar = true)
+            assertTrue(f.pauseForSafetyThroughService())
+            runCurrent()
+
+            assertEquals(1, f.rawPlayCalls, "Do not spend the existing retry on the transient car mix")
+            assertEquals(2, f.pendingEffectsTarget()?.attemptOrdinal)
+            f.publishPolicyHeadsetRoute()
+            advanceTimeBy(51)
+            runCurrent()
+
+            assertEquals(2, f.rawPlayCalls)
+            assertTrue(f.isRouteMuted(), "Policy permission to probe cannot unmute playback")
+            f.returnMeasuredHeadset()
+            f.observeAudibleServiceRoute()
+        }
+    }
+
+    @Test
     fun `confirmed inferred playback can recover a second safety loss before or after Auto binds`() = runTest {
         for (bindFirst in listOf(false, true)) {
             PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { f ->
@@ -50,6 +72,7 @@ class PlaybackServiceInferredSafetyRearmTest {
                 f.connectCarSession()
                 runCurrent()
                 assertEquals(second, f.pendingEffectsTarget())
+                f.publishPolicyHeadsetRoute()
                 f.returnMeasuredHeadset()
                 runCurrent()
                 assertEquals(2, f.rawPlayCalls)
@@ -72,6 +95,7 @@ class PlaybackServiceInferredSafetyRearmTest {
                 assertEquals(ordinal, next.attemptOrdinal)
                 assertEquals(first.episodeId, next.episodeId)
                 assertEquals(first.deadline, next.deadline)
+                f.publishPolicyHeadsetRoute()
                 f.returnMeasuredHeadset()
                 runCurrent()
                 assertEquals(ordinal, f.rawPlayCalls)
