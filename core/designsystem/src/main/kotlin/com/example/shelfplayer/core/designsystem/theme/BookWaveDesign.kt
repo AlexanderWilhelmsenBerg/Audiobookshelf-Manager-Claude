@@ -22,7 +22,7 @@ enum class BookWaveDesign(
 
     fun bookTitle(style: TextStyle): TextStyle = when (this) {
         Editorial -> style.copy(fontFamily = FontFamily.Serif)
-        else -> style
+        Classic, Minimal -> style
     }
 }
 
