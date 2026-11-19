@@ -2,6 +2,7 @@ package com.example.shelfplayer.playback
 
 import android.net.Uri
 import android.os.Bundle
+import androidx.core.net.toUri
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaConstants
@@ -164,7 +165,7 @@ class AutoBrowseTreeTest {
             ): Uri {
                 firstArtwork.complete(Unit)
                 releaseArtwork.await()
-                return Uri.parse("content://fixture/${book.id.value}")
+                return "content://fixture/${book.id.value}".toUri()
             }
         }
         val logger = object : Logger {
@@ -204,7 +205,7 @@ class AutoBrowseTreeTest {
             runCurrent()
             assertEquals(listOf("Fresh series"), fresh.get().value.orEmpty().titles())
             assertEquals(
-                Uri.parse("content://fixture/fresh-book"),
+                "content://fixture/fresh-book".toUri(),
                 fresh.get().value?.single()?.mediaMetadata?.artworkUri,
             )
         } finally {
