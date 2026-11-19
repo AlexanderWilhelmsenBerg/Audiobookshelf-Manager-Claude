@@ -60,7 +60,12 @@ class LiveOutputEndpointRegistry @Inject constructor() {
 
     @Synchronized
     fun reconcile(observations: List<Observation>): List<Endpoint> {
-        val unique = observations.groupBy(Observation::platformId).filterValues { it.size == 1 }
+        val grouped = observations.groupBy(Observation::platformId)
+        grouped.filterValues { it.size != 1 }.forEach { (handle, duplicates) ->
+            duplicates.mapNotNull { it.identity }.forEach(retained::remove)
+            connected[handle]?.identity?.let(retained::remove)
+        }
+        val unique = grouped.filterValues { it.size == 1 }
         val ambiguous = observations.mapNotNull { it.identity }.groupingBy { it }.eachCount()
             .filterValues { it > 1 }.keys
         ambiguous.forEach(retained::remove)
@@ -99,6 +104,16 @@ class LiveOutputEndpointRegistry @Inject constructor() {
         connected[platformId]?.takeIf {
             it.type == type && it.productName == productName && it.identity == identity
         }
+
+    /** Only the current playing-track adapter may use this; it does not make an endpoint selectable. */
+    @Synchronized
+    internal fun retainedPlayingIdentity(observation: Observation): String? {
+        if (!identityAccess || observation.capability != BluetoothIdentityCapability.Verified) return null
+        val identity = observation.identity ?: return null
+        // A stale handle cannot borrow an identity that now has a live appearance, or replace its occupant.
+        if (observation.platformId in connected || connected.values.any { it.identity == identity }) return null
+        return retained[identity]
+    }
 
     @Synchronized
     fun clear() {

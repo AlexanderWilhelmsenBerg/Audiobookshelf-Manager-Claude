@@ -20,6 +20,46 @@ import kotlin.test.assertTrue
 @Config(sdk = [34])
 class OutputTransferTransactionTest {
     @Test
+    fun `inventory gap during explicit handoff stays muted and restores only after live target proof`() = runTest {
+        val fixture = MutedPositionEffectsTest.Fixture(this)
+        fixture.report(AudioTrackPath.RemoteSubmix)
+        fixture.router.select(fixture.outputId)
+        fixture.report(AudioTrackPath.RetainedEndpoint(fixture.outputId))
+        runCurrent()
+        assertEquals(0f, fixture.volume)
+        assertTrue(fixture.compensationOrigins.isEmpty())
+        assertEquals(0, fixture.plays)
+        fixture.rawPosition = 12_168L
+        fixture.report(AudioTrackPath.Endpoint(fixture.outputId))
+        runCurrent()
+        assertEquals(listOf(true), fixture.compensationOrigins)
+        fixture.deliver(0)
+        runCurrent()
+        fixture.rawPosition = 12_000L
+        fixture.deliver(1)
+        runCurrent()
+        assertEquals(1f, fixture.volume)
+        assertEquals(12_000L, fixture.rawPosition)
+        assertNull(fixture.activeProbe())
+    }
+
+    @Test
+    fun `listener Pause during retained target wait prevents late route proof from resuming`() = runTest {
+        val fixture = MutedPositionEffectsTest.Fixture(this)
+        fixture.report(AudioTrackPath.RemoteSubmix)
+        fixture.router.select(fixture.outputId)
+        fixture.report(AudioTrackPath.RetainedEndpoint(fixture.outputId))
+        runCurrent()
+        fixture.externalPause()
+        fixture.report(AudioTrackPath.Endpoint(fixture.outputId))
+        runCurrent()
+        assertFalse(fixture.playWhenReady)
+        assertNull(fixture.activeProbe())
+        assertEquals(0, fixture.plays)
+        assertEquals(12_000L, fixture.rawPosition)
+    }
+
+    @Test
     fun `transfer waits for destination before its only position restoration`() = runTest {
         val fixture = MutedPositionEffectsTest.Fixture(this)
         fixture.report(AudioTrackPath.RemoteSubmix)

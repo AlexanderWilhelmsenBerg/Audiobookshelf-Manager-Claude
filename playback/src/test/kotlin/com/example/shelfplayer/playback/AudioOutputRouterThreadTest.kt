@@ -804,10 +804,16 @@ internal data class Fixture(
         guard(id)
     }
 
-    fun observeEndpoint(platformId: Int, name: String = "Synthetic output"): LiveOutputEndpointRegistry.Endpoint {
+    fun observeEndpoint(
+        platformId: Int,
+        name: String = "Synthetic output",
+        identity: String? = null,
+    ): LiveOutputEndpointRegistry.Endpoint {
         val info = device(platformId, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, name)
         val endpoint = registry.reconcile(
-            listOf(LiveOutputEndpointRegistry.Observation(platformId, info.type, info.productName?.toString())),
+            listOf(
+                LiveOutputEndpointRegistry.Observation(platformId, info.type, info.productName?.toString(), identity),
+            ),
         ).single()
         AndroidLocalOutputAdapter::class.java.getDeclaredField("live").apply {
             isAccessible = true

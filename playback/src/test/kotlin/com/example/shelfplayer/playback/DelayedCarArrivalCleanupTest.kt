@@ -15,37 +15,71 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
-/** PLAY-002 / #277: characterization of the cleanup/recovery seam, not no-pause acceptance. */
+/** PLAY-002 / #277: cleanup must not erase a qualified interrupted headset episode. */
 @OptIn(ExperimentalCoroutinesApi::class)
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class DelayedCarArrivalCleanupTest {
     @Test
-    fun `known defect - pre-arrival NotConnected cleanup erases delayed recovery`() = runTest {
+    fun `prediction during interruption cannot reset expiry or revive deliberate Pause`() = runTest {
+        DelayedCarArrivalFixture(this).use { fixture ->
+            fixture.safetyPause()
+            fixture.advanceTo(5.seconds)
+            fixture.observeSpeakerPrediction()
+            fixture.interrupt(6.seconds, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
+            val target = assertNotNull(fixture.arrive(10.seconds).target)
+            assertEquals(30.seconds, target.deadline)
+            fixture.listenerPause()
+            fixture.observeSpeakerPrediction()
+            assertFalse(fixture.assess(target).mayPlay)
+        }
+    }
+
+    @Test
+    fun `three arrival departure cycles retain measured identity across speaker prediction gaps`() = runTest {
+        DelayedCarArrivalFixture(this).use { fixture ->
+            repeat(3) { cycle ->
+                val start = (cycle * 20).seconds
+                fixture.advanceTo(start)
+                fixture.projection(AndroidAutoProjectionMonitor.State.NotConnected)
+                fixture.observeSpeakerPrediction()
+                fixture.removeHeadset()
+                assertEquals(0L, fixture.selectionSequence, "prediction cannot turn cleanup into listener intent")
+                fixture.returnHeadset()
+                fixture.interrupt(start + 1.seconds, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
+                val target = assertNotNull(fixture.arrive(start + 3.seconds).target)
+                assertTrue(fixture.assess(target).mayPlay)
+                assertFalse(fixture.assess(target).mayPlay)
+                fixture.resumeMeasuredPlayback()
+                fixture.interrupt(start + 10.seconds, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
+                assertEquals(CarArrivalResumeGate.Status.Ready, fixture.depart(start + 11.seconds).status)
+                fixture.resumeMeasuredPlayback()
+            }
+        }
+    }
+
+    @Test
+    fun `pre-arrival NotConnected cleanup preserves bounded delayed recovery`() = runTest {
         DelayedCarArrivalFixture(this).use { fixture ->
             fixture.projection(AndroidAutoProjectionMonitor.State.NotConnected)
             fixture.safetyPause()
             assertEquals(0L, fixture.selectionSequence, "the safety pause itself is not newer selection intent")
 
             fixture.removeHeadset()
-            assertEquals(1L, fixture.selectionSequence, "automatic cleanup creates a selection without a listener")
-            assertEquals(OutputIntentOwner.Destination.Automatic, fixture.router.explicitSelection.value?.destination)
-            assertNull(fixture.router.selectedId.value)
+            assertEquals(0L, fixture.selectionSequence, "inventory cleanup must not invent listener selection intent")
+            assertEquals(fixture.endpointId, fixture.router.selectedId.value)
             fixture.returnHeadset()
-            assertEquals(
-                "NoFreshPlaybackAfterIntentReset",
-                fixture.interrupt(700.milliseconds, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY),
-            )
-            assertEquals(
-                "NoFreshPlaybackAfterIntentReset",
-                fixture.interrupt(5.seconds, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS),
-            )
+            fixture.interrupt(700.milliseconds, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY)
+            fixture.interrupt(5.seconds, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
 
             val arrival = fixture.arrive(10_600.milliseconds)
-            assertEquals(CarArrivalResumeGate.Status.Rejected, arrival.status)
-            assertEquals(CarArrivalResumeGate.Reason.NoPendingFocusLoss, arrival.reason)
-            assertNull(arrival.target)
+            assertEquals(CarArrivalResumeGate.Status.Ready, arrival.status)
+            val target = assertNotNull(arrival.target)
+            assertEquals(fixture.endpointId, target.outputId)
+            assertEquals(30.seconds, target.deadline)
+            assertTrue(fixture.assess(target).mayPlay)
+            assertFalse(fixture.assess(target).mayPlay)
             assertFalse(fixture.player.playWhenReady)
         }
     }

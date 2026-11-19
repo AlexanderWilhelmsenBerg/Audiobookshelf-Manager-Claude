@@ -1,7 +1,121 @@
 # Delayed Android Auto arrival: cleanup/recovery characterization
 
+## 2026-11-06 four-slice continuation (PR305)
+
+APK2259 at e8abc0b5 failed repeated physical arrival continuity despite green CI. Its second connection
+created a new selection during cleanup. The capture does not prove every causal callback, so the new
+regression reproduces a concrete production path: a speaker policy prediction replaces the live heard
+row before the safety pause. Baseline cleanup increments selection 0 to 1 and cancels recovery.
+
+1. Recovery now distinguishes actual non-headset evidence from policy prediction/unknown inventory.
+   Three arrival/departure cycles use real service listeners, router retirement and the one-shot gate.
+2. Router route events enforce safety explicitly; derived publication is passive. Inventory observation,
+   current-track callbacks and playback callbacks retain their independent safety entry points.
+3. The monitor can label fresh, exact Bluetooth track identity as RetainedEndpoint when no selectable
+   appearance exists. Only an already-owned playing, unmuted headset can use this evidence to continue.
+   The registry remains the identity owner; collisions/recycled handles/revocation retire authority.
+4. Explicit transfers keep the existing transaction. Retained identity cannot seek, release mute or
+   count as new destination proof. Tests cover eventual live proof and Pause while waiting.
+
+No second player/session/track, focus request, retry loop, permission or durable state owner is added.
+The existing optional Nearby devices grant is required for exact Bluetooth identity on Android 12+;
+address access needs API28+, and missing/redacted addresses retain fail-closed behavior. SDK34 synthetic
+tests cover the new path. API36 multi-sink classification remains exercised through the production
+classifier; real OEM routing and audio focus remain device acceptance. No ABS API/schema change.
+
+Repowise's initial branch lookup failed, but the subsequent refresh compared main f829f616 to be07e3f9:
+changed-code structural health was 8.96 to 8.88, with complexity findings in isMeasuredHeadset (11)
+and disconnectedOutputOrigin (9). These are maintainability findings, not runtime defect proof.
+jCodeMunch remains indexed at main; current branch source and callers were inspected directly.
+Repowise's inferred reach recommends the complete playback suite; no per-test coverage map is available.
+The full PR adds service callback wiring and teardown in e8abc0b5; be07e3f9 adds no service changes.
+Playback state, checkpoint, progress, sleep timer, profile and button attribution remain with their
+existing owners. Dual-book playback is deferred.
+
+The review cleanup separates retained-headset proof from live eligibility and makes the safety pause
+an explicit retirement stage. Post-pause and post-continuity-callback scope checks retain their original
+short-circuit order. No routing policy, state owner or test expectation changes. Existing interruption,
+newer-selection, inventory-gap and transfer regressions guard this behavior-preserving cleanup.
+Cleanup verification: formatter, strict verifyDebug and release playback tests passed on 2026-11-06.
+The initial Detekt return-count finding was corrected without a suppression or rule change.
+
+### Inventory-only lock revalidation
+
+The logic review reproduced a status defect at 9e5be960: repeated inventory callbacks marked an
+otherwise preserved lock Waiting. Equal output rows do not emit through StateFlow, so the service
+collector could not restore Active without an unrelated track/playback event. Inventory preservation
+now invokes the existing scoped lock verifier on the player dispatcher. It reads fresh proof instead
+of setting Active directly; newer intent, pending probes and invalid evidence keep their safeguards.
+Retained proof also leaves the guard's missing-endpoint flag and disappearance window intact; only
+live route proof can treat the endpoint as present again.
+The new inventory-only regression fails before the fix (expected Active, actual Waiting), repeats
+unchanged inventory without track callbacks, asserts no pause/preference/mute or selection changes,
+and then verifies a wrong route still pauses and leaves the target locked in Waiting.
+Final verification passed: formatter, strict verifyDebug and release playback tests; 2,968 debug/shared
+and 1,132 release playback tests, with zero failures/errors/skips. One earlier full run returned Refused
+instead of Verified in the existing real-Media3 explicit-transfer test. Its fixture has neither an
+inventory refresh nor an output lock and does not enter the changed paths. It passed unchanged in
+isolation and in the final full gate. The intermittent refusal is recorded, not diagnosed as fixed;
+neither the 50ms allowance nor test assertions were changed.
+
+### Real-Media3 failure diagnostics
+
+The integration fixture now records a bounded test-only trace (128 rows, 512 characters per event)
+and attaches it to the original failure before teardown. Find `Media3 transfer trace` in the failed
+JUnit XML/HTML report; CI already includes these reports in the `quality-reports` failure artifact.
+Successful runs do not print the trace. No production code, timer, permission or settling limit changes.
+
+The trace captures existing transfer-stage/completion logs, preparation/restore boundaries, seek
+callbacks, settling-refusal signed position delta, held/current positions, playback/mute/speed state,
+synthetic route proof and ownership generations. Message creation, playback-thread delivery/return,
+and subsequent main-thread preparation/restore events have independent virtual-ms and wall-us clocks.
+Creation is not an exact send timestamp; the real PlayerMessage is retained unchanged. Delivery
+callbacks record message metadata only and never query ExoPlayer from its playback thread.
+
+Some production paths still collapse to Refused without a distinct reason. The last stage, restoration
+result and snapshots are evidence, not an invented timeout diagnosis. A deterministic diagnostic test
+exercises the existing settling-refusal callback beyond 50ms; helper tests cover bounded history,
+independent clocks, field filtering and preserving the original failure when its snapshot is unavailable.
+Recording adds observational overhead and does not establish the cause of the original intermittent failure.
+
+Diagnostic validation: six focused tests passed. A temporary deliberate assertion failure in the real
+explicit-transfer test exported all three transfer stages, both message deliveries, positions and clocks
+in the JUnit report before teardown. The forced failure was removed before final verification. Its
+Robolectric queued-runnables warning also appeared after the deliberate failure, so that warning alone
+does not diagnose the original refusal. Formatter, strict verifyDebug and release playback tests passed:
+2,972 debug/shared tests and 1,136 release playback tests, zero failures/errors/skips. Initial static
+analysis findings were fixed using the existing clock abstraction and explicit missing-value formatting,
+without suppressions. This addition is test/documentation-only; APK2261's runtime remains unchanged.
+
+### Local software verification
+
+Formatter, strict `verifyDebug -Pshelfplayer.warningsAsErrors=true` and
+`:playback:testReleaseUnitTest` passed on 2026-11-06. Reports contain 2,967 debug/shared tests and
+1,131 release playback tests, with zero failures, errors or skips; 16 regressions were added.
+The three-cycle recovery test failed against e8abc0b5 with selection 0 unexpectedly becoming 1.
+Temporarily removing preservation and restoring transport effects in publication produced three
+expected failures: raw retained-track evidence, continuing through an inventory gap, and passive
+publication. All fixes were restored before the full gate. The final gate also covers output locks,
+wrong/unknown/multiple routes, permission/collision loss, newer selection/book/Pause, diagnostics off,
+one transfer restoration and the existing S01-S22/service/progress/sleep regression suites.
+Static-check findings in initial runs were fixed without suppressions or gate changes.
+
+### Device acceptance for the next debug APK
+
+Clear diagnostics before testing. With one headset and Nearby devices enabled, perform three complete
+Auto connection/departure cycles while playing. Measure audible gaps, then test headset Play, dashboard
+Play, headset Play and both output icons. No skipped/jumbled narration or speaker spill is acceptable.
+Repeat with diagnostics disabled; reconnect while deliberately paused and verify no automatic start.
+Test real headset removal/replacement outside Auto and a normal notification/focus interruption.
+Export promptly after any failure and record the APK version. Under one second remains the owner's
+latency target; software route timestamps do not establish audible acceptance. Do not merge for green CI
+alone. Exact SHA, CI and APK results are recorded on PR305 after verification.
+
+## Earlier baseline and first cleanup correction
+
 Requirements: PLAY-002, ROUTE-001; issue #277; baseline `04186e447fc75d2e19c2068661117be4a0793104`.
-This is a tests-only investigation. It changes no playback behavior and does not close hardware acceptance.
+The baseline investigation was tests-only. The subsequent bounded cleanup fix is described below;
+physical acceptance and avoiding the initial pause remain open.
 
 ## Reproduction boundary
 
@@ -32,11 +146,10 @@ a sufficient cause in the production logic; the export alone does not identify t
 - Existing `DisconnectedHeadsetSelectionTest` protects ordinary replacement, locks, refusal and races.
 - Existing transfer/probe tests protect wrong-output verification, cancellation and position restoration.
 
-The test named `known defect - pre-arrival NotConnected cleanup erases delayed recovery` deliberately
-characterizes the current failure. Its green result is **not** acceptance of that behavior. A later fix
-must replace this expectation with successful bounded recovery while retaining the cancellation controls.
-Temporarily requiring `Ready` at the same arrival boundary is the red acceptance probe; restore the
-characterization afterward, without changing production code or disabling any tests.
+At the baseline, `known defect - pre-arrival NotConnected cleanup erases delayed recovery` deliberately
+characterized the failure. Requiring `Ready` instead produced the expected failing acceptance probe.
+The follow-up replaces this expectation with successful bounded recovery, retaining all cancellation
+controls. The updated regression also failed on unchanged production code before the fix was applied.
 
 `AudioTrackRouteQueryTest` also exercises an unchanged, playing AudioTrack that still reports its sink
 while that device is absent from the registry. The production observation becomes `Unresolved`, with
@@ -52,7 +165,7 @@ the initial pause separately with actual route/focus observations. Hardware acce
 headset/car button and dashboard switching, ordinary headset replacement, deliberate Pause, and car
 arrival both while playing and while paused. Neither a passing suite nor these fixtures prove no silence.
 
-## Validation
+## Baseline validation
 
 - The temporary acceptance probe failed exactly once among the six cleanup tests:
   `expected:<Ready> but was:<Rejected>`. No production edit was needed to reproduce it.
@@ -62,3 +175,39 @@ arrival both while playing and while paused. Neither a passing suite nor these f
   the playback suite ran. This includes six cleanup tests, 14 AudioTrack route-query tests, and the
   existing 11 disconnected-headset-selection tests. Seven tests were added in total.
 - `git diff --check` passed; no production-source changes. No device/DHU acceptance was performed.
+
+## Bounded cleanup fix and next device test
+
+Inventory-driven retirement now consults the existing recovery gate before and after its safety pause.
+The second check matters: the real synchronous Media3 pause callback can create the qualified episode.
+Only the same trusted headset, book generation and selection can be retained, within the existing
+30-second absolute deadline. Repeated inventory callbacks do not extend it. No second timer or owner
+is added. Expiry permits cleanup on the next inventory callback; it never issues Play.
+
+Deliberate Play preparation still follows the ordinary retirement path immediately when Auto is positively
+absent. Existing explicit locks, active/unknown Auto and pending route verification remain protected.
+The new tests cover this escape path, exact expiry, identity revocation and the synchronous pause race.
+
+The first pause is deliberately still fail-closed. A new privacy-safe event, `Missing headset before
+route-safety handling`, records `trackBeforePause` before retirement or its fallback pause. It reports
+the current raw AudioTrack route using process-local device aliases/types, or no-track/paused/query-failed/
+replacement evidence. This is diagnostic information only: an unmapped raw sink still cannot authorize
+audible playback. The observer rejects evidence if its track changes during the query.
+
+For hardware comparison, keep the release baseline from main `f829f616` and test the branch debug APK:
+
+1. Clear diagnostics, start headset audio, then connect Android Auto without pressing transport controls.
+2. Record whether it stayed audible, briefly paused and recovered, or stayed paused; export promptly.
+3. Repeat headset Pause/Play, car Pause/Play, then headset Pause/Play and both dashboard output icons.
+4. With Auto disconnected, replace the headset and press Play without manually choosing the new headset.
+5. Connect Auto while deliberately paused; it must remain paused. Repeat a true headset disconnection.
+
+The next no-pause decision uses the new pre-pause track evidence. A raw sink still reported during an
+inventory gap is a lead, not proof of physical audibility. Actual route loss or Media3 focus loss still
+requires safe interruption; this patch does not claim zero silence or successful hardware acceptance.
+
+Implementation validation: the strengthened recovery regression failed on the unmodified baseline, then
+passed with the fix. Formatter and strict `verifyDebug` passed, as did `:playback:testReleaseUnitTest`.
+Debug/shared reports contain 2,951 tests; release playback contains 1,115 tests, all with zero
+failures/errors/skips. Six tests were added, including a newer-selection reentrancy control. Format and
+verification were run separately after the initial combined invocation raced on line-length analysis.

@@ -24,6 +24,7 @@ internal object OutputTargetProof {
             is AudioTrackPath.Endpoint -> endpointProof(request, path, targets)
             AudioTrackPath.RemoteSubmix -> projectionProof(request, targets.projection)
             AudioTrackPath.Unresolved -> null
+            is AudioTrackPath.RetainedEndpoint -> null
             AudioTrackPath.Multiple -> MutedProbeCompletion.Refused
         }
     }

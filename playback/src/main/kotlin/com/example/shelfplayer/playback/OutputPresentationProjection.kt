@@ -45,6 +45,7 @@ internal object OutputPresentationProjection {
         is AudioTrackPath.Endpoint -> if (measured != null) OutputMeasurement.Endpoint else OutputMeasurement.Unresolved
         AudioTrackPath.RemoteSubmix -> OutputMeasurement.RemoteSubmix
         AudioTrackPath.Unresolved -> OutputMeasurement.Unresolved
+        is AudioTrackPath.RetainedEndpoint -> OutputMeasurement.Unresolved
         AudioTrackPath.Multiple -> OutputMeasurement.Multiple
         null -> OutputMeasurement.Unavailable
     }

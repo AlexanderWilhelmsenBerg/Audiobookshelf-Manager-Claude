@@ -21,6 +21,23 @@ import kotlin.test.assertTrue
 @Config(sdk = [34])
 class DisconnectedHeadsetSelectionTest {
     @Test
+    fun `new selection during the continuity query cannot be overwritten by retirement`() = runTest {
+        val fixture = fixture()
+        fixture.guard("departed", connected = false)
+        fixture.router.confirmedCarAbsent = { true }
+        var queries = 0
+        fixture.router.retainsInterruptedHeadset = {
+            queries++
+            if (queries == 2) fixture.router.outputIntentOwner.select(null, OutputIntentOwner.Destination.Car)
+            false
+        }
+        assertFalse(fixture.router.handoffs.retireDisconnectedOutput("departed", preserveContinuity = true))
+        assertEquals(2, queries)
+        assertEquals(OutputIntentOwner.Destination.Car, fixture.router.explicitSelection.value?.destination)
+        assertEquals(emptyList(), fixture.preferredRequests)
+    }
+
+    @Test
     fun `disconnect retires unlocked choice and guard before releasing preference without autoplay`() = runTest {
         val fixture = fixture()
         fixture.adoptGuard("departed")

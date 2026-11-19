@@ -412,6 +412,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   positive car-absence evidence and no controller or retained projection ownership. Pause before clearing
   the native preference; a later deliberate Play follows normal routing. Unknown/active Auto, pending
   route verification and newer intent retain protection. This does not infer a replacement's button identity.
+- Inventory cleanup also retains an already qualified interrupted-headset episode until its existing
+  absolute deadline. This is not a new timer or permission to Play. Outside Auto, deliberate Play may
+  still release the disconnected selection immediately; listener cancellation and identity loss win.
 - Explicit destination changes mute before preference effects and commit only with current target-specific
   AudioTrack proof. The prior lock remains recovery context until success; failed or unknown output stays
   safely paused. Car projection delegation must be distinguished from proof of a physical car speaker.

@@ -87,6 +87,14 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     /** Used only in memory by the route safety guard. Never exported without diagnostic opt-in. */
     var onRouteChanged: (() -> Unit)? = null
 
+    /** Diagnostic only: raw sink aliases survive inventory gaps but never authorize playback. */
+    fun currentRouteDiagnostic(): String {
+        val token = epoch.nextSnapshot()
+        val track = active ?: return "no-current-track"
+        val evidence = runCatching { routeEvidence(track) }.getOrDefault("route-query-failed")
+        return if (isCurrent(track, token)) evidence else "track-replaced-during-query"
+    }
+
     /** Mapped sinks only; an unregistered path is never turned into an endpoint identity. */
     fun currentRouteIds(): Set<String>? = currentRouteObservation()?.path?.let { path ->
         if (path is AudioTrackPath.Endpoint) setOf(path.id) else emptySet()
@@ -124,8 +132,11 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         else -> {
             val route = routes.single()
             endpointRegistry.updateIdentityAccess(context.hasBluetoothIdentityAccess())
-            val matched = endpointRegistry.find(route)
-            matched?.let { AudioTrackPath.Endpoint(it.id) } ?: AudioTrackPath.Unresolved
+            val seen = endpointRegistry.observationOf(route)
+            val matched = endpointRegistry.find(seen.platformId, seen.type, seen.productName, seen.identity)
+            matched?.let { AudioTrackPath.Endpoint(it.id) }
+                ?: endpointRegistry.retainedPlayingIdentity(seen)?.let(AudioTrackPath::RetainedEndpoint)
+                ?: AudioTrackPath.Unresolved
         }
     }
 

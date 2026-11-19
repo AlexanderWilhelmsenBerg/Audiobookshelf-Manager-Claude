@@ -6,6 +6,11 @@ internal data class AudioTrackObservation(val observerEpoch: Long, val path: Aud
 internal sealed interface AudioTrackPath {
     data class Endpoint(val id: String) : AudioTrackPath
 
+    /** Fresh exact Bluetooth identity on the playing track, absent from selectable inventory.
+     * May preserve an already-owned audible route; never authorizes transfer, probe release or Play.
+     */
+    data class RetainedEndpoint(val id: String) : AudioTrackPath
+
     /** A platform submix path. Only positive current projection context can authorize Auto delegation. */
     data object RemoteSubmix : AudioTrackPath
 
