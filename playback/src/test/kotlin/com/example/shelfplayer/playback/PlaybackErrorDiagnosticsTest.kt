@@ -5,6 +5,7 @@ import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.util.StuckPlayerException
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.mediacodec.MediaCodecDecoderException
@@ -20,6 +21,18 @@ import kotlin.test.assertTrue
 @RunWith(RobolectricTestRunner::class)
 @OptIn(UnstableApi::class)
 class PlaybackErrorDiagnosticsTest {
+    @Test
+    fun `stuck player subtype and timeout survive generic illegal state classification`() {
+        val error = ExoPlaybackException.createForUnexpected(
+            StuckPlayerException(StuckPlayerException.STUCK_PLAYING_NO_PROGRESS, 10_000),
+            PlaybackException.ERROR_CODE_TIMEOUT,
+        )
+        val fields = PlaybackErrorDiagnostics.fields(error)
+        assertEquals("StuckPlayerException", fields.value("cause1Type"))
+        assertEquals("PlayingNoProgress", fields.value("cause1StuckType"))
+        assertEquals(10_000L, (fields.single { it.key == "cause1Timeout" } as LogField.Millis).value)
+    }
+
     @Test
     fun `renderer and decoder fields exclude private messages names and format metadata`() {
         val codec = MediaCodecInfo.newInstance(

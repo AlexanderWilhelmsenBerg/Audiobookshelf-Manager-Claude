@@ -28,6 +28,7 @@ internal class CarBluetoothArrivalMonitor(
     private val context: Context,
     private val window: CarBluetoothArrivalWindow,
     private val logger: Logger,
+    private val onCarLink: () -> Unit = {},
 ) {
     private var registered = false
 
@@ -92,6 +93,7 @@ internal class CarBluetoothArrivalMonitor(
 
             state == BluetoothProfile.STATE_CONNECTED && deviceClass == BluetoothClass.Device.AUDIO_VIDEO_CAR_AUDIO -> {
                 window.onCarHandsFreeConnected(peer)
+                onCarLink()
                 logger.info(
                     LogCategory.AndroidAuto,
                     "Car-class hands-free link connected; arrival window opened",

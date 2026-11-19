@@ -2,6 +2,7 @@ package com.example.shelfplayer.feature.settings
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
@@ -36,9 +37,6 @@ class UnifiedDiagnosticsViewModel @Inject constructor(
 
     val active: StateFlow<Boolean> = capture.active
     val labState = lab.state
-    val classifierState = classifier.state
-    val raceState = logs.raceCapture
-
     fun start() {
         capture.start()
     }
@@ -46,6 +44,10 @@ class UnifiedDiagnosticsViewModel @Inject constructor(
     fun stop() {
         capture.stop()
     }
+
+    fun mark(action: String) = lab.mark(action)
+
+    fun heardAt(destination: String) = lab.heardAt(destination)
 
     fun clear() {
         if (!capture.beginClear()) return
@@ -71,14 +73,19 @@ class UnifiedDiagnosticsViewModel @Inject constructor(
         }.isSuccess
     }
 
-    fun jsonReport(build: String, debugConsoleReport: String): String = UnifiedDiagnosticsJson.build(
+    fun jsonReport(build: String): String = UnifiedDiagnosticsJson.build(
         build = build,
-        active = capture.active.value,
-        lab = lab.state.value,
-        classifier = classifier.state.value,
-        eventLog = logs.events.value,
-        race = logs.raceCapture.value,
-        debugConsole = debugConsoleReport,
+        environment = UnifiedDiagnosticsJson.Environment(
+            Build.VERSION.SDK_INT,
+            context.applicationInfo.targetSdkVersion,
+        ),
+        snapshot = UnifiedDiagnosticsJson.Snapshot(
+            recording = capture.active.value,
+            lab = lab.state.value,
+            classifier = classifier.state.value,
+            events = logs.events.value,
+            previousCrash = crashes.report.value,
+        ),
     )
 }
 

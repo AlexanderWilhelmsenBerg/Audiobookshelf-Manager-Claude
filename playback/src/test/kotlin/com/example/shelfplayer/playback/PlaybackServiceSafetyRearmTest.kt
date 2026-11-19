@@ -152,6 +152,7 @@ class PlaybackServiceSafetyRearmTest {
             assertEquals(2, repeated.attemptOrdinal)
             assertEquals(recovery.episodeId, repeated.episodeId)
 
+            fixture.publishPolicyHeadsetRoute()
             fixture.returnMeasuredHeadset()
             runCurrent()
             assertEquals(2, fixture.rawPlayCalls, "the service effects must issue the second claimed Play")

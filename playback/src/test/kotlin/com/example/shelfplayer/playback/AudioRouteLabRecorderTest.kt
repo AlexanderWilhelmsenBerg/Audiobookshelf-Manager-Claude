@@ -39,7 +39,6 @@ class AudioRouteLabRecorderTest {
 
     @Before
     fun resetCapture() {
-        context.getSharedPreferences("audio-route-lab", Context.MODE_PRIVATE).edit { clear() }
         File(context.noBackupFilesDir, "audio-route-lab.txt").delete()
         File(context.noBackupFilesDir, "audio-route-lab.txt.bak").delete()
     }
@@ -167,7 +166,31 @@ class AudioRouteLabRecorderTest {
         capture.start()
         assertTrue(capture.active.value, "capture can start again after clear completion")
         assertTrue(classifier.state.value.entries.any { "system-audio" in it }, "Unified capture must reach the probe")
+        assertTrue(
+            lab.systemIncidentContext(clock.now()).any {
+                "system-audio" in it
+            },
+            "Pinned stalls need the real probe context",
+        )
+        log.write(LogLevel.Info, "AndroidAuto", "MediaSession transport request observed requested=Pause")
+        assertTrue(capture.beginClear())
+        capture.clearAndAwait()
+        capture.finishClear()
+        assertTrue(capture.active.value, "Clear must preserve the active recording")
+        assertTrue(lab.state.value.recording)
+        assertTrue(classifier.state.value.recording)
+        assertTrue(classifier.state.value.entries.isEmpty())
+        log.write(LogLevel.Info, "AndroidAuto", "MediaSession transport request observed requested=Play")
+        runCurrent()
+        val commands = lab.state.value.entries.filter { "transport-intent" in it }
+        assertEquals(1, commands.size)
+        assertTrue("requested=Play" in commands.single())
+
         capture.stop()
+        assertTrue(
+            lab.systemIncidentContext(clock.now()).isEmpty(),
+            "Stopping capture releases the probe context supplier",
+        )
         runCurrent()
         capture.clearAndAwait()
         assertTrue(classifier.state.value.entries.isEmpty(), "Clear all must remove system probe evidence too")
@@ -201,19 +224,15 @@ class AudioRouteLabRecorderTest {
         assertTrue(lab.state.value.entries.isEmpty())
 
         lab.start()
-        // The existing provider was created before recording; it emitted no diagnostic event.
-        assertTrue(lab.state.value.reportStatus.contains("Awaiting next player creation"))
-        val recordedProvider = requireNotNull(monitor.providerForPlayer())
+        // The existing provider remains installed when recording changes.
         assertTrue(lab.state.value.reportStatus.contains("Installed"))
-        // Constructing/releasing the delegate creates no extra playback track.
-        recordedProvider.release()
         provider.release()
         lab.stop()
         runCurrent()
     }
 
     @Test
-    fun `recording activated after a player creation waits for the next provider decision`() = runTest {
+    fun `recording and clear retain an already installed track observer`() = runTest {
         val clock = object : AppClock {
             override fun now(): Instant = Instant.now()
             override fun elapsed(): Duration = Duration.ZERO
@@ -237,16 +256,10 @@ class AudioRouteLabRecorderTest {
         // The in-memory safety observer is present, even though diagnostic capture is off.
         val firstProvider = requireNotNull(monitor.providerForPlayer())
         lab.start()
-        assertTrue(lab.state.value.reportStatus.contains("Awaiting next player creation"))
-        monitor.sample()
-        assertFalse(lab.report("test").contains("observer-provider-installed"))
-
-        // The next natural creation begins emitting diagnostic lifecycle events.
-        val provider = requireNotNull(monitor.providerForPlayer())
-        assertTrue(lab.report("test").contains("observer-player-create recording=true"))
-        assertTrue(lab.report("test").contains("observer-provider-installed"))
-        assertTrue(lab.state.value.reportStatus.contains("awaiting Media3 AudioTrack"))
-        provider.release()
+        assertTrue(lab.state.value.reportStatus.contains("Installed"))
+        lab.clearAndAwait()
+        assertTrue(lab.state.value.recording)
+        assertTrue(lab.state.value.reportStatus.contains("Installed"))
         firstProvider.release()
         assertTrue(lab.report("test").contains("observer-provider-released"))
         lab.stop()

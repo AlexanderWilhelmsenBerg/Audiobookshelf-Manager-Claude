@@ -15,6 +15,8 @@ internal object UnifiedDiagnosticsFileExport {
 
     fun filename(at: Instant): String = "bookwave-diagnostics-${dateFormat.format(at)}.json"
 
+    fun androidAutoFilename(at: Instant): String = "bookwave-android-auto-${dateFormat.format(at)}.json"
+
     fun write(output: OutputStream, report: String) {
         output.use { it.write(report.toByteArray(Charsets.UTF_8)) }
     }

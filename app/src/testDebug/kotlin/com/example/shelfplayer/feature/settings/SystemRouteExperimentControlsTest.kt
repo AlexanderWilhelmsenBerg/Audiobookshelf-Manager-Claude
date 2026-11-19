@@ -22,6 +22,26 @@ class SystemRouteExperimentControlsTest {
     @get:Rule val compose = createComposeRule()
 
     @Test
+    fun comparisonToggleChangesOnlyTheAutomaticExperimentControl() {
+        val transfers = mutableListOf<String>()
+        val comparison = mutableListOf<Boolean>()
+        compose.setContent {
+            Column {
+                SystemRouteExperimentControls(
+                    SystemRouteExperimentState(),
+                    onToggle = {},
+                    onTransfer = transfers::add,
+                    automaticTakeBack = true,
+                    onAutomaticTakeBackChange = comparison::add,
+                )
+            }
+        }
+        compose.onNodeWithTag("system-route-automatic-toggle").performClick()
+        assertEquals(listOf(false), comparison)
+        assertTrue(transfers.isEmpty())
+    }
+
+    @Test
     fun showingRoutesNeverTransfersAndOnlyExplicitEligibleButtonSubmitsAlias() {
         val transfers = mutableListOf<String>()
         compose.setContent {

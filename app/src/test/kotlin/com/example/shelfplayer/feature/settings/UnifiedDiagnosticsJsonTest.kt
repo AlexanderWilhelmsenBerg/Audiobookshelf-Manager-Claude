@@ -2,7 +2,6 @@ package com.example.shelfplayer.feature.settings
 
 import com.example.shelfplayer.core.common.log.LogLevel
 import com.example.shelfplayer.core.common.log.LoggedEvent
-import com.example.shelfplayer.core.common.log.RaceCaptureState
 import com.example.shelfplayer.playback.AudioRouteLabState
 import com.example.shelfplayer.playback.OutputClassifierState
 import org.json.JSONObject
@@ -31,63 +30,72 @@ class UnifiedDiagnosticsJsonTest {
         )
     }
 
-    @Test fun `JSON combines independent source records and remains parseable`() {
+    @Test fun `timeline is ordered and de-duplicates rows without copying the raw event log`() {
+        val instant = Instant.parse("2026-11-18T10:51:00Z")
         val raw = UnifiedDiagnosticsJson.build(
             build = "BookWave test commit",
-            active = true,
-            lab = AudioRouteLabState(
+            environment = UnifiedDiagnosticsJson.Environment(37, 36),
+            snapshot = UnifiedDiagnosticsJson.Snapshot(
                 recording = true,
-                entries = listOf("2026-10-19T12:00:00Z actual-track playing-to=d2:Ambiguous"),
-                route = "selection=Automatic",
-                reportStatus = "playing-to=d2:Ambiguous",
-                inputStatus = "Watching input callbacks",
-                inputDevices = listOf("inputCapture=m1 inputAlias=i1 descriptorAlias=s1 association=Unproven"),
-            ),
-            classifier = OutputClassifierState(
-                recording = true,
-                current = listOf("alias=o2 type=BLUETOOTH_A2DP"),
-                entries = listOf("2026-10-19T12:00:01Z output-appeared alias=o2"),
-            ),
-            eventLog = listOf(
-                LoggedEvent(
-                    at = Instant.parse("2026-10-19T12:00:00Z"),
-                    level = LogLevel.Info,
-                    tag = "Playback",
-                    line = "redacted transport event",
+                lab = AudioRouteLabState(
+                    recording = true,
+                    entries = List(2) { "2026-11-18T10:51:02Z user-heard=Skipping" },
+                    inputDevices = listOf("inputAlias=i1 association=Unproven"),
+                    stallIncident = listOf("2026-11-18T10:51:02Z stall-incident phase=context user-heard=Skipping"),
                 ),
+                classifier = OutputClassifierState(
+                    recording = true,
+                    current = listOf("alias=o2 type=BLUETOOTH_A2DP"),
+                    entries = listOf("2026-11-18T10:51:01Z output-appeared alias=o2"),
+                ),
+                events = listOf(
+                    LoggedEvent(instant, LogLevel.Info, "Playback", "Info noise"),
+                    LoggedEvent(instant, LogLevel.Warn, "Playback", "redacted playback warning"),
+                ),
+                previousCrash = "redacted crash",
             ),
-            race = RaceCaptureState(recording = true, lines = listOf("+25ms hardware Play")),
-            debugConsole = "redacted snapshot",
         )
+
         val parsed = JSONObject(raw)
+        val timeline = parsed.getJSONArray("timeline")
         assertEquals("bookwave.diagnostics", parsed.getString("schema"))
-        assertEquals(1, parsed.getInt("schemaVersion"))
-        assertTrue(parsed.getJSONObject("recording").getBoolean("unified"))
-        assertEquals(1, parsed.getJSONObject("audioRouteLab").getJSONArray("events").length())
-        assertEquals("Watching input callbacks", parsed.getJSONObject("audioRouteLab").getString("inputStatus"))
-        assertEquals(1, parsed.getJSONObject("audioRouteLab").getJSONArray("inputDevices").length())
-        assertEquals(1, parsed.getJSONObject("outputClassifier").getJSONArray("current").length())
-        assertEquals("Playback", parsed.getJSONArray("eventLog").getJSONObject(0).getString("tag"))
-        assertEquals("+25ms hardware Play", parsed.getJSONArray("playbackRace").getString(0))
-        assertEquals("redacted snapshot", parsed.getString("debugConsole"))
-        assertFalse(raw.contains("192.168.40."))
+        assertEquals(2, parsed.getInt("schemaVersion"))
+        assertEquals(37, parsed.getInt("androidApi"))
+        assertEquals(36, parsed.getInt("targetApi"))
+        assertTrue(parsed.getBoolean("recording"))
+        assertEquals(2, timeline.length())
+        assertEquals("2026-11-18T10:51:01Z", timeline.getJSONObject(0).getString("atUtc"))
+        assertEquals("system", timeline.getJSONObject(0).getString("source"))
+        assertEquals("output-appeared", timeline.getJSONObject(0).getString("event"))
+        assertEquals("user-heard", timeline.getJSONObject(1).getString("event"))
+        assertEquals("Skipping", timeline.getJSONObject(1).getString("details"))
+        assertEquals(1, parsed.getJSONArray("firstIncident").length())
+        assertEquals(1, parsed.getJSONArray("problems").length())
+        assertEquals(1, parsed.getJSONObject("current").getJSONArray("inputs").length())
+        assertEquals("redacted crash", parsed.getString("previousCrash"))
+        assertFalse(parsed.has("debugConsole"))
+        assertFalse(parsed.has("playbackRace"))
+        assertFalse(raw.contains("Info noise"))
     }
 
-    @Test fun `empty captures remain typed JSON collections and do not manufacture measurements`() {
+    @Test fun `empty capture exports empty collections and omits absent crash`() {
         val report = JSONObject(
             UnifiedDiagnosticsJson.build(
                 build = "offline",
-                active = false,
-                lab = AudioRouteLabState(),
-                classifier = OutputClassifierState(),
-                eventLog = emptyList(),
-                race = RaceCaptureState(),
-                debugConsole = "",
+                environment = UnifiedDiagnosticsJson.Environment(33, 36),
+                snapshot = UnifiedDiagnosticsJson.Snapshot(
+                    recording = false,
+                    lab = AudioRouteLabState(),
+                    classifier = OutputClassifierState(),
+                    events = emptyList(),
+                    previousCrash = null,
+                ),
             ),
         )
-        assertEquals(0, report.getJSONArray("eventLog").length())
-        assertEquals(0, report.getJSONObject("audioRouteLab").getJSONArray("events").length())
-        assertEquals(0, report.getJSONObject("audioRouteLab").getJSONArray("inputDevices").length())
-        assertFalse(report.getJSONObject("recording").getBoolean("unified"))
+        assertEquals(0, report.getJSONArray("timeline").length())
+        assertEquals(0, report.getJSONArray("firstIncident").length())
+        assertEquals(0, report.getJSONArray("problems").length())
+        assertFalse(report.getBoolean("recording"))
+        assertFalse(report.has("previousCrash"))
     }
 }

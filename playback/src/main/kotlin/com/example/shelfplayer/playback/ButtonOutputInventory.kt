@@ -28,12 +28,11 @@ internal class ButtonOutputInventory(private val context: Context, private val r
 
     fun soleHeadset(candidates: Set<String>, live: Map<String, AudioDeviceInfo>): String? {
         val id = candidates.singleOrNull() ?: return null
-        val info = live[id] ?: return null
-        return id.takeIf {
-            registry.find(info)?.output?.role == AudioOutputRole.Headset ||
-                deviceClass(info) in WEARABLES
-        }
+        return id.takeIf { live[id]?.let(::isWearable) == true }
     }
+
+    fun isWearable(info: AudioDeviceInfo): Boolean =
+        registry.find(info)?.output?.role == AudioOutputRole.Headset || deviceClass(info) in WEARABLES
 
     @SuppressLint("MissingPermission")
     private fun deviceClass(info: AudioDeviceInfo): Int? {

@@ -13,6 +13,26 @@ import kotlin.test.assertNull
 
 class AudioRouteLabEvidenceTest {
     @Test
+    fun `stuck player detail reaches incident export without private error text`() {
+        val result = requireNotNull(
+            AudioRouteLabEvidence.event(
+                LoggedEvent(
+                    Instant.EPOCH,
+                    LogLevel.Warn,
+                    "Playback",
+                    "Playback stopped on an error cause1Type=StuckPlayerException " +
+                        "cause1StuckType=PlayingNoProgress cause1Timeout=10000ms errorMessage=private-token-host",
+                ),
+            ),
+        )
+        assertContains(result, "playback-error")
+        assertContains(result, "cause1Type=StuckPlayerException")
+        assertContains(result, "cause1StuckType=PlayingNoProgress")
+        assertContains(result, "cause1Timeout=10000ms")
+        assertFalse("private" in result)
+    }
+
+    @Test
     fun `deferred take-back exports selection disagreement with bounded aliases`() {
         val result = requireNotNull(
             AudioRouteLabEvidence.event(

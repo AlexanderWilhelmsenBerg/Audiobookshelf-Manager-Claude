@@ -5,7 +5,6 @@ import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.os.Build
-import androidx.core.content.edit
 import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
@@ -38,7 +37,6 @@ class AudioRouteLabCapabilityTest {
 
     @Before
     fun clearPreviousCapture() {
-        context.getSharedPreferences("audio-route-lab", Context.MODE_PRIVATE).edit { clear() }
         File(context.noBackupFilesDir, "audio-route-lab.txt").delete()
         File(context.noBackupFilesDir, "audio-route-lab.txt.bak").delete()
     }
@@ -86,14 +84,14 @@ class AudioRouteLabCapabilityTest {
         fixture.lab.start()
         fixture.lab.heardAt("Car")
         runCurrent()
-        fixture.lab.clear()
+        fixture.lab.clearAndAwait()
         runCurrent()
         val file = File(context.noBackupFilesDir, "audio-route-lab.txt")
         assertFalse(file.exists())
         fixture.lab.playbackCall("requestWrite")
         runCurrent()
         assertFalse(file.exists(), "a delayed old producer must not recreate the cleared file")
-        fixture.lab.start()
+        assertTrue(fixture.lab.state.value.recording)
         fixture.lab.heardAt("HeadsetA")
         fixture.lab.playbackCall("requestWrite")
         runCurrent()

@@ -32,8 +32,9 @@ On a Media3 focus loss, `CarBluetoothArrivalInference` asks the gate for an infe
 - the window is open and unused;
 - Android's audio mode is normal.
 
-The gate issues a normal arrival target marked `inferredArrival`. The resume effects wait 0.5 seconds,
-recheck the claim, then run the existing route wait, muted probe and actual-track proof. The later Auto
+The gate issues a normal arrival target marked `inferredArrival`. The resume effects use the
+[inferred arrival settle wait](#faster-route-checks-2026-11-18), recheck the claim, then run the existing
+route wait, muted probe and actual-track proof. The later Auto
 bind finds the claim already issued and cannot issue a second Play. Each evaluation logs
 `Car Bluetooth arrival inference` with `windowAge`, `audioMode` and `outcome`.
 
@@ -112,6 +113,28 @@ and delayed work follows governor cancellation. See the
   matching tests fail; all three were restored before the gate.
 
 ## Stationary device acceptance
+
+### Faster route checks (2026-11-18)
+
+Build 2281's two successful inferred arrivals took 752–771 ms from the observed focus loss to
+verified headset playback, including the fixed 500 ms settle wait. Android was still publishing routing
+changes near the end of that wait. Observe the existing route publications during the wait and admit an
+earlier attempt only after 350 ms and a fresh exact-headset prediction observed for at least 75 ms.
+A fresh framework query must identify the same sole live headset and account for every reported sink.
+An unchanged, ambiguous or unavailable prediction retains the 500 ms fallback. The 350 ms floor leaves
+margin over the earlier 256 ms focus burst. It is a starting value for hardware comparison.
+
+Both timings feed the existing exact-headset recovery and muted verification. The active claim,
+current scope and normal audio mode are rechecked before proceeding. Media3 handles audio focus.
+The route must still be verified on the playing AudioTrack before audio becomes audible. Existing
+arrival retry limits and the absolute episode deadline apply.
+
+In a parked comparison, use one headset and let it play before connecting Android Auto normally.
+Record the time from focus loss to verified playback and whether narration stayed on the headset.
+Export the log even if there is no interruption. `arrival-settle` records `route-ready` or
+`settle-elapsed` for the existing arrival attempt. The paired output-proof event reports the result.
+Confirm that a deliberate Pause stays paused and that neither the car nor the phone speaker plays
+audio during a headset recovery. Compare with build 2281 before claiming a hardware latency gain.
 
 ### Repeated route loss before the Auto bind (2026-11-17)
 

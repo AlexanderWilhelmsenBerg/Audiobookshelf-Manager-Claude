@@ -122,6 +122,12 @@ class PlaybackService : MediaLibraryService() {
     internal lateinit var audioRouteLab: AudioRouteLab
 
     @Inject
+    internal lateinit var androidAutoDiagnostics: AndroidAutoDiagnosticsCapture
+
+    private val autoCapture: AndroidAutoDiagnosticsCapture?
+        get() = if (::androidAutoDiagnostics.isInitialized) androidAutoDiagnostics else null
+
+    @Inject
     internal lateinit var audioTrackRouteMonitor: AudioTrackRouteMonitor
 
     /** PRODUCT_SPEC PLAY-002 — the chooser's half that can actually move audio: see [AudioOutputRouter]. */
@@ -487,8 +493,9 @@ class PlaybackService : MediaLibraryService() {
         observeSkipIntervals()
         observeAudioOutputs()
         carProjection.start(scope, ::onCarProjectionUpdate)
-        carBluetoothMonitor = CarBluetoothArrivalMonitor(applicationContext, carBluetoothWindow, logger)
-            .also(CarBluetoothArrivalMonitor::start)
+        carBluetoothMonitor = CarBluetoothArrivalMonitor(applicationContext, carBluetoothWindow, logger) {
+            recordAutoConnection("car-bluetooth", confirmed = false)
+        }.also(CarBluetoothArrivalMonitor::start)
         headsetTakeBack = createHeadsetTakeBack(applicationContext, clock) { message, fields ->
             autoTraces.log(message, fields = fields + carSnapshotFields())
         }
@@ -498,7 +505,10 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun attachRouteSafetyMonitor(exoPlayer: ExoPlayer) {
-        audioTrackRouteMonitor.onRouteChanged = audioOutputs::onActualTrackRouteChanged
+        audioTrackRouteMonitor.onRouteChanged = {
+            audioOutputs.onActualTrackRouteChanged()
+            autoCapture?.trackRoute(audioTrackRouteMonitor::currentRouteDiagnostic)
+        }
         audioOutputs.attach(exoPlayer, audioTrackRouteMonitor::currentRouteIds)
         audioOutputs.currentTrackObservation = audioTrackRouteMonitor::currentRouteObservation
         audioOutputs.onActualTrackRouteChanged()
@@ -604,6 +614,7 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun logControllerTransportRequest(requestedPlay: Boolean, mediaPlayer: ExoPlayer) {
         val requestingController = session?.controllerForCurrentRequest
+        autoCapture?.transport(requestedPlay)
         if (audioRouteLab.state.value.recording) {
             audioRouteLab.controllerTransport(requestedPlay, mediaInputController(requestingController))
         }
@@ -1013,6 +1024,7 @@ class PlaybackService : MediaLibraryService() {
     private val outputDispatch: (() -> Boolean) -> Boolean = { effect -> governor.output(effect) }
 
     override fun onDestroy() {
+        autoCapture?.disconnected("service-stopped")
         governor.close()
         buttonRouting.close()
         routeObservationEffects.detach()
@@ -1031,6 +1043,7 @@ class PlaybackService : MediaLibraryService() {
         audioOutputs.confirmedCarAbsent = { false }
         audioOutputs.retainsInterruptedHeadset = { false }
         audioOutputs.routeSafetyEvidence = { "observer-unavailable" }
+        audioTrackRouteMonitor.playbackSnapshot = { null }
         resumeFreshness.attach(null)
         autoRewind.attach(null)
         sleepTimer.attach(null)
@@ -1634,6 +1647,10 @@ class PlaybackService : MediaLibraryService() {
                 reason,
                 routeSafetyPause = routeSafetyPause,
             )
+            when {
+                routeSafetyPause || input.interruptionReason != null -> autoCapture?.interrupted(input.reasonName)
+                input.isUserPause -> autoCapture?.transport(play = false)
+            }
             if (!routeSafetyPause) recordTransport(if (input.isPlay) PlaybackEvent.Play else PlaybackEvent.Pause)
             logger.debug(
                 LogCategory.Playback,
@@ -1649,6 +1666,7 @@ class PlaybackService : MediaLibraryService() {
          * History sampler. Chapter lists remain in-process rather than duplicated in MediaItem extras.
          */
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            autoCapture?.intentReset()
             positionEffects.retireForItemTransition()
             mediaItemGeneration += 1
             pendingRecoveryRetry?.cancel()
@@ -1925,6 +1943,16 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun bindOutputContinuity() {
+        audioTrackRouteMonitor.playbackSnapshot = {
+            player?.let { target ->
+                AudioTrackPlaybackSnapshot(
+                    target.playWhenReady, target.playbackState, target.playbackSuppressionReason,
+                    volumeEffects.isRouteMuted(target), target.currentPosition, target.totalBufferedDuration,
+                    target.isLoading, routeOwnership.currentGeneration, currentExplicitSelectionSequence(),
+                    headsetTakeBack.automaticTransferEnabled,
+                )
+            }
+        }
         carRecovery.onPlayOutcome = { outcome ->
             autoTraces.log(
                 "Car continuity attempt outcome",
@@ -2013,10 +2041,15 @@ class PlaybackService : MediaLibraryService() {
             headsetId = routeOwnership.headsetForCar(outputs),
             generation = routeOwnership.currentGeneration,
             selectionSequence = currentExplicitSelectionSequence(),
-            carConnected = carLifecycle.sessionEstablished,
+            carConnected = carLifecycle.sessionEstablished || carLifecycle.projectionOwnsCarLifecycle,
         )
 
     private fun observeCarContinuityHeadset(outputs: List<AudioOutput>) {
+        autoCapture?.takeIf { it.state.value.recordingAttempt != null }?.let { capture ->
+            routeOwnership.headsetForCar(
+                outputs,
+            )?.takeIf(audioOutputs::isMeasuredHeadset)?.let(capture::verifiedHeadset)
+        }
         val generation = routeOwnership.currentGeneration
         val headset = routeOwnership.measuredPlayingHeadsetForContinuity(outputs)
         if (generation != null && headset != null) {
@@ -2136,6 +2169,7 @@ class PlaybackService : MediaLibraryService() {
             scope = scope,
             synchronizeOutputIntent = ::syncExplicitOutputIntent,
             onOutputsChanged = ::republishOutputButtons,
+            inferredArrivalAudioAllowed = { audioMode() == AudioManager.MODE_NORMAL },
         )
     }
 
@@ -2169,6 +2203,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun onCarControllerConnected(controllerPackage: String) {
+        recordAutoConnection("media-session", confirmed = true)
         carConnectionRefresh.cancel()
         val trace = autoTraces.ensure("controller-connect")
         val carWasConnected = carConnections.isConnected()
@@ -2246,6 +2281,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun onCarProjectionUpdate(update: AndroidAutoProjectionMonitor.Update) {
+        if (update.current.carConnected) recordAutoConnection("projection", confirmed = true)
         carConnectionRefresh.onProjection(update.current)
         val previous = update.previous
         val trace = if (update.current.carConnected || previous?.carConnected == true) {
@@ -2280,6 +2316,7 @@ class PlaybackService : MediaLibraryService() {
                     at = clock.elapsed(),
                     generation = routeOwnership.currentGeneration,
                     sequence = currentExplicitSelectionSequence(),
+                    physicalProjection = true,
                 )
                 logCarContinuityDecision("projection-connect", decision)
                 carResumeEffects.onArrival(decision)
@@ -2320,6 +2357,7 @@ class PlaybackService : MediaLibraryService() {
         source: String,
         physicalProjection: Boolean = false,
     ): CarArrivalResumeGate.Decision {
+        autoCapture?.disconnected(source)
         val departedAt = clock.elapsed()
         val generation = routeOwnership.currentGeneration
         val selectionSequence = currentExplicitSelectionSequence()
@@ -2332,6 +2370,20 @@ class PlaybackService : MediaLibraryService() {
         logCarContinuityDecision(source, decision)
         carResumeEffects.onDeparture(decision)
         return decision
+    }
+
+    private fun recordAutoConnection(evidence: String, confirmed: Boolean) {
+        val capture = autoCapture ?: return
+        val status = capture.state.value
+        val snapshot = status.enabled && status.recordingAttempt == null
+        if (!confirmed && !snapshot) return
+        val playing = if (snapshot && routeObservationEffects.isAudible()) {
+            routeOwnership.headsetForCar(audioOutputs.outputs.value)?.takeIf(audioOutputs::isMeasuredHeadset)
+        } else {
+            null
+        }
+        val present = if (snapshot) playing?.let { true } ?: audioOutputs.localOutputs.headsetPresence() else null
+        if (confirmed) capture.confirmed(evidence, present, playing) else capture.carBluetoothLink(present, playing)
     }
 
     /**
@@ -3322,10 +3374,16 @@ class PlaybackService : MediaLibraryService() {
             intent: Intent,
         ): Boolean {
             val keyEvent = mediaButtonKeyEvent(intent)
-            if (audioRouteLab.state.value.recording) {
+            val capturePlayback = audioRouteLab.state.value.recording
+            val caller = if (capturePlayback || autoCapture?.state?.value?.recordingAttempt != null) {
+                mediaInputController(controllerInfo)
+            } else {
+                null
+            }
+            if (capturePlayback && caller != null) {
                 audioRouteLab.mediaButtonInput(
                     keyEvent,
-                    mediaInputController(controllerInfo),
+                    caller,
                     MediaInputEntry.SessionCallback,
                 )
             }
@@ -3345,6 +3403,7 @@ class PlaybackService : MediaLibraryService() {
                     LogField.Public("keyInputId", keyEvent?.deviceId ?: -1),
                     LogField.Public("keyInputSource", keyEvent?.source ?: -1),
                     LogField.Public("inputOrigin", inputEvidence.origin.name),
+                    LogField.Public("caller", caller?.caller?.name ?: "Unrecorded"),
                     LogField.Count("headsetNameMatches", inputEvidence.headsetNameMatches),
                 ) + carSnapshotFields(),
             )

@@ -16,4 +16,7 @@
     <string name="system_route_timeout">Intet samsvarende svar innen fem sekunder. Prøver ikke igjen.</string>
     <string name="system_route_unavailable">Systemruting er utilgjengelig</string>
     <string name="system_route_call_blocked">Rutebytte blokkert fordi Androids lydmodus ikke er normal</string>
+    <string name="system_route_automatic_comparison">Sammenlign vanlige biltilkoblinger med automatisk tilbakeføring til hodetelefoner på eller av. Identifisering og rutebeskyttelse beholdes. Du trenger ikke fremprovosere en mislykket tilkobling.</string>
+    <string name="system_route_automatic_on">Automatisk tilbakeføring til hodetelefoner: på</string>
+    <string name="system_route_automatic_off">Automatisk tilbakeføring til hodetelefoner: av</string>
 </resources>

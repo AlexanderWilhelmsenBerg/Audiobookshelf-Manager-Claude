@@ -16,4 +16,7 @@
     <string name="system_route_timeout">No matching transfer callback within five seconds. No retry.</string>
     <string name="system_route_unavailable">System routing is unavailable</string>
     <string name="system_route_call_blocked">Transfer blocked while Android audio mode is not normal</string>
+    <string name="system_route_automatic_comparison">Compare normal car connections with automatic headset take-back on or off. Headset identification and routing protection stay enabled. No failed connection is required.</string>
+    <string name="system_route_automatic_on">Automatic headset take-back: on</string>
+    <string name="system_route_automatic_off">Automatic headset take-back: off</string>
 </resources>

@@ -9,6 +9,28 @@ internal class CarContinuityEvidence(
     private val pairingWindow: Duration,
     private val trustedIdentity: (String) -> Boolean,
 ) {
+    data class ArrivalBoundary(
+        val at: Duration,
+        val identity: CarContinuityIdentity,
+        val deadline: Duration?,
+        val projectionAt: Duration? = null,
+    ) {
+        fun confirmProjection(at: Duration): ArrivalBoundary = if (projectionAt ==
+            null
+        ) {
+            copy(projectionAt = at)
+        } else {
+            this
+        }
+    }
+
+    fun invalidArrival(boundary: ArrivalBoundary, at: Duration, generation: Long?, selection: Long): Reason? =
+        if (boundary.projectionAt?.let { at - it > pairingWindow } == true) {
+            Reason.OutsidePairingWindow
+        } else {
+            invalidReason(boundary.identity, generation, selection, at - boundary.at, at, boundary.deadline)
+        }
+
     fun identityOf(
         heardRoute: RouteHeardOwnership.HeardRoute?,
         headsetId: String?,

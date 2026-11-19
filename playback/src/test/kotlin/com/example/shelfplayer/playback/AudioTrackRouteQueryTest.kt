@@ -191,7 +191,7 @@ class AudioTrackRouteQueryTest {
     }
 
     @Test
-    fun `production monitor timing is opt in bounded and retired with its AudioTrack`() = runTest {
+    fun `starting and clearing resample the existing track while recording off does not`() = runTest {
         val fixture = fixture()
         fixture.lab.stop()
         val track = fixture.track()
@@ -199,7 +199,6 @@ class AudioTrackRouteQueryTest {
         shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1))
         assertEquals(0, track.queryShadow.timestampReads)
         fixture.lab.start()
-        fixture.monitor.sample()
         shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(500))
         assertEquals(3, track.queryShadow.timestampReads)
         kotlin.test.assertTrue(
@@ -207,9 +206,13 @@ class AudioTrackRouteQueryTest {
                 "track-timing" in it && "timestampFrames=null timestampNs=null" in it
             },
         )
+        fixture.lab.clearAndAwait()
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(500))
+        assertEquals(6, track.queryShadow.timestampReads, "Clear replaces the burst on the same track")
+        assertEquals(1, fixture.lab.state.value.entries.count { "track-timing" in it })
         fixture.forget()
         shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(5))
-        assertEquals(3, track.queryShadow.timestampReads)
+        assertEquals(6, track.queryShadow.timestampReads)
         fixture.lab.stop()
     }
 

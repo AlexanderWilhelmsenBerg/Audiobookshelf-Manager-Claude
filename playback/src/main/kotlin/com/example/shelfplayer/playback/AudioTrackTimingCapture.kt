@@ -114,8 +114,8 @@ internal class AudioTrackTimingCapture(
     }
 
     private companion object {
-        const val SAMPLE_COUNT = 16
+        const val SAMPLE_COUNT = 120
         const val INTERVAL_MS = 250L
-        const val COOLDOWN_MS = 5_000L
+        const val COOLDOWN_MS = 35_000L
     }
 }

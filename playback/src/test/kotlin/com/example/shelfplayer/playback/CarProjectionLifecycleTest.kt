@@ -218,6 +218,26 @@ class CarProjectionLifecycleTest {
     }
 
     @Test
+    fun `late focus after physical projection waits for departure even with a trusted arrival deadline`() = runTest {
+        fixture(initialState = 0, controllerBindings = 0).use { car ->
+            runCurrent()
+            car.trustFixtureHeadset()
+            car.seedHeadsetViaService()
+            car.connectController()
+            // Deliver the boundaries synchronously, before effects read the fixture's empty player.
+            car.projected(true)
+            car.advanceClock(12.seconds)
+            car.reportFocusLossFromPlayerListener()
+
+            val focus = car.focusDecisions().single()
+            assertEquals("Departure", focus.public("phase"))
+            assertEquals("Armed", focus.public("status"))
+            car.projected(false)
+            assertEquals(listOf("Ready"), car.departureDecisions().map { it.public("status") })
+        }
+    }
+
+    @Test
     fun `service focus then physical projection arrival cannot borrow duplicate controller boundary`() = runTest {
         fixture(initialState = null, controllerBindings = 0).use { car ->
             runCurrent()
@@ -378,6 +398,27 @@ class CarProjectionLifecycleTest {
 
         fun providerStateWithoutBroadcast(state: Int?) {
             provider.state = state
+        }
+
+        fun trustFixtureHeadset() {
+            val gate = CarArrivalResumeGate(now = clock::elapsed, trustedIdentity = { it == "bluetooth:fixture" })
+            service.setField("carContinuity", gate)
+            service.setField("carRecovery", CarContinuityRecoveryCoordinator(gate))
+        }
+
+        fun advanceClock(by: kotlin.time.Duration) = clock.advanceBy(by)
+
+        fun projected(active: Boolean) {
+            val connected = AndroidAutoProjectionMonitor.State.Projection
+            val disconnected = AndroidAutoProjectionMonitor.State.NotConnected
+            service.invoke(
+                "onCarProjectionUpdate",
+                if (active) {
+                    AndroidAutoProjectionMonitor.Update(disconnected, connected)
+                } else {
+                    AndroidAutoProjectionMonitor.Update(connected, disconnected)
+                },
+            )
         }
 
         fun cancelListenerIntent() = service.governor.contextChanged()

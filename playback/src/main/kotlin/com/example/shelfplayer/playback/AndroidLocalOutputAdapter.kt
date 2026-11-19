@@ -36,6 +36,12 @@ internal class AndroidLocalOutputAdapter(
     fun soleButtonHeadset(ids: Set<String>): String? = buttonInventory.soleHeadset(ids, live)
     fun buttonOutputForAddress(address: String): String? =
         buttonInventory.matchingPeer(address, live, collidingOutputIds)
+
+    /** A car-class Bluetooth endpoint alone must not count as a headset in diagnostic summaries. */
+    fun headsetPresence(): Boolean? {
+        if (live.values.any(buttonInventory::isWearable)) return true
+        return if (collidingOutputIds.isEmpty() && buttonCandidates().isEmpty()) false else null
+    }
     private val _identityCapability = MutableStateFlow(BluetoothIdentityCapability.Empty)
     val identityCapability = _identityCapability.asStateFlow()
 
@@ -120,16 +126,24 @@ internal class AndroidLocalOutputAdapter(
         return true
     }
 
+    /** Includes the full platform prediction when choosing whether to try an earlier muted probe. */
+    fun predictsOnly(id: String): Boolean =
+        id in live && id !in collidingOutputIds && predictedIds(requireAllMapped = true) == setOf(id)
+
     /** Framework policy prediction only; actual playing-track measurement belongs to the monitor. */
-    fun predictedIds(): Set<String>? {
+    fun predictedIds(): Set<String>? = predictedIds(requireAllMapped = false)
+
+    private fun predictedIds(requireAllMapped: Boolean): Set<String>? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
         val manager = context.getSystemService(AudioManager::class.java) ?: return null
         val attributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_MEDIA)
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .build()
-        return manager.getAudioDevicesForAttributes(attributes).mapNotNull { info ->
+        val devices = manager.getAudioDevicesForAttributes(attributes)
+        val routeIds = devices.mapNotNull { info ->
             registry.find(info)?.id
-        }.toSet()
+        }
+        return if (requireAllMapped && routeIds.size != devices.size) null else routeIds.toSet()
     }
 }

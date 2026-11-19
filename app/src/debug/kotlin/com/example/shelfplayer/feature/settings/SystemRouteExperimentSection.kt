@@ -32,6 +32,7 @@ private val startableStatuses = setOf(
 internal fun SystemRouteExperimentSection(viewModel: SystemRouteExperimentViewModel = hiltViewModel()) {
     val experiment = viewModel.experiment
     val state by experiment.state.collectAsStateWithLifecycle()
+    val automatic by viewModel.automaticTakeBack.collectAsStateWithLifecycle()
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         experiment.open()
     }
@@ -58,6 +59,8 @@ internal fun SystemRouteExperimentSection(viewModel: SystemRouteExperimentViewMo
             }
         },
         onTransfer = experiment::transfer,
+        automaticTakeBack = automatic,
+        onAutomaticTakeBackChange = viewModel::setAutomaticTakeBack,
     )
 }
 
@@ -66,9 +69,23 @@ internal fun SystemRouteExperimentControls(
     state: SystemRouteExperimentState,
     onToggle: () -> Unit,
     onTransfer: (String) -> Unit,
+    automaticTakeBack: Boolean = true,
+    onAutomaticTakeBackChange: (Boolean) -> Unit = {},
 ) {
     Text(stringResource(R.string.system_route_title))
     Text(stringResource(R.string.system_route_explanation))
+    Text(stringResource(R.string.system_route_automatic_comparison))
+    TextButton(
+        enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE,
+        onClick = { onAutomaticTakeBackChange(!automaticTakeBack) },
+        modifier = Modifier.testTag("system-route-automatic-toggle"),
+    ) {
+        Text(
+            stringResource(
+                if (automaticTakeBack) R.string.system_route_automatic_on else R.string.system_route_automatic_off,
+            ),
+        )
+    }
     Text(stringResource(state.status.label()))
     TextButton(
         enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE,

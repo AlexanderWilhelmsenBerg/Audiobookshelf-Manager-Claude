@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="auto_diag_title">Android Auto diagnostics</string>
+    <string name="auto_diag_description">Record each car connection for daily testing. Export numbered attempts, headset recovery times and media controls. BookWave keeps up to 100 attempts from the last 30 days on this device.</string>
+    <string name="auto_diag_enable">Record car connections</string>
+    <string name="auto_diag_waiting">Waiting for a car connection</string>
+    <string name="auto_diag_recording">Recording attempt %1$d</string>
+    <string name="auto_diag_clear">Clear car history</string>
+</resources>

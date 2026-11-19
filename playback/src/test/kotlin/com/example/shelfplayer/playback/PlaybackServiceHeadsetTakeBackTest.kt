@@ -25,7 +25,27 @@ import kotlin.test.assertTrue
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class PlaybackServiceHeadsetTakeBackTest {
+    @Test
+    fun `diagnostic snapshot reads the bound player without issuing playback commands`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { f ->
+            f.installServiceContinuityCallbacks()
+            f.service.headsetTakeBack = Recorder()
+            f.startHealthyHeadsetWithoutCar()
+            val plays = f.rawPlayCalls
+
+            val snapshot = assertNotNull(f.service.audioTrackRouteMonitor.playbackSnapshot())
+
+            assertEquals(f.player.playWhenReady, snapshot.playWhenReady)
+            assertEquals(f.player.playbackState, snapshot.state)
+            assertEquals(f.player.currentPosition, snapshot.positionMs)
+            assertEquals(f.player.totalBufferedDuration, snapshot.bufferedMs)
+            assertEquals(true, snapshot.automaticTakeBack)
+            assertEquals(plays, f.rawPlayCalls)
+        }
+    }
+
     private class Recorder(private val immediate: Boolean = true) : HeadsetTakeBack {
+        override val automaticTransferEnabled = true
         var pending: (() -> Boolean)? = null
         var verified = 0
         var displaced = 0

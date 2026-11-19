@@ -78,14 +78,31 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     private var listener: AudioRouting.OnRoutingChangedListener? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val epoch = AudioTrackObserverEpoch()
-    private val timing = AudioTrackTimingCapture(mainHandler, { lab.state.value.recording }, lab::trackTiming) {
-        clock.elapsed().inWholeMilliseconds
-    }
+    private val timing = AudioTrackTimingCapture(
+        mainHandler,
+        { lab.state.value.recording },
+        { sample -> lab.trackTiming(sample, playbackSnapshot()) },
+        { clock.elapsed().inWholeMilliseconds },
+    )
     private var lastEvidence: String? = null
     private var lastPlaying = false
 
+    init {
+        lab.onCaptureStarted = {
+            mainHandler.post {
+                lastEvidence = null
+                lastPlaying = false
+                timing.retire(epoch.nextSnapshot())
+                sample()
+            }
+        }
+    }
+
     /** Used only in memory by the route safety guard. Never exported without diagnostic opt-in. */
     var onRouteChanged: (() -> Unit)? = null
+
+    /** Read only on the existing main-handler timing callback, and only during diagnostic opt-in. */
+    var playbackSnapshot: () -> AudioTrackPlaybackSnapshot? = { null }
 
     /** Diagnostic only: raw sink aliases survive inventory gaps but never authorize playback. */
     fun currentRouteDiagnostic(): String {
@@ -145,16 +162,12 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         if (lab.state.value.recording) lab.trackLifecycle("player-create recording=true")
         val delegate = runCatching { AudioTrackAudioOutputProvider.Builder(context).build() }
             .getOrElse {
-                if (lab.state.value.recording) {
-                    lab.trackLifecycle("provider-fallback")
-                    lab.trackObserverStatus("Provider initialization failed; default Media3 output retained")
-                }
+                lab.trackLifecycle("provider-fallback")
+                lab.trackObserverStatus("Provider initialization failed; default Media3 output retained")
                 return null
             }
-        if (lab.state.value.recording) {
-            lab.trackLifecycle("provider-installed")
-            lab.trackObserverStatus("Installed for this player; awaiting Media3 AudioTrack creation")
-        }
+        lab.trackLifecycle("provider-installed")
+        lab.trackObserverStatus("Installed for this player; awaiting Media3 AudioTrack creation")
         return object : ForwardingAudioOutputProvider(delegate) {
             override fun getAudioOutput(config: AudioOutputProvider.OutputConfig): AudioOutput {
                 // Deliberately do not catch Media3's own output-creation errors or alter its return value.
@@ -163,18 +176,14 @@ internal class AudioTrackRouteMonitor @Inject constructor(
                     runCatching { observe(output.audioTrack) }
                         .onFailure {
                             forget()
-                            if (lab.state.value.recording) {
-                                lab.trackLifecycle("audio-track-attach-failed")
-                                lab.trackObserverStatus("Routing listener could not attach; audio remains Media3-owned")
-                            }
+                            lab.trackLifecycle("audio-track-attach-failed")
+                            lab.trackObserverStatus("Routing listener could not attach; audio remains Media3-owned")
                         }
                 } else {
                     // A new non-track output invalidates any previous track measurement.
                     forget()
-                    if (lab.state.value.recording) {
-                        lab.trackLifecycle("provider-output-unobserved")
-                        lab.trackObserverStatus("Media3 output is not an observable AudioTrack")
-                    }
+                    lab.trackLifecycle("provider-output-unobserved")
+                    lab.trackObserverStatus("Media3 output is not an observable AudioTrack")
                 }
                 return output
             }
@@ -250,11 +259,9 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         }
         listener = callback
         track.addOnRoutingChangedListener(callback, mainHandler)
-        if (lab.state.value.recording) {
-            lab.trackLifecycle("audio-track-attached")
-            lab.trackObserverStatus("AudioTrack attached; awaiting a playing route sample")
-            sample()
-        }
+        lab.trackLifecycle("audio-track-attached")
+        lab.trackObserverStatus("AudioTrack attached; awaiting a playing route sample")
+        sample()
     }
 
     private fun forget() {
@@ -270,10 +277,8 @@ internal class AudioTrackRouteMonitor @Inject constructor(
             runCatching { previous.removeOnRoutingChangedListener(callback) }
         }
         if (previous != null) {
-            if (lab.state.value.recording) {
-                lab.trackLifecycle("audio-track-released-or-replaced")
-                lab.trackObserverStatus("AudioTrack released or replaced; no current route measurement")
-            }
+            lab.trackLifecycle("audio-track-released-or-replaced")
+            lab.trackObserverStatus("AudioTrack released or replaced; no current route measurement")
         }
     }
 }

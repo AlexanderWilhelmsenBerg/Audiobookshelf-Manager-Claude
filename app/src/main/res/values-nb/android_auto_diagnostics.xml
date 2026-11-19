@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="auto_diag_title">Android Auto-diagnostikk</string>
+    <string name="auto_diag_description">Registrer hver biltilkobling ved daglig bruk. Eksporter nummererte forsøk, gjenopprettingstider for hodesett og mediekontroller. BookWave beholder opptil 100 forsøk fra de siste 30 dagene på denne enheten.</string>
+    <string name="auto_diag_enable">Registrer biltilkoblinger</string>
+    <string name="auto_diag_waiting">Venter på biltilkobling</string>
+    <string name="auto_diag_recording">Registrerer forsøk %1$d</string>
+    <string name="auto_diag_clear">Tøm bilhistorikk</string>
+</resources>

@@ -11,7 +11,12 @@ internal fun createHeadsetTakeBack(
     clock: AppClock,
     log: (String, List<LogField>) -> Unit,
 ): HeadsetTakeBack = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-    SystemRouteHeadsetTakeBack(PlatformSystemRoutePort(context), clock, log)
+    SystemRouteHeadsetTakeBack(
+        PlatformSystemRoutePort(context),
+        clock,
+        enabled = { AutomaticHeadsetTakeBackSetting.enabled(context) },
+        log = log,
+    )
 } else {
     NoHeadsetTakeBack
 }

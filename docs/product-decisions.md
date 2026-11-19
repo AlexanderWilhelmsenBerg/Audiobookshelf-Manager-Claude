@@ -438,6 +438,21 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-18 owner refinement (earlier inferred arrival checks).** Observe route publications during
+the inferred-arrival settle wait. A fresh, stable framework prediction of the exact held headset as the
+sole route can shorten the wait, with a 350 ms minimum and the existing 500 ms fallback. The existing
+muted AudioTrack verification owns unmute. A healthy playing headset stays undisturbed on arrival.
+Media3 continues to own focus. Pause and newer listener intent retain precedence.
+[Implementation and hardware comparison](testing/2026-11-16-car-bluetooth-inferred-arrival.md#faster-route-checks-2026-11-18).
+
+**2026-11-17 owner refinement (diagnostic comparison).** The owner approved a diagnostic follow-up
+on the build-2280 baseline. A debug-only setting, default on, permits ordinary parked connections with
+automatic system headset take-back disabled for comparison. Changing it never initiates a transfer;
+disabled work is rejected before a deferred platform call. Identity access, headset protection, manual
+selection, recovery limits and Media3 focus ownership remain unchanged. The opt-in diagnostic pins the
+first suspected output stall and its safe context; no forced Auto failure or new recovery is required.
+See [capture and comparison procedure](testing/2026-11-17-audio-output-stall-diagnostics.md).
+
 **2026-11-17 owner refinement (deferred system take-back and narrow simplification).** Build 2279
 accepted a system headset transfer on its first arrival, but a second arrival measured a remote mix
 while the system router reported the remembered destination `AlreadySelected`. The owner approved
@@ -485,7 +500,8 @@ about ten seconds before that request. A car-class hands-free link (Bluetooth de
 connected within the last 30 seconds may therefore stand in for the Auto boundary, for one arrival, when
 Media3 reports focus loss for a trusted, verified, playing headset and Android's audio mode is normal.
 BookWave then waits 0.5 seconds for Auto's burst of focus requests to pass and uses the existing route
-wait and muted actual-track proof. A ringing or active call blocks the inference. The original 30-second
+wait and muted actual-track proof. The 2026-11-18 refinement permits an earlier check with qualifying
+route evidence. A ringing or active call blocks the inference. The original 30-second
 deadline, three-claim budget and exact-headset rule are unchanged; an inferred Play taken straight back
 may use the existing retry before the bind. Pause, Stop, seek, output/book/profile change and teardown
 retain precedence. Without Nearby devices access the window never opens and the Auto-boundary behavior

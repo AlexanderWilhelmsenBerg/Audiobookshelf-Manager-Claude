@@ -38,14 +38,16 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
         isStillEligible: () -> Boolean,
         measured: (String) -> Boolean,
         canProbe: (String) -> Boolean = { false },
+        canProbeReturned: ((String) -> Boolean)? = null,
         onEvent: (Event) -> Unit = {},
         recoveryWindowOverride: Duration? = null,
         reassert: suspend (String) -> Boolean,
     ): String? {
         var eligibilityLost = false
+        val probe = ProbeReadiness(canProbe, canProbeReturned)
         val result = withTimeoutOrNull(recoveryWindowOverride ?: recoveryWindow) {
             while (isStillEligible()) {
-                awaitTarget(target.outputId, outputs, onEvent)
+                probe.awaitTarget(target.outputId, outputs, onEvent)
                 if (!isStillEligible()) {
                     eligibilityLost = true
                     onEvent(Event.EligibilityLost)
@@ -77,7 +79,7 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
 
                 val targetApplied = applied && selectedId.value == target.outputId
                 val ready = if (targetApplied) {
-                    readiness(target.outputId, measured, canProbe)
+                    readiness(target.outputId, measured, probe::mayProbe)
                 } else {
                     null
                 }
@@ -102,11 +104,29 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
         return result
     }
 
-    private suspend fun awaitTarget(id: String, outputs: StateFlow<List<AudioOutput>>, onEvent: (Event) -> Unit) {
-        val absent = !outputs.value.containsTarget(id)
-        if (absent) onEvent(Event.TargetAbsent)
-        outputs.first { it.containsTarget(id) }
-        if (absent) onEvent(Event.TargetReturned)
+    /** A new appearance may grant the fallback after it settles within this recovery claim. */
+    private inner class ProbeReadiness(
+        private val canProbe: (String) -> Boolean,
+        private val canProbeReturned: ((String) -> Boolean)?,
+    ) {
+        private var returned = false
+
+        fun mayProbe(id: String): Boolean = canProbe(id) || (returned && canProbeReturned?.invoke(id) == true)
+
+        suspend fun awaitTarget(id: String, outputs: StateFlow<List<AudioOutput>>, onEvent: (Event) -> Unit) {
+            if (outputs.value.containsTarget(id)) return
+            returned = false
+            onEvent(Event.TargetAbsent)
+            do {
+                outputs.first { it.containsTarget(id) }
+                returned = canProbeReturned == null || canProbe(id) || settlesAfterReturn(id, outputs)
+            } while (!returned)
+            onEvent(Event.TargetReturned)
+        }
+
+        private suspend fun settlesAfterReturn(id: String, outputs: StateFlow<List<AudioOutput>>): Boolean =
+            withTimeoutOrNull(RETURN_STABILITY) { outputs.first { !it.containsTarget(id) } } == null &&
+                outputs.value.containsTarget(id)
     }
 
     private fun alreadySecured(id: String, selected: String?, measured: (String) -> Boolean): Boolean =
@@ -131,6 +151,7 @@ internal class CarArrivalRouteRecovery(private val recoveryWindow: Duration = DE
     private companion object {
         /** The measured A2DP disappearance/reappearance completed in about one second. */
         val DEFAULT_RECOVERY_WINDOW: Duration = 2.seconds
+        val RETURN_STABILITY = 150.milliseconds
         val RETRY_DELAY: Duration = 50.milliseconds
     }
 }

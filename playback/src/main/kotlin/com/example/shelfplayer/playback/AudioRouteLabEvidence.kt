@@ -18,13 +18,17 @@ internal object AudioRouteLabEvidence {
         "Muted output route observation requested" to "output-observation",
         "MediaSession hardware media button observed" to "hardware-button",
         "MediaSession transport request observed" to "transport-intent",
-        "Media3 audible playback changed" to "media3-playback",
+        "Media3 playback activity changed" to "media3-playback",
         "Android Auto projection state changed" to "projection-change",
         "A car connected to the media session" to "car-controller-bound",
         "Car lifecycle continuity decision" to "continuity-decision",
         "Car lifecycle route recovery changed" to "recovery-step",
+        "Car continuity attempt outcome" to "car-recovery-outcome",
+        "Car inferred arrival settle finished" to "arrival-settle",
         "Car Bluetooth arrival inference" to "car-bluetooth-inference",
         "Headset take-back experiment" to "headset-take-back",
+        "Playback stopped on an error" to "playback-error",
+        "Playback hit an error and will retry" to "playback-error",
         "Car-class hands-free link connected; arrival window opened" to "car-bluetooth-window",
         "Car continuity kept headset through a measured other route" to "displacement-kept",
         "Playback was asked to change playWhenReady" to "playback-intent",
@@ -55,8 +59,11 @@ internal object AudioRouteLabEvidence {
         "focusObservation", "focusEvidence", "androidFocusChange", "focusRequester", "focusRequesterEvidence",
         "focusSequence", "sinceFocusEvent", "transportReasonCode", "suppressionReasonCode", "audibility",
         "windowAge", "audioMode", "outcome", "bluetoothRoutes", "elapsed",
-        "state", "targetRouteAlias", "selectedRouteAliases", "selectedRoutes",
-    )
+        "state", "targetRouteAlias", "selectedRouteAliases", "selectedRoutes", "caller",
+        "episode", "attempt", "remainingMs",
+    ) + (0 until PlaybackErrorDiagnostics.MAX_CAUSES).flatMap { cause ->
+        listOf("cause${cause}Type", "cause${cause}StuckType", "cause${cause}Timeout")
+    }
     private const val MAX_SAFE_FIELDS = 20
     private const val FUTURE_SKEW_SECONDS = 60L
 

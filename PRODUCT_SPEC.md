@@ -412,6 +412,12 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   listener Pause. Within a qualified car-arrival episode, including an inferred arrival whose exact headset
   route and active playback were confirmed before Auto binds, a distinct interruption after verified same-headset playback
   may use a remaining claim, up to three total and within the original 30-second absolute deadline.
+  A repeat after confirmed playback requires the measured or solely predicted exact headset, or its
+  observed disappearance and stable return within the same recovery. A stable return can authorize
+  only the muted probe. Fresh proof from the playing AudioTrack still authorizes unmute.
+  Once physical projection is established, an unused arrival boundary may pair only within the
+  normal six-second window after projection, capped by its original deadline. A later focus loss
+  needs a matching departure before any departure recovery can play.
   Duplicate callbacks and unproven attempts cannot rearm recovery. Listener Pause and newer
   selection/book/profile/player context still invalidate recovery.
 - Exact unique A2DP addresses may correlate endpoint handle changes in process memory only. Missing,
@@ -421,6 +427,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   events with exact endpoint identity, audio mode and anonymous playback-usage counts. Media-command
   sequence and delivery timing are temporal evidence only. These observations cannot grant playback/focus ownership or
   infer button origin. Exports use temporary aliases, never device names, addresses or private identity keys.
+- Opt-in output-stall diagnostics may record bounded numeric frame-progress observations and fixed Media3
+  stuck reasons, retaining a privacy-safe first incident separately from the rolling trace until Clear or
+  per-row expiry. No-frame-progress evidence does not authorize recovery or establish acoustic audibility.
 - Reconnecting a route follows the configured per-device policy.
 - The player output chooser can explicitly keep audio on the current output only while a loaded book is
   playing through one fresh, exact mapped AudioTrack route; predicted, missing, conflicting and duplicate
@@ -1511,10 +1520,16 @@ Never show stack traces in ordinary UI.
 - Redact authorization, cookies, password fields, tokens in URLs, local filesystem paths, server host, username, media title, and description by default.
 - Debug builds may enable expanded local logging through a developer toggle.
 - Diagnostic export is ZIP/JSON/text with explicit redaction report.
-- Unified diagnostics provides Clear all before a new test: stop recording, clear retained captures,
-  playback diagnostic counters and the saved crash report, and await stored trace deletion before
-  allowing another capture. Clearing must not erase listening progress, history or library data, or
+- Playback diagnostics uses one opt-in capture and one ordered report. Installed playback probes are
+  available without player recreation. Clear all erases retained captures, playback diagnostic counters
+  and the saved crash report, and awaits stored trace deletion before export. An active capture continues.
+  Clearing must not erase listening progress, history or library data, or
   cause an already-handled historical Android crash to reappear on restart.
+- The debug Android Auto diagnostics recorder is independently opt-in. It records numbered connection
+  attempts and redacted playback events through the observed car departure. Car Bluetooth can open an
+  unconfirmed attempt. The report indexes headset presence, failed headset recoveries and time from
+  interruption to verified headset playback. Store the latest 100 attempts from up to 30 days on-device.
+  Clearing the car history keeps any active attempt recording.
 - No analytics or crash service by default.
 - Any future crash reporting is opt-in and strips private content.
 

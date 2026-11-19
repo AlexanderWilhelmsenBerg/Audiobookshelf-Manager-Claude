@@ -94,6 +94,11 @@ If actual routing becomes unavailable or wrong, safety still pauses. Recovery us
 muted probe, position checkpoint and actual AudioTrack proof before unmute. Registry availability is
 not physical output proof. No extra AudioTrack, second player or zero-silence guarantee is introduced.
 
+Inferred arrival observes the router's existing output flow during the focus settle wait. A fresh
+exclusive headset prediction can shorten that wait after a short stability interval. The router
+rechecks the full framework prediction, including unmapped routes, before accepting the early timing.
+The coordinator's claim and the playing-track proof still authorize Play and unmute respectively.
+
 The debug system-route take-back adapter reuses `CarBluetoothArrivalWindow` for its original deadline,
 link identity and single transfer allowance. It holds one deferred/requested attempt, not a second
 recovery policy. Absent or already-selected targets wait for route callbacks; only invoking a transfer
@@ -151,6 +156,14 @@ Diagnostics correlate process-local episode/attempt numbers, phase, decision rea
 and Play-issued versus audible-confirmed outcomes. No Bluetooth address, device name, media metadata or
 identity correlation key is added. A playing-track observation is software evidence, not an acoustic
 measurement or proof of physical button origin.
+
+The optional audio-output stall diagnostic reads the existing player's numeric state and native timing
+samples. A pure frame-progress reducer distinguishes intended Pause/suppression/mute from continued
+Play without frame movement; it has no playback or routing effects. Audio Route Lab owns the bounded,
+TTL-limited first-incident record alongside its rolling trace. The output classifier supplies only its
+already privacy-safe observation snapshot. These diagnostics never grant route, focus or resume authority.
+The debug comparison setting disables only automatic system take-back and defaults to the PR307 behavior.
+See [normal comparison procedure and limits](../testing/2026-11-17-audio-output-stall-diagnostics.md).
 
 See [the implementation and acceptance record](../testing/2026-11-07-playback-governor.md). Unit and
 service tests establish ordering and cancellation; repeated stationary car tests establish audibility,
