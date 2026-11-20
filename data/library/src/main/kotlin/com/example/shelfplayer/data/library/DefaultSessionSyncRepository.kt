@@ -197,7 +197,7 @@ constructor(
             stored.copy(
                 positionMillis = progress.position.inWholeMilliseconds.coerceAtLeast(0),
                 durationMillis = progress.duration.inWholeMilliseconds.takeIf { it > 0 } ?: stored.durationMillis,
-                timeListenedMillis = progress.timeListened.inWholeMilliseconds.coerceAtLeast(0),
+                timeListenedMillis = stored.listeningTimeForOutbox(progress.timeListened),
                 updatedAt = updatedAt.toEpochMilli(),
                 state = if (closing) SessionOutboxState.PENDING else SessionOutboxState.OPEN,
             ),
@@ -472,9 +472,20 @@ internal fun PlaybackSessionEntity.isRedundant(progress: SessionProgress, trigge
     if (state != SessionOutboxState.SYNCED) return false
     val positionMoved =
         (progress.position.inWholeMilliseconds - positionMillis).absoluteValue >= REDUNDANT_POSITION_TOLERANCE_MS
-    val listenedGrew =
-        progress.timeListened.inWholeMilliseconds - timeListenedMillis >= REDUNDANT_POSITION_TOLERANCE_MS
+    val intervalMillis = progress.timeListened.inWholeMilliseconds
+    val listenedGrew = if (remoteSessionId == null) {
+        intervalMillis > 0
+    } else {
+        intervalMillis - timeListenedMillis >= REDUNDANT_POSITION_TOLERANCE_MS
+    }
     return !positionMoved && !listenedGrew
+}
+
+private fun PlaybackSessionEntity.listeningTimeForOutbox(delta: Duration): Long {
+    val listened = delta.coerceAtLeast(Duration.ZERO)
+    if (remoteSessionId != null) return listened.inWholeMilliseconds
+    // Offline batch updates replace the history for the UUID with the whole session total.
+    return (timeListenedMillis.milliseconds + listened).inWholeMilliseconds
 }
 
 /**

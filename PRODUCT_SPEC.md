@@ -522,6 +522,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   The already accepted listening history stays settled.
 - An offline batch acknowledgement settles only the submitted snapshot. A pause or backwards seek
   recorded during that upload stays queued and is sent under the same session UUID on a later drain.
+- A locally opened session uploads its accumulated listening time. A final close with no added
+  listening preserves the accumulated total.
 
 ### PLAY-006 Streaming buffer
 

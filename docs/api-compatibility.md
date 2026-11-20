@@ -767,14 +767,13 @@ Everything above is captured and is now load-bearing in `AbsPlaybackApi` and
 behaviour, and both are listed on the app's own Settings → About → Testing screen so a device run settles
 them rather than a code review guessing:
 
-**1. `timeListened` on the live sync route.** The capture cannot tell an accumulating counter from an
-idempotent one, because both syncs sent the same value (noted above). Wave 3 sends the **delta since the
-previous sync** on `POST /api/session/{id}/sync`, and the **session total** on the offline route, whose
-field is named `timeListening` and whose payload is a whole session. The delta is the conservative
-choice: against a server that accumulates it is correct, and against one that replaces it is a small
-under-report of one interval rather than a large over-report of the whole session. `ListenedTime` keeps
-the two readings apart so the answer can change without changing what either route sends today
-(PRODUCT_SPEC 22.5).
+**1. Listening time.** The original capture sent identical values twice. The Audiobookshelf 2.36.0
+implementation confirms that the live route adds `timeListened` to the server session, and
+`local-all` replaces `timeListening` for an existing UUID. BookWave sends a delta to the live route,
+accumulates deltas in sessions opened locally, and sends the total in each snapshot for that local
+UUID. Deferred uploads for sessions that already have a live server ID carry the last delta separately
+from time already credited to that server ID.
+[Audiobookshelf 2.36.0 playback session manager](https://github.com/advplyr/audiobookshelf/blob/v2.36.0/server/managers/PlaybackSessionManager.js)
 
 Nothing about a **position** depends on this. `currentTime` is set rather than accumulated, which the
 capture *did* settle.
