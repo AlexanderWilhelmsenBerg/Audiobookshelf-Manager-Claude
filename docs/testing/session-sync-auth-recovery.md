@@ -65,8 +65,7 @@ returned these results in order.
 | Retried periodic sync | HTTP 200 with the identical request body |
 | Final progress sync after Pause | HTTP 200 |
 
-The interval replay completed without an intervening authorize request. Profile switching
-during renewal still needs device acceptance.
+The interval replay completed without an intervening authorize request.
 
 ### Refused refresh
 
@@ -96,3 +95,23 @@ access token while the server was unreachable and the downloaded audiobook was p
 connection returned, the queued batch itself received HTTP 401. One refresh returned HTTP 200,
 and the batch retried with the identical body and returned HTTP 200. BookWave recorded one row
 sent, one accepted, and zero still queued. No authorize request intervened in the replay.
+
+### Profile switching during a held refresh
+
+On Android 16 with the stack through `b4da989c` and an Audiobookshelf 2.36.0 fixture, two
+synthetic accounts shared a server. The original account, A, played a book before the debug
+control expired its access token. After a brief outage the app had pending progress, and the
+profile switcher was open. A loopback observer held the first refresh from A while the tester
+selected B through the app.
+
+| Observation | Result |
+| --- | --- |
+| Original progress write | HTTP 401 |
+| A's refresh | Held before reaching Audiobookshelf |
+| B's authorization during the hold | HTTP 200 using B's credential |
+| A's refresh after release | HTTP 200 using A's refresh credential |
+| Original progress retry | HTTP 200 using A's new credential, with the identical request body |
+| Active account and library after the retry | B remained selected and authenticated library requests as B |
+
+The observer recorded route categories, HTTP statuses, fixture account aliases, and retry-body
+equality. BookWave's active account was checked separately through the profile switcher.
