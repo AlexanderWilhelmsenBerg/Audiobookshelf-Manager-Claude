@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -278,11 +279,7 @@ private fun SeriesEditorItem(
         row.partNumber != null -> stringResource(R.string.series_editor_part_number, row.partNumber)
         else -> stringResource(R.string.series_editor_book_number, row.number)
     }
-    val title = when {
-        row.missing -> stringResource(R.string.series_editor_missing)
-        row.book != null -> titles[row.book].orEmpty()
-        else -> stringResource(R.string.series_editor_parts)
-    }
+    val title = editorRowTitle(row, titles)
     Surface(
         modifier = Modifier.fillMaxWidth().padding(start = if (row.partNumber == null) 0.dp else PART_INDENT),
         color = if (targeted) {
@@ -295,7 +292,7 @@ private fun SeriesEditorItem(
             modifier = Modifier.padding(end = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            EditorItemMenu(row, rows, title, !saving, actions, drag)
+            EditorItemMenu(row, rows, titles, title, !saving, actions, drag)
             Column(Modifier.weight(1f).padding(vertical = 10.dp)) {
                 Text(position, style = MaterialTheme.typography.labelLarge)
                 Text(title, style = MaterialTheme.typography.titleMedium)
@@ -308,19 +305,27 @@ private fun SeriesEditorItem(
 private fun EditorItemMenu(
     row: EditorRow,
     rows: List<EditorRow>,
+    titles: Map<LibraryItemId, String>,
     title: String,
     enabled: Boolean,
     actions: SeriesEditorActions,
     drag: SeriesDragState,
 ) {
+    var choosingGroup by remember { mutableStateOf(false) }
     val siblings = if (row.partNumber == null) {
         rows.filter { it.partNumber == null }
     } else {
         rows.filter { it.position.slotKey == row.position.slotKey && it.partNumber != null }
     }
     val index = siblings.indexOf(row)
-    val previousParent = rows.lastOrNull {
-        it.partNumber == null && it.number < row.number && !it.missing
+    val groupTargets = remember(row, rows) {
+        if (row.book ==
+            null
+        ) {
+            emptyList()
+        } else {
+            rows.filter { it.position.slotKey != row.position.slotKey && !it.missing }
+        }
     }
     ReorderHandle(stringResource(R.string.series_editor_move_label, title), enabled) { drag.openMenu(row) }
     DropdownMenu(expanded = drag.menuKey == row.key, onDismissRequest = drag::closeMenu) {
@@ -334,9 +339,10 @@ private fun EditorItemMenu(
         siblings.getOrNull(index + 1)?.let { adjacent ->
             EditorMenuAction(stringResource(R.string.series_editor_down)) { move(adjacent, SeriesOrderMove.Reorder) }
         }
-        if (row.book != null && previousParent != null) {
+        if (groupTargets.isNotEmpty()) {
             EditorMenuAction(stringResource(R.string.series_editor_indent)) {
-                move(previousParent, SeriesOrderMove.Indent)
+                drag.closeMenu()
+                choosingGroup = true
             }
         }
         if (row.partNumber != null) {
@@ -349,6 +355,57 @@ private fun EditorItemMenu(
             }
         }
     }
+    if (choosingGroup) {
+        SeriesGroupTargetDialog(
+            targets = groupTargets,
+            titles = titles,
+            onDismiss = { choosingGroup = false },
+            onSelect = { target ->
+                choosingGroup = false
+                actions.move(row.position, target.position, SeriesOrderMove.Indent)
+            },
+        )
+    }
+}
+
+@Composable
+private fun SeriesGroupTargetDialog(
+    targets: List<EditorRow>,
+    titles: Map<LibraryItemId, String>,
+    onDismiss: () -> Unit,
+    onSelect: (EditorRow) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.series_editor_group_target)) },
+        text = {
+            LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                items(targets, key = { it.key }) { target ->
+                    val position = target.partNumber?.let { part ->
+                        stringResource(R.string.series_editor_book_and_part, target.number, part)
+                    } ?: stringResource(R.string.series_editor_book_number, target.number)
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(editorRowTitle(target, titles))
+                                Text(position, style = MaterialTheme.typography.bodySmall)
+                            }
+                        },
+                        onClick = { onSelect(target) },
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.series_editor_cancel)) } },
+    )
+}
+
+@Composable
+private fun editorRowTitle(row: EditorRow, titles: Map<LibraryItemId, String>): String = when {
+    row.missing -> stringResource(R.string.series_editor_missing)
+    row.book != null -> titles[row.book].orEmpty()
+    else -> stringResource(R.string.series_editor_parts)
 }
 
 @Composable

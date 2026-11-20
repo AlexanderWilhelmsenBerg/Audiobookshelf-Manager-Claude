@@ -1,10 +1,13 @@
 package com.example.shelfplayer.feature.series
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -204,6 +207,35 @@ class SeriesScreenTest {
     @Test
     @Config(fontScale = 1.0f)
     fun `a sideways drag from a book handle groups the books into parts`() {
+        val state = showSeriesEditor()
+        val source = compose.onNodeWithContentDescription("Reorder Book 2")
+        val sourceCenter = source.fetchSemanticsNode().boundsInRoot.center
+        val target = compose.onNodeWithContentDescription("Reorder Book 1").fetchSemanticsNode().boundsInRoot.center
+        source.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(700)
+        source.performTouchInput {
+            advanceEventTime(700)
+            moveBy(Offset(width * 1.5f, target.y - sourceCenter.y))
+            up()
+        }
+        compose.waitForIdle()
+        val positions = state.value.order.changes.associate { it.bookId.value to it.after }
+        assertEquals(mapOf("book-1" to "1.01 (Part 1)", "book-2" to "1.02 (Part 2)"), positions)
+    }
+
+    @Test
+    fun `the reorder menu groups the first book under a later book at large text sizes`() {
+        val state = showSeriesEditor()
+        compose.onNodeWithContentDescription("Reorder Book 1").performClick()
+        compose.onNodeWithText("Group with another book").performClick()
+        compose.onNodeWithText("Choose a book or part").assertExists()
+        compose.onNode(hasText("Book 2") and hasClickAction()).performClick()
+
+        val positions = state.value.order.changes.associate { it.bookId.value to it.after }
+        assertEquals(mapOf("book-2" to "2.01 (Part 1)", "book-1" to "2.02 (Part 2)"), positions)
+    }
+
+    private fun showSeriesEditor(): MutableState<SeriesEditorState> {
         val shelf = shelf(finishedThrough = 0)
         val editor = SeriesEditorState(
             owner = SeriesOrderOwner(ProfileId("profile"), generation = 0),
@@ -224,19 +256,7 @@ class SeriesScreenTest {
                 )
             }
         }
-        val source = compose.onNodeWithContentDescription("Reorder Book 2")
-        val sourceCenter = source.fetchSemanticsNode().boundsInRoot.center
-        val target = compose.onNodeWithContentDescription("Reorder Book 1").fetchSemanticsNode().boundsInRoot.center
-        source.performTouchInput { down(center) }
-        compose.mainClock.advanceTimeBy(700)
-        source.performTouchInput {
-            advanceEventTime(700)
-            moveBy(Offset(width * 1.5f, target.y - sourceCenter.y))
-            up()
-        }
-        compose.waitForIdle()
-        val positions = state.value.order.changes.associate { it.bookId.value to it.after }
-        assertEquals(mapOf("book-1" to "1.01 (Part 1)", "book-2" to "1.02 (Part 2)"), positions)
+        return state
     }
 
     private fun shelf(finishedThrough: Int): SeriesShelf {

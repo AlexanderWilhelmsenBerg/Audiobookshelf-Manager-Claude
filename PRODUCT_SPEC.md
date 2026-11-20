@@ -383,7 +383,7 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 
 - Accounts with book metadata edit access can open Edit from an accessible series. Drag a row vertically
   to reorder it, sideways onto a book to group parts, or sideways out of a group to promote it.
-  The same actions are available through the row's reorder menu.
+  The same actions are available through the row's reorder menu, including choosing a specific book or part for a group.
 - A missing book can occupy an explicit number. Placeholders are saved per profile and series on the device.
   A real book with that number takes its place in the series view.
 - Save sends changed sequence values through the existing book metadata operation and preserves each book's

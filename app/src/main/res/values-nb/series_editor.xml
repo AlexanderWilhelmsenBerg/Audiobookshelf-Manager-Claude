@@ -16,7 +16,9 @@
     <string name="series_editor_move_label">Endre plasseringen til %1$s</string>
     <string name="series_editor_up">Flytt opp</string>
     <string name="series_editor_down">Flytt ned</string>
-    <string name="series_editor_indent">Grupper med forrige bok</string>
+    <string name="series_editor_indent">Grupper med en annen bok</string>
+    <string name="series_editor_group_target">Velg en bok eller del</string>
+    <string name="series_editor_book_and_part">Bok %1$d, del %2$d</string>
     <string name="series_editor_outdent">Flytt ut av gruppen</string>
     <plurals name="series_editor_partial_save">
         <item quantity="one">%1$d av %2$d bokendring ble lagret. %3$s</item>
