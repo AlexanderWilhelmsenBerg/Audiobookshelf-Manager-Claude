@@ -532,6 +532,7 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   recorded during that upload stays queued and is sent under the same session UUID on a later drain.
 - A locally opened session uploads its accumulated listening time. A final close with no added
   listening preserves the accumulated total.
+- The sync diagnostics screen counts each session once across an Open-to-Pending transition.
 
 ### PLAY-006 Streaming buffer
 
