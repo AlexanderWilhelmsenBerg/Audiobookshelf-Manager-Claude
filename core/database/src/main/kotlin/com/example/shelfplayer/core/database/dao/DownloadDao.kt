@@ -73,6 +73,25 @@ interface DownloadDao {
         upsertFiles(files)
     }
 
+    @Transaction
+    suspend fun repairManifest(book: DownloadedBookEntity, files: List<DownloadedFileEntity>) {
+        removeRetiredIncompleteFiles(book.bookKey)
+        writeManifest(book, files)
+    }
+
+    @Query(
+        """
+        DELETE FROM downloaded_files
+        WHERE bookKey = :bookKey AND state != 'Complete'
+            AND NOT EXISTS (
+                SELECT 1 FROM audio_tracks AS track
+                WHERE track.bookKey = :bookKey AND track.remoteFileId = downloaded_files.remoteFileId
+                    AND track.isExcluded = 0
+            )
+        """,
+    )
+    suspend fun removeRetiredIncompleteFiles(bookKey: String)
+
     /**
      * PRODUCT_SPEC DL-003 criterion 4 — a second profile asking for a book that is already here.
      *

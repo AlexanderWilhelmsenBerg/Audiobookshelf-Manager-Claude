@@ -29,6 +29,7 @@ import com.example.shelfplayer.domain.repository.AuthRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -193,7 +194,14 @@ class DefaultAuthRepository @Inject constructor(
         // row has gone cannot activate a credential: there would be no origin to bind it to, and an
         // unbound token is the defect this argument exists to prevent.
         val serverBaseUrl = profileDao.findServer(profile.serverId)?.baseUrl
-        if (serverBaseUrl != null && sessionTokens.activate(profileId, serverBaseUrl)) {
+        val activated = try {
+            serverBaseUrl != null && sessionTokens.activate(profileId, serverBaseUrl)
+        } catch (_: IOException) {
+            return@withContext AppError.Storage(
+                "The saved session could not be read. Try signing in again.",
+            ).asFailure()
+        }
+        if (activated) {
             // A profile previously marked for reauthentication can become usable again: the user may
             // have signed in on another screen, or a renewal may have succeeded. Clearing the mark here
             // means the flag reflects the credential rather than the last thing that went wrong.

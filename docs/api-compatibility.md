@@ -553,7 +553,9 @@ No token, no query string, no signature. Two consequences, and both are good new
 `audio/mpeg`. A separate 2.36.0 capture used generated Ogg Vorbis, Opus in `.opus` and `.ogg`, and
 standalone ADTS AAC. With the previous advertised types those samples returned `playMethod: 2`
 with an HLS URL. Adding `audio/ogg` and `audio/aac` produced `playMethod: 0` and file URLs for all
-four with `forceDirectPlay` disabled. Both Opus samples used `audio/ogg` on the wire.
+four with `forceDirectPlay` disabled. Both Opus samples used `audio/ogg` on the wire. BookWave advertises
+Ogg but leaves standalone ADTS AAC to server transcoding so resume and seeks remain available.
+AAC in MP4 audiobooks uses the `audio/mp4` advertisement.
 The capture and sample generator are in [`scripts/capture-codec-contracts.py`](../scripts/capture-codec-contracts.py),
 and the sanitized responses are in [`codec-negotiation.json`](../core/network/src/test/resources/compatibility/codec-negotiation.json).
 
@@ -759,6 +761,13 @@ That is the last-writer-wins rule working, observed rather than read. Three thin
 The capture should send a realistic `updatedAt` next time so the *accepted* path is recorded too. The
 rejected path is worth keeping regardless — it is the only fixture that shows what a declined sync
 looks like.
+
+A separate loopback test with a fresh synthetic account on 2.36.0 confirmed that the first upload
+creates a progress row at server insertion time. A rewind observed during that first upload can
+therefore arrive with an older timestamp. When a newer local snapshot races an accepted upload,
+BookWave reads back the original position and its version. It tries the newer snapshot once at that
+exact version if the version falls inside the upload window. The server accepted that equality
+case on the fixture and rejected the same version after a newer position had been written.
 
 ### What wave 3 built on this, and the one thing it had to leave unsettled
 

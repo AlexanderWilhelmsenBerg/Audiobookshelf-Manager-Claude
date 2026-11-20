@@ -41,6 +41,7 @@ class ProfilePasscodeStoreJvmTest {
         File(context.filesDir, ProfilePasscodeStore.DIRECTORY).writeText("unreadable directory fixture")
 
         assertNull(newStore().observeProtectedProfiles().first())
+        assertNull(store.protectionFor(PROFILE))
     }
 
     /** Replacing an existing lock record must work on every host filesystem, including Windows. */

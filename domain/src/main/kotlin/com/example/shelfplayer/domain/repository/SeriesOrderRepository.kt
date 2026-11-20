@@ -1,5 +1,6 @@
 package com.example.shelfplayer.domain.repository
 
+import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.SeriesId
@@ -15,5 +16,10 @@ interface SeriesOrderRepository {
 
 /** The server owns the sequence values for real books. */
 fun interface SeriesSequenceRepository {
-    suspend fun changeSequence(profileId: ProfileId, seriesId: SeriesId, change: SeriesSequenceChange): AppResult<Unit>
+    suspend fun changeSequence(
+        profileId: ProfileId,
+        seriesId: SeriesId,
+        change: SeriesSequenceChange,
+        beforeWrite: suspend () -> AppError?,
+    ): AppResult<Unit>
 }

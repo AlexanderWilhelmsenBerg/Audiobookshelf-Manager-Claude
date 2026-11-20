@@ -14,10 +14,30 @@ data class SeriesOrder private constructor(
         get() = slots.filter { it.content == SeriesSlotContent.Missing }.mapTo(mutableSetOf()) { it.number }
 
     val changes: List<SeriesSequenceChange>
-        get() = assignments(slots).mapNotNull { (id, position) ->
-            val before = originals.getValue(id)
-            val assigned = position.sequence()
-            if (id in edited && before != assigned) SeriesSequenceChange(id, before, assigned) else null
+        get() {
+            val positions = assignments(slots).mapValues { (_, position) -> position.sequence() }
+            val changed = edited.filterTo(mutableSetOf()) { positions[it] != originals[it] }
+            if (changed.isEmpty()) return emptyList()
+
+            // An unchanged label can sort across a newly assigned number. Keep labels whose
+            // original sort keys still fit between the explicitly changed positions.
+            val ids = positions.keys.toList()
+            var lowerBound: SeriesSequence? = null
+            for (id in ids) {
+                val original = SeriesSequence.parse(originals.getValue(id))
+                if (lowerBound != null && original <= lowerBound) changed += id
+                if (id in changed) lowerBound = SeriesSequence.parse(positions.getValue(id))
+            }
+            var upperBound: SeriesSequence? = null
+            for (id in ids.asReversed()) {
+                val original = SeriesSequence.parse(originals.getValue(id))
+                if (upperBound != null && original >= upperBound) changed += id
+                if (id in changed) upperBound = SeriesSequence.parse(positions.getValue(id))
+            }
+            return positions.mapNotNull { (id, assigned) ->
+                val before = originals.getValue(id)
+                if (id in changed && before != assigned) SeriesSequenceChange(id, before, assigned) else null
+            }
         }
 
     fun addMissing(number: Int): SeriesOrder {

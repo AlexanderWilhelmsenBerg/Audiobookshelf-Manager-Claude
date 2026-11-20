@@ -207,6 +207,8 @@ class AutoLibrary @Inject constructor(
 
     internal fun activeProfileGeneration(): Long = profiles.activeProfileGeneration()
 
+    internal fun stableActiveProfileGeneration(): Long? = profiles.stableActiveProfileGeneration()
+
     private fun profileItem(profile: Profile, server: Server?, isActive: Boolean, canActivate: Boolean): MediaItem {
         val status = when {
             isActive -> string(R.string.car_profile_active)

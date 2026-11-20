@@ -88,10 +88,19 @@ class SignInUseCase @Inject constructor(
         // PRODUCT_SPEC SYNC-001 puts the handshake "on login". It is one request, so awaiting it does
         // not make the user wait in any meaningful sense — unlike the sync, which is one request per
         // item and now runs on the screen that shows its result.
-        activation.activateAfterSignIn(profile.id).flatMap {
-            AppResult.Success(
-                SignInOutcome(profile = profile, warning = capabilityRepository.handshake(profile.id).failureOrNull()),
-            )
+        activation.activateAfterSignIn(profile.id).flatMap { status ->
+            if (status == SessionStatus.Active) {
+                AppResult.Success(
+                    SignInOutcome(
+                        profile = profile,
+                        warning = capabilityRepository.handshake(profile.id).failureOrNull(),
+                    ),
+                )
+            } else {
+                AppResult.Failure(
+                    AppError.Authentication(summary = "The saved session could not be opened. Sign in again."),
+                )
+            }
         }
     }
 

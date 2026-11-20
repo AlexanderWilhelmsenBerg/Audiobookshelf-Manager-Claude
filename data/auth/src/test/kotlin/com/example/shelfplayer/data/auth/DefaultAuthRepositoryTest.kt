@@ -11,6 +11,8 @@ import com.example.shelfplayer.core.database.RoomDatabaseTransactionRunner
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
 import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.datastore.AppSettingsSerializer
+import com.example.shelfplayer.core.datastore.security.LockCipher
+import com.example.shelfplayer.core.datastore.security.ProfilePasscodeStore
 import com.example.shelfplayer.core.datastore.security.SessionTokenStore
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
@@ -23,9 +25,11 @@ import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.asFailure
 import com.example.shelfplayer.core.model.auth.SessionIdentity
 import com.example.shelfplayer.core.model.auth.SessionStatus
+import com.example.shelfplayer.core.model.lock.ProfileLockState
 import com.example.shelfplayer.core.network.http.ServerUrlNormalizer
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
+import com.example.shelfplayer.domain.lock.ProfileLockGate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -326,6 +330,44 @@ class DefaultAuthRepositoryTest {
     }
 
     // --- AUTH-004: restoring and ending a session -------------------------------------------------
+
+    @Test
+    fun `password recovery from an unreadable inventory unlocks only the recovered profile for this session`() = runTest {
+        val profile = successfulSignIn()
+        val inventory = File(context.filesDir, "locks").apply { writeText("unreadable inventory fixture") }
+        try {
+            settings.setActiveProfile(profile.id)
+            val clock = TestAppClock()
+            val passcodes = ProfilePasscodeStore(
+                context,
+                object : LockCipher {
+                    override fun wrap(plaintext: ByteArray): ByteArray = plaintext
+                    override fun unwrap(encrypted: ByteArray): ByteArray = encrypted
+                    override fun clear() = Unit
+                },
+                clock,
+                dispatcher,
+            )
+            val lock = DefaultProfileLockRepository(
+                passcodes,
+                ProfileLockGate(clock),
+                settings,
+                database.profileDao(),
+                RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default)),
+            )
+            assertIs<ProfileLockState.Locked>(lock.observeLockState().first())
+            assertTrue(lock.isActiveProfileLocked())
+            lock.clearIfLocked(profile.id)
+            assertEquals(ProfileLockState.Unlocked, lock.observeLockState().first())
+            assertFalse(lock.isActiveProfileLocked())
+            assertFalse(lock.mayActivate(ProfileId("different-fixture-profile")))
+            assertTrue(inventory.isFile)
+            lock.lockNow()
+            assertTrue(lock.isActiveProfileLocked())
+        } finally {
+            inventory.delete()
+        }
+    }
 
     @Test
     fun `restoring a profile with a stored token reports an active session`() = runTest {
