@@ -1102,6 +1102,7 @@ See [the device integration contract](docs/garmin-device-management.md) and
 **Appearance/accessibility**
 - device-wide visual design under Appearance → Design, with Classic as the default and Minimal and Editorial as opt-in choices;
 - system/light/dark;
+- status-bar icons follow the visible app theme, including when it differs from the system theme;
 - dynamic color;
 - text scaling follows system;
 - reduced motion;
