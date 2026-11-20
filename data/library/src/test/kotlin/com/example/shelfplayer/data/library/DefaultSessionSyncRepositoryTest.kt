@@ -8,7 +8,10 @@ import com.example.shelfplayer.core.model.playback.OfflineSessionResult
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SyncOutcome
 import com.example.shelfplayer.core.model.playback.SyncTrigger
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -18,6 +21,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -248,6 +252,45 @@ internal class DefaultSessionSyncRepositoryTest : SessionSyncRepositoryFixture()
         assertEquals(AppResult.Success(SyncOutcome.Unacknowledged), result)
         assertEquals(AppResult.Success(0), repository.drainOutbox())
         assertEquals(1, gateway.uploaded.size)
+    }
+
+    @Test
+    fun `an older batch cannot settle a backwards pause recorded during upload`() = runTest {
+        val sessionId = openId(remoteSessionId = null)
+        val first = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 2.minutes)
+        val updatedAt = clock.now()
+        repository.syncOpenSession(sessionId, first, updatedAt, SyncTrigger.Interval)
+        seedUnsyncedProgress(recordedAt = updatedAt.toEpochMilli(), position = first.position)
+        val uploadStarted = CompletableDeferred<Unit>()
+        val completeUpload = CompletableDeferred<Unit>()
+        val completeNextUpload = CompletableDeferred<Unit>()
+        gateway.offlineResults = { rows ->
+            if (rows.single().progress.position == first.position) {
+                uploadStarted.complete(Unit)
+                completeUpload.await()
+            } else {
+                completeNextUpload.await()
+            }
+            rows.map { OfflineSessionResult(it.id, wasAccepted = true, wasProgressApplied = true) }
+        }
+        val firstDrain = async { repository.drainOutbox() }
+        uploadStarted.await()
+
+        val pause = first.copy(position = 38.minutes)
+        seedUnsyncedProgress(recordedAt = updatedAt.toEpochMilli(), position = pause.position)
+        repository.syncOpenSession(sessionId, pause, updatedAt, SyncTrigger.Paused)
+        val nextDrain = async(start = CoroutineStart.UNDISPATCHED) { repository.drainOutbox() }
+        completeUpload.complete(Unit)
+
+        assertEquals(AppResult.Success(0), firstDrain.await())
+        assertTrue(storedProgress().hasUnsyncedChanges)
+        assertEquals(1, repository.observeDiagnostics().first().sessionsPending)
+        completeNextUpload.complete(Unit)
+        assertEquals(AppResult.Success(1), nextDrain.await())
+        val uploaded = gateway.uploaded.flatten()
+        assertEquals(listOf(sessionId, sessionId), uploaded.map { it.id })
+        assertEquals(listOf(first.position, pause.position), uploaded.map { it.progress.position })
+        assertFalse(storedProgress().hasUnsyncedChanges)
     }
 
     /** A session the batch did not mention keeps its row: the case that would otherwise vanish silently. */

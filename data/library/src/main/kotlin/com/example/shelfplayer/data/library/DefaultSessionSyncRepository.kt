@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.common.log.debug
 import com.example.shelfplayer.core.common.log.info
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.common.time.ServerClock
+import com.example.shelfplayer.core.database.DatabaseTransactionRunner
 import com.example.shelfplayer.core.database.dao.ProfileDao
 import com.example.shelfplayer.core.database.dao.ProgressDao
 import com.example.shelfplayer.core.database.dao.SessionOutboxDao
@@ -22,6 +23,7 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
+import com.example.shelfplayer.core.model.playback.OfflineSessionResult
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
 import com.example.shelfplayer.core.model.playback.SyncOutcome
@@ -34,6 +36,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.util.UUID
@@ -67,19 +71,27 @@ import kotlin.time.Duration.Companion.milliseconds
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
-class DefaultSessionSyncRepository @Inject constructor(
+class DefaultSessionSyncRepository
+@Suppress("LongParameterList") // Keep the transaction and both DAO boundaries explicit.
+@Inject
+constructor(
     private val settings: AppSettingsDataSource,
     private val profileDao: ProfileDao,
     private val outbox: SessionOutboxDao,
     // PRODUCT_SPEC PLAY-004 — the outbox is where a *session* lives; this is where the book's position
     // lives, and it is the table that has to stop claiming the position is unsent once it has been sent.
     private val progressDao: ProgressDao,
+    private val transaction: DatabaseTransactionRunner,
     private val requests: SessionSyncRequests,
     private val serverClock: ServerClock,
     private val clock: AppClock,
     private val logger: Logger,
     @param:Dispatcher(ShelfDispatcher.Io) private val ioDispatcher: CoroutineDispatcher,
 ) : SessionSyncRepository {
+
+    // ABS replaces the history values when the same UUID is uploaded again. Two drains must deliver
+    // those snapshots in order, while local playback can keep recording new progress during upload.
+    private val drainGate = Mutex()
 
     /**
      * Why the last sync ran, held in memory rather than in a column.
@@ -231,60 +243,65 @@ class DefaultSessionSyncRepository @Inject constructor(
     }
 
     override suspend fun drainOutbox(): AppResult<Int> = withContext(ioDispatcher) {
-        val profile = activeProfile() ?: return@withContext AppResult.Failure(AppError.Authentication())
+        drainGate.withLock { drainActiveProfile() }
+    }
+
+    private suspend fun drainActiveProfile(): AppResult<Int> {
+        val profile = activeProfile() ?: return AppResult.Failure(AppError.Authentication())
         // A session left `Open` by a process death is finalized before the drain rather than skipped. Nobody
         // is coming back to it in this process, and leaving it open is how it would sit in the table forever.
         outbox.closeOpen(profile.profileId, SessionOutboxState.OPEN, SessionOutboxState.PENDING)
         val queued = outbox.pending(profile.profileId, SessionOutboxState.SYNCED, BATCH_SIZE)
         if (queued.isEmpty()) {
             compact()
-            return@withContext AppResult.Success(0)
+            return AppResult.Success(0)
         }
         val profileId = ProfileId(profile.profileId)
         val sessions = queued.map { row -> row.toOfflineSession() }
         val uploaded = requests.upload(profileId, sessions)
-        when (uploaded) {
+        return when (uploaded) {
             is AppResult.Failure -> {
                 outbox.markAttempted(queued.map(PlaybackSessionEntity::sessionId), uploaded.error.code)
                 AppResult.Failure(uploaded.error)
             }
 
             is AppResult.Success -> {
-                val accepted = uploaded.value.filter { it.wasAccepted }
+                val results = uploaded.value.filter { it.wasAccepted }.associateBy { it.id }
                 val syncedAt = clock.now().toEpochMilli()
-                accepted.forEach { result ->
-                    outbox.markSynced(
-                        sessionId = result.id,
-                        syncedState = SessionOutboxState.SYNCED,
-                        syncedAt = syncedAt,
-                        // PRODUCT_SPEC PLAY-004 — recorded, not retried. The server held something newer, and
-                        // arguing with that is the app choosing the maximum position by another route.
-                        wasProgressApplied = result.wasProgressApplied,
-                    )
+                val settled = queued.count { row ->
+                    results[row.sessionId]?.let { settleUploaded(row, it, syncedAt) } == true
                 }
-                // A session the batch did not mention, or reported as not accepted, keeps its row and is sent
-                // again on the next drain. `success: false` with no id is the case that would otherwise vanish.
-                // The books whose positions the server has now taken. Only the accepted rows, and only
-                // those whose position the server actually *applied*: `wasProgressApplied == false` means
-                // it held something newer, so this device's row is still the one that has not landed.
-                val acceptedIds = accepted.filter { it.wasProgressApplied }.map { it.id }.toSet()
-                queued.filter { row -> row.sessionId in acceptedIds }
-                    .forEach { row ->
-                        markProgressSynced(row.profileId, row.bookKey, row.positionMillis.milliseconds)
-                    }
-                val unresolved = queued.map(PlaybackSessionEntity::sessionId) - accepted.map { it.id }.toSet()
+                val unresolved = queued.map(PlaybackSessionEntity::sessionId) - results.keys
                 if (unresolved.isNotEmpty()) outbox.markAttempted(unresolved, NOT_ACCEPTED)
                 logger.info(
                     LogCategory.Playback,
                     "Drained the listening-session outbox",
                     LogField.Count("sent", queued.size),
-                    LogField.Count("accepted", accepted.size),
-                    LogField.Count("stillQueued", unresolved.size),
+                    LogField.Count("accepted", settled),
+                    LogField.Count("stillQueued", queued.size - settled),
                 )
                 compact()
-                AppResult.Success(accepted.size)
+                AppResult.Success(settled)
             }
         }
+    }
+
+    private suspend fun settleUploaded(
+        sent: PlaybackSessionEntity,
+        result: OfflineSessionResult,
+        syncedAt: Long,
+    ): Boolean = transaction {
+        val current = outbox.find(sent.sessionId) ?: return@transaction false
+        // Compare the submitted snapshot rather than just clock time. A seek can move backwards,
+        // and two local observations can have the same timestamp.
+        if (current.state != sent.state || current.toOfflineSession() != sent.toOfflineSession()) {
+            return@transaction false
+        }
+        outbox.markSynced(sent.sessionId, SessionOutboxState.SYNCED, syncedAt, result.wasProgressApplied)
+        if (result.wasProgressApplied) {
+            markProgressSynced(sent.profileId, sent.bookKey, sent.positionMillis.milliseconds)
+        }
+        true
     }
 
     /**

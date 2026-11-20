@@ -66,7 +66,7 @@ returned these results in order.
 | Final progress sync after Pause | HTTP 200 |
 
 The interval replay completed without an intervening authorize request. Profile switching
-during renewal and access-token expiry during an offline-batch replay still need device acceptance.
+during renewal still needs device acceptance.
 
 ### Refused refresh
 
@@ -90,3 +90,9 @@ BookWave played a downloaded fixture and paused while Audiobookshelf was unreach
 Its diagnostics identified the listening session as local. After the loopback connection
 returned, the offline-batch endpoint returned 200, and BookWave recorded that the server
 accepted a queued row.
+
+With the same Android 16 emulator and Audiobookshelf 2.36.0 fixture, a second run expired the
+access token while the server was unreachable and the downloaded audiobook was paused. After the
+connection returned, the queued batch itself received HTTP 401. One refresh returned HTTP 200,
+and the batch retried with the identical body and returned HTTP 200. BookWave recorded one row
+sent, one accepted, and zero still queued. No authorize request intervened in the replay.

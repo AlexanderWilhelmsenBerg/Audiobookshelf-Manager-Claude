@@ -520,6 +520,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - A sync conflict never deletes local playback history silently.
 - A redundant tick leaves declined local progress unsynced and records no confirmed resume baseline.
   The already accepted listening history stays settled.
+- An offline batch acknowledgement settles only the submitted snapshot. A pause or backwards seek
+  recorded during that upload stays queued and is sent under the same session UUID on a later drain.
 
 ### PLAY-006 Streaming buffer
 

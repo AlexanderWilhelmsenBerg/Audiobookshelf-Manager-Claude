@@ -85,7 +85,7 @@ interface SessionSyncRepository {
      * conflict rule working, not a failure, and retrying into it would be the app arguing with the server
      * (PLAY-004).
      *
-     * @return how many sessions the server accepted.
+     * @return how many submitted snapshots the server accepted and the local outbox settled.
      */
     suspend fun drainOutbox(): AppResult<Int>
 

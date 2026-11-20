@@ -62,7 +62,7 @@ internal class SessionSyncRecordingGateway :
     val offlineProfiles = mutableListOf<ProfileId>()
     val offlineResponses = mutableListOf<AppResult<List<OfflineSessionResult>>>()
     var offlineUpload: AppResult<List<OfflineSessionResult>>? = null
-    var offlineResults: (List<OfflineSession>) -> List<OfflineSessionResult> = { emptyList() }
+    var offlineResults: suspend (List<OfflineSession>) -> List<OfflineSessionResult> = { emptyList() }
 
     val syncedProgress = mutableListOf<SessionProgress>()
     val uploaded = mutableListOf<List<OfflineSession>>()
