@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.database.dao.DownloadDao
+import com.example.shelfplayer.core.database.dao.DownloadedBookWithFiles
 import com.example.shelfplayer.core.database.entity.DownloadRequestEntity
 import com.example.shelfplayer.core.database.entity.DownloadedBookEntity
 import com.example.shelfplayer.core.database.entity.EntityKey
@@ -73,10 +74,8 @@ class DefaultDownloadRepository @Inject constructor(
             val existing = downloadDao.find(key)
             val inheritedPin = existing?.requests?.any { request -> request.isPinned } == true
 
-            // A book already here keeps its manifest untouched: this is the shared-copy case, and rewriting the
-            // rows would reset a transfer that may be running. Only the claim is new.
             if (existing == null) {
-                downloadDao.upsertBook(
+                downloadDao.writeManifest(
                     DownloadedBookEntity(
                         bookKey = key,
                         serverId = serverId.value,
@@ -89,8 +88,10 @@ class DefaultDownloadRepository @Inject constructor(
                         createdAt = now.toEpochMilli(),
                         updatedAt = now.toEpochMilli(),
                     ),
+                    files.map { file -> DownloadMappers.toEntity(key, file) },
                 )
-                downloadDao.upsertFiles(files.map { file -> DownloadMappers.toEntity(key, file) })
+            } else {
+                extendCompletedManifest(existing, files, now.toEpochMilli())
             }
 
             downloadDao.addRequest(
@@ -104,6 +105,25 @@ class DefaultDownloadRepository @Inject constructor(
             )
             requireStored(key)
         }
+    }
+
+    private suspend fun extendCompletedManifest(
+        existing: DownloadedBookWithFiles,
+        planned: List<OfflineFile>,
+        updatedAt: Long,
+    ) {
+        // Existing incomplete transfers keep their plan. A completed copy can reuse every committed
+        // part and queue only catalogue additions, including replacements with a different file ID.
+        if (!existing.hasMissingCatalogueFiles || existing.files.any { it.state != DownloadState.Complete.name }) {
+            return
+        }
+        val storedIds = existing.files.mapTo(hashSetOf()) { it.remoteFileId }
+        val added = planned.filterNot { it.remoteFileId in storedIds }
+        if (added.isEmpty()) return
+        downloadDao.writeManifest(
+            existing.book.copy(state = DownloadState.Queued.name, updatedAt = updatedAt, failureSummary = null),
+            added.map { DownloadMappers.toEntity(existing.book.bookKey, it) },
+        )
     }
 
     override suspend fun updateFile(serverId: ServerId, itemId: LibraryItemId, file: OfflineFile): AppResult<Unit> =
@@ -133,6 +153,7 @@ class DefaultDownloadRepository @Inject constructor(
     ): AppResult<OfflineBook> = io {
         val key = keyOf(serverId, itemId)
         val stored = DownloadMappers.toDomain(checkNotNull(downloadDao.find(key)) { "no manifest to complete" })
+        require(!stored.hasMissingCatalogueFiles) { "the catalogue has required tracks missing from this manifest" }
         require(stored.isComplete) {
             "refusing to mark complete: ${stored.files.count { it.state != DownloadState.Complete }} of " +
                 "${stored.files.size} file(s) are not committed"

@@ -70,6 +70,8 @@ data class OfflineBook(
     val isPinned: Boolean,
     val createdAt: Instant,
     val updatedAt: Instant,
+    /** The local catalogue contains a required track that the downloaded manifest has yet to record. */
+    val hasMissingCatalogueFiles: Boolean = false,
 ) {
     /** The bytes actually on disk, which is what a progress bar and a storage screen both want. */
     val downloadedBytes: Long get() = files.sumOf(OfflineFile::downloadedBytes)
@@ -85,7 +87,7 @@ data class OfflineBook(
      * wrong, which is the case worth catching.
      */
     val isComplete: Boolean
-        get() = files.isNotEmpty() && files.all { it.state == DownloadState.Complete }
+        get() = !hasMissingCatalogueFiles && files.isNotEmpty() && files.all { it.state == DownloadState.Complete }
 }
 
 /**

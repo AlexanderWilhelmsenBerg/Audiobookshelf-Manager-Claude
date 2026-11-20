@@ -495,6 +495,7 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - An offline queue requires a committed local file for every current non-excluded track, including after a catalogue refresh.
 - Chapter navigation works independently of file boundaries.
 - A missing local part marks the download incomplete and prevents false “downloaded” state.
+- When the catalogue gains a required file, Retry reuses committed files and queues the new part.
 - If a local file becomes unreadable, playback stops safely and offers repair/redownload.
 - No automatic fallback to cellular streaming occurs unless policy allows it.
 

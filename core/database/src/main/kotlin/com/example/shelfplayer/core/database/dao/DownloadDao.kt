@@ -39,16 +39,16 @@ interface DownloadDao {
      * by the active profile.
      */
     @Transaction
-    @Query("SELECT * FROM downloaded_books ORDER BY updatedAt DESC")
+    @Query("$READ_MANIFEST ORDER BY updatedAt DESC")
     fun observeAll(): Flow<List<DownloadedBookWithFiles>>
 
     /** One book's manifest, for the screen that shows it and the player that resolves URIs from it. */
     @Transaction
-    @Query("SELECT * FROM downloaded_books WHERE bookKey = :bookKey")
+    @Query("$READ_MANIFEST WHERE bookKey = :bookKey")
     fun observe(bookKey: String): Flow<DownloadedBookWithFiles?>
 
     @Transaction
-    @Query("SELECT * FROM downloaded_books WHERE bookKey = :bookKey")
+    @Query("$READ_MANIFEST WHERE bookKey = :bookKey")
     suspend fun find(bookKey: String): DownloadedBookWithFiles?
 
     /**
@@ -58,7 +58,7 @@ interface DownloadDao {
      * and including it would turn every interrupted download into a start-up warning.
      */
     @Transaction
-    @Query("SELECT * FROM downloaded_books WHERE state = 'Complete' ORDER BY updatedAt ASC")
+    @Query("$READ_MANIFEST WHERE state = 'Complete' ORDER BY updatedAt ASC")
     suspend fun completed(): List<DownloadedBookWithFiles>
 
     @Upsert
@@ -66,6 +66,12 @@ interface DownloadDao {
 
     @Upsert
     suspend fun upsertFiles(files: List<DownloadedFileEntity>)
+
+    @Transaction
+    suspend fun writeManifest(book: DownloadedBookEntity, files: List<DownloadedFileEntity>) {
+        upsertBook(book)
+        upsertFiles(files)
+    }
 
     /**
      * PRODUCT_SPEC DL-003 criterion 4 — a second profile asking for a book that is already here.
@@ -130,6 +136,14 @@ interface DownloadDao {
         SELECT downloaded_books.bookKey FROM downloaded_books
         INNER JOIN download_requests ON download_requests.bookKey = downloaded_books.bookKey
         WHERE download_requests.profileId = :profileId AND downloaded_books.state = 'Complete'
+            AND NOT $MISSING_CATALOGUE_FILES
+            AND EXISTS (
+                SELECT 1 FROM downloaded_files WHERE bookKey = downloaded_books.bookKey
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM downloaded_files
+                WHERE bookKey = downloaded_books.bookKey AND state != 'Complete'
+            )
         """,
     )
     fun observeCompletedFor(profileId: String): Flow<List<String>>
@@ -160,4 +174,19 @@ data class DownloadedBookWithFiles(
     val files: List<DownloadedFileEntity>,
     @Relation(parentColumn = "bookKey", entityColumn = "bookKey")
     val requests: List<DownloadRequestEntity>,
+    val hasMissingCatalogueFiles: Boolean,
 )
+
+private const val MISSING_CATALOGUE_FILES = """
+    EXISTS (
+        SELECT 1 FROM audio_tracks AS track
+        WHERE track.bookKey = downloaded_books.bookKey AND track.isExcluded = 0
+            AND NOT EXISTS (
+                SELECT 1 FROM downloaded_files AS file
+                WHERE file.bookKey = track.bookKey AND file.remoteFileId = track.remoteFileId
+            )
+    )
+"""
+
+private const val READ_MANIFEST =
+    "SELECT downloaded_books.*, $MISSING_CATALOGUE_FILES AS hasMissingCatalogueFiles FROM downloaded_books"
