@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.download.DownloadState
+import com.example.shelfplayer.core.model.download.OfflineFile
 import com.example.shelfplayer.core.model.download.TrafficCategory
 import com.example.shelfplayer.core.model.isFailure
 import com.example.shelfplayer.domain.download.BookAssetSource
@@ -66,9 +67,7 @@ class DownloadBookUseCase @Inject constructor(
             )
         }
 
-        val extending = oldFiles.isNotEmpty() && oldFiles.all { it.state == DownloadState.Complete }
-        val estimatedBytes = if (extending) additions.sumOf { it.expectedBytes ?: 0L } else book.estimatedBytes
-        val required = estimatedBytes + (estimatedBytes / HEADROOM_DIVISOR)
+        val required = requiredBytes(oldFiles, additions, book.estimatedBytes)
         val free = downloads.freeBytes()
         if (free in 1 until required) {
             return AppResult.Failure(
@@ -87,6 +86,12 @@ class DownloadBookUseCase @Inject constructor(
             category = categoryFor(isAutomatic),
         )
         return AppResult.Success(Unit)
+    }
+
+    private fun requiredBytes(oldFiles: List<OfflineFile>, additions: List<OfflineFile>, wholeBookBytes: Long): Long {
+        val extending = oldFiles.isNotEmpty() && oldFiles.all { it.state == DownloadState.Complete }
+        val estimated = if (extending) additions.sumOf { it.expectedBytes ?: 0L } else wholeBookBytes
+        return estimated + (estimated / HEADROOM_DIVISOR)
     }
 
     private fun categoryFor(isAutomatic: Boolean): TrafficCategory =
