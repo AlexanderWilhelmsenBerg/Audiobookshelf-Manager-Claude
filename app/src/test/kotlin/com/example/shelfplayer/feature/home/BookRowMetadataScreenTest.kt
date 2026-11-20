@@ -81,8 +81,12 @@ class BookRowMetadataScreenTest {
             node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
             val layout = layouts.single()
             assertFalse(layout.didOverflowHeight, "Text is vertically clipped: $text")
-            assertTrue((0 until layout.lineCount).none { layout.isLineEllipsized(it) })
-            assertTrue(layout.getLineEnd(layout.lineCount - 1) == text.length)
+            if (text == fixture.title) {
+                assertTrue(layout.lineCount <= 2)
+            } else {
+                assertTrue((0 until layout.lineCount).none { layout.isLineEllipsized(it) })
+                assertTrue(layout.getLineEnd(layout.lineCount - 1) == text.length)
+            }
             val bounds = node.getUnclippedBoundsInRoot()
             assertTrue(bounds.top >= card.top && bounds.bottom <= card.bottom, "Text escapes card: $text")
         }

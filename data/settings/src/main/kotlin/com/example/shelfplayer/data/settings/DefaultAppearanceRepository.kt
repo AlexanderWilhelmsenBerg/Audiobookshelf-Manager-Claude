@@ -15,6 +15,7 @@ import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.AppearanceSettings
 import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
+import com.example.shelfplayer.core.model.settings.ShelfCardAppearance
 import com.example.shelfplayer.core.model.settings.TextContrast
 import com.example.shelfplayer.core.model.settings.ThemeChoice
 import com.example.shelfplayer.domain.repository.AppearanceRepository
@@ -57,6 +58,7 @@ class DefaultAppearanceRepository @Inject constructor(
             dynamicColor = stored.dynamicColor,
             language = AppLanguage.ofTag(stored.appLanguageTag),
             design = AppDesign.ofKey(stored.appDesignKey),
+            shelfCards = ShelfCardAppearance(stored.shelfCardTextBesideCover, !stored.hideShelfCardBorders),
         )
     }
 
@@ -72,6 +74,12 @@ class DefaultAppearanceRepository @Inject constructor(
     }
 
     override suspend fun setDesign(design: AppDesign): AppResult<Unit> = write { settings.setAppDesign(design) }
+
+    override suspend fun setShelfCardTextBesideCover(beside: Boolean): AppResult<Unit> =
+        write { settings.setShelfCardTextBesideCover(beside) }
+
+    override suspend fun setShelfCardBordersVisible(visible: Boolean): AppResult<Unit> =
+        write { settings.setShelfCardBordersVisible(visible) }
 
     override suspend fun setAccent(accent: AccentScheme): AppResult<Unit> = write {
         settings.setAccent(accent)

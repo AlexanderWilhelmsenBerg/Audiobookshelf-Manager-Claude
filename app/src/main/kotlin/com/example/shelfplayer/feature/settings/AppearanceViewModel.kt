@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
+import com.example.shelfplayer.core.model.settings.ShelfCardAppearance
 import com.example.shelfplayer.core.model.settings.TextContrast
 import com.example.shelfplayer.core.model.settings.ThemeChoice
 import com.example.shelfplayer.domain.repository.AppearanceRepository
@@ -44,6 +45,7 @@ class AppearanceViewModel @Inject constructor(private val appearance: Appearance
                 dynamicColor = look.dynamicColor,
                 language = look.language,
                 design = look.design,
+                shelfCards = look.shelfCards,
             )
         }
         .stateIn(
@@ -54,6 +56,14 @@ class AppearanceViewModel @Inject constructor(private val appearance: Appearance
 
     fun onDesignChanged(design: AppDesign) {
         viewModelScope.launch { appearance.setDesign(design) }
+    }
+
+    fun onShelfCardTextBesideCoverChanged(beside: Boolean) {
+        viewModelScope.launch { appearance.setShelfCardTextBesideCover(beside) }
+    }
+
+    fun onShelfCardBordersVisibleChanged(visible: Boolean) {
+        viewModelScope.launch { appearance.setShelfCardBordersVisible(visible) }
     }
 
     fun onAccentChanged(accent: AccentScheme) {
@@ -122,4 +132,5 @@ data class AppearanceUiState(
     val language: AppLanguage = AppLanguage.System,
     val isDark: Boolean = false,
     val design: AppDesign = AppDesign.Classic,
+    val shelfCards: ShelfCardAppearance = ShelfCardAppearance(),
 )

@@ -47,6 +47,7 @@ import com.example.shelfplayer.domain.library.HomeShelves
 import com.example.shelfplayer.domain.library.SeriesProgress
 import com.example.shelfplayer.feature.browse.BookCover
 import com.example.shelfplayer.feature.browse.readable
+import com.example.shelfplayer.ui.LocalShelfCardAppearance
 import com.example.shelfplayer.ui.glass.GlassCard
 import kotlin.math.roundToInt
 import kotlin.time.Duration
@@ -149,6 +150,8 @@ private fun ContinueListeningShelf(
                                 MaterialTheme.typography.titleMedium
                             },
                         ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     val author = book.authors.firstOrNull()
                     if (author != null) Text(text = author.name, style = MaterialTheme.typography.bodyMedium)
@@ -195,6 +198,9 @@ private fun MoreListeningBooks(
                     text = book.title,
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.titleSmall,
+                    minLines = 2,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 FilledIconButton(onClick = { onBookPlaySelected(book.id) }, shape = RectangleShape) {
                     Icon(
@@ -309,30 +315,43 @@ private fun ShelfCard(
     onPlay: (() -> Unit)? = null,
     cover: @Composable () -> Unit = {},
 ) {
-    val cardWidth = when (LocalBookWaveDesign.current) {
-        BookWaveDesign.Classic -> BookWaveLayout.ShelfCardWidth
-        BookWaveDesign.Editorial -> BookWaveLayout.EditorialShelfCardWidth
-        BookWaveDesign.Minimal -> BookWaveLayout.MinimalShelfCardWidth
+    val appearance = LocalShelfCardAppearance.current
+    val cardWidth = if (appearance.textBesideCover) BookWaveLayout.HorizontalShelfCardWidth else shelfCardWidth()
+    val artwork: @Composable (Modifier) -> Unit = { coverModifier ->
+        ShelfCover(progress, playLabel, onPlay, cover, modifier = coverModifier)
     }
     GlassCard(
         onClick = onClick,
         modifier = modifier.width(cardWidth),
         shape = RoundedCornerShape(BookWaveLayout.ShelfCardCorner),
+        showBorder = appearance.bordersVisible,
     ) {
-        Column {
-            ShelfCover(
-                progress = progress,
-                playLabel = playLabel,
-                onPlay = onPlay,
-                cover = cover,
-            )
-            Column(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                content = { labels() },
-            )
+        if (appearance.textBesideCover) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                artwork(Modifier.width(BookWaveLayout.HorizontalShelfCoverWidth))
+                ShelfCardLabels(labels, modifier = Modifier.weight(1f))
+            }
+        } else {
+            artwork(Modifier)
+            ShelfCardLabels(labels)
         }
     }
+}
+
+@Composable
+private fun shelfCardWidth() = when (LocalBookWaveDesign.current) {
+    BookWaveDesign.Classic -> BookWaveLayout.ShelfCardWidth
+    BookWaveDesign.Editorial -> BookWaveLayout.EditorialShelfCardWidth
+    BookWaveDesign.Minimal -> BookWaveLayout.MinimalShelfCardWidth
+}
+
+@Composable
+private fun ShelfCardLabels(labels: @Composable () -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        content = { labels() },
+    )
 }
 
 @Composable
@@ -378,7 +397,8 @@ private fun ShelfCover(
  * is how they place it. The author does that in one word where a title takes three, and on a shelf of
  * one writer it is the line that stops repeating and lets the titles do the distinguishing.
  *
- * Classic scrolls long labels. Minimal and Editorial wrap book and series titles at the card width.
+ * Classic scrolls long book labels. Minimal and Editorial keep two lines for the book title and one for each
+ * metadata row so a long title or a missing series does not change the card height.
  */
 @Composable
 private fun BookShelfLabels(book: Book, reserveReadings: Boolean) {
@@ -400,7 +420,6 @@ private fun BookShelfLabels(book: Book, reserveReadings: Boolean) {
     ShelfLine(
         text = book.authors.firstOrNull()?.name.orEmpty(),
         style = MaterialTheme.typography.bodySmall,
-        wrap = false,
     )
     ShelfLine(text = book.title, style = MaterialTheme.typography.titleSmall, muted = false)
     ShelfLine(
@@ -478,40 +497,47 @@ private fun ReadingText(text: String) {
 }
 
 @Composable
-private fun ShelfLine(text: String, style: TextStyle, muted: Boolean = true, wrap: Boolean = true) {
+private fun ShelfLine(text: String, style: TextStyle, muted: Boolean = true) {
     val design = LocalBookWaveDesign.current
     val sharp = design.sharpEdges
+    val lines = if (sharp && !muted) 2 else 1
     Text(
-        text = text,
+        text = text.ifEmpty { " " },
         style = if (muted) style else design.bookTitle(style),
         color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
-        minLines = if (sharp && !muted) 2 else 1,
-        maxLines = if (sharp && wrap) Int.MAX_VALUE else 1,
-        overflow = if (sharp && !wrap) TextOverflow.Ellipsis else TextOverflow.Clip,
-        modifier = if (!sharp) {
-            Modifier.basicMarquee(iterations = Int.MAX_VALUE)
-        } else {
-            Modifier
+        minLines = lines,
+        maxLines = lines,
+        overflow = if (sharp) TextOverflow.Ellipsis else TextOverflow.Clip,
+        modifier = when {
+            text.isEmpty() -> Modifier.clearAndSetSemantics { }
+            sharp -> Modifier
+            else -> Modifier.basicMarquee(iterations = Int.MAX_VALUE)
         },
     )
 }
 
-/** Keep the reading order as series, position, then next book as the card grows. */
+/** One line each for the series, its position, and the next book. */
 @Composable
 private fun SeriesShelfLabels(title: String, subtitle: String, detail: String) {
     Text(
         text = title,
         style = MaterialTheme.typography.titleSmall,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
     )
     Text(
         text = subtitle,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
     )
     Text(
         text = detail,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
     )
 }
 
