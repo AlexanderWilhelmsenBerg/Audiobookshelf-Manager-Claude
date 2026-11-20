@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.domain.library.SeriesOrder
+import com.example.shelfplayer.domain.library.SeriesSequenceChange
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.repository.SeriesOrderRepository
 import com.example.shelfplayer.domain.repository.SeriesSequenceRepository
@@ -14,7 +15,7 @@ import javax.inject.Inject
 
 data class SeriesOrderOwner(val profileId: ProfileId, val generation: Long)
 
-data class SeriesOrderSave(val applied: Int, val total: Int, val error: AppError? = null)
+data class SeriesOrderSave(val applied: Int, val total: Int, val order: SeriesOrder, val error: AppError?)
 
 /** The server saves one book at a time. A retry checks each item's current sequence before writing. */
 class SaveSeriesOrderUseCase @Inject constructor(
@@ -26,22 +27,28 @@ class SaveSeriesOrderUseCase @Inject constructor(
     suspend operator fun invoke(owner: SeriesOrderOwner, seriesId: SeriesId, order: SeriesOrder): SeriesOrderSave {
         val changes = order.changes
         var applied = 0
+        fun finish(error: AppError?, uncertain: SeriesSequenceChange? = null): SeriesOrderSave =
+            SeriesOrderSave(applied, changes.size, order.recordSave(changes.take(applied), uncertain), error)
+
         for (change in changes) {
             val blocked = errorFor(owner) ?: if (network.isOnline.first()) null else AppError.Network()
-            if (blocked != null) return SeriesOrderSave(applied, changes.size, blocked)
+            if (blocked != null) return finish(blocked)
             when (val result = sequences.changeSequence(owner.profileId, seriesId, change)) {
-                is AppResult.Failure -> return SeriesOrderSave(applied, changes.size, result.error)
+                is AppResult.Failure -> return finish(result.error, change.takeIf { result.error.mayHaveCommitted() })
                 is AppResult.Success -> applied++
             }
         }
         val blocked = errorFor(owner)
-        if (blocked != null) return SeriesOrderSave(applied, changes.size, blocked)
+        if (blocked != null) return finish(blocked)
         val gapsError = when (val result = orders.saveMissingBooks(owner.profileId, seriesId, order.missingBooks)) {
             is AppResult.Failure -> result.error
             is AppResult.Success -> null
         }
-        return SeriesOrderSave(applied, changes.size, gapsError)
+        return finish(gapsError)
     }
+
+    private fun AppError.mayHaveCommitted(): Boolean =
+        isRetryable || this is AppError.ApiCompatibility || this is AppError.Unknown
 
     private suspend fun errorFor(owner: SeriesOrderOwner): AppError? {
         val active = profiles.observeActiveProfile().first()

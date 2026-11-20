@@ -9,6 +9,7 @@ data class SeriesOrder private constructor(
     val slots: List<SeriesOrderSlot>,
     private val originals: Map<LibraryItemId, String>,
     private val edited: Set<LibraryItemId> = emptySet(),
+    private val unconfirmed: Map<LibraryItemId, Set<String>> = emptyMap(),
 ) {
     val missingBooks: Set<Int>
         get() = slots.filter { it.content == SeriesSlotContent.Missing }.mapTo(mutableSetOf()) { it.number }
@@ -17,8 +18,24 @@ data class SeriesOrder private constructor(
         get() = assignments(slots).mapNotNull { (id, position) ->
             val before = originals.getValue(id)
             val assigned = position.sequence()
-            if (id in edited && before != assigned) SeriesSequenceChange(id, before, assigned) else null
+            val attempted = unconfirmed[id].orEmpty()
+            if (id in edited && (before != assigned || attempted.isNotEmpty())) {
+                SeriesSequenceChange(id, before, assigned, attempted)
+            } else {
+                null
+            }
         }
+
+    internal fun recordSave(accepted: List<SeriesSequenceChange>, uncertain: SeriesSequenceChange?): SeriesOrder {
+        val confirmed = accepted.associate { it.bookId to it.after }
+        val pending = unconfirmed - confirmed.keys
+        val attempted = if (uncertain == null) {
+            pending
+        } else {
+            pending + (uncertain.bookId to (pending[uncertain.bookId].orEmpty() + uncertain.after))
+        }
+        return copy(originals = originals + confirmed, unconfirmed = attempted)
+    }
 
     fun addMissing(number: Int): SeriesOrder {
         if (number !in 1..MAX_BOOK_NUMBER || slots.any { it.number == number }) return this
@@ -195,7 +212,13 @@ data class SeriesOrderRow(val slotKey: String, val part: LibraryItemId? = null)
 
 enum class SeriesOrderMove { Reorder, Indent, Outdent }
 
-data class SeriesSequenceChange(val bookId: LibraryItemId, val before: String, val after: String)
+data class SeriesSequenceChange(
+    val bookId: LibraryItemId,
+    val before: String,
+    val after: String,
+    // Each alternative was sent in a previous save whose reply could not confirm the final state.
+    val possibleBefore: Set<String> = emptySet(),
+)
 
 private data class Candidate(val sequence: SeriesSequence, val number: Int?, val content: SeriesSlotContent)
 

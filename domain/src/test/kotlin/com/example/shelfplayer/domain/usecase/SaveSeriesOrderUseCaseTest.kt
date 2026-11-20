@@ -67,11 +67,47 @@ class SaveSeriesOrderUseCaseTest {
         assertTrue(store.saved.isEmpty())
 
         connected = true
-        val retry = useCase(owner, series.series.id, reorder)
+        assertEquals(listOf("first"), partial.order.changes.map { it.bookId.value })
+        val retry = useCase(owner, series.series.id, partial.order)
         assertNull(retry.error)
         assertEquals(2, applied.size)
         assertEquals(setOf(3), store.saved)
     }
+
+    @Test
+    fun `undo after an interrupted swap restores both confirmed and uncertain server writes`() = runTest {
+        val server = mutableMapOf("first" to "1", "second" to "2")
+        var loseResponse = true
+        val useCase = useCase { _, _, change ->
+            val id = change.bookId.value
+            val current = server.getValue(id)
+            if (current == change.after) return@useCase AppResult.Success(Unit)
+            if (current != change.before && current !in change.possibleBefore) {
+                return@useCase AppResult.Failure(AppError.Conflict("The sequence changed."))
+            }
+            server[id] = change.after
+            if (loseResponse && id == "first") AppResult.Failure(AppError.Timeout()) else AppResult.Success(Unit)
+        }
+        val rearranged = swapFirstTwo(original)
+        val interrupted = useCase(owner, series.series.id, rearranged)
+        assertEquals(1, interrupted.applied)
+        assertIs<AppError.Timeout>(interrupted.error)
+        assertEquals(mapOf("first" to "2", "second" to "1"), server)
+
+        loseResponse = false
+        val undone = swapFirstTwo(interrupted.order)
+        assertEquals(2, undone.changes.size)
+        val complete = useCase(owner, series.series.id, undone)
+        assertNull(complete.error)
+        assertEquals(mapOf("first" to "1", "second" to "2"), server)
+        assertTrue(complete.order.changes.isEmpty())
+    }
+
+    private fun swapFirstTwo(order: SeriesOrder): SeriesOrder = order.move(
+        SeriesOrderRow(order.slots[1].key),
+        SeriesOrderRow(order.slots[0].key),
+        SeriesOrderMove.Reorder,
+    )
 
     @Test
     fun `an old profile cannot save after selection changes`() = runTest {

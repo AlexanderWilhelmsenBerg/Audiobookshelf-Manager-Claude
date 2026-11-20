@@ -387,7 +387,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - A missing book can occupy an explicit number. Placeholders are saved per profile and series on the device.
   A real book with that number takes its place in the series view.
 - Save sends changed sequence values through the existing book metadata operation and preserves each book's
-  other series memberships. The editor reports partial saves and can retry the remaining changes.
+  other series memberships. After a partial save, users can retry the remaining changes or revise their draft.
+  A later save can undo a confirmed change and checks the current sequence when a previous reply was ambiguous.
 - Placeholders can be saved offline. Book metadata edits require a connection and a current grant.
 
 ---

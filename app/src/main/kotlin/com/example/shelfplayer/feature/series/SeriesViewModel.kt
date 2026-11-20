@@ -107,7 +107,7 @@ class SeriesViewModel @Inject constructor(
                 when {
                     active?.owner != draft.owner -> active
                     result.error == null -> null
-                    else -> draft.copy(result = result)
+                    else -> draft.copy(order = result.order, result = result)
                 }
             }
         }

@@ -162,7 +162,7 @@ class DefaultMetadataRepository @Inject constructor(
         val index = book.seriesMemberships.indexOfFirst { it.series.id == seriesId }
         val sequence = book.seriesMemberships.getOrNull(index)?.sequence?.raw
         if (sequence == change.after) return@withContext AppResult.Success(Unit)
-        if (sequence != change.before) {
+        if (sequence != change.before && sequence !in change.possibleBefore) {
             return@withContext AppResult.Failure(AppError.Conflict("A series position changed on the server."))
         }
 
