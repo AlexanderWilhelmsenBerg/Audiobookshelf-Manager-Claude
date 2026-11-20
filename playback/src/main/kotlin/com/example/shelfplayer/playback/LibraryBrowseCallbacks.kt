@@ -259,7 +259,13 @@ internal class LibraryBrowseCallbacks(
             } finally {
                 notifyingSearch = previous
             }
-            if (current == null) LibraryResult.ofError(SessionError.ERROR_INVALID_STATE) else LibraryResult.ofVoid(params)
+            if (current ==
+                null
+            ) {
+                LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
+            } else {
+                LibraryResult.ofVoid(params)
+            }
         }
     }
 
@@ -309,7 +315,11 @@ internal class LibraryBrowseCallbacks(
     private fun profileChanged(expectedGeneration: Long?): Boolean =
         expectedGeneration == null || auto.stableActiveProfileGeneration() != expectedGeneration
 
-    private data class SearchDelivery(val browser: MediaSession.ControllerInfo, val query: String, val generation: Long?)
+    private data class SearchDelivery(
+        val browser: MediaSession.ControllerInfo,
+        val query: String,
+        val generation: Long?,
+    )
 
     private var notifyingSearch: SearchDelivery? = null
 

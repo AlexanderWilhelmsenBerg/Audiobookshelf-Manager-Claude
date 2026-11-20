@@ -62,7 +62,10 @@ class LiveOutputEndpointRegistryTest {
     fun verifiedHeadsetKeepsItsIdentityWhenSwappingWithAnUnidentifiedHeadset() {
         for (verifiedFirst in listOf(false, true)) {
             val registry = LiveOutputEndpointRegistry()
-            val verified = seen(31, "Buds").copy(identity = "headset-a", capability = BluetoothIdentityCapability.Verified)
+            val verified = seen(
+                31,
+                "Buds",
+            ).copy(identity = "headset-a", capability = BluetoothIdentityCapability.Verified)
             val other = seen(49, "Buds")
             val before = registry.reconcile(listOf(verified, other)).first().id
             val swapped = verified.copy(platformId = 49)

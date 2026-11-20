@@ -121,7 +121,12 @@ class AbsPlaybackContractTest {
         val body = json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
         val capture = requireNotNull(javaClass.getResource("/compatibility/codec-negotiation.json")).readText()
         val verifiedTypes = json.parseToJsonElement(capture).jsonObject.getValue("supportedMimeTypes").jsonArray
-        assertEquals(verifiedTypes.filterNot { it.jsonPrimitive.content == "audio/aac" }, body.getValue("supportedMimeTypes").jsonArray)
+        assertEquals(
+            verifiedTypes.filterNot {
+                it.jsonPrimitive.content == "audio/aac"
+            },
+            body.getValue("supportedMimeTypes").jsonArray,
+        )
         assertEquals("exo-player", body.getValue("mediaPlayer").jsonPrimitive.content)
         assertEquals("false", body.getValue("forceDirectPlay").jsonPrimitive.content)
         assertEquals("false", body.getValue("forceTranscode").jsonPrimitive.content)

@@ -87,10 +87,8 @@ class ActiveProfileGenerationTest {
         },
     )
 
-    private class MemoryStore(
-        initial: AppSettings,
-        private val beforePublish: suspend () -> Unit = {},
-    ) : DataStore<AppSettings> {
+    private class MemoryStore(initial: AppSettings, private val beforePublish: suspend () -> Unit = {}) :
+        DataStore<AppSettings> {
         private val state = MutableStateFlow(initial)
         override val data: Flow<AppSettings> = state
 

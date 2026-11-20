@@ -20,10 +20,7 @@ internal class MediaButtonForegroundHold(
     private val callbackExecutor: Executor,
     private val onAbandoned: (startId: Int) -> Unit,
 ) {
-    class Attempt(
-        val startId: Int,
-        val resume: ListenableFuture<MediaSession.MediaItemsWithStartPosition>?,
-    ) {
+    class Attempt(val startId: Int, val resume: ListenableFuture<MediaSession.MediaItemsWithStartPosition>?) {
         var timeout: Job? = null
     }
 
