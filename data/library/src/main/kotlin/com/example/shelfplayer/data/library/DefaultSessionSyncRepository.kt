@@ -161,6 +161,11 @@ class DefaultSessionSyncRepository @Inject constructor(
                 AppError.Conflict(summary = "That listening session is no longer recorded on this device."),
             )
         if (!closing && stored.isRedundant(progress, trigger)) {
+            // The batch verdict can settle listening history without applying its position.
+            // A stationary tick leaves the settled row alone and preserves the local progress.
+            if (stored.wasProgressApplied != true) {
+                return@withContext AppResult.Success(SyncOutcome.Unacknowledged)
+            }
             // The skip asserts the server already holds this position, so the progress row has nothing
             // unsent — and saying so is not optional. Every `recordPosition` sets `hasUnsyncedChanges`,
             // and the upload is what clears it; a skip that stayed silent left the flag standing, and a
@@ -173,8 +178,6 @@ class DefaultSessionSyncRepository @Inject constructor(
                 LogField.Public("trigger", trigger.name),
                 LogField.Millis("position", progress.position.inWholeMilliseconds),
             )
-            // `Accepted`, and that is not a shortcut: the guard fires only against a row already in
-            // `SYNCED` whose position has not moved, so the server *is* still holding it.
             return@withContext AppResult.Success(SyncOutcome.Accepted)
         }
         // Stored before the request, and stored whatever the request does.
@@ -430,9 +433,8 @@ class DefaultSessionSyncRepository @Inject constructor(
  * Everything else — a pause, a seek, a chapter, a track, a shutdown — is somebody's decision, and a
  * decision is reported even when it barely moved the position.
  *
- * **Only after an accepted upload.** A row left `Open` by a failure carries a position the server does not
- * have, and dropping its retry would lose progress: product priority 2, and the opposite of the defect
- * this fixes.
+ * **Only after the listening-session row is settled.** A row left `Open` by a failure still needs an
+ * upload. Whether the settled position was applied is a separate verdict checked by the caller.
  *
  * **A tolerance, not equality**, and the log is why. Two consecutive syncs of a *paused* player reported
  * `22256204ms` and `22256207ms` — three milliseconds apart, because the position is read back from the

@@ -22,8 +22,7 @@ enum class SyncOutcome {
     /**
      * Audiobookshelf holds this position now.
      *
-     * A `200` from the live sync route, or the redundancy skip — which fires only against a row already in
-     * `SYNCED` whose position has not moved, and therefore *asserts* the server is still holding it
+     * A successful live sync or an unchanged position that the server previously confirmed
      * (`docs/risks.md` R-91).
      */
     Accepted,
@@ -35,4 +34,7 @@ enum class SyncOutcome {
      * way its listening can ever be uploaded (PLAY-005). Nothing is lost and nothing is confirmed.
      */
     Queued,
+
+    /** The session has already been settled, and its position lacks an affirmative server verdict. */
+    Unacknowledged,
 }

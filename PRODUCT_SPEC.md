@@ -518,6 +518,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - If two devices update the same book, the event with the latest trustworthy server timestamp wins unless the local device has a newer unsynced event.
 - Clock-skew greater than five minutes is detected and shown in diagnostics.
 - A sync conflict never deletes local playback history silently.
+- A redundant tick leaves declined local progress unsynced and records no confirmed resume baseline.
+  The already accepted listening history stays settled.
 
 ### PLAY-006 Streaming buffer
 

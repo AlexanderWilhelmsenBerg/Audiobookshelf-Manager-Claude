@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
 import com.example.shelfplayer.core.model.playback.SessionProgress
+import com.example.shelfplayer.core.model.playback.SyncOutcome
 import com.example.shelfplayer.core.model.playback.SyncTrigger
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -226,6 +227,27 @@ internal class DefaultSessionSyncRepositoryTest : SessionSyncRepositoryFixture()
         assertEquals(SessionOutboxState.SYNCED, stored.state)
         assertEquals(false, stored.wasProgressApplied)
         assertEquals(1, repository.observeDiagnostics().first().progressDeclined)
+    }
+
+    @Test
+    fun `a stationary tick keeps a declined offline position unsynced`() = runTest {
+        val sessionId = openId(remoteSessionId = null)
+        val paused = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 2.minutes)
+        repository.syncOpenSession(sessionId, paused, clock.now(), SyncTrigger.Paused)
+        seedUnsyncedProgress(recordedAt = 9_000L, position = paused.position)
+        gateway.offlineResults = { rows ->
+            rows.map { OfflineSessionResult(it.id, wasAccepted = true, wasProgressApplied = false) }
+        }
+        assertEquals(AppResult.Success(1), repository.drainOutbox())
+        assertTrue(storedProgress().hasUnsyncedChanges)
+
+        val duplicate = paused.copy(timeListened = 0.seconds)
+        val result = repository.syncOpenSession(sessionId, duplicate, clock.now(), SyncTrigger.Interval)
+
+        assertTrue(storedProgress().hasUnsyncedChanges)
+        assertEquals(AppResult.Success(SyncOutcome.Unacknowledged), result)
+        assertEquals(AppResult.Success(0), repository.drainOutbox())
+        assertEquals(1, gateway.uploaded.size)
     }
 
     /** A session the batch did not mention keeps its row: the case that would otherwise vanish silently. */
