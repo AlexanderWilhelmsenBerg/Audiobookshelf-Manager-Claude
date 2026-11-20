@@ -2,6 +2,7 @@ package com.example.shelfplayer.playback
 
 import android.annotation.SuppressLint
 import android.media.AudioDeviceInfo
+import com.example.shelfplayer.core.model.playback.BluetoothIdentityCapability
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -39,6 +40,22 @@ class LiveOutputEndpointRegistryTest {
         registry.reconcile(emptyList())
         assertNull(registry.find(31, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, "Buds"))
         assertNotEquals(original, registry.reconcile(listOf(seen(31, "Buds"))).single().id)
+    }
+
+    @Test
+    fun verifiedHeadsetsKeepTheirDestinationsWhenAndroidSwapsBothHandles() {
+        val registry = LiveOutputEndpointRegistry()
+        val first = seen(31, "Buds").copy(identity = "headset-a", capability = BluetoothIdentityCapability.Verified)
+        val second = seen(49, "Buds").copy(identity = "headset-b", capability = BluetoothIdentityCapability.Verified)
+        val before = registry.reconcile(listOf(first, second)).associate { it.identity to it.id }
+        val swapped = registry.reconcile(listOf(second.copy(platformId = 31), first.copy(platformId = 49)))
+
+        assertEquals(before, swapped.associate { it.identity to it.id })
+        assertEquals(before[first.identity], registry.find(49, first.type, first.productName, first.identity)?.id)
+        assertEquals(before[second.identity], registry.find(31, second.type, second.productName, second.identity)?.id)
+        assertNull(registry.find(31, first.type, first.productName, first.identity))
+        assertNull(registry.find(49, second.type, second.productName, second.identity))
+        assertTrue(swapped.all { registry.retainsIdentity(it.id) })
     }
 
     @Test

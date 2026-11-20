@@ -414,6 +414,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Incoming calls and navigation prompts behave according to Android audio focus.
 - Disconnecting headphones while playing pauses immediately.
 - Playback never unexpectedly moves from headphones to the phone speaker.
+- A unique verified Bluetooth identity retains its in-process route when Android reassigns device
+  handles in one inventory update. Current track proof is still required before unmute.
 - Android Auto discovery must preserve an already verified, healthy headset route without a preference
   reset or artificial waiting delay. Android focus loss or unavailable actual output still pauses safely.
 - An internal route-safety pause of verified active headset playback may authorize one silent recovery
