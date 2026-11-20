@@ -65,8 +65,8 @@ returned these results in order.
 | Retried periodic sync | HTTP 200 with the identical request body |
 | Final progress sync after Pause | HTTP 200 |
 
-The interval replay completed without an intervening authorize request. Offline-batch recovery
-and profile switches during renewal still need real-server acceptance.
+The interval replay completed without an intervening authorize request. Profile switching
+during renewal and access-token expiry during an offline-batch replay still need device acceptance.
 
 ### Refused refresh
 
@@ -80,3 +80,13 @@ returned 401, and the next observation window contained one refresh request in t
 The repository regression also checks that a restore keeps the profile marked for sign-in
 and that a temporary network failure preserves the saved credential. The progress repository
 tests cover retention of unsent writes across the refusal.
+
+The phone displayed its sign-in-required message and the last synced library after the
+refusal. Signing in to the same fixture account succeeded and opened the existing library.
+
+### Offline replay after reconnect
+
+BookWave played a downloaded fixture and paused while Audiobookshelf was unreachable.
+Its diagnostics identified the listening session as local. After the loopback connection
+returned, the offline-batch endpoint returned 200, and BookWave recorded that the server
+accepted a queued row.
