@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.example.shelfplayer.core.database.entity.PlaybackSessionEntity
+import com.example.shelfplayer.core.database.entity.SessionOutboxState
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -108,17 +109,19 @@ interface SessionOutboxDao {
     @Query("SELECT COUNT(*) FROM playback_sessions WHERE profileId = :profileId")
     fun observeCount(profileId: String): Flow<Int>
 
-    @Query("SELECT COUNT(*) FROM playback_sessions WHERE profileId = :profileId AND state = :state")
-    fun observeCountIn(profileId: String, state: String): Flow<Int>
-
-    /** PRODUCT_SPEC PLAY-004 — accepted sessions whose position the server held something newer than. */
+    /** Count every status in one snapshot so an Open row moving to Pending is counted once. */
     @Query(
         """
-        SELECT COUNT(*) FROM playback_sessions
-        WHERE profileId = :profileId AND wasProgressApplied = 0
+        SELECT COUNT(*) AS total,
+            COUNT(CASE WHEN state = '${SessionOutboxState.OPEN}' THEN 1 END) AS openCount,
+            COUNT(CASE WHEN state = '${SessionOutboxState.PENDING}' THEN 1 END) AS pendingCount,
+            COUNT(CASE WHEN state = '${SessionOutboxState.SYNCED}' THEN 1 END) AS syncedCount,
+            COUNT(CASE WHEN wasProgressApplied = 0 THEN 1 END) AS declinedCount
+        FROM playback_sessions
+        WHERE profileId = :profileId
         """,
     )
-    fun observeProgressDeclined(profileId: String): Flow<Int>
+    fun observeCounts(profileId: String): Flow<SessionOutboxCounts>
 
     /** The most recently accepted row, which is what "last synced" on the diagnostics screen means. */
     @Query(
@@ -147,3 +150,11 @@ interface SessionOutboxDao {
     )
     fun observeLastFailure(profileId: String, syncedState: String): Flow<PlaybackSessionEntity?>
 }
+
+data class SessionOutboxCounts(
+    val total: Int,
+    val openCount: Int,
+    val pendingCount: Int,
+    val syncedCount: Int,
+    val declinedCount: Int,
+)

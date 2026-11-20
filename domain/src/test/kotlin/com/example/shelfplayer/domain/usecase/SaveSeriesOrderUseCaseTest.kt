@@ -13,6 +13,7 @@ import com.example.shelfplayer.domain.library.SeriesOrderMove
 import com.example.shelfplayer.domain.library.SeriesOrderRow
 import com.example.shelfplayer.domain.library.groupIntoSeries
 import com.example.shelfplayer.domain.profile
+import com.example.shelfplayer.domain.repository.MetadataSaveResult
 import com.example.shelfplayer.domain.repository.SeriesOrderRepository
 import com.example.shelfplayer.domain.repository.SeriesSequenceRepository
 import kotlinx.coroutines.flow.flowOf
@@ -32,6 +33,7 @@ class SaveSeriesOrderUseCaseTest {
     private val original = SeriesOrder.from(series, emptySet())
     private val owner = SeriesOrderOwner(active.id, 0)
     private val store = RecordingGaps()
+    private val fresh = AppResult.Success(MetadataSaveResult(book = null, isLocalCopyStale = false))
 
     @Test
     fun `a missing book can be saved offline without a metadata update`() = runTest {
@@ -52,7 +54,7 @@ class SaveSeriesOrderUseCaseTest {
                 AppResult.Failure(AppError.Timeout())
             } else {
                 applied += change.bookId
-                AppResult.Success(Unit)
+                fresh
             }
         }
         val reorder = original.move(
@@ -67,11 +69,71 @@ class SaveSeriesOrderUseCaseTest {
         assertTrue(store.saved.isEmpty())
 
         connected = true
-        val retry = useCase(owner, series.series.id, reorder)
+        assertEquals(listOf("first"), partial.order.changes.map { it.bookId.value })
+        val retry = useCase(owner, series.series.id, partial.order)
         assertNull(retry.error)
         assertEquals(2, applied.size)
         assertEquals(setOf(3), store.saved)
     }
+
+    @Test
+    fun `a confirmed server save with a failed readback is reported separately from unsaved changes`() = runTest {
+        val useCase = useCase { _, _, change, _ ->
+            AppResult.Success(MetadataSaveResult(book = null, isLocalCopyStale = change.bookId.value == "second"))
+        }
+
+        val result = useCase(owner, series.series.id, swapFirstTwo(original))
+
+        assertNull(result.error)
+        assertEquals(2, result.applied)
+        assertEquals(setOf(LibraryItemId("second")), result.unrefreshedBooks)
+        assertTrue(result.order.changes.isEmpty())
+    }
+
+    @Test
+    fun `a timed out fresh read does not make a series write uncertain`() = runTest {
+        val useCase = useCase { _, _, _, _ -> AppResult.Failure(AppError.Timeout()) }
+        val result = useCase(owner, series.series.id, swapFirstTwo(original))
+        assertIs<AppError.Timeout>(result.error)
+        assertTrue(result.order.changes.all { it.possibleBefore.isEmpty() })
+        assertTrue(swapFirstTwo(result.order).changes.isEmpty())
+    }
+
+    @Test
+    fun `undo after an interrupted swap restores both confirmed and uncertain server writes`() = runTest {
+        val server = mutableMapOf("first" to "1", "second" to "2")
+        var loseResponse = true
+        val useCase = useCase { _, _, change, beforeWrite ->
+            val id = change.bookId.value
+            val current = server.getValue(id)
+            if (current == change.after) return@useCase fresh
+            if (current != change.before && current !in change.possibleBefore) {
+                return@useCase AppResult.Failure(AppError.Conflict("The sequence changed."))
+            }
+            beforeWrite()?.let { return@useCase AppResult.Failure(it) }
+            server[id] = change.after
+            if (loseResponse && id == "first") AppResult.Failure(AppError.Timeout()) else fresh
+        }
+        val rearranged = swapFirstTwo(original)
+        val interrupted = useCase(owner, series.series.id, rearranged)
+        assertEquals(1, interrupted.applied)
+        assertIs<AppError.Timeout>(interrupted.error)
+        assertEquals(mapOf("first" to "2", "second" to "1"), server)
+
+        loseResponse = false
+        val undone = swapFirstTwo(interrupted.order)
+        assertEquals(2, undone.changes.size)
+        val complete = useCase(owner, series.series.id, undone)
+        assertNull(complete.error)
+        assertEquals(mapOf("first" to "1", "second" to "2"), server)
+        assertTrue(complete.order.changes.isEmpty())
+    }
+
+    private fun swapFirstTwo(order: SeriesOrder): SeriesOrder = order.move(
+        SeriesOrderRow(order.slots[1].key),
+        SeriesOrderRow(order.slots[0].key),
+        SeriesOrderMove.Reorder,
+    )
 
     @Test
     fun `an old profile cannot save after selection changes`() = runTest {

@@ -383,11 +383,15 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 
 - Accounts with book metadata edit access can open Edit from an accessible series. Drag a row vertically
   to reorder it, sideways onto a book to group parts, or sideways out of a group to promote it.
-  The same actions are available through the row's reorder menu.
+  The same actions are available through the row's reorder menu, including choosing a specific book or part for a group.
 - A missing book can occupy an explicit number. Placeholders are saved per profile and series on the device.
   A real book with that number takes its place in the series view.
 - Save sends changed sequence values through the existing book metadata operation and preserves each book's
-  other series memberships. The editor reports partial saves and can retry the remaining changes.
+  other series memberships. After a partial save, users can retry the remaining changes or revise their draft.
+  A later save can undo a confirmed change and checks the current sequence when a previous reply was ambiguous.
+  A failed read before the write leaves the position unapplied.
+  If Audiobookshelf saves the order and the follow-up read fails, the series shows a refresh action that reads the
+  affected books again without resubmitting the edits.
 - Placeholders can be saved offline. Book metadata edits require a connection and a current grant.
 
 ---
@@ -404,6 +408,7 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - The service declares the media-playback foreground-service type and required permissions.
 - Only one local audio media session exists.
 - If that session has a loaded book, the mini player is visible on every normal BookWave screen except while the full player is expanded, regardless of whether playback originated from the phone UI, notification/system controls, Bluetooth/headset, Android Auto, playback resumption, or a surviving playback service observed after Activity recreation.
+- The full player scrolls within short windows so the transport, History, and Sleep Timer stay reachable with large text.
 - A process restart restores the last playable item in a paused state unless a valid user action requests playback.
 
 ### PLAY-002 Audio focus and route handling
@@ -529,6 +534,7 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   recorded during that upload stays queued and is sent under the same session UUID on a later drain.
 - A locally opened session uploads its accumulated listening time. A final close with no added
   listening preserves the accumulated total.
+- The sync diagnostics screen counts each session once across an Open-to-Pending transition.
 
 ### PLAY-006 Streaming buffer
 

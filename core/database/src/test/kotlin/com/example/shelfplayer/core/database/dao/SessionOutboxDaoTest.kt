@@ -106,6 +106,20 @@ class SessionOutboxDaoTest {
         assertEquals(SessionOutboxState.OPEN, assertNotNull(outbox.find("theirs")).state)
     }
 
+    @Test
+    fun `diagnostics counts stay coherent through open pending and accepted states`() = runTest {
+        outbox.upsert(row("ours", profileId = PROFILE_ID, state = SessionOutboxState.OPEN))
+        outbox.upsert(row("theirs", profileId = OTHER_PROFILE_ID, state = SessionOutboxState.OPEN))
+
+        val counts = outbox.observeCounts(PROFILE_ID)
+        assertEquals(SessionOutboxCounts(1, 1, 0, 0, 0), counts.first())
+        outbox.closeOpen(PROFILE_ID, SessionOutboxState.OPEN, SessionOutboxState.PENDING)
+        assertEquals(SessionOutboxCounts(1, 0, 1, 0, 0), counts.first())
+        outbox.markSynced("ours", SessionOutboxState.SYNCED, syncedAt = 7_000, wasProgressApplied = false)
+        assertEquals(SessionOutboxCounts(1, 0, 0, 1, 1), counts.first())
+        assertEquals(SessionOutboxCounts(1, 1, 0, 0, 0), outbox.observeCounts(OTHER_PROFILE_ID).first())
+    }
+
     /**
      * PRODUCT_SPEC PLAY-004 — an accepted session whose progress the server declined is *done*.
      *
@@ -123,7 +137,7 @@ class SessionOutboxDaoTest {
         assertEquals(SessionOutboxState.SYNCED, stored.state)
         assertEquals(false, stored.wasProgressApplied)
         assertEquals(emptyList(), outbox.pending(PROFILE_ID, SessionOutboxState.SYNCED, limit = 10))
-        assertEquals(1, outbox.observeProgressDeclined(PROFILE_ID).first())
+        assertEquals(1, outbox.observeCounts(PROFILE_ID).first().declinedCount)
     }
 
     /** A successful sync clears the last failure, or a stale error code would outlive the problem. */

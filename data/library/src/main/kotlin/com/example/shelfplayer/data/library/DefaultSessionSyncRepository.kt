@@ -400,33 +400,25 @@ constructor(
         }
 
     private fun diagnosticsFor(profileId: String): Flow<SessionSyncDiagnostics> = combine(
-        outbox.observeCount(profileId),
-        combine(
-            outbox.observeCountIn(profileId, SessionOutboxState.OPEN),
-            outbox.observeCountIn(profileId, SessionOutboxState.PENDING),
-            outbox.observeCountIn(profileId, SessionOutboxState.SYNCED),
-            outbox.observeProgressDeclined(profileId),
-        ) { open, pending, synced, declined -> Counts(open, pending, synced, declined) },
+        outbox.observeCounts(profileId),
         outbox.observeLastSynced(profileId),
         outbox.observeLastFailure(profileId, SessionOutboxState.SYNCED),
         combine(lastTrigger, serverClock.skew, ::Pair),
-    ) { total, counts, lastSynced, lastFailure, session ->
+    ) { counts, lastSynced, lastFailure, session ->
         SessionSyncDiagnostics(
-            sessionsRecorded = total,
+            sessionsRecorded = counts.total,
             // Open rows are pending too: the server has not accepted them, which is the only thing "pending"
             // means here. Reporting them apart would make a book being listened to right now read as synced.
-            sessionsPending = counts.open + counts.pending,
-            sessionsOpen = counts.open,
-            sessionsSynced = counts.synced,
-            progressDeclined = counts.declined,
+            sessionsPending = counts.openCount + counts.pendingCount,
+            sessionsOpen = counts.openCount,
+            sessionsSynced = counts.syncedCount,
+            progressDeclined = counts.declinedCount,
             lastSyncedAt = lastSynced?.syncedAt?.let(Instant::ofEpochMilli),
             lastTrigger = session.first,
             lastFailureCode = lastFailure?.lastErrorCode,
             clockSkew = session.second,
         )
     }
-
-    private data class Counts(val open: Int, val pending: Int, val synced: Int, val declined: Int)
 
     private suspend fun activeProfile() = settings.current().activeProfileId
         .takeIf(String::isNotBlank)

@@ -16,6 +16,7 @@ import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.SeriesId
+import com.example.shelfplayer.core.model.getOrNull
 import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.BookMetadataEdit
 import com.example.shelfplayer.core.model.library.BookMetadataField
@@ -23,6 +24,7 @@ import com.example.shelfplayer.core.model.library.BookSnapshot
 import com.example.shelfplayer.core.model.library.EmbedRequest
 import com.example.shelfplayer.core.model.library.MatchCandidate
 import com.example.shelfplayer.core.model.library.MetadataProvider
+import com.example.shelfplayer.core.model.resultOf
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.core.network.gateway.CoverUpload
 import com.example.shelfplayer.domain.library.SeriesSequenceChange
@@ -117,7 +119,7 @@ class DefaultMetadataRepository @Inject constructor(
         withContext(ioDispatcher) {
             when (val fetched = gateway.library.fetchBook(profileId, bookId)) {
                 is AppResult.Failure -> fetched
-                is AppResult.Success -> AppResult.Success(store(profileId, fetched.value))
+                is AppResult.Success -> resultOf { store(profileId, fetched.value) }
             }
         }
 
@@ -155,15 +157,15 @@ class DefaultMetadataRepository @Inject constructor(
         seriesId: SeriesId,
         change: SeriesSequenceChange,
         beforeWrite: suspend () -> AppError?,
-    ): AppResult<Unit> = withContext(ioDispatcher) {
+    ): AppResult<MetadataSaveResult> = withContext(ioDispatcher) {
         val book = when (val fresh = reload(profileId, change.bookId)) {
             is AppResult.Failure -> return@withContext fresh
             is AppResult.Success -> fresh.value
         }
         val index = book.seriesMemberships.indexOfFirst { it.series.id == seriesId }
         val sequence = book.seriesMemberships.getOrNull(index)?.sequence?.raw
-        if (sequence == change.after) return@withContext AppResult.Success(Unit)
-        if (sequence != change.before) {
+        if (sequence == change.after) return@withContext AppResult.Success(MetadataSaveResult(book, false))
+        if (sequence != change.before && sequence !in change.possibleBefore) {
             return@withContext AppResult.Failure(AppError.Conflict("A series position changed on the server."))
         }
 
@@ -185,8 +187,10 @@ class DefaultMetadataRepository @Inject constructor(
             is AppResult.Failure -> saved
 
             is AppResult.Success -> {
-                saved.value.book?.let { store(profileId, it) }
-                AppResult.Success(Unit)
+                val refreshed = saved.value.book?.let { snapshot ->
+                    resultOf { store(profileId, snapshot) }.getOrNull()
+                }
+                AppResult.Success(MetadataSaveResult(refreshed, isLocalCopyStale = refreshed == null))
             }
         }
     }

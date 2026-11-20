@@ -21,5 +21,5 @@ fun interface SeriesSequenceRepository {
         seriesId: SeriesId,
         change: SeriesSequenceChange,
         beforeWrite: suspend () -> AppError?,
-    ): AppResult<Unit>
+    ): AppResult<MetadataSaveResult>
 }

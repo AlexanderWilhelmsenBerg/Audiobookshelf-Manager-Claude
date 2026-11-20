@@ -30,7 +30,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -71,6 +73,7 @@ fun SeriesRoute(
             move = viewModel::move,
             addMissing = viewModel::addMissing,
             removeMissing = viewModel::removeMissing,
+            refresh = viewModel::refreshSavedOrder,
         ),
     )
 }
@@ -153,6 +156,8 @@ fun SeriesScreen(
                 onBookPlaySelected = onBookPlaySelected,
                 contentPadding = innerPadding,
                 missingBooks = uiState.missingBooks,
+                orderRefresh = uiState.orderRefresh,
+                onRefreshOrder = editorActions.refresh,
             )
         }
     }
@@ -165,6 +170,8 @@ private fun SeriesBooks(
     onBookPlaySelected: (LibraryItemId) -> Unit,
     contentPadding: PaddingValues,
     missingBooks: Set<Int>,
+    orderRefresh: SeriesOrderRefresh?,
+    onRefreshOrder: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val entries = remember(shelf.books, shelf.series.id, missingBooks) { shelf.withPlaceholders(missingBooks) }
@@ -179,6 +186,11 @@ private fun SeriesBooks(
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        if (orderRefresh != null) {
+            item(key = REFRESH_KEY) {
+                SavedOrderRefresh(state = orderRefresh, onClick = onRefreshOrder)
+            }
+        }
         item(key = HEADER_KEY) {
             SeriesHeader(shelf = shelf, onContinue = { onBookPlaySelected(it) })
         }
@@ -196,6 +208,24 @@ private fun SeriesBooks(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SavedOrderRefresh(state: SeriesOrderRefresh, onClick: () -> Unit) {
+    Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
+        Text(stringResource(R.string.series_order_saved_refresh_needed), style = MaterialTheme.typography.bodyMedium)
+        TextButton(onClick = onClick, enabled = state != SeriesOrderRefresh.Refreshing) {
+            Text(
+                stringResource(
+                    if (state == SeriesOrderRefresh.Refreshing) {
+                        R.string.series_order_refreshing
+                    } else {
+                        R.string.series_order_refresh
+                    },
+                ),
+            )
         }
     }
 }
@@ -294,6 +324,7 @@ private fun SeriesHeader(shelf: SeriesShelf, onContinue: (LibraryItemId) -> Unit
 
 /** The header is not a book, so it needs a key that no book id can collide with. */
 private const val HEADER_KEY = "series-header"
+private const val REFRESH_KEY = "series-order-refresh"
 
 private val COVER_SIZE = 80.dp
 
