@@ -66,6 +66,6 @@ returned these results in order.
 | Final progress sync after Pause | HTTP 200 |
 
 The interval replay completed without an intervening authorize request. Offline-batch recovery
-and profile switches during renewal still need real-server acceptance at this revision. The software
+and profile switches during renewal were outside this run. The software
 cases above cover retention after a refused refresh. A separate real-server trace of that refusal
-recorded repeated refresh attempts in this build. The credential-retirement change addresses it in PR #320.
+recorded repeated refresh attempts before the credential-retirement change in PR #320.

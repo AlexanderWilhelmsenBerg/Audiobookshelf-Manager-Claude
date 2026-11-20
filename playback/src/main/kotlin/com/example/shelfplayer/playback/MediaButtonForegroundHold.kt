@@ -57,15 +57,13 @@ internal class MediaButtonForegroundHold(
     fun close() {
         val attempt = current ?: return
         current = null
-        attempt.timeout?.cancel()
-        attempt.resume?.cancel(false)
+        attempt.cancel()
     }
 
     private fun replace(attempt: Attempt) {
         val previous = current
         current = attempt
-        previous?.timeout?.cancel()
-        previous?.resume?.cancel(false)
+        previous?.cancel()
         attempt.timeout = scope.launch {
             delay(30.seconds)
             abandon(attempt)
@@ -76,5 +74,11 @@ internal class MediaButtonForegroundHold(
         if (current !== attempt) return
         close()
         onAbandoned(attempt.startId)
+    }
+
+    @Suppress("IgnoredReturnValue") // A resume that already completed has no pending work to cancel.
+    private fun Attempt.cancel() {
+        timeout?.cancel()
+        resume?.cancel(false)
     }
 }
