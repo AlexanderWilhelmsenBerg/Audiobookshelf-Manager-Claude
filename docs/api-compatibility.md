@@ -775,6 +775,10 @@ UUID. Deferred uploads for sessions that already have a live server ID carry the
 from time already credited to that server ID.
 [Audiobookshelf 2.36.0 playback session manager](https://github.com/advplyr/audiobookshelf/blob/v2.36.0/server/managers/PlaybackSessionManager.js)
 
+Android 16 reproduced the resulting duration loss after consecutive failed live writes. A later
+zero-delta fallback replaced the offline total. The verification record covers the observed behavior
+and the remaining ambiguous-delivery test. [Live-session offline duration](testing/live-session-offline-duration.md)
+
 Nothing about a **position** depends on this. `currentTime` is set rather than accumulated, which the
 capture *did* settle.
 
