@@ -70,6 +70,26 @@ class AppearanceSettingsScreenTest {
     }
 
     @Test
+    fun `Editorial announces the default accent as the design colour`() {
+        render(state = AppearanceUiState(design = AppDesign.Editorial, theme = AppTheme.Dark, isDark = true))
+
+        composeRule.onNodeWithContentDescription("Accent colour, Design default").assertIsDisplayed()
+    }
+
+    @Test
+    fun `Minimal can restore its design colour after choosing a preset`() {
+        var chosen: AccentScheme? = null
+        render(
+            state = AppearanceUiState(design = AppDesign.Minimal, accent = AccentScheme.of(AccentColor.Plum)),
+            actions = AppearanceActions(onAccentChanged = { chosen = it }),
+        )
+
+        open("Accent colour, Plum")
+        composeRule.onNodeWithContentDescription("Design default").assertIsDisplayed().performClick()
+        assertEquals(AccentScheme.Default, chosen)
+    }
+
+    @Test
     fun `every look is in one list, the app's own and the packs alike`() {
         render(state = AppearanceUiState(backgroundThemes = themes()))
 

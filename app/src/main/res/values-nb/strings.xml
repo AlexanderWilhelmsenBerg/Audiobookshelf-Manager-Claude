@@ -903,6 +903,7 @@
     <string name="settings_theme_amoled">AMOLED</string>
     <string name="settings_section_colour">Farge</string>
     <string name="settings_accent_colour">Aksentfarge</string>
+    <string name="settings_accent_design_default">Designets standard</string>
     <string name="settings_accent_theme">Temafarger</string>
     <string name="settings_accent_teal">Bl\u00e5gr\u00f8nn</string>
     <string name="settings_accent_indigo">Indigo</string>

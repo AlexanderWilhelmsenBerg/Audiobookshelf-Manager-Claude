@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.shelfplayer.R
+import com.example.shelfplayer.core.designsystem.theme.defaultAccentColor
 import com.example.shelfplayer.core.designsystem.theme.dynamicAccentColor
 import com.example.shelfplayer.core.model.settings.AccentColor
 import com.example.shelfplayer.core.model.settings.AccentScheme
@@ -61,6 +62,7 @@ import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
 import com.example.shelfplayer.core.model.settings.ThemeChoice
 import com.example.shelfplayer.ui.glass.GlassCard
+import com.example.shelfplayer.ui.usesDesignAccent
 import com.example.shelfplayer.ui.visualStyle
 import kotlin.math.roundToInt
 
@@ -193,19 +195,17 @@ private fun GlassTintGridRow(state: AppearanceUiState, actions: AppearanceAction
 private fun AccentColorGridRow(state: AppearanceUiState, actions: AppearanceActions) {
     val wallpaperColor = dynamicAccentColor(state.isDark)
     val wallpaperSelected = state.dynamicColor && wallpaperColor != null
-    val storedAccentColor = Color(state.accent.argbFor(state.isDark))
-    val currentColor = wallpaperColor?.takeIf { wallpaperSelected } ?: storedAccentColor
+    val designDefault = state.design.takeIf { it.usesDesignAccent }?.visualStyle()?.defaultAccentColor(state.isDark)
+    fun colorOf(accent: AccentScheme): Color = accent.gridColor(state.isDark, designDefault)
+    val currentColor = wallpaperColor?.takeIf { wallpaperSelected } ?: colorOf(state.accent)
     val wallpaperLabel = if (wallpaperColor != null) stringResource(R.string.settings_dynamic_color) else null
+    val currentLabel = state.accent.label(state.backgroundThemes, hasDesignDefault = designDefault != null)
 
     ColorGridRow(
         label = stringResource(R.string.settings_accent_colour),
         options = AccentScheme.all(state.backgroundThemes),
         presentation = ColorGridPresentation(
-            currentLabel = if (wallpaperSelected) {
-                wallpaperLabel ?: state.accent.label(state.backgroundThemes)
-            } else {
-                state.accent.label(state.backgroundThemes)
-            },
+            currentLabel = wallpaperLabel?.takeIf { wallpaperSelected } ?: currentLabel,
             currentColor = currentColor,
             bottomOption = if (wallpaperLabel != null && wallpaperColor != null) {
                 BottomColorOptionState(
@@ -218,12 +218,15 @@ private fun AccentColorGridRow(state: AppearanceUiState, actions: AppearanceActi
                 null
             },
         ),
-        labelOf = { accent -> accent.label(state.backgroundThemes) },
-        argbOf = { accent -> accent.argbFor(state.isDark) },
+        labelOf = { accent -> accent.label(state.backgroundThemes, hasDesignDefault = designDefault != null) },
+        argbOf = { accent -> colorOf(accent).toArgb().toUInt().toLong() },
         isSelected = { accent -> !wallpaperSelected && accent == state.accent },
         onSelected = actions.onAccentChanged,
     )
 }
+
+private fun AccentScheme.gridColor(isDark: Boolean, designDefault: Color?): Color =
+    designDefault?.takeIf { this == AccentScheme.Default } ?: Color(argbFor(isDark))
 
 /** Blur collapses to one summary row; the slider only occupies space while the reader is adjusting it. */
 private fun LazyListScope.glassGroup(state: AppearanceUiState, actions: AppearanceActions) {
@@ -639,7 +642,8 @@ private fun AccentColor.labelRes(): Int = when (this) {
 }
 
 @Composable
-private fun AccentScheme.label(themes: List<BackgroundTheme>): String = when {
+private fun AccentScheme.label(themes: List<BackgroundTheme>, hasDesignDefault: Boolean = false): String = when {
+    hasDesignDefault && this == AccentScheme.Default -> stringResource(R.string.settings_accent_design_default)
     isFromTheme -> themes.firstOrNull(::belongsTo)?.name ?: stringResource(R.string.settings_accent_theme)
     else -> stringResource(AccentColor.ofKey(key).labelRes())
 }
