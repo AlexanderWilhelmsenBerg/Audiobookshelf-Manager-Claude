@@ -13,6 +13,7 @@ import com.example.shelfplayer.domain.library.SeriesOrderMove
 import com.example.shelfplayer.domain.library.SeriesOrderRow
 import com.example.shelfplayer.domain.library.groupIntoSeries
 import com.example.shelfplayer.domain.profile
+import com.example.shelfplayer.domain.repository.MetadataSaveResult
 import com.example.shelfplayer.domain.repository.SeriesOrderRepository
 import com.example.shelfplayer.domain.repository.SeriesSequenceRepository
 import kotlinx.coroutines.flow.flowOf
@@ -32,6 +33,7 @@ class SaveSeriesOrderUseCaseTest {
     private val original = SeriesOrder.from(series, emptySet())
     private val owner = SeriesOrderOwner(active.id, 0)
     private val store = RecordingGaps()
+    private val fresh = AppResult.Success(MetadataSaveResult(book = null, isLocalCopyStale = false))
 
     @Test
     fun `a missing book can be saved offline without a metadata update`() = runTest {
@@ -52,7 +54,7 @@ class SaveSeriesOrderUseCaseTest {
                 AppResult.Failure(AppError.Timeout())
             } else {
                 applied += change.bookId
-                AppResult.Success(Unit)
+                fresh
             }
         }
         val reorder = original.move(
@@ -75,18 +77,32 @@ class SaveSeriesOrderUseCaseTest {
     }
 
     @Test
+    fun `a confirmed server save with a failed readback is reported separately from unsaved changes`() = runTest {
+        val useCase = useCase { _, _, change ->
+            AppResult.Success(MetadataSaveResult(book = null, isLocalCopyStale = change.bookId.value == "second"))
+        }
+
+        val result = useCase(owner, series.series.id, swapFirstTwo(original))
+
+        assertNull(result.error)
+        assertEquals(2, result.applied)
+        assertEquals(setOf(LibraryItemId("second")), result.unrefreshedBooks)
+        assertTrue(result.order.changes.isEmpty())
+    }
+
+    @Test
     fun `undo after an interrupted swap restores both confirmed and uncertain server writes`() = runTest {
         val server = mutableMapOf("first" to "1", "second" to "2")
         var loseResponse = true
         val useCase = useCase { _, _, change ->
             val id = change.bookId.value
             val current = server.getValue(id)
-            if (current == change.after) return@useCase AppResult.Success(Unit)
+            if (current == change.after) return@useCase fresh
             if (current != change.before && current !in change.possibleBefore) {
                 return@useCase AppResult.Failure(AppError.Conflict("The sequence changed."))
             }
             server[id] = change.after
-            if (loseResponse && id == "first") AppResult.Failure(AppError.Timeout()) else AppResult.Success(Unit)
+            if (loseResponse && id == "first") AppResult.Failure(AppError.Timeout()) else fresh
         }
         val rearranged = swapFirstTwo(original)
         val interrupted = useCase(owner, series.series.id, rearranged)

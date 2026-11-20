@@ -15,5 +15,9 @@ interface SeriesOrderRepository {
 
 /** The server owns the sequence values for real books. */
 fun interface SeriesSequenceRepository {
-    suspend fun changeSequence(profileId: ProfileId, seriesId: SeriesId, change: SeriesSequenceChange): AppResult<Unit>
+    suspend fun changeSequence(
+        profileId: ProfileId,
+        seriesId: SeriesId,
+        change: SeriesSequenceChange,
+    ): AppResult<MetadataSaveResult>
 }

@@ -235,6 +235,31 @@ class SeriesScreenTest {
         assertEquals(mapOf("book-2" to "2.01 (Part 1)", "book-1" to "2.02 (Part 2)"), positions)
     }
 
+    @Test
+    fun `a saved order that needs refresh offers a read action at large text sizes`() {
+        val shelf = shelf(finishedThrough = 0)
+        var refreshed = false
+        compose.setContent {
+            MaterialTheme {
+                SeriesScreen(
+                    uiState = SeriesUiState(
+                        shelf = shelf,
+                        isLoading = false,
+                        orderRefresh = SeriesOrderRefresh.Required,
+                    ),
+                    onBookSelected = {},
+                    onBookPlaySelected = {},
+                    onNavigateUp = {},
+                    editorActions = SeriesEditorActions(refresh = { refreshed = true }),
+                )
+            }
+        }
+
+        compose.onNodeWithText("Order saved. BookWave couldn’t reload every updated book.").assertExists()
+        compose.onNodeWithText("Refresh order").performClick()
+        assertEquals(true, refreshed)
+    }
+
     private fun showSeriesEditor(): MutableState<SeriesEditorState> {
         val shelf = shelf(finishedThrough = 0)
         val editor = SeriesEditorState(

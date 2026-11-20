@@ -20,6 +20,9 @@
     <string name="series_editor_group_target">Choose a book or part</string>
     <string name="series_editor_book_and_part">Book %1$d, part %2$d</string>
     <string name="series_editor_outdent">Move out of parts</string>
+    <string name="series_order_saved_refresh_needed">Order saved. BookWave couldn’t reload every updated book.</string>
+    <string name="series_order_refresh">Refresh order</string>
+    <string name="series_order_refreshing">Refreshing order…</string>
     <plurals name="series_editor_partial_save">
         <item quantity="one">Saved %1$d of %2$d book change. %3$s</item>
         <item quantity="other">Saved %1$d of %2$d book changes. %3$s</item>

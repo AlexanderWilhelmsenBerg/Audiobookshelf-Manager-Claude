@@ -154,14 +154,14 @@ class DefaultMetadataRepository @Inject constructor(
         profileId: ProfileId,
         seriesId: SeriesId,
         change: SeriesSequenceChange,
-    ): AppResult<Unit> = withContext(ioDispatcher) {
+    ): AppResult<MetadataSaveResult> = withContext(ioDispatcher) {
         val book = when (val fresh = reload(profileId, change.bookId)) {
             is AppResult.Failure -> return@withContext fresh
             is AppResult.Success -> fresh.value
         }
         val index = book.seriesMemberships.indexOfFirst { it.series.id == seriesId }
         val sequence = book.seriesMemberships.getOrNull(index)?.sequence?.raw
-        if (sequence == change.after) return@withContext AppResult.Success(Unit)
+        if (sequence == change.after) return@withContext AppResult.Success(MetadataSaveResult(book, false))
         if (sequence != change.before && sequence !in change.possibleBefore) {
             return@withContext AppResult.Failure(AppError.Conflict("A series position changed on the server."))
         }
@@ -183,8 +183,8 @@ class DefaultMetadataRepository @Inject constructor(
             is AppResult.Failure -> saved
 
             is AppResult.Success -> {
-                saved.value.book?.let { store(profileId, it) }
-                AppResult.Success(Unit)
+                val refreshed = saved.value.book?.let { store(profileId, it) }
+                AppResult.Success(MetadataSaveResult(refreshed, isLocalCopyStale = refreshed == null))
             }
         }
     }
