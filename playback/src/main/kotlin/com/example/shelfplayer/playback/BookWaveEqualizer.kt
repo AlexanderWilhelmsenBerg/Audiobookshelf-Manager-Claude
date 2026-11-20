@@ -26,6 +26,9 @@ internal class BookWaveEqualizer(private val settings: () -> PlaybackEqualizer) 
     private var wideAlpha = 0.0
     private var low = DoubleArray(0)
     private var wide = DoubleArray(0)
+    private var frame = DoubleArray(0)
+    private var limiterGain = 1.0
+    private var releaseStep = 0.0
 
     override fun onConfigure(inputAudioFormat: AudioFormat): AudioFormat =
         if (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT) inputAudioFormat else AudioFormat.NOT_SET
@@ -34,6 +37,9 @@ internal class BookWaveEqualizer(private val settings: () -> PlaybackEqualizer) 
         if (inputAudioFormat == AudioFormat.NOT_SET || !isActive) return
         low = DoubleArray(inputAudioFormat.channelCount)
         wide = DoubleArray(inputAudioFormat.channelCount)
+        frame = DoubleArray(inputAudioFormat.channelCount)
+        limiterGain = 1.0
+        releaseStep = 1.0 / (inputAudioFormat.sampleRate * LIMITER_RELEASE_SECONDS)
         lowAlpha = alpha(BASS_HZ)
         wideAlpha = alpha(TREBLE_HZ)
         fadeFrames = (inputAudioFormat.sampleRate / FRAMES_PER_SECOND_OF_FADE).coerceAtLeast(1)
@@ -54,6 +60,7 @@ internal class BookWaveEqualizer(private val settings: () -> PlaybackEqualizer) 
                 direct = interpolate(start.direct, target.direct, fraction),
                 low = interpolate(start.low, target.low, fraction),
                 wide = interpolate(start.wide, target.wide, fraction),
+                ceiling = interpolate(start.ceiling, target.ceiling, fraction),
             )
             target = Gain.forSettings(next)
             selected = next
@@ -61,7 +68,7 @@ internal class BookWaveEqualizer(private val settings: () -> PlaybackEqualizer) 
         }
 
         val output = replaceOutputBuffer(inputBuffer.remaining())
-        if (remainingFade == 0 && target == Gain.Original) {
+        if (remainingFade == 0 && target == Gain.Original && limiterGain == 1.0) {
             output.put(inputBuffer)
         } else {
             shape(inputBuffer, output)
@@ -75,13 +82,25 @@ internal class BookWaveEqualizer(private val settings: () -> PlaybackEqualizer) 
             val directGain = interpolate(start.direct, target.direct, fraction)
             val lowGain = interpolate(start.low, target.low, fraction)
             val wideGain = interpolate(start.wide, target.wide, fraction)
+            val ceiling = interpolate(start.ceiling, target.ceiling, fraction)
+            var peak = 0.0
             for (channel in low.indices) {
                 val sample = input.short.toDouble()
                 low[channel] += lowAlpha * (sample - low[channel])
                 wide[channel] += wideAlpha * (sample - wide[channel])
-                val shaped = sample * directGain + low[channel] * lowGain + wide[channel] * wideGain
+                frame[channel] = sample * directGain + low[channel] * lowGain + wide[channel] * wideGain
+                peak = maxOf(peak, abs(frame[channel]))
+            }
+            // A peak in either channel reduces the whole frame, preserving its stereo balance.
+            // Attack immediately, then release across buffers to avoid reshaping individual crests.
+            val allowed = if (peak > ceiling) ceiling / peak else 1.0
+            limiterGain = minOf(allowed, limiterGain + releaseStep)
+            for (sample in frame) {
                 output.putShort(
-                    shaped.roundToInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort(),
+                    (sample * limiterGain).roundToInt().coerceIn(
+                        Short.MIN_VALUE.toInt(),
+                        Short.MAX_VALUE.toInt(),
+                    ).toShort(),
                 )
             }
             if (remainingFade > 0) remainingFade--
@@ -98,21 +117,17 @@ internal class BookWaveEqualizer(private val settings: () -> PlaybackEqualizer) 
 
     private fun interpolate(from: Double, to: Double, fraction: Double): Double = from + (to - from) * fraction
 
-    private data class Gain(val direct: Double, val low: Double, val wide: Double) {
+    private data class Gain(val direct: Double, val low: Double, val wide: Double, val ceiling: Double) {
         companion object {
-            val Original = Gain(direct = 1.0, low = 0.0, wide = 0.0)
+            val Original = Gain(direct = 1.0, low = 0.0, wide = 0.0, ceiling = PCM_FULL_SCALE)
 
             fun forSettings(settings: PlaybackEqualizer): Gain {
                 val bounded = settings.bounded()
+                if (bounded == PlaybackEqualizer.Original) return Original
                 val bass = dbToLinear(bounded.bass)
                 val presence = dbToLinear(bounded.presence)
                 val treble = dbToLinear(bounded.treble)
-                // The three complementary bands sum to the input at unity. Each low-pass state
-                // is a weighted average, so this peak bound also protects rapid transients.
-                val low = bass - presence
-                val wide = presence - treble
-                val headroom = (treble + abs(low) + abs(wide)).coerceAtLeast(1.0)
-                return Gain(treble / headroom, low / headroom, wide / headroom)
+                return Gain(treble, bass - presence, presence - treble, PCM_FULL_SCALE * PEAK_CEILING)
             }
 
             private fun dbToLinear(decibels: Int): Double = DECIBEL_BASE.pow(decibels / AMPLITUDE_DECIBEL_FACTOR)
@@ -123,6 +138,9 @@ internal class BookWaveEqualizer(private val settings: () -> PlaybackEqualizer) 
         const val BASS_HZ = 250.0
         const val TREBLE_HZ = 3_200.0
         const val FRAMES_PER_SECOND_OF_FADE = 50 // Change gain over 20 ms.
+        const val LIMITER_RELEASE_SECONDS = 0.1
+        const val PCM_FULL_SCALE = 32_768.0
+        const val PEAK_CEILING = 0.95 // About 0.45 dB of headroom for shaped peaks.
         const val DECIBEL_BASE = 10.0
         const val AMPLITUDE_DECIBEL_FACTOR = 20.0
         const val TAU = 2 * PI
