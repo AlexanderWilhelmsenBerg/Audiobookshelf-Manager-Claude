@@ -8,6 +8,9 @@ object BookWaveLayout {
     val ShelfCardGap = 12.dp
     val ShelfCardWidth = 160.dp
     val MinimalShelfCardWidth = 112.dp
+    val EditorialShelfCardWidth = 144.dp
+    val ResumeCoverWidth = 80.dp
+    val EditorialResumeCoverWidth = 112.dp
 
     /** The card and its cover share this corner. */
     val ShelfCardCorner = 8.dp

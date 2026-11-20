@@ -358,13 +358,9 @@ internal class AbsPlaybackApi @Inject constructor(
     )
 
     /**
-     * The request the fixtures were captured with, field for field.
-     *
-     * [SUPPORTED_MIME_TYPES] is what makes the server direct-play rather than transcode. It lists what
-     * ExoPlayer decodes on every supported device without a codec extension: MP3, the MP4 family (AAC
-     * and ALAC in an M4A/M4B container, which is what most audiobooks are), and FLAC. Opus and Vorbis
-     * are left off — ExoPlayer handles both, but no capture has confirmed how this server answers a
-     * request that advertises them, and PRODUCT_SPEC 22.5 does not let the app find out in the field.
+     * [SUPPORTED_MIME_TYPES] tells the server which containers to direct-play. Audiobookshelf
+     * 2.36.0 labels both Ogg Opus and Ogg Vorbis as audio/ogg, and standalone ADTS AAC as audio/aac.
+     * Leave ADTS to server transcoding because Media3's default ADTS seek map is unseekable.
      */
     private fun requestFor(device: PlaybackDevice) = PlaySessionRequestDto(
         deviceInfo = PlayDeviceInfoDto(
@@ -382,7 +378,7 @@ internal class AbsPlaybackApi @Inject constructor(
     )
 
     private companion object {
-        val SUPPORTED_MIME_TYPES = listOf("audio/mpeg", "audio/mp4", "audio/flac")
+        val SUPPORTED_MIME_TYPES = listOf("audio/mpeg", "audio/mp4", "audio/flac", "audio/ogg")
 
         /** What the server records as the player; the official app and the capture both send this. */
         const val MEDIA_PLAYER = "exo-player"

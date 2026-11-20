@@ -1,0 +1,34 @@
+{
+  "serverVersion": "2.36.0",
+  "before": [
+    {
+      "name": "Contract Main Series",
+      "sequence": "1"
+    },
+    {
+      "name": "Contract Other Series",
+      "sequence": "9.5"
+    }
+  ],
+  "request": [
+    {
+      "name": "Contract Main Series",
+      "sequence": "4.01 (Part 1)"
+    },
+    {
+      "name": "Contract Other Series",
+      "sequence": "9.5"
+    }
+  ],
+  "updated": true,
+  "after": [
+    {
+      "name": "Contract Main Series",
+      "sequence": "4.01 (Part 1)"
+    },
+    {
+      "name": "Contract Other Series",
+      "sequence": "9.5"
+    }
+  ]
+}

@@ -2,6 +2,7 @@ package com.example.shelfplayer.domain.usecase
 
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.domain.library.SeriesShelf
 import com.example.shelfplayer.domain.library.groupIntoSeries
@@ -36,8 +37,12 @@ class ObserveSeriesUseCase @Inject constructor(
             if (profile == null) {
                 flowOf(null)
             } else {
-                libraryRepository.observeAccessibleBooks(profile.id)
-                    .map { books -> groupIntoSeries(books).firstOrNull { it.series.id == seriesId } }
+                forProfile(profile.id, seriesId)
             }
-        }.flowOn(defaultDispatcher)
+        }
+
+    fun forProfile(profileId: ProfileId, seriesId: SeriesId): Flow<SeriesShelf?> =
+        libraryRepository.observeAccessibleBooks(profileId)
+            .map { books -> groupIntoSeries(books).firstOrNull { it.series.id == seriesId } }
+            .flowOn(defaultDispatcher)
 }

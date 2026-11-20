@@ -12,6 +12,8 @@ import android.os.IBinder
 import android.os.Process
 import android.view.KeyEvent
 import androidx.annotation.OptIn
+import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -55,6 +57,7 @@ import com.example.shelfplayer.domain.repository.DeviceRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
+import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.domain.usecase.OpenPlaybackSessionUseCase
 import com.example.shelfplayer.domain.usecase.NextInSeriesUseCase
 import com.example.shelfplayer.domain.usecase.RestoreProfilePlaybackUseCase
@@ -63,6 +66,7 @@ import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -426,6 +430,7 @@ class PlaybackService : MediaLibraryService() {
      * [flushProgress].
      */
     private lateinit var scope: CoroutineScope
+    private var mediaButtonForeground: MediaButtonForegroundHold? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -436,15 +441,8 @@ class PlaybackService : MediaLibraryService() {
         audioRouteLab.serviceStarted()
         scope = CoroutineScope(SupervisorJob() + mainDispatcher)
         registerWallClockChanges()
-        // PRODUCT_SPEC PLAY-006 — the preset in force when this player is built. Read blocking on the
-        // service's own creation rather than observed: a load control is a construction argument, and the
-        // requirement is that a change applies to the *next* player rather than to this one.
-        // PRODUCT_SPEC PLAY-002 / PLAY-006 — both are construction arguments: Media3 fixes the load control
-        // and the audio attributes when the player is built, so both apply to the *next* player. Read once,
-        // together, rather than as two blocking reads.
         val settings = runBlocking { playbackSettings.observeSettings().first() }
-        val exoPlayer = players.create(buffer = settings.buffer, focus = settings.focusBehaviour)
-            .also { player = it }
+        val exoPlayer = createPlayerFromSettings(settings).also { player = it }
         exoPlayer.addListener(PlayerEvents())
         exoPlayer.addListener(
             PlaybackFocusDiagnostics(clock) { fields ->
@@ -767,14 +765,59 @@ class PlaybackService : MediaLibraryService() {
         return super.onBind(intent)
     }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val receiverKey = intent?.takeIf { it.action == Intent.ACTION_MEDIA_BUTTON && it.data == null }
+            ?.let(::mediaButtonKeyEvent)
+        if ((player?.mediaItemCount ?: 0) == 0 && receiverKey?.canStartMediaButtonReceiver() == true) {
+            holdMediaButtonForeground(startId)
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+    private fun holdMediaButtonForeground(startId: Int) {
+        val hold = mediaButtonForeground ?: MediaButtonForegroundHold(
+            scope,
+            ContextCompat.getMainExecutor(this),
+            ::abandonMediaButtonStart,
+        ).also { mediaButtonForeground = it }
+        if (hold.current != null || startMediaButtonForeground(this, logger)) hold.start(startId)
+    }
+
+    private fun abandonMediaButtonStart(startId: Int) {
+        if ((player?.mediaItemCount ?: 0) == 0) {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelfResult(startId)
+        } else {
+            session?.let { super.onUpdateNotificationAsync(it, false) }
+        }
+    }
+
+    @Suppress("ForbiddenVoid") // Media3 exposes this as a Java ListenableFuture<Void>.
+    override fun onUpdateNotificationAsync(
+        session: MediaSession,
+        startInForegroundRequired: Boolean,
+    ): ListenableFuture<Void?> {
+        val hold = mediaButtonForeground
+        val pending = hold?.current
+            ?: return super.onUpdateNotificationAsync(session, startInForegroundRequired)
+        // An empty or buffering queue prompts a remove before Media3 requests audio focus.
+        // Keep the foreground entry until the real player notification can take over.
+        if (!startInForegroundRequired) return Futures.immediateVoidFuture()
+        val update = super.onUpdateNotificationAsync(session, true)
+        return Futures.transform(
+            update,
+            {
+                hold.handOff(pending)
+                null
+            },
+            MoreExecutors.directExecutor(),
+        )
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
         traceControllerEntry("session-lookup", controllerInfo)
-        // MediaButtonReceiver starts this service in the foreground before Media3 asks for a session.
-        // If the cold-start safety gate consumes that receiver event later in onMediaButtonEvent, no
-        // playback starts and Android tears the service down for missing its foreground promotion.
-        // Reject only this exact Media3 fallback request when the same gate says to consume its event.
-        // Media3's onStartCommand handles a null session through stopSelfSafely(), completing the
-        // foreground-service start without manufacturing a playback notification or opening media.
+        // Reject this exact fallback before the virtual toggle can reach playback resumption.
+        // A null session lets Media3 end the rejected receiver start through stopSelfSafely().
         if (isSuppressedReceiverStart(controllerInfo)) {
             logger.info(LogCategory.Playback, "Cold virtual Bluetooth toggle consumed before service resume")
             return null
@@ -1024,6 +1067,7 @@ class PlaybackService : MediaLibraryService() {
     private val outputDispatch: (() -> Boolean) -> Boolean = { effect -> governor.output(effect) }
 
     override fun onDestroy() {
+        mediaButtonForeground?.close()
         autoCapture?.disconnected("service-stopped")
         governor.close()
         buttonRouting.close()
@@ -1881,10 +1925,18 @@ class PlaybackService : MediaLibraryService() {
         current.replaceMediaItem(index, replacement)
     }
 
+    private fun createPlayerFromSettings(settings: PlaybackSettings): ExoPlayer {
+        // PLAY-002 / PLAY-006: Media3 fixes focus behaviour and load control when it builds the player.
+        // Read the initial tone together with those construction choices, before the first audio buffer.
+        players.setEqualizer(settings.equalizer)
+        return players.create(buffer = settings.buffer, focus = settings.focusBehaviour)
+    }
+
     private fun observeSkipIntervals() {
         skipWatch = scope.launch {
             playbackSettings.observeSettings().collect { settings ->
                 skips = settings.skips
+                players.setEqualizer(settings.equalizer)
                 buttonRouting.settings(settings)
                 // PRODUCT_SPEC PLAY-002 — read here rather than in its own collector: it comes off the same
                 // flow, and a second `observeSettings()` would be a second cold DataStore read of the same
@@ -3292,7 +3344,7 @@ class PlaybackService : MediaLibraryService() {
                     authorized = { controllerQueueResolution.isUnchanged(claim) },
                     playable = { it.mediaItems.isNotEmpty() },
                     block = resolve,
-                )
+                ).also { mediaButtonForeground?.watch(it) }
             } else {
                 future(resolve)
             }

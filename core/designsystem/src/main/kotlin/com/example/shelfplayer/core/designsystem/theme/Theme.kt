@@ -118,7 +118,7 @@ fun ShelfPlayerTheme(
         MaterialTheme(
             colorScheme = if (textContrast == null) grounded else grounded.withTextContrast(textContrast),
             typography = ShelfPlayerTypography,
-            shapes = if (design == BookWaveDesign.Minimal) MinimalShapes else MaterialTheme.shapes,
+            shapes = if (design.sharpEdges) MinimalShapes else MaterialTheme.shapes,
             content = content,
         )
     }
@@ -127,7 +127,10 @@ fun ShelfPlayerTheme(
 private fun BookWaveDesign.defaultColors(dark: Boolean): ColorScheme = when (this) {
     BookWaveDesign.Classic -> if (dark) ShelfDarkColors else ShelfLightColors
     BookWaveDesign.Minimal -> if (dark) MinimalDarkColors else MinimalLightColors
+    BookWaveDesign.Editorial -> if (dark) EditorialDarkColors else EditorialLightColors
 }
+
+fun BookWaveDesign.defaultAccentColor(isDark: Boolean): Color = defaultColors(isDark).primary
 
 /**
  * The shipped scheme, with the accent, the AMOLED grounds and an authored palette applied in that order.

@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.common.log.warn
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.SeriesId
 import com.example.shelfplayer.core.model.download.DownloadHousekeeping
 import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.playback.AutoRewind
@@ -15,6 +16,7 @@ import com.example.shelfplayer.core.model.playback.DeviceKind
 import com.example.shelfplayer.core.model.playback.DevicePolicy
 import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.model.playback.KnownDevice
+import com.example.shelfplayer.core.model.playback.PlaybackEqualizer
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.ShakeSensitivity
@@ -30,11 +32,15 @@ import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.ProfilePreferences
 import com.example.shelfplayer.core.model.settings.TextContrast
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.time.Instant
 import java.time.LocalTime
@@ -73,6 +79,7 @@ class AppSettingsDataSource @Inject constructor(
     private val logger: Logger,
 ) {
     private val profileGeneration = AtomicLong()
+    private val profileSelection = Mutex()
 
     /**
      * An I/O failure yields the defaults instead of cancelling the stream.
@@ -101,11 +108,11 @@ class AppSettingsDataSource @Inject constructor(
     /** AUTH-002 — process-local invalidation token for suspended operations, not another selection owner. */
     val activeProfileGeneration: Long get() = profileGeneration.get()
 
+    /** A profile-scoped request cannot start or finish while the new ID is being published. */
+    val stableActiveProfileGeneration: Long? get() = activeProfileGeneration.takeIf { it % 2L == 0L }
+
     suspend fun setActiveProfile(profileId: ProfileId) {
-        dataStore.updateData { current ->
-            if (current.activeProfileId != profileId.value) profileGeneration.incrementAndGet()
-            current.toBuilder().setActiveProfileId(profileId.value).build()
-        }
+        changeActiveProfile(profileId.value)
     }
 
     /**
@@ -115,9 +122,23 @@ class AppSettingsDataSource @Inject constructor(
      * would switch accounts without the user asking, so the app shows the profile picker instead.
      */
     suspend fun clearActiveProfile() {
-        dataStore.updateData { current ->
-            if (current.activeProfileId.isNotBlank()) profileGeneration.incrementAndGet()
-            current.toBuilder().clearActiveProfileId().build()
+        changeActiveProfile("")
+    }
+
+    private suspend fun changeActiveProfile(id: String) = profileSelection.withLock {
+        var changing = false
+        // Once DataStore starts writing, keep the generation unstable until its cache publishes.
+        withContext(NonCancellable) {
+            try {
+                dataStore.updateData { current ->
+                    if (current.activeProfileId == id) return@updateData current
+                    profileGeneration.incrementAndGet()
+                    changing = true
+                    current.toBuilder().setActiveProfileId(id).build()
+                }
+            } finally {
+                if (changing) profileGeneration.incrementAndGet()
+            }
         }
     }
 
@@ -189,6 +210,27 @@ class AppSettingsDataSource @Inject constructor(
 
     suspend fun setShelfSortOrder(profileId: ProfileId, order: String) {
         updateProfile(profileId) { current -> current.setShelfSortOrder(order) }
+    }
+
+    fun observeMissingSeriesBooks(profileId: ProfileId, seriesId: SeriesId): Flow<Set<Int>> = settings.map { current ->
+        current.profileSettingsMap[profileId.value]?.missingSeriesBooksMap?.get(seriesId.value)
+            ?.numbersList?.filter { it > 0 }?.toSet().orEmpty()
+    }.distinctUntilChanged()
+
+    suspend fun setMissingSeriesBooks(profileId: ProfileId, seriesId: SeriesId, numbers: Set<Int>): Boolean {
+        val updated = dataStore.updateData { current ->
+            if (current.activeProfileId != profileId.value) return@updateData current
+            val existing = current.profileSettingsMap[profileId.value] ?: ProfileSettings.getDefaultInstance()
+            val profile = existing.toBuilder()
+            if (numbers.isEmpty()) {
+                profile.removeMissingSeriesBooks(seriesId.value)
+            } else {
+                val missing = MissingSeriesBooks.newBuilder().addAllNumbers(numbers.sorted()).build()
+                profile.putMissingSeriesBooks(seriesId.value, missing)
+            }
+            current.toBuilder().putProfileSettings(profileId.value, profile.build()).build()
+        }
+        return updated.activeProfileId == profileId.value
     }
 
     /**
@@ -533,7 +575,18 @@ class AppSettingsDataSource @Inject constructor(
             autoAdvanceSeries = !stored.autoAdvanceSeriesDisabled,
             headsetButtonRouting = !stored.headsetButtonRoutingDisabled,
             sonyTapDetection = stored.sonyTapDetection,
+            equalizer = with(stored.audioEqualizer) { PlaybackEqualizer(bassDb, presenceDb, trebleDb).bounded() },
         )
+    }
+
+    suspend fun setEqualizer(value: PlaybackEqualizer) {
+        val gains = value.bounded()
+        val equalizer = AudioEqualizer.newBuilder()
+            .setBassDb(gains.bass)
+            .setPresenceDb(gains.presence)
+            .setTrebleDb(gains.treble)
+            .build()
+        dataStore.updateData { current -> current.toBuilder().setAudioEqualizer(equalizer).build() }
     }
 
     suspend fun setHeadsetButtonRouting(enabled: Boolean) {

@@ -28,6 +28,7 @@ import com.example.shelfplayer.core.model.playback.DevicePolicy
 import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.model.playback.KnownDevice
 import com.example.shelfplayer.core.model.playback.NotificationAccess
+import com.example.shelfplayer.core.model.playback.PlaybackEqualizer
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SessionProgress
@@ -565,6 +566,11 @@ internal class FakePlaybackSettings : PlaybackSettingsRepository {
 
     override suspend fun setFocusBehaviour(behaviour: FocusBehaviour): AppResult<Unit> {
         controls.value = controls.value.copy(focusBehaviour = behaviour)
+        return AppResult.Success(Unit)
+    }
+
+    override suspend fun setEqualizer(equalizer: PlaybackEqualizer): AppResult<Unit> {
+        controls.value = controls.value.copy(equalizer = equalizer.bounded())
         return AppResult.Success(Unit)
     }
 

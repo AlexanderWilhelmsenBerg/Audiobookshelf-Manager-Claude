@@ -63,6 +63,7 @@ import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
 import com.example.shelfplayer.core.designsystem.layout.hasRoomForTwoPanes
 import com.example.shelfplayer.core.designsystem.layout.windowWidth
+import com.example.shelfplayer.core.designsystem.theme.LocalBookWaveDesign
 import com.example.shelfplayer.core.model.AuthorId
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.SeriesId
@@ -823,7 +824,7 @@ private fun BookHeader(
             // read as a form: nothing told the eye where to start.
             Text(
                 text = book.title,
-                style = MaterialTheme.typography.titleLarge,
+                style = LocalBookWaveDesign.current.bookTitle(MaterialTheme.typography.titleLarge),
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )

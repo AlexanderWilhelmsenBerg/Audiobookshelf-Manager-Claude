@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.model.download.NetworkPolicy
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.FocusBehaviour
+import com.example.shelfplayer.core.model.playback.PlaybackEqualizer
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
@@ -31,6 +32,8 @@ interface PlaybackSettingsRepository {
     suspend fun setAutoRewind(rewind: AutoRewind): AppResult<Unit>
 
     suspend fun setBufferPreset(preset: BufferPreset): AppResult<Unit>
+
+    suspend fun setEqualizer(equalizer: PlaybackEqualizer): AppResult<Unit>
 
     /** PRODUCT_SPEC 6.4 step 6 — whether finishing a book starts the next one in its series. */
     suspend fun setAutoAdvanceSeries(enabled: Boolean): AppResult<Unit>

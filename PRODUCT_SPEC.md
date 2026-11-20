@@ -370,6 +370,19 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Local and remote availability are independently visible.
 - Privileged actions appear only when allowed.
 
+### LIB-005 Series editor
+
+**Acceptance criteria**
+
+- Accounts with book metadata edit access can open Edit from an accessible series. Drag a row vertically
+  to reorder it, sideways onto a book to group parts, or sideways out of a group to promote it.
+  The same actions are available through the row's reorder menu.
+- A missing book can occupy an explicit number. Placeholders are saved per profile and series on the device.
+  A real book with that number takes its place in the series view.
+- Save sends changed sequence values through the existing book metadata operation and preserves each book's
+  other series memberships. The editor reports partial saves and can retry the remaining changes.
+- Placeholders can be saved offline. Book metadata edits require a connection and a current grant.
+
 ---
 
 ## EPIC PLAY — Playback
@@ -401,6 +414,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Incoming calls and navigation prompts behave according to Android audio focus.
 - Disconnecting headphones while playing pauses immediately.
 - Playback never unexpectedly moves from headphones to the phone speaker.
+- A unique verified Bluetooth identity retains its in-process route when Android reassigns device
+  handles in one inventory update. Current track proof is still required before unmute.
 - Android Auto discovery must preserve an already verified, healthy headset route without a preference
   reset or artificial waiting delay. Android focus loss or unavailable actual output still pauses safely.
 - An internal route-safety pause of verified active headset playback may authorize one silent recovery
@@ -578,6 +593,14 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Rewind is not applied after a user seek or when resuming immediately after audio-focus interruption unless configured.
 - Applied rewind is visible briefly and can be undone.
 
+### PLAY-010 Local equalizer
+
+- In Settings → Playback, choose Original, Warm Voice, Clear Voice or tune bass, presence and treble in 1 dB steps, from −6 to +6 dB.
+- Original is the upgrade and install default. Changes apply to decoded audio during playback without reopening the book, interrupting the session or changing audio routing or position.
+- The setting stays on the device and also applies offline. Gain changes are smoothed and boosts leave headroom.
+- Advertise Ogg for direct play on compatible Audiobookshelf servers. Standalone ADTS AAC uses server
+  transcoding to keep seeking available. AAC in MP4 remains eligible for direct play.
+
 ---
 
 ## EPIC ROUTE — Headsets, Bluetooth, and automatic start
@@ -587,6 +610,7 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 **Acceptance criteria**
 - When the user presses Play on a connected headset, Android routes the command to the media session and the last item for the active profile resumes when platform policy permits.
 - If no playable item exists, the command does nothing and logs a non-fatal diagnostic.
+- An empty or unavailable cold media-button resume completes the Android foreground start without a crash or a lingering playback notification.
 - A media-button command is treated as explicit user intent and may start playback.
 - During Android Auto, a fresh Play from a verified dashboard controller requests Car. With headset-button
   routing enabled (default), a recognized headset-style media key followed by its Play can request the one
@@ -654,6 +678,8 @@ Each known output device has one of these policies:
 - Temporary parts use `.part` naming and are not playable.
 - A book becomes `Downloaded` only after all required audio tracks, cover, and offline manifest are committed.
 - Atomic commit prevents a crash from creating a false complete state.
+- If the process stops after committing a track, the next attempt may publish that file only after verifying
+  the same copy, volume, validators, length, local digest and media readability.
 - User can pause, resume, cancel, retry, and remove a download.
 - Canceling removes temporary files after confirmation or after a cleanup grace period.
 - A failed part retries with exponential backoff and jitter.
@@ -1065,7 +1091,8 @@ See [the device integration contract](docs/garmin-device-management.md) and
 - explicit content behavior.
 
 **Appearance/accessibility**
-- device-wide visual design under Appearance → Design, with Classic as the existing default and Minimal as an opt-in;
+- device-wide visual design under Appearance → Design, with Classic as the default and Minimal and Editorial as opt-in choices;
+- Minimal and Editorial show their own built-in accent as Design default and let the reader return to it after choosing a preset;
 - system/light/dark;
 - dynamic color;
 - text scaling follows system;
@@ -1286,6 +1313,7 @@ Responsibilities:
 - own a single ExoPlayer;
 - own the MediaLibrarySession;
 - publish browsable content to Android Auto/system;
+- retire in-flight browse and search results when the active profile changes;
 - manage audio focus through Media3;
 - convert domain queue entries to MediaItems;
 - keep playback independent from UI;

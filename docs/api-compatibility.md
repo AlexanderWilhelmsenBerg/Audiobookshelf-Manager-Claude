@@ -550,9 +550,14 @@ No token, no query string, no signature. Two consequences, and both are good new
   a pre-signed URL with a token in it, would have been a finding to design around.
 
 **2. `playMethod: 0` — direct play.** The fixture book is MP3 and the request advertised
-`audio/mpeg`, so the server streamed the file rather than transcoding. What the other values of
-`playMethod` mean has **not** been observed and must not be assumed; a transcoding session is a
-different shape and is a separate capture.
+`audio/mpeg`. A separate 2.36.0 capture used generated Ogg Vorbis, Opus in `.opus` and `.ogg`, and
+standalone ADTS AAC. With the previous advertised types those samples returned `playMethod: 2`
+with an HLS URL. Adding `audio/ogg` and `audio/aac` produced `playMethod: 0` and file URLs for all
+four with `forceDirectPlay` disabled. Both Opus samples used `audio/ogg` on the wire. BookWave advertises
+Ogg but leaves standalone ADTS AAC to server transcoding so resume and seeks remain available.
+AAC in MP4 audiobooks uses the `audio/mp4` advertisement.
+The capture and sample generator are in [`scripts/capture-codec-contracts.py`](../scripts/capture-codec-contracts.py),
+and the sanitized responses are in [`codec-negotiation.json`](../core/network/src/test/resources/compatibility/codec-negotiation.json).
 
 **3. `startTime` is where the session resumes from.** It came back `128.25`, which is the position the
 capture had written with `PATCH /api/me/progress/{id}` moments earlier. The server seeds the session
@@ -1306,6 +1311,12 @@ shape as the expanded single-item read.
 That settles how MGR-001's *"On success, Room updates immediately and then refreshes from server"* should
 work: **the refresh is the response.** A follow-up `GET` would be a request for data the client already
 holds, with a window in which the two could disagree.
+
+The current adapter re-reads the expanded item before replacing its local snapshot, because playback
+also needs track metadata. In a 2.36.0 capture for LIB-005, the app updated one membership using
+`4.01 (Part 1)` and sent the latest second membership alongside it at `9.5`. The following expanded
+GET returned both strings exactly. See [the sanitized capture](../core/network/src/test/resources/compatibility/series-sequence-update.json).
+The editor sends one item's series array per request. A missing slot stays in the profile's device settings.
 
 ### The two scans are not the same kind of operation
 

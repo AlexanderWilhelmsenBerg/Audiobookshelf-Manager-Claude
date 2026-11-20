@@ -46,11 +46,12 @@ class AppearanceSettingsScreenTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun `Design offers Classic and Minimal`() {
+    fun `Design offers Minimal and Editorial alongside Classic`() {
         var chosen: AppDesign? = null
         render(actions = AppearanceActions(onDesignChanged = { chosen = it }))
 
         open("Design, Classic")
+        composeRule.onNodeWithText("Editorial").assertIsDisplayed()
         composeRule.onNodeWithText("Minimal").assertIsDisplayed().performClick()
         assertEquals(AppDesign.Minimal, chosen)
     }
@@ -66,6 +67,26 @@ class AppearanceSettingsScreenTest {
         open("Design, Minimal")
         composeRule.onNodeWithText("Classic").performClick()
         assertEquals(AppDesign.Classic, chosen)
+    }
+
+    @Test
+    fun `Editorial announces the default accent as the design colour`() {
+        render(state = AppearanceUiState(design = AppDesign.Editorial, theme = AppTheme.Dark, isDark = true))
+
+        composeRule.onNodeWithContentDescription("Accent colour, Design default").assertIsDisplayed()
+    }
+
+    @Test
+    fun `Minimal can restore its design colour after choosing a preset`() {
+        var chosen: AccentScheme? = null
+        render(
+            state = AppearanceUiState(design = AppDesign.Minimal, accent = AccentScheme.of(AccentColor.Plum)),
+            actions = AppearanceActions(onAccentChanged = { chosen = it }),
+        )
+
+        open("Accent colour, Plum")
+        composeRule.onNodeWithContentDescription("Design default").assertIsDisplayed().performClick()
+        assertEquals(AccentScheme.Default, chosen)
     }
 
     @Test

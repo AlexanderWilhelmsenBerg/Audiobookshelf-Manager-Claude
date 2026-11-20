@@ -903,6 +903,7 @@
     <string name="settings_theme_amoled">AMOLED</string>
     <string name="settings_section_colour">Farge</string>
     <string name="settings_accent_colour">Aksentfarge</string>
+    <string name="settings_accent_design_default">Designets standard</string>
     <string name="settings_accent_theme">Temafarger</string>
     <string name="settings_accent_teal">Bl\u00e5gr\u00f8nn</string>
     <string name="settings_accent_indigo">Indigo</string>
@@ -922,6 +923,7 @@
     <string name="settings_section_design">Design</string>
     <string name="settings_design_classic">Klassisk</string>
     <string name="settings_design_minimal">Minimal</string>
+    <string name="settings_design_editorial">Redaksjonell</string>
     <string name="shelf_remaining_time">%1$s igjen</string>
     <string name="settings_blur">Uskarphet</string>
     <string name="settings_blur_value">%1$d dp</string>
@@ -1019,4 +1021,14 @@
     <string name="settings_headset_button_routing_hint">Bruk en Spill-kommando fra hodesettet til å be om den kjente lydutgangen, eller det eneste aktuelle hodesettet under Android Auto. Ukjente Bluetooth-kontroller kan også komme fra en bil. Når dette er av, beholdes gjeldende lydutgang og tilkoblingsatferd. Manuelle lydutgangskontroller virker fortsatt.</string>
     <string name="settings_sony_tap_detection">Registrer trykk på Sony WF-1000XM6 direkte</string>
     <string name="settings_sony_tap_detection_hint">Slå på direkte registrering av trykk bare for WF-1000XM6. Sony Sound Connect må være avinstallert eller deaktivert i Android-innstillingene. BookWave deaktiverer ikke appen for deg.</string>
+    <string name="settings_equalizer">Equalizer</string>
+    <string name="settings_equalizer_preset">Lydprofil</string>
+    <string name="settings_equalizer_original">Original</string>
+    <string name="settings_equalizer_warm">Varm stemme</string>
+    <string name="settings_equalizer_clear">Tydelig stemme</string>
+    <string name="settings_equalizer_custom">Egendefinert</string>
+    <string name="settings_equalizer_bass">Bass</string>
+    <string name="settings_equalizer_presence">Nærvær</string>
+    <string name="settings_equalizer_treble">Diskant</string>
+    <string name="settings_equalizer_gain">%1$+d dB</string>
 </resources>

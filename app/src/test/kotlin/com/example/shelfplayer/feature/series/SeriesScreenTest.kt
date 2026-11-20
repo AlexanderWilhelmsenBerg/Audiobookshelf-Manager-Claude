@@ -1,6 +1,8 @@
 package com.example.shelfplayer.feature.series
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -8,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
 import com.example.shelfplayer.a11y.assertEveryControlIsBigEnough
 import com.example.shelfplayer.a11y.assertEveryControlIsLabelled
 import com.example.shelfplayer.core.model.LibraryId
@@ -21,7 +24,10 @@ import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.library.Series
 import com.example.shelfplayer.core.model.library.SeriesMembership
+import com.example.shelfplayer.domain.library.SeriesOrder
+import com.example.shelfplayer.domain.library.SeriesOrderMove
 import com.example.shelfplayer.domain.library.SeriesShelf
+import com.example.shelfplayer.domain.usecase.SeriesOrderOwner
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -150,6 +156,87 @@ class SeriesScreenTest {
 
         compose.assertEveryControlIsLabelled()
         compose.assertEveryControlIsBigEnough()
+    }
+
+    @Test
+    fun `the editor adds a missing slot and provides a reorder menu at large text sizes`() {
+        val shelf = shelf(finishedThrough = 0)
+        val initial = SeriesOrder.from(shelf, emptySet())
+        val state = mutableStateOf(SeriesUiState(shelf = shelf, isLoading = false, canEdit = true))
+        val owner = SeriesOrderOwner(ProfileId("profile"), generation = 0)
+        compose.setContent {
+            MaterialTheme {
+                SeriesScreen(
+                    uiState = state.value,
+                    onBookSelected = {},
+                    onBookPlaySelected = {},
+                    onNavigateUp = {},
+                    editorActions = SeriesEditorActions(
+                        start = {
+                            state.value = state.value.copy(editor = SeriesEditorState(owner, initial, emptySet()))
+                        },
+                        addMissing = { number ->
+                            val editor = requireNotNull(state.value.editor)
+                            state.value =
+                                state.value.copy(editor = editor.copy(order = editor.order.addMissing(number)))
+                        },
+                        move = { from, to, move ->
+                            val editor = requireNotNull(state.value.editor)
+                            assertEquals(SeriesOrderMove.Reorder, move)
+                            state.value =
+                                state.value.copy(editor = editor.copy(order = editor.order.move(from, to, move)))
+                        },
+                    ),
+                )
+            }
+        }
+        compose.onNodeWithText("Edit").performClick()
+        compose.onNodeWithText("Add missing book").performClick()
+        compose.onNodeWithText("Add", useUnmergedTree = true).performClick()
+        assertEquals(setOf(5), state.value.editor?.order?.missingBooks)
+
+        compose.onNodeWithContentDescription("Reorder Book 1").performClick()
+        compose.onNodeWithText("Move down").performClick()
+        val orders = state.value.editor?.order?.changes?.associate { it.bookId.value to it.after }
+        assertEquals(mapOf("book-2" to "1", "book-1" to "2"), orders)
+    }
+
+    @Test
+    @Config(fontScale = 1.0f)
+    fun `a sideways drag from a book handle groups the books into parts`() {
+        val shelf = shelf(finishedThrough = 0)
+        val editor = SeriesEditorState(
+            owner = SeriesOrderOwner(ProfileId("profile"), generation = 0),
+            order = SeriesOrder.from(shelf, emptySet()),
+            initialMissing = emptySet(),
+        )
+        val state = mutableStateOf(editor)
+        compose.setContent {
+            MaterialTheme {
+                SeriesScreen(
+                    uiState = SeriesUiState(shelf = shelf, isLoading = false, canEdit = true, editor = state.value),
+                    onBookSelected = {},
+                    onBookPlaySelected = {},
+                    onNavigateUp = {},
+                    editorActions = SeriesEditorActions(move = { from, to, move ->
+                        state.value = state.value.copy(order = state.value.order.move(from, to, move))
+                    }),
+                )
+            }
+        }
+        val source = compose.onNodeWithContentDescription("Reorder Book 2")
+        val sourceCenter = source.fetchSemanticsNode().boundsInRoot.center
+        val target = compose.onNodeWithContentDescription("Reorder Book 1").fetchSemanticsNode().boundsInRoot.center
+        source.performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(700)
+        source.performTouchInput {
+            advanceEventTime(700)
+            moveBy(Offset(width * 1.5f, target.y - sourceCenter.y))
+            up()
+        }
+        compose.waitForIdle()
+        val positions = state.value.order.changes.associate { it.bookId.value to it.after }
+        assertEquals(mapOf("book-1" to "1.01 (Part 1)", "book-2" to "1.02 (Part 2)"), positions)
     }
 
     private fun shelf(finishedThrough: Int): SeriesShelf {

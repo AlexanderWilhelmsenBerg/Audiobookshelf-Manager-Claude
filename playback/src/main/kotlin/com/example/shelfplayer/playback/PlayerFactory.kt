@@ -8,10 +8,14 @@ import androidx.media3.common.util.BitmapLoader
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.FocusBehaviour
+import com.example.shelfplayer.core.model.playback.PlaybackEqualizer
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
@@ -30,6 +34,9 @@ interface PlayerFactory {
      *   live player mid-book is the one thing product priority 1 forbids doing for a setting.
      */
     fun create(buffer: BufferPreset = BufferPreset.Default, focus: FocusBehaviour = FocusBehaviour.Default): ExoPlayer
+
+    /** Update the current decoded-audio tone without replacing the player or its output. */
+    fun setEqualizer(equalizer: PlaybackEqualizer)
 
     /** How the notification and lock screen load cover art. See [DefaultPlayerFactory]. */
     fun bitmapLoader(): BitmapLoader
@@ -52,26 +59,46 @@ internal class DefaultPlayerFactory @Inject constructor(
     private val audioTrackRouteMonitor: AudioTrackRouteMonitor,
 ) : PlayerFactory {
 
-    override fun create(buffer: BufferPreset, focus: FocusBehaviour): ExoPlayer = ExoPlayer.Builder(context)
-        // ADR-0016 — a book is one timeline window, so its item becomes a concatenated source rather
-        // than a playlist. Everything that is not one of our book items falls through to the default.
-        .setMediaSourceFactory(BookMediaSourceFactory(dataSourceFactory, logger))
-        // PRODUCT_SPEC PLAY-006 — Automatic leaves Media3's own load control alone, which is a different
-        // thing from any particular pair of numbers and is why the enum carries no override for it.
-        .apply { loadControlFor(buffer)?.let(::setLoadControl) }
-        // The `true` is `handleAudioFocus`: Media3 requests and releases focus itself.
-        .setAudioAttributes(attributesFor(focus), true)
-        // Standard Media3 AudioTrack provider, observed in memory for route safety even without
-        // diagnostic capture. Null fallback retains Media3's original output provider.
-        .apply { audioTrackRouteMonitor.providerForPlayer()?.let(::setAudioOutputProvider) }
-        // PRODUCT_SPEC PLAY-002 — headphones out pauses, and audio never moves to the phone speaker.
-        .setHandleAudioBecomingNoisy(true)
-        // The stream keeps arriving with the screen off. `WAKE_MODE_NETWORK` also holds a WifiLock,
-        // which is what stops a doze-happy device dropping the connection mid-chapter.
-        .setWakeMode(C.WAKE_MODE_NETWORK)
-        .build()
+    @Volatile
+    private var equalizer = PlaybackEqualizer.Original
+
+    override fun setEqualizer(equalizer: PlaybackEqualizer) {
+        this.equalizer = equalizer
+    }
+
+    override fun create(buffer: BufferPreset, focus: FocusBehaviour): ExoPlayer =
+        ExoPlayer.Builder(context, renderers())
+            // ADR-0016 — a book is one timeline window, so its item becomes a concatenated source rather
+            // than a playlist. Everything that is not one of our book items falls through to the default.
+            .setMediaSourceFactory(BookMediaSourceFactory(dataSourceFactory, logger))
+            // PRODUCT_SPEC PLAY-006 — Automatic leaves Media3's own load control alone, which is a different
+            // thing from any particular pair of numbers and is why the enum carries no override for it.
+            .apply { loadControlFor(buffer)?.let(::setLoadControl) }
+            // The `true` is `handleAudioFocus`: Media3 requests and releases focus itself.
+            .setAudioAttributes(attributesFor(focus), true)
+            // Standard Media3 AudioTrack provider, observed in memory for route safety even without
+            // diagnostic capture. Null fallback retains Media3's original output provider.
+            .apply { audioTrackRouteMonitor.providerForPlayer()?.let(::setAudioOutputProvider) }
+            // PRODUCT_SPEC PLAY-002 — headphones out pauses, and audio never moves to the phone speaker.
+            .setHandleAudioBecomingNoisy(true)
+            // The stream keeps arriving with the screen off. `WAKE_MODE_NETWORK` also holds a WifiLock,
+            // which is what stops a doze-happy device dropping the connection mid-chapter.
+            .setWakeMode(C.WAKE_MODE_NETWORK)
+            .build()
 
     override fun bitmapLoader(): BitmapLoader = artwork
+
+    private fun renderers(): DefaultRenderersFactory = object : DefaultRenderersFactory(context) {
+        override fun buildAudioSink(
+            context: Context,
+            enableFloatOutput: Boolean,
+            enableAudioOutputPlaybackParameters: Boolean,
+        ): AudioSink = DefaultAudioSink.Builder(context)
+            .setEnableFloatOutput(enableFloatOutput)
+            .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParameters)
+            .setAudioProcessors(arrayOf(BookWaveEqualizer { equalizer }))
+            .build()
+    }
 
     /**
      * PRODUCT_SPEC PLAY-006 — the preset as a `DefaultLoadControl`, or `null` for Automatic.

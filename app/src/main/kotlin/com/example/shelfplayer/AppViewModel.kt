@@ -13,6 +13,7 @@ import com.example.shelfplayer.core.model.settings.GlassTint
 import com.example.shelfplayer.core.model.settings.TextContrast
 import com.example.shelfplayer.domain.repository.AppearanceRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.ui.usesDesignAccent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -92,7 +93,7 @@ data class AppUiState(
     fun accentArgbFor(isDark: Boolean): Long? {
         val pack = backgroundTheme
         return when {
-            design == AppDesign.Minimal -> accent.takeUnless { it == AccentScheme.Default }?.argbFor(isDark)
+            design.usesDesignAccent -> accent.takeUnless { it == AccentScheme.Default }?.argbFor(isDark)
             pack != null && accent.belongsTo(pack) -> null
             else -> accent.argbFor(isDark)
         }

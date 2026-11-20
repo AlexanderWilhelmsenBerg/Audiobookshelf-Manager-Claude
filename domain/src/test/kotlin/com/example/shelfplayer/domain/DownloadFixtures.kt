@@ -17,6 +17,7 @@ import com.example.shelfplayer.core.model.library.MediaProgress
 import com.example.shelfplayer.core.model.playback.AutoRewind
 import com.example.shelfplayer.core.model.playback.BufferPreset
 import com.example.shelfplayer.core.model.playback.FocusBehaviour
+import com.example.shelfplayer.core.model.playback.PlaybackEqualizer
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.core.model.playback.SkipIntervals
@@ -207,6 +208,7 @@ internal class FakeSettingsRepository(
     override fun observeSettings(): Flow<PlaybackSettings> = flowOf(PlaybackSettings(startupMode = startupMode))
 
     override suspend fun setFocusBehaviour(behaviour: FocusBehaviour): AppResult<Unit> = notUsed()
+    override suspend fun setEqualizer(equalizer: PlaybackEqualizer): AppResult<Unit> = notUsed()
 
     override suspend fun setStartupMode(mode: StartupMode): AppResult<Unit> = notUsed()
 

@@ -582,3 +582,22 @@ Play and unmatched media commands keep the current selection. Dashboard output i
 their authority. Direct WF-1000XM6 tap evidence is optional, defaults off and is unavailable while Sound
 Connect is installed and enabled. The app uses the existing Nearby devices grant and never changes the
 companion app's state. See the [hardware test procedure](testing/2026-11-03-headset-button-routing.md).
+
+## PD-010 — Edit series order from the series screen
+
+**Status** Accepted
+
+**Date** 2026-11-19
+
+**Scope** Series detail, multipart books and missing book numbers
+
+### Decision
+
+Open Edit on the series screen, drag books vertically to reorder them and use sideways movement to group
+or separate parts. Offer the same actions through a menu. An explicit missing book number keeps a place
+for a future book without creating a library item.
+
+### Consequences
+
+Audiobookshelf owns real book sequences. The app stores empty slots per profile and series on the device.
+Saves preserve other series memberships and report partial completion when a server write fails.

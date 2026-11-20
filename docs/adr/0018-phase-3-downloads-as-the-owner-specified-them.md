@@ -86,6 +86,12 @@ offers a re-download; that is a **staleness check**, and decision 8's button mus
 Integrity of the bytes *as downloaded* is a separate guarantee, and it comes from hashing what was written
 before committing it (DL-002 criterion 1), not from the server.
 
+The downloader writes a small verification checkpoint beside the part before it renames the file.
+It records the owned path, file identity, validator and length together with a local SHA-256 digest.
+If the process stops before Room commits the complete track, a later worker can recover the renamed
+file after checking the same volume, the checkpoint and the media container. Room still decides when
+the file is available for offline playback.
+
 **A resumed transfer must be validator-guarded.** `If-Range` with the stored ETag turns "the file changed
 under me" from silent corruption — the first half of the old file glued to the second half of the new one —
 into a plain `200` that restarts the download. This is the one case where skipping a header produces a file

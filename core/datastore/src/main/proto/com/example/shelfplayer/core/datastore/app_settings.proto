@@ -316,6 +316,14 @@ message AppSettings {
   bool sony_tap_detection = 57;
   // SET-002. Stable design keys keep the theme choice independent. Empty resolves to Classic.
   string app_design_key = 58;
+  // PLAY-010. An absent message reads as flat gain on upgrades and fresh installs.
+  AudioEqualizer audio_equalizer = 59;
+}
+
+message AudioEqualizer {
+  sint32 bass_db = 1;
+  sint32 presence_db = 2;
+  sint32 treble_db = 3;
 }
 
 // PRODUCT_SPEC SET-001 — one account's view preferences.
@@ -343,6 +351,13 @@ message ProfileSettings {
   // Empty is intentionally meaningful: an upgraded profile has no trustworthy local ownership evidence,
   // and server progress timestamps must never be used to invent one.
   string remembered_book_id = 4;
+
+  // LIB-005. Missing book numbers belong to this profile and series on this device.
+  map<string, MissingSeriesBooks> missing_series_books = 5;
+}
+
+message MissingSeriesBooks {
+  repeated int32 numbers = 1;
 }
 
 // PRODUCT_SPEC ROUTE-002 — one output device this app has seen.

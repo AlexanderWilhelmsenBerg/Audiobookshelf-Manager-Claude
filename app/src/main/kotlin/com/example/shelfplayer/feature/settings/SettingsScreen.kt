@@ -201,6 +201,7 @@ fun SettingsRoute(
             onNetworkPolicyChanged = viewModel::onNetworkPolicyChanged,
             onHousekeepingChanged = viewModel::onHousekeepingChanged,
             onFocusBehaviourChanged = viewModel::onFocusBehaviourChanged,
+            onEqualizerChanged = viewModel.onEqualizerChanged,
             onStartupModeChanged = viewModel::onStartupModeChanged,
             onAutoAdvanceSeriesChanged = viewModel::onAutoAdvanceSeriesChanged,
             onHeadsetButtonRoutingChanged = viewModel.onHeadsetButtonRoutingChanged,

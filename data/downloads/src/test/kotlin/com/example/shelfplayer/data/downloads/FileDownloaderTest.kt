@@ -9,6 +9,7 @@ import com.example.shelfplayer.core.common.log.RedactionPolicy
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
+import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
@@ -23,6 +24,7 @@ import com.example.shelfplayer.core.network.gateway.DownloadApi
 import com.example.shelfplayer.core.network.gateway.FileTransfer
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
+import com.example.shelfplayer.domain.repository.DownloadRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -93,14 +95,7 @@ class FileDownloaderTest {
             clock = TestAppClock(),
             ioDispatcher = UnconfinedTestDispatcher(),
         )
-        downloader = FileDownloader(
-            downloads = api,
-            storage = storage,
-            repository = repository,
-            verifier = verifier,
-            capabilities = capabilities,
-            logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
-        )
+        downloader = newDownloader()
         seedAccount()
         repository.request(SERVER, BOOK, PROFILE, listOf(queuedFile()))
     }
@@ -129,6 +124,31 @@ class FileDownloaderTest {
         assertFalse(part().exists(), "and the part is gone")
         assertEquals("audio-bytes", committed().readText())
         assertTrue(stored.uri.endsWith("file-1.mp3"), "the manifest points at the committed name")
+    }
+
+    @Test
+    fun `a mounted checkpoint write failure preserves validated bytes for retry`() = runTest {
+        val content = "complete"
+        api.body = content.toByteArray()
+        val blockedSidecar = File(part().parentFile, part().name + ".verified.new").apply { mkdirs() }
+        File(blockedSidecar, "occupant").writeText("fixture")
+
+        val failure = assertIs<AppResult.Failure>(download(queuedFile())).error
+        assertFalse(assertIs<AppError.Storage>(failure).temporarilyUnavailable)
+        val pending = storedFile()
+        assertEquals(DownloadState.Failed, pending.state)
+        assertEquals(content.length.toLong(), pending.downloadedBytes)
+        assertEquals(api.eTag, pending.eTag)
+        assertEquals(content, part().readText())
+        assertFalse(committed().exists())
+
+        blockedSidecar.deleteRecursively()
+        api.rangeNotSatisfiableOnce = true
+        api.rangeNotSatisfiableTotalBytes = content.length.toLong()
+        api.rangeNotSatisfiableETag = api.eTag
+        assertNotNull(download(pending).getOrNull())
+        assertEquals(content.length.toLong() to api.eTag, api.requests.last())
+        assertEquals(content, committed().readText())
     }
 
     /** DL-003 criterion 1 — the layout is the one the requirement writes, under the app-private root. */
@@ -660,14 +680,131 @@ class FileDownloaderTest {
         assertEquals("the-new-recording", committed().readText())
     }
 
-    /** Normal direct-file tests model a new copy with an explicit internal-storage owner. */
-    private suspend fun download(file: OfflineFile): AppResult<OfflineFile> = downloader.download(
-        profileId = PROFILE,
-        serverId = SERVER,
-        itemId = BOOK,
-        file = file,
-        storageVolumeUuid = StorageVolumeOption.INTERNAL_UUID,
+    @Test
+    fun `restart publishes a verified committed file after a crash without fetching it again`() = runTest {
+        interruptAfterRename()
+        assertEquals(1, api.requests.size)
+
+        val result = assertIs<AppResult.Success<OfflineFile>>(download(storedFile(), newDownloader()))
+        assertEquals(DownloadState.Complete, result.value.state)
+        assertEquals(DownloadState.Complete, storedFile().state)
+        assertEquals("original", committed().readText())
+        assertEquals("\"original-validator\"", storedFile().eTag)
+        assertEquals(1, api.requests.size)
+    }
+
+    @Test
+    fun `same size corrupt committed bytes are downloaded again`() = runTest {
+        interruptAfterRename()
+        committed().writeText("corrupt!")
+
+        val result = assertIs<AppResult.Success<OfflineFile>>(download(storedFile(), newDownloader()))
+        assertEquals(DownloadState.Complete, result.value.state)
+        assertEquals("original", committed().readText())
+        assertEquals(2, api.requests.size)
+    }
+
+    @Test
+    fun `recovery waits for the manifest volume and remains retryable`() = runTest {
+        interruptAfterRename()
+        ownerAvailable = false
+        val unavailable = assertIs<AppResult.Failure>(download(storedFile(), newDownloader()))
+        assertTrue(assertIs<AppError.Storage>(unavailable.error).temporarilyUnavailable)
+        assertEquals(DownloadState.Queued, storedFile().state)
+        assertEquals(1, api.requests.size)
+
+        ownerAvailable = true
+        assertIs<AppResult.Success<OfflineFile>>(download(storedFile(), newDownloader()))
+        assertEquals(1, api.requests.size)
+    }
+
+    @Test
+    fun `a changed manifest validator excludes the old committed file`() = runTest {
+        interruptAfterRename()
+        repository.updateFile(SERVER, BOOK, storedFile().copy(eTag = "\"new-validator\""))
+        api.body = "new file".toByteArray()
+        api.eTag = "\"new-validator\""
+
+        assertIs<AppResult.Success<OfflineFile>>(download(storedFile(), newDownloader()))
+        assertEquals("new file", committed().readText())
+        assertEquals(2, api.requests.size)
+    }
+
+    @Test
+    fun `a second manifest write failure retains the verified file for another retry`() = runTest {
+        interruptAfterRename()
+        val writeFailure = AppError.Storage("Fixture write unavailable.", temporarilyUnavailable = true)
+        val failingRepository = object : DownloadRepository by repository {
+            override suspend fun updateFile(serverId: ServerId, itemId: LibraryItemId, file: OfflineFile) =
+                AppResult.Failure(writeFailure)
+        }
+
+        val retry = download(storedFile(), newDownloader(failingRepository))
+        assertEquals(AppResult.Failure(writeFailure), retry)
+        assertEquals(DownloadState.Queued, storedFile().state)
+        assertEquals("original", committed().readText())
+        assertIs<AppResult.Success<OfflineFile>>(download(storedFile(), newDownloader()))
+        assertEquals(1, api.requests.size)
+        assertFalse(part().parentFile?.listFiles().orEmpty().any { it.name.endsWith(".verified") })
+    }
+
+    @Test
+    fun `cancellation while rechecking a committed file leaves the manifest untouched`() = runTest {
+        interruptAfterRename()
+        val worker = launch {
+            val job = checkNotNull(currentCoroutineContext()[Job])
+            verifier.onRead = { job.cancel() }
+            download(storedFile(), newDownloader())
+        }
+        worker.join()
+
+        assertTrue(worker.isCancelled)
+        assertEquals(DownloadState.Queued, storedFile().state)
+        assertEquals(1, api.requests.size)
+        verifier.onRead = {}
+        assertIs<AppResult.Success<OfflineFile>>(download(storedFile(), newDownloader()))
+        assertEquals(1, api.requests.size)
+    }
+
+    private suspend fun interruptAfterRename() {
+        api.body = "original".toByteArray()
+        api.eTag = "\"original-validator\""
+        val interrupted = object : DownloadRepository by repository {
+            override suspend fun updateFile(
+                serverId: ServerId,
+                itemId: LibraryItemId,
+                file: OfflineFile,
+            ): AppResult<Unit> {
+                if (file.state == DownloadState.Complete) throw InterruptedCommit()
+                return repository.updateFile(serverId, itemId, file)
+            }
+        }
+        assertFailsWith<InterruptedCommit> { download(queuedFile(), newDownloader(interrupted)) }
+        assertTrue(committed().isFile)
+        assertFalse(part().exists())
+        assertEquals(DownloadState.Queued, storedFile().state)
+    }
+
+    private class InterruptedCommit : RuntimeException()
+
+    private fun newDownloader(manifest: DownloadRepository = repository): FileDownloader = FileDownloader(
+        downloads = api,
+        storage = storage,
+        repository = manifest,
+        verifier = verifier,
+        capabilities = capabilities,
+        logger = RedactingLogger(RecordingLogSink(), DefaultRedactor(RedactionPolicy.Default)),
     )
+
+    /** Normal direct-file tests model a new copy with an explicit internal-storage owner. */
+    private suspend fun download(file: OfflineFile, engine: FileDownloader = downloader): AppResult<OfflineFile> =
+        engine.download(
+            profileId = PROFILE,
+            serverId = SERVER,
+            itemId = BOOK,
+            file = file,
+            storageVolumeUuid = StorageVolumeOption.INTERNAL_UUID,
+        )
 
     private suspend fun storedFile(): OfflineFile =
         assertNotNull(repository.observe(SERVER, BOOK).first()).files.single()

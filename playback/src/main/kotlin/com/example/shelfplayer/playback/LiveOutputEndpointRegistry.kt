@@ -74,25 +74,28 @@ class LiveOutputEndpointRegistry @Inject constructor() {
             connected[handle]?.identity?.let(retained::remove)
         }
         val unique = grouped.filterValues { it.size == 1 }
-        val ambiguous = observations.mapNotNull { it.identity }.groupingBy { it }.eachCount()
-            .filterValues { it > 1 }.keys
+        val identityCounts = observations.mapNotNull { it.identity }.groupingBy { it }.eachCount()
+        val ambiguous = identityCounts.filterValues { it > 1 }.keys
         ambiguous.forEach(retained::remove)
         val updated = LinkedHashMap<Int, Endpoint>()
         for ((handle, items) in unique) {
             val observation = items.single()
             val output = OutputDevices.outputOf(observation.type, observation.productName) ?: continue
             val identity = observation.identity?.takeIf { identityAccess }?.takeUnless { it in ambiguous }
-            connected[handle]?.identity?.takeIf { it != identity }?.let(retained::remove)
+            // Keep an identity that is still visible at another handle. Duplicate identities were
+            // already retired above, so reconciling a handle swap cannot retire either valid route.
+            connected[handle]?.identity?.takeUnless(identityCounts::containsKey)?.let(retained::remove)
             val existing = connected[handle]?.takeIf {
                 it.type == observation.type && it.knownDeviceId == output.id &&
                     it.productName == observation.productName && (it.identity == identity || it.identity == null) &&
                     observation.identity !in ambiguous
             }
-            updated[handle] = existing?.copy(identity = identity) ?: Endpoint(
+            val retainedId = identity?.let(retained::get)
+            updated[handle] = Endpoint(
                 platformId = handle,
                 type = observation.type,
                 productName = observation.productName,
-                id = identity?.let(retained::get)
+                id = retainedId ?: existing?.id
                     ?: (output.kind.name.lowercase() + ":endpoint:" + processToken + ":e" + ++next),
                 knownDeviceId = output.id,
                 output = output,

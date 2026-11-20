@@ -52,6 +52,10 @@ fun HomeDesignPreview() = HomePreview(BookWaveDesign.Classic)
 @Composable
 fun MinimalHomeDesignPreview() = HomePreview(BookWaveDesign.Minimal)
 
+@Preview(name = "Home, Editorial", showSystemUi = true)
+@Composable
+fun EditorialHomeDesignPreview() = HomePreview(BookWaveDesign.Editorial)
+
 @Composable
 private fun HomePreview(design: BookWaveDesign) {
     PreviewTheme(design = design) {
@@ -119,6 +123,10 @@ fun PlayerDesignPreview() = PlayerPreview(BookWaveDesign.Classic)
 )
 @Composable
 fun MinimalPlayerDesignPreview() = PlayerPreview(BookWaveDesign.Minimal)
+
+@Preview(name = "Now Playing, Editorial", showSystemUi = true)
+@Composable
+fun EditorialPlayerDesignPreview() = PlayerPreview(BookWaveDesign.Editorial)
 
 @Composable
 private fun PlayerPreview(design: BookWaveDesign) {

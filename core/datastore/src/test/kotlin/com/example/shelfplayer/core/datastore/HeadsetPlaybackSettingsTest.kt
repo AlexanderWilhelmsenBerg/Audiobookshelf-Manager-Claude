@@ -3,11 +3,13 @@ package com.example.shelfplayer.core.datastore
 import androidx.datastore.core.DataStore
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.model.playback.PlaybackEqualizer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -40,6 +42,19 @@ class HeadsetPlaybackSettingsTest {
         assertTrue(writer.playback.first().headsetButtonRouting)
         assertFalse(writer.playback.first().sonyTapDetection)
         assertTrue(writer.current().dynamicColor)
+    }
+
+    @Test
+    fun `old settings stay flat and custom equalizer gains survive a new reader`() = runTest {
+        val writer = source(MemoryStore(AppSettings.newBuilder().setDynamicColor(true).build()))
+        assertEquals(PlaybackEqualizer.Original, writer.playback.first().equalizer)
+        writer.setEqualizer(PlaybackEqualizer(bass = 4, presence = -2, treble = 50))
+
+        val restored = source(MemoryStore(AppSettings.parseFrom(writer.current().toByteArray())))
+        assertEquals(PlaybackEqualizer(bass = 4, presence = -2, treble = 6), restored.playback.first().equalizer)
+        assertTrue(restored.current().dynamicColor)
+        restored.setEqualizer(PlaybackEqualizer.Original)
+        assertEquals(PlaybackEqualizer.Original, restored.playback.first().equalizer)
     }
 
     private fun source(store: DataStore<AppSettings>) = AppSettingsDataSource(

@@ -745,7 +745,7 @@ fi
 # The device description is sent because the server records it against the session and may vary its
 # answer by it. Every value is deliberately generic — no real device identifier reaches a fixture.
 log "opening a playback session so the Phase 2 shapes can be observed"
-PLAY_BODY='{"deviceInfo":{"clientName":"ShelfPlayer","clientVersion":"0.0.0","deviceId":"capture","manufacturer":"capture","model":"capture","sdkVersion":36},"supportedMimeTypes":["audio/mpeg","audio/mp4","audio/flac"],"mediaPlayer":"exo-player","forceDirectPlay":false,"forceTranscode":false}'
+PLAY_BODY='{"deviceInfo":{"clientName":"ShelfPlayer","clientVersion":"0.0.0","deviceId":"capture","manufacturer":"capture","model":"capture","sdkVersion":36},"supportedMimeTypes":["audio/mpeg","audio/mp4","audio/flac","audio/ogg","audio/aac"],"mediaPlayer":"exo-player","forceDirectPlay":false,"forceTranscode":false}'
 
 capture item-play POST "/api/items/$ITEM_ID/play" \
   -H 'Content-Type: application/json' -H "$AUTH_HEADER" -d "$PLAY_BODY"

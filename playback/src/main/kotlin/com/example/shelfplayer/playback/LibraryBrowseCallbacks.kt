@@ -89,33 +89,26 @@ internal class LibraryBrowseCallbacks(
         // Capture synchronously at Media3 callback entry. The future currently completes on main,
         // but browse work must not gain permission to read Player after suspension or a dispatcher change.
         // The plain snapshot also keeps the requested book/position pair coherent (R-66 / ADR-0016).
+        val profileGeneration = auto.stableActiveProfileGeneration()
         val now = nowPlaying()
         val trace = autoTraces.forController(browser.packageName, carPackages)
         val entryPlayer = if (trace == null) emptyList() else AndroidAutoDiagnostics.playerFields(player())
         val startedAt = clock.elapsed()
         return futures.submit {
             if (!mayBrowse(session, browser)) return@submit deniedList(browser, "onGetChildren")
+            if (profileChanged(profileGeneration)) return@submit LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
             val all = auto.children(parentId, now)
+            if (profileChanged(profileGeneration)) return@submit LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
             logger.info(
                 LogCategory.Playback,
                 "A browser asked for a node's children",
-                LogField.Public("parent", parentId),
+                LogField.Identifier("parent", parentId),
                 LogField.Count("children", all.size),
             )
             val from = (page * pageSize).coerceAtMost(all.size)
             val to = (from + pageSize).coerceAtMost(all.size)
             val returned = all.subList(from, to)
-            logger.info(
-                LogCategory.Playback,
-                "Android Auto browse artwork offered",
-                LogField.Public("parentKind", AutoLibrary.kindOf(parentId)),
-                LogField.Count("returned", returned.size),
-                LogField.Count("withArtworkUri", returned.count { item -> item.mediaMetadata.artworkUri != null }),
-                LogField.Count(
-                    "withContentArtworkUri",
-                    returned.count { item -> item.mediaMetadata.artworkUri?.scheme == "content" },
-                ),
-            )
+            reportArtworkOffered(parentId, returned)
             // Only sample the first grid cards the car is likely to display, not whole libraries.
             // A matching artworkRef in the content-provider log proves that the host requested that card.
             if (trace != null) {
@@ -147,6 +140,20 @@ internal class LibraryBrowseCallbacks(
             )
             LibraryResult.ofItemList(ImmutableList.copyOf(returned), params)
         }
+    }
+
+    private fun reportArtworkOffered(parentId: String, returned: List<MediaItem>) {
+        logger.info(
+            LogCategory.Playback,
+            "Android Auto browse artwork offered",
+            LogField.Public("parentKind", AutoLibrary.kindOf(parentId)),
+            LogField.Count("returned", returned.size),
+            LogField.Count("withArtworkUri", returned.count { item -> item.mediaMetadata.artworkUri != null }),
+            LogField.Count(
+                "withContentArtworkUri",
+                returned.count { item -> item.mediaMetadata.artworkUri?.scheme == "content" },
+            ),
+        )
     }
 
     private fun traceChildrenResult(
@@ -191,13 +198,16 @@ internal class LibraryBrowseCallbacks(
         browser: MediaSession.ControllerInfo,
         mediaId: String,
     ): ListenableFuture<LibraryResult<MediaItem>> {
+        val profileGeneration = auto.stableActiveProfileGeneration()
         val now = nowPlaying()
         val trace = autoTraces.forController(browser.packageName, carPackages)
         val entryPlayer = if (trace == null) emptyList() else AndroidAutoDiagnostics.playerFields(player())
         val startedAt = clock.elapsed()
         return futures.submit {
             if (!mayBrowse(session, browser)) return@submit deniedItem(browser, "onGetItem")
+            if (profileChanged(profileGeneration)) return@submit LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
             val resolved = auto.item(mediaId, now)
+            if (profileChanged(profileGeneration)) return@submit LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
             if (trace != null) {
                 autoTraces.log(
                     "Android Auto item lookup returned",
@@ -234,11 +244,29 @@ internal class LibraryBrowseCallbacks(
         browser: MediaSession.ControllerInfo,
         query: String,
         params: LibraryParams?,
-    ): ListenableFuture<LibraryResult<Void>> = futures.submit {
-        if (!mayBrowse(session, browser)) return@submit deniedVoid(browser, "onSearch")
-        val results = auto.search(query)
-        session.notifySearchResultChanged(browser, query, results.size, params)
-        LibraryResult.ofVoid(params)
+    ): ListenableFuture<LibraryResult<Void>> {
+        val profileGeneration = auto.stableActiveProfileGeneration()
+        return futures.submit {
+            if (!mayBrowse(session, browser)) return@submit deniedVoid(browser, "onSearch")
+            val results = if (profileChanged(profileGeneration)) emptyList() else auto.search(query)
+            val current = profileGeneration?.takeUnless { profileChanged(it) }
+            // MediaBrowserCompat detaches its result and requests the page synchronously from this
+            // callback. Keep that request bound to the original search even for a count of zero.
+            val previous = notifyingSearch
+            notifyingSearch = SearchDelivery(browser, query, current)
+            try {
+                session.notifySearchResultChanged(browser, query, if (current == null) 0 else results.size, params)
+            } finally {
+                notifyingSearch = previous
+            }
+            if (current ==
+                null
+            ) {
+                LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
+            } else {
+                LibraryResult.ofVoid(params)
+            }
+        }
     }
 
     fun onGetSearchResult(
@@ -249,11 +277,18 @@ internal class LibraryBrowseCallbacks(
         pageSize: Int,
         params: LibraryParams?,
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+        val search = notifyingSearch?.takeIf { it.browser == browser && it.query == query }
+        val profileGeneration = if (search == null) auto.stableActiveProfileGeneration() else search.generation
         val trace = autoTraces.forController(browser.packageName, carPackages)
         val startedAt = clock.elapsed()
         return futures.submit {
             if (!mayBrowse(session, browser)) return@submit deniedList(browser, "onGetSearchResult")
+            if (profileChanged(profileGeneration)) {
+                if (search != null) return@submit LibraryResult.ofItemList(ImmutableList.of(), params)
+                return@submit LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
+            }
             val all = auto.search(query)
+            if (profileChanged(profileGeneration)) return@submit LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
             val from = (page * pageSize).coerceAtMost(all.size)
             val to = (from + pageSize).coerceAtMost(all.size)
             val returned = all.subList(from, to)
@@ -275,6 +310,18 @@ internal class LibraryBrowseCallbacks(
             LibraryResult.ofItemList(ImmutableList.copyOf(returned), params)
         }
     }
+
+    /** PD-001. A switch back to the same profile still retires requests from before the boundary. */
+    private fun profileChanged(expectedGeneration: Long?): Boolean =
+        expectedGeneration == null || auto.stableActiveProfileGeneration() != expectedGeneration
+
+    private data class SearchDelivery(
+        val browser: MediaSession.ControllerInfo,
+        val query: String,
+        val generation: Long?,
+    )
+
+    private var notifyingSearch: SearchDelivery? = null
 
     private fun denied(browser: MediaSession.ControllerInfo, callback: String) {
         logger.info(

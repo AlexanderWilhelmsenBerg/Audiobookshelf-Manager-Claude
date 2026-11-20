@@ -1,5 +1,6 @@
 package com.example.shelfplayer.feature.series
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -21,9 +22,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -36,6 +39,9 @@ import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.component.ShelfEmptyState
 import com.example.shelfplayer.core.designsystem.component.ShelfLoadingState
 import com.example.shelfplayer.core.model.LibraryItemId
+import com.example.shelfplayer.core.model.SeriesSequence
+import com.example.shelfplayer.core.model.library.Book
+import com.example.shelfplayer.domain.library.SeriesOrder
 import com.example.shelfplayer.domain.library.SeriesShelf
 import com.example.shelfplayer.feature.browse.BookCoverThumbnail
 import com.example.shelfplayer.feature.browse.readable
@@ -51,12 +57,21 @@ fun SeriesRoute(
     viewModel: SeriesViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    BackHandler(enabled = uiState.editor != null, onBack = viewModel::cancelEditing)
     SeriesScreen(
         uiState = uiState,
         onBookSelected = onBookSelected,
         onBookPlaySelected = onBookPlaySelected,
         onNavigateUp = onNavigateUp,
         modifier = modifier,
+        editorActions = SeriesEditorActions(
+            start = viewModel::startEditing,
+            cancel = viewModel::cancelEditing,
+            save = viewModel::save,
+            move = viewModel::move,
+            addMissing = viewModel::addMissing,
+            removeMissing = viewModel::removeMissing,
+        ),
     )
 }
 
@@ -74,7 +89,9 @@ fun SeriesScreen(
     onBookPlaySelected: (LibraryItemId) -> Unit,
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
+    editorActions: SeriesEditorActions = SeriesEditorActions(),
 ) {
+    val editor = uiState.editor
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -83,11 +100,28 @@ fun SeriesScreen(
                     Text(text = uiState.shelf?.series?.name ?: stringResource(R.string.series_title))
                 },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateUp) {
+                    IconButton(
+                        onClick = if (editor != null) editorActions.cancel else onNavigateUp,
+                        enabled = editor?.saving != true,
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.navigate_back),
+                            contentDescription = stringResource(
+                                if (editor != null) R.string.series_editor_cancel else R.string.navigate_back,
+                            ),
                         )
+                    }
+                },
+                actions = {
+                    when {
+                        editor != null -> TextButton(
+                            onClick = editorActions.save,
+                            enabled = editor.hasChanges && !editor.saving,
+                        ) { Text(stringResource(R.string.series_editor_save)) }
+
+                        uiState.canEdit -> TextButton(onClick = editorActions.start) {
+                            Text(stringResource(R.string.series_editor_edit))
+                        }
                     }
                 },
             )
@@ -106,11 +140,19 @@ fun SeriesScreen(
                 modifier = Modifier.padding(innerPadding),
             )
 
+            editor != null -> SeriesEditor(
+                shelf = shelf,
+                editor = editor,
+                actions = editorActions,
+                modifier = Modifier.padding(innerPadding),
+            )
+
             else -> SeriesBooks(
                 shelf = shelf,
                 onBookSelected = onBookSelected,
                 onBookPlaySelected = onBookPlaySelected,
                 contentPadding = innerPadding,
+                missingBooks = uiState.missingBooks,
             )
         }
     }
@@ -122,8 +164,10 @@ private fun SeriesBooks(
     onBookSelected: (LibraryItemId) -> Unit,
     onBookPlaySelected: (LibraryItemId) -> Unit,
     contentPadding: PaddingValues,
+    missingBooks: Set<Int>,
     modifier: Modifier = Modifier,
 ) {
+    val entries = remember(shelf.books, shelf.series.id, missingBooks) { shelf.withPlaceholders(missingBooks) }
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(contentPadding),
         // The mini player floats over this screen; the list has to be able to scroll clear of it.
@@ -138,18 +182,46 @@ private fun SeriesBooks(
         item(key = HEADER_KEY) {
             SeriesHeader(shelf = shelf, onContinue = { onBookPlaySelected(it) })
         }
-        items(items = shelf.books, key = { it.id.value }) { book ->
-            SeriesBookCard(
-                book = book,
-                onClick = { onBookSelected(book.id) },
-                // The membership for this series, not the book's first one.
-                membership = book.seriesMemberships.firstOrNull { it.series.id == shelf.series.id },
-                // LIB-003 asks for direct play/resume on a series. The rows here are one story in order,
-                // so "carry on with this one" is a common intent rather than a mis-tap waiting to happen.
-                onPlay = { onBookPlaySelected(book.id) },
-            )
+        items(items = entries, key = { it.key }) { entry ->
+            when (entry) {
+                is SeriesBrowseEntry.Missing -> SeriesMissingCard(entry.number)
+
+                is SeriesBrowseEntry.Present -> {
+                    val book = entry.book
+                    SeriesBookCard(
+                        book = book,
+                        onClick = { onBookSelected(book.id) },
+                        membership = book.seriesMemberships.firstOrNull { it.series.id == shelf.series.id },
+                        onPlay = { onBookPlaySelected(book.id) },
+                    )
+                }
+            }
         }
     }
+}
+
+private sealed interface SeriesBrowseEntry {
+    val key: String
+    val sequence: SeriesSequence
+
+    data class Present(val book: Book, override val sequence: SeriesSequence) : SeriesBrowseEntry {
+        override val key: String = "book:${book.id.value}"
+    }
+
+    data class Missing(val number: Int) : SeriesBrowseEntry {
+        override val key: String = "missing:$number"
+        override val sequence: SeriesSequence = SeriesSequence.parse(number.toString())
+    }
+}
+
+private fun SeriesShelf.withPlaceholders(numbers: Set<Int>): List<SeriesBrowseEntry> {
+    val present = books.map { book ->
+        val sequence = book.seriesMemberships.firstOrNull { it.series.id == series.id }?.sequence
+        SeriesBrowseEntry.Present(book, sequence ?: SeriesSequence.Absent)
+    }
+    val occupied = present.mapNotNull { SeriesOrder.occupiedNumber(it.sequence) }.toSet()
+    val missing = (numbers - occupied).map { SeriesBrowseEntry.Missing(it) }
+    return (present + missing).sortedBy { it.sequence }
 }
 
 /**
