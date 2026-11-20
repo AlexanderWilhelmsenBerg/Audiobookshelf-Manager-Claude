@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
@@ -178,11 +179,12 @@ class SeriesScreenTest {
                         start = {
                             state.value = state.value.copy(editor = SeriesEditorState(owner, initial, emptySet()))
                         },
-                        addMissing = { number ->
+                        insertMissing = { number ->
                             val editor = requireNotNull(state.value.editor)
-                            state.value =
-                                state.value.copy(editor = editor.copy(order = editor.order.addMissing(number)))
+                            state.value = state.value.copy(editor = editor.edit(editor.order.insertMissing(number)))
                         },
+                        undo = { state.value = state.value.copy(editor = state.value.editor?.undo()) },
+                        cancel = { state.value = state.value.copy(editor = null) },
                         move = { from, to, move ->
                             val editor = requireNotNull(state.value.editor)
                             assertEquals(SeriesOrderMove.Reorder, move)
@@ -194,14 +196,19 @@ class SeriesScreenTest {
             }
         }
         compose.onNodeWithText("Edit").performClick()
-        compose.onNodeWithText("Add missing book").performClick()
-        compose.onNodeWithText("Add", useUnmergedTree = true).performClick()
-        assertEquals(setOf(5), state.value.editor?.order?.missingBooks)
+        compose.onNodeWithText("Undo").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Insert missing book at 2").performClick()
+        assertEquals(setOf(2), state.value.editor?.order?.missingBooks)
+        compose.onNodeWithText("Undo").performClick()
+        assertEquals(emptySet(), state.value.editor?.order?.missingBooks)
 
         compose.onNodeWithContentDescription("Reorder Book 1").performClick()
         compose.onNodeWithText("Move down").performClick()
         val orders = state.value.editor?.order?.changes?.associate { it.bookId.value to it.after }
         assertEquals(mapOf("book-2" to "1", "book-1" to "2"), orders)
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithText("Edit").performClick()
+        assertEquals(initial, state.value.editor?.order)
     }
 
     @Test
@@ -215,12 +222,37 @@ class SeriesScreenTest {
         compose.mainClock.advanceTimeBy(700)
         source.performTouchInput {
             advanceEventTime(700)
-            moveBy(Offset(width * 1.5f, target.y - sourceCenter.y))
+            moveBy(Offset(width * 2f, target.y - sourceCenter.y))
             up()
         }
         compose.waitForIdle()
         val positions = state.value.order.changes.associate { it.bookId.value to it.after }
         assertEquals(mapOf("book-1" to "1.01 (Part 1)", "book-2" to "1.02 (Part 2)"), positions)
+        compose.onNodeWithContentDescription("Separate all parts of book 1").performClick()
+        assertEquals(4, state.value.order.slots.size)
+        compose.onNodeWithText("Undo").performClick()
+        assertEquals(positions, state.value.order.changes.associate { it.bookId.value to it.after })
+    }
+
+    @Test
+    @Config(fontScale = 1.0f)
+    fun `an immediate vertical handle drag with sideways drift reorders without grouping`() {
+        val state = showSeriesEditor()
+        val source = compose.onNodeWithContentDescription("Reorder Book 2")
+        val start = source.fetchSemanticsNode().boundsInRoot.center
+        val target = compose.onNodeWithContentDescription("Reorder Book 1").fetchSemanticsNode().boundsInRoot.center
+        source.performTouchInput {
+            down(center)
+            moveBy(Offset(width * 0.8f, target.y - start.y - 5))
+            up()
+        }
+        compose.waitForIdle()
+        assertEquals(
+            listOf("book-2", "book-1", "book-3", "book-4"),
+            state.value.order.slots.map {
+                it.content.books.single().value
+            },
+        )
     }
 
     @Test
@@ -275,9 +307,14 @@ class SeriesScreenTest {
                     onBookSelected = {},
                     onBookPlaySelected = {},
                     onNavigateUp = {},
-                    editorActions = SeriesEditorActions(move = { from, to, move ->
-                        state.value = state.value.copy(order = state.value.order.move(from, to, move))
-                    }),
+                    editorActions = SeriesEditorActions(
+                        move = { from, to, move ->
+                            state.value =
+                                state.value.edit(state.value.order.move(from, to, move))
+                        },
+                        ungroup = { key -> state.value = state.value.edit(state.value.order.ungroup(key)) },
+                        undo = { state.value = state.value.undo() },
+                    ),
                 )
             }
         }

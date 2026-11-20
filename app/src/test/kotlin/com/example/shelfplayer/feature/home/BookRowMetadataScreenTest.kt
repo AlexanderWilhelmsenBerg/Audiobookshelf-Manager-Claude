@@ -75,14 +75,19 @@ class BookRowMetadataScreenTest {
             true -> "Finished · 3h 0m"
             false -> "1h 0m in · 2h 0m left · 3h 0m · 33%"
         }
-        listOf("A Longer Fixture Series, book 12", progressText).forEach { text ->
+        listOf(fixture.title, "A Longer Fixture Series, book 12", progressText).forEach { text ->
             val node = compose.onNodeWithText(text, useUnmergedTree = true)
             val layouts = mutableListOf<TextLayoutResult>()
             node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
             val layout = layouts.single()
-            assertFalse(layout.didOverflowHeight, "Text is vertically clipped: $text")
-            assertTrue((0 until layout.lineCount).none { layout.isLineEllipsized(it) })
-            assertTrue(layout.getLineEnd(layout.lineCount - 1) == text.length)
+            if (text == fixture.title) {
+                assertTrue(layout.lineCount == 2)
+                assertTrue(layout.isLineEllipsized(1))
+            } else {
+                assertFalse(layout.didOverflowHeight, "Text is vertically clipped: $text")
+                assertTrue((0 until layout.lineCount).none { layout.isLineEllipsized(it) })
+                assertTrue(layout.getLineEnd(layout.lineCount - 1) == text.length)
+            }
             val bounds = node.getUnclippedBoundsInRoot()
             assertTrue(bounds.top >= card.top && bounds.bottom <= card.bottom, "Text escapes card: $text")
         }
@@ -98,7 +103,7 @@ class BookRowMetadataScreenTest {
     private fun fixtureBook(finished: Boolean?): com.example.shelfplayer.core.model.library.Book {
         val base = book()
         return base.copy(
-            title = "Fixture book",
+            title = "The Lantern Keeper and the Secret of the Winter Harbour",
             duration = 3.hours,
             authors = listOf(Author(base.serverId, AuthorId("author"), "Fixture author")),
             seriesMemberships = listOf(

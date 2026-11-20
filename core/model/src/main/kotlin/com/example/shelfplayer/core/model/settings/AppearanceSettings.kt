@@ -20,8 +20,12 @@ data class AppearanceSettings(
     val dynamicColor: Boolean = false,
     val language: AppLanguage = AppLanguage.System,
     val design: AppDesign = AppDesign.Classic,
+    val shelfCards: ShelfCardAppearance = ShelfCardAppearance(),
 ) {
     /** The selected bundled pack, or `null` when the app is using one of its plain themes. */
     val backgroundTheme: BackgroundTheme?
         get() = backgroundThemes.firstOrNull { it.id == backgroundThemeId }
 }
+
+/** The device-wide cover layout and outline for Home shelf cards. */
+data class ShelfCardAppearance(val textBesideCover: Boolean = false, val bordersVisible: Boolean = true)

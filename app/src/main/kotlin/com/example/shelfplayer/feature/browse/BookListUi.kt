@@ -83,13 +83,11 @@ internal fun BookCard(
                     .padding(end = 16.dp, top = 16.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                // Two lines, always — reserved rather than earned, so a short title does not make its
-                // row shorter than the one above it.
                 Text(
                     text = book.title,
                     style = MaterialTheme.typography.titleMedium,
-                    minLines = TITLE_LINES,
-                    maxLines = TITLE_LINES,
+                    minLines = 2,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 // Drawn blank when the book has no author, for the same reason.
@@ -180,9 +178,6 @@ private const val MINUTES_PER_HOUR = 60
 
 /** Baseline density; metadata may require a taller row. The cover remains this bounded size. */
 private val ROW_MIN_HEIGHT = 132.dp
-
-/** Two lines, always. */
-private const val TITLE_LINES = 2
 
 /** PRODUCT_SPEC LIB-002 — sort order is a visible, one-tap choice, not a buried menu. */
 @Composable

@@ -164,6 +164,8 @@ fun SettingsRoute(
         ),
         appearanceActions = AppearanceActions(
             onDesignChanged = appearanceViewModel::onDesignChanged,
+            onShelfCardTextBesideCoverChanged = appearanceViewModel::onShelfCardTextBesideCoverChanged,
+            onShelfCardBordersVisibleChanged = appearanceViewModel::onShelfCardBordersVisibleChanged,
             onThemeChoiceChanged = appearanceViewModel::onThemeChoiceChanged,
             onAccentChanged = appearanceViewModel::onAccentChanged,
             onGlassTintChanged = appearanceViewModel::onGlassTintChanged,

@@ -921,6 +921,10 @@
     <string name="settings_system_tint">Legg skj\u00e6r p\u00e5 linjene og spilleren</string>
     <string name="settings_section_theme">Tema</string>
     <string name="settings_section_design">Design</string>
+    <string name="settings_home_card_text">Tekst på hjemmekort</string>
+    <string name="settings_home_card_text_below">Under omslaget</string>
+    <string name="settings_home_card_text_beside">Ved siden av omslaget</string>
+    <string name="settings_home_card_borders">Vis rammer på hjemmekort</string>
     <string name="settings_design_classic">Klassisk</string>
     <string name="settings_design_minimal">Minimal</string>
     <string name="settings_design_editorial">Redaksjonell</string>

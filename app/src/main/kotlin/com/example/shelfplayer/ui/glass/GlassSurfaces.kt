@@ -54,12 +54,12 @@ import kotlin.math.roundToInt
 internal fun Modifier.cardGlass(
     shape: Shape = RoundedCornerShape(GlassDefaults.CardCornerRadius),
     scaleBlurInput: Boolean = false,
+    showBorder: Boolean = true,
 ): Modifier {
     val design = LocalBookWaveDesign.current
     if (!design.usesGlass) {
         val resolvedShape = design.surfaceShape(shape)
-        return background(MaterialTheme.colorScheme.surface, resolvedShape)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, resolvedShape)
+        return background(MaterialTheme.colorScheme.surface, resolvedShape).cardOutline(showBorder, resolvedShape)
     }
     val preferences = LocalGlassPreferences.current
     val hazeState = LocalCardHazeState.current
@@ -77,12 +77,12 @@ internal fun Modifier.cardGlass(
             tintColor = preferences.tint,
             scaleBlurInput = scaleBlurInput,
         )
-        .border(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = GlassDefaults.CARD_OUTLINE_ALPHA),
-            shape = shape,
-        )
+        .cardOutline(showBorder, shape, GlassDefaults.CARD_OUTLINE_ALPHA)
 }
+
+@Composable
+private fun Modifier.cardOutline(show: Boolean, shape: Shape, alpha: Float = 1f): Modifier =
+    if (show) border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = alpha), shape) else this
 
 /**
  * PRODUCT_SPEC SET-002 — a `Card` that is glass rather than a filled surface.
@@ -105,12 +105,13 @@ internal fun GlassCard(
     onClick: (() -> Unit)? = null,
     shape: Shape = RoundedCornerShape(GlassDefaults.CardCornerRadius),
     scaleBlurInput: Boolean = false,
+    showBorder: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val resolvedShape = LocalBookWaveDesign.current.surfaceShape(shape)
     val colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     val elevation = CardDefaults.cardElevation(defaultElevation = 0.dp, pressedElevation = 0.dp)
-    val glass = modifier.cardGlass(resolvedShape, scaleBlurInput)
+    val glass = modifier.cardGlass(resolvedShape, scaleBlurInput, showBorder)
     if (onClick == null) {
         Card(modifier = glass, shape = resolvedShape, colors = colors, elevation = elevation, content = content)
     } else {

@@ -597,6 +597,11 @@ Open Edit on the series screen, drag books vertically to reorder them and use si
 or separate parts. Offer the same actions through a menu. An explicit missing book number keeps a place
 for a future book without creating a library item.
 
+The 2026-11-20 interaction revision adds covers and reserves vertical dragging for insertion. Group
+parts by moving right over the centre of another card. Show parts inside a parent frame whose × separates
+all books in order. Place a + at each top-level boundary for missing books. Keep Cancel, Undo and Save
+visible while editing.
+
 ### Consequences
 
 Audiobookshelf owns real book sequences. The app stores empty slots per profile and series on the device.

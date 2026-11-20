@@ -341,6 +341,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Filters and sort order persist per profile and library.
 - Empty, loading, error, and offline states are distinct.
 - Home shelf cards expose a direct, labelled play/resume action without replacing the card's details action.
+- Home shelf cards reserve a consistent number of lines for book and series labels so long titles do
+  not change card height within a shelf. Library book rows reserve two title lines and can grow for
+  series and progress metadata at larger text sizes.
 - Series, author, and genre rows use representative cached book covers. An author portrait is requested
   only after synchronized author metadata confirms one exists, and cached covers remain the loading,
   missing-image, and offline fallback.
@@ -381,10 +384,14 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 
 **Acceptance criteria**
 
-- Accounts with book metadata edit access can open Edit from an accessible series. Drag a row vertically
-  to reorder it, sideways onto a book to group parts, or sideways out of a group to promote it.
+- Accounts with book metadata edit access can open Edit from an accessible series. Book cards show their
+  covers. Drag a handle immediately or hold a card to pick it up. Vertical movement previews an insertion
+  between books. Grouping requires a deliberate rightward drag over the middle of another card.
+  Parts appear inside a shared frame. Its × separates all parts into individual books in their displayed
+  order. Dragging a single part left promotes just that part.
   The same actions are available through the row's reorder menu, including choosing a specific book or part for a group.
-- A missing book can occupy an explicit number. Placeholders are saved per profile and series on the device.
+- A + on each top-level boundary inserts a missing book there. It uses a free number when one exists
+  and shifts consecutive occupied numbers when necessary. Placeholders are saved per profile and series on the device.
   A real book with that number takes its place in the series view.
 - Save sends changed sequence values through the existing book metadata operation and preserves each book's
   other series memberships. After a partial save, users can retry the remaining changes or revise their draft.
@@ -392,7 +399,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   A failed read before the write leaves the position unapplied.
   If Audiobookshelf saves the order and the follow-up read fails, the series shows a refresh action that reads the
   affected books again without resubmitting the edits.
-- Placeholders can be saved offline. Book metadata edits require a connection and a current grant.
+- Undo reverses one draft edit at a time, including insertion and ungrouping. Cancel discards unsaved
+  edits. Confirmed and uncertain writes from a partial save remain accounted for in subsequent saves.
+- Placeholder-only changes can be saved offline. Changes that renumber real books require a connection and a current grant.
 
 ---
 
@@ -1113,6 +1122,8 @@ See [the device integration contract](docs/garmin-device-management.md) and
 
 **Appearance/accessibility**
 - device-wide visual design under Appearance → Design, with Classic as the default and Minimal and Editorial as opt-in choices;
+- Home shelf cards default to text below the cover and visible borders. Appearance → Design lets the listener
+  put text alongside the cover or hide the border. These device-wide choices apply across designs;
 - Minimal and Editorial show their own built-in accent as Design default and let the reader return to it after choosing a preset;
 - derived primary and primary-container label pairs meet 4.5:1 contrast for the supported accents;
 - system/light/dark;

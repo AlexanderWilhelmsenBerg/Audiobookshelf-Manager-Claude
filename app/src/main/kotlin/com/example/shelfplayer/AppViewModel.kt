@@ -10,6 +10,7 @@ import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
 import com.example.shelfplayer.core.model.settings.GlassBlur
 import com.example.shelfplayer.core.model.settings.GlassTint
+import com.example.shelfplayer.core.model.settings.ShelfCardAppearance
 import com.example.shelfplayer.core.model.settings.TextContrast
 import com.example.shelfplayer.domain.repository.AppearanceRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
@@ -47,6 +48,7 @@ class AppViewModel @Inject constructor(appearance: AppearanceRepository, profile
             dynamicColor = look.dynamicColor,
             language = look.language,
             design = look.design,
+            shelfCards = look.shelfCards,
             serverBaseUrls = servers.associate { it.id to it.baseUrl },
             hasAnyProfile = profiles.isNotEmpty(),
             isResolved = true,
@@ -81,6 +83,7 @@ data class AppUiState(
     val hasAnyProfile: Boolean = false,
     val isResolved: Boolean = false,
     val design: AppDesign = AppDesign.Classic,
+    val shelfCards: ShelfCardAppearance = ShelfCardAppearance(),
 ) {
     fun resolveDarkTheme(systemInDarkTheme: Boolean): Boolean = theme.isDark ?: systemInDarkTheme
 

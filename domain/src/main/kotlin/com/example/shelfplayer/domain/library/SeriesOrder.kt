@@ -60,6 +60,26 @@ data class SeriesOrder private constructor(
         return copy(confirmed = this.confirmed + confirmed, unconfirmed = attempted)
     }
 
+    /** Restore one draft step while retaining the latest evidence about server writes. */
+    fun restoreLayout(previous: SeriesOrder): SeriesOrder = copy(slots = previous.slots, edited = previous.edited)
+
+    fun insertMissing(number: Int): SeriesOrder {
+        if (number !in 1..MAX_BOOK_NUMBER) return this
+        val index = slots.indexOfFirst { it.number >= number }
+        if (index < 0 || slots[index].number != number) return addMissing(number)
+        return splice(index, 0, listOf(SeriesOrderSlot(number, SeriesSlotContent.Missing)))
+    }
+
+    fun ungroup(slotKey: String): SeriesOrder {
+        val index = slots.indexOfFirst { it.key == slotKey }
+        val slot = slots.getOrNull(index) ?: return this
+        val parts = slot.content as? SeriesSlotContent.Parts ?: return this
+        val books = parts.books.mapIndexed { offset, id ->
+            SeriesOrderSlot(slot.number + offset, SeriesSlotContent.Book(id))
+        }
+        return splice(index, 1, books)
+    }
+
     fun addMissing(number: Int): SeriesOrder {
         if (number !in 1..MAX_BOOK_NUMBER || slots.any { it.number == number }) return this
         return copy(slots = (slots + SeriesOrderSlot(number, SeriesSlotContent.Missing)).sortedBy { it.number })
@@ -125,17 +145,25 @@ data class SeriesOrder private constructor(
     private fun outdent(source: Int, id: LibraryItemId): SeriesOrder {
         val slot = slots[source]
         if (slot.content !is SeriesSlotContent.Parts || id !in slot.content.books) return this
-        val before = slots.take(source)
         val parent = slot.without(id)
         val newNumber = if (parent == null) slot.number else slot.number + 1
         val newSlot = SeriesOrderSlot(newNumber, SeriesSlotContent.Book(id))
-        var last = newNumber
-        val after = slots.drop(source + 1).map { later ->
-            val moved = later.copy(number = later.number.coerceAtLeast(last + 1))
-            last = moved.number
-            moved
+        return splice(source, 1, listOfNotNull(parent, newSlot))
+    }
+
+    /** Shift only the contiguous occupied numbers following an insertion. */
+    private fun splice(index: Int, removed: Int, replacement: List<SeriesOrderSlot>): SeriesOrder {
+        var last = replacement.last().number
+        if (last > MAX_BOOK_NUMBER) return this
+        val updated = slots.take(index).toMutableList()
+        updated.addAll(replacement)
+        for (slot in slots.drop(index + removed)) {
+            val number = slot.number.coerceAtLeast(last + 1)
+            if (number != slot.number && number > MAX_BOOK_NUMBER) return this
+            updated.add(if (number == slot.number) slot else slot.copy(number = number))
+            last = number
         }
-        return update(before + listOfNotNull(parent, newSlot) + after)
+        return update(updated)
     }
 
     private fun update(updated: List<SeriesOrderSlot>): SeriesOrder {

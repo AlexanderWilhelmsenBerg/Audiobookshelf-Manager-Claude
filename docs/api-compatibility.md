@@ -1327,6 +1327,8 @@ also needs track metadata. In a 2.36.0 capture for LIB-005, the app updated one 
 `4.01 (Part 1)` and sent the latest second membership alongside it at `9.5`. The following expanded
 GET returned both strings exactly. See [the sanitized capture](../core/network/src/test/resources/compatibility/series-sequence-update.json).
 The editor sends one item's series array per request. A missing slot stays in the profile's device settings.
+Inserting a slot into an existing gap requires only a local write. Inserting one between consecutive
+book numbers, or separating a multipart group, uses the same sequence update for each affected book.
 
 ### The two scans are not the same kind of operation
 

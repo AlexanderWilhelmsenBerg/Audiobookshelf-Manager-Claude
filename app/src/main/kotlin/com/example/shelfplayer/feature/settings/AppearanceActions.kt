@@ -11,8 +11,7 @@ import com.example.shelfplayer.core.model.settings.ThemeChoice
 /**
  * PRODUCT_SPEC SET-002 — the writes the Appearance tab makes.
  *
- * A bundle for the reason every other settings bundle exists: nine callbacks passed individually push
- * `SettingsScreen`'s parameter list past the point where the argument order is safe to get right.
+ * A bundle for the settings screen's appearance callbacks.
  *
  * The section this file used to hold is now `appearanceTab` — it outgrew being three controls above the
  * launcher icon on the About tab, which is where a reader was least likely to look for the theme.
@@ -31,4 +30,6 @@ data class AppearanceActions(
     val onDynamicColorChanged: (Boolean) -> Unit = {},
     val onLanguageChanged: (AppLanguage) -> Unit = {},
     val onDesignChanged: (AppDesign) -> Unit = {},
+    val onShelfCardTextBesideCoverChanged: (Boolean) -> Unit = {},
+    val onShelfCardBordersVisibleChanged: (Boolean) -> Unit = {},
 )

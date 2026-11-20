@@ -78,6 +78,24 @@ internal fun LazyListScope.appearanceTab(state: AppearanceUiState, actions: Appe
                 labelOf = { design -> stringResource(design.labelRes()) },
                 onSelected = actions.onDesignChanged,
             )
+            HorizontalDivider()
+            DropdownRow(
+                label = stringResource(R.string.settings_home_card_text),
+                options = listOf(false, true),
+                selected = state.shelfCards.textBesideCover,
+                labelOf = { beside ->
+                    stringResource(
+                        if (beside) R.string.settings_home_card_text_beside else R.string.settings_home_card_text_below,
+                    )
+                },
+                onSelected = actions.onShelfCardTextBesideCoverChanged,
+            )
+            HorizontalDivider()
+            SwitchRow(
+                label = stringResource(R.string.settings_home_card_borders),
+                checked = state.shelfCards.bordersVisible,
+                onCheckedChange = actions.onShelfCardBordersVisibleChanged,
+            )
         }
     }
     themeGroup(state, actions)

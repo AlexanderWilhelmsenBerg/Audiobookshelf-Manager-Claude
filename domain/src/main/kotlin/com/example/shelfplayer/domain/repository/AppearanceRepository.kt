@@ -22,6 +22,8 @@ interface AppearanceRepository {
 
     suspend fun setThemeChoice(choice: ThemeChoice): AppResult<Unit>
     suspend fun setDesign(design: AppDesign): AppResult<Unit>
+    suspend fun setShelfCardTextBesideCover(beside: Boolean): AppResult<Unit>
+    suspend fun setShelfCardBordersVisible(visible: Boolean): AppResult<Unit>
     suspend fun setAccent(accent: AccentScheme): AppResult<Unit>
     suspend fun setGlassTint(tint: GlassTint): AppResult<Unit>
     suspend fun setCardGlassTintEnabled(enabled: Boolean): AppResult<Unit>

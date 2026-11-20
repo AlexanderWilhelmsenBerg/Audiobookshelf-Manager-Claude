@@ -71,7 +71,9 @@ fun SeriesRoute(
             cancel = viewModel::cancelEditing,
             save = viewModel::save,
             move = viewModel::move,
-            addMissing = viewModel::addMissing,
+            insertMissing = viewModel::insertMissing,
+            ungroup = viewModel::ungroup,
+            undo = viewModel::undo,
             removeMissing = viewModel::removeMissing,
             refresh = viewModel::refreshSavedOrder,
         ),
@@ -98,36 +100,48 @@ fun SeriesScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(text = uiState.shelf?.series?.name ?: stringResource(R.string.series_title))
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = if (editor != null) editorActions.cancel else onNavigateUp,
-                        enabled = editor?.saving != true,
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(
-                                if (editor != null) R.string.series_editor_cancel else R.string.navigate_back,
-                            ),
-                        )
-                    }
-                },
-                actions = {
-                    when {
-                        editor != null -> TextButton(
-                            onClick = editorActions.save,
-                            enabled = editor.hasChanges && !editor.saving,
-                        ) { Text(stringResource(R.string.series_editor_save)) }
-
-                        uiState.canEdit -> TextButton(onClick = editorActions.start) {
-                            Text(stringResource(R.string.series_editor_edit))
+            if (editor != null) {
+                TopAppBar(
+                    title = {},
+                    navigationIcon = {
+                        TextButton(onClick = editorActions.cancel, enabled = !editor.saving) {
+                            Text(stringResource(R.string.series_editor_cancel))
                         }
-                    }
-                },
-            )
+                    },
+                    actions = {
+                        TextButton(
+                            onClick = editorActions.undo,
+                            enabled = editor.history.isNotEmpty() && !editor.saving,
+                        ) {
+                            Text(stringResource(R.string.series_editor_undo))
+                        }
+                        Button(onClick = editorActions.save, enabled = editor.hasChanges && !editor.saving) {
+                            Text(stringResource(R.string.series_editor_save))
+                        }
+                    },
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Text(text = uiState.shelf?.series?.name ?: stringResource(R.string.series_title))
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateUp) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.navigate_back),
+                            )
+                        }
+                    },
+                    actions = {
+                        if (uiState.canEdit) {
+                            TextButton(onClick = editorActions.start) {
+                                Text(stringResource(R.string.series_editor_edit))
+                            }
+                        }
+                    },
+                )
+            }
         },
     ) { innerPadding ->
         val shelf = uiState.shelf

@@ -24,6 +24,7 @@ import com.example.shelfplayer.core.designsystem.theme.BookWaveDesign
 import com.example.shelfplayer.core.designsystem.theme.ShelfPlayerTheme
 import com.example.shelfplayer.core.model.playback.SleepTimerState
 import com.example.shelfplayer.core.model.settings.AppDesign
+import com.example.shelfplayer.core.model.settings.ShelfCardAppearance
 import com.example.shelfplayer.feature.browse.CoverUrls
 import com.example.shelfplayer.feature.browse.LocalCoverUrls
 import com.example.shelfplayer.feature.home.HomeActions
@@ -35,6 +36,7 @@ import com.example.shelfplayer.feature.player.PlayerActions
 import com.example.shelfplayer.feature.settings.AppearanceActions
 import com.example.shelfplayer.feature.settings.AppearanceUiState
 import com.example.shelfplayer.feature.settings.appearanceTab
+import com.example.shelfplayer.ui.LocalShelfCardAppearance
 import com.example.shelfplayer.ui.glass.LocalCardHazeState
 import com.example.shelfplayer.ui.glass.LocalGlassHazeState
 import com.example.shelfplayer.ui.glass.LocalPlayerChromeBottomInset
@@ -52,12 +54,19 @@ fun HomeDesignPreview() = HomePreview(BookWaveDesign.Classic)
 @Composable
 fun MinimalHomeDesignPreview() = HomePreview(BookWaveDesign.Minimal)
 
+@Preview(name = "Home, Minimal with side-by-side cards", showSystemUi = true)
+@Composable
+fun MinimalHorizontalHomeDesignPreview() = HomePreview(
+    BookWaveDesign.Minimal,
+    ShelfCardAppearance(textBesideCover = true, bordersVisible = false),
+)
+
 @Preview(name = "Home, Editorial", showSystemUi = true)
 @Composable
 fun EditorialHomeDesignPreview() = HomePreview(BookWaveDesign.Editorial)
 
 @Composable
-private fun HomePreview(design: BookWaveDesign) {
+private fun HomePreview(design: BookWaveDesign, shelfCards: ShelfCardAppearance = ShelfCardAppearance()) {
     PreviewTheme(design = design) {
         val cover = previewCoverUri()
         val backdropHaze = rememberHazeState()
@@ -70,6 +79,7 @@ private fun HomePreview(design: BookWaveDesign) {
         Box(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize().appBackdrop(flat = false).hazeSource(backdropHaze))
             CompositionLocalProvider(
+                LocalShelfCardAppearance provides shelfCards,
                 LocalCoverUrls provides CoverUrls { book -> cover.takeIf { book.coverPath != null } },
                 LocalCardHazeState provides backdropHaze,
                 LocalGlassHazeState provides contentHaze,
@@ -149,18 +159,23 @@ private fun PlayerPreview(design: BookWaveDesign) {
 @Composable
 fun AppearanceDesignPreview() {
     var design by remember { mutableStateOf(AppDesign.Classic) }
+    var shelfCards by remember { mutableStateOf(ShelfCardAppearance()) }
     PreviewTheme(design = design.visualStyle()) {
         LazyColumn(modifier = Modifier.appBackdrop(flat = true).safeDrawingPadding()) {
             appearanceTab(
-                state = AppearanceUiState(design = design),
-                actions = AppearanceActions(onDesignChanged = { design = it }),
+                state = AppearanceUiState(design = design, shelfCards = shelfCards),
+                actions = AppearanceActions(
+                    onDesignChanged = { design = it },
+                    onShelfCardTextBesideCoverChanged = { shelfCards = shelfCards.copy(textBesideCover = it) },
+                    onShelfCardBordersVisibleChanged = { shelfCards = shelfCards.copy(bordersVisible = it) },
+                ),
             )
         }
     }
 }
 
 @Composable
-private fun PreviewTheme(design: BookWaveDesign, content: @Composable () -> Unit) {
+internal fun PreviewTheme(design: BookWaveDesign, content: @Composable () -> Unit) {
     val window = LocalActivity.current?.window
     val dark = isSystemInDarkTheme()
     SideEffect {
