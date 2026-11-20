@@ -309,7 +309,8 @@ constructor(
         val baseline = requests.serverProgress(profileId, queued.bookId).getOrNull() ?: return false
         val samePosition = !baseline.isFinished && baseline.position.inWholeMilliseconds == sent.positionMillis
         val insertedDuringUpload = baseline.updatedAt in uploadWindow && baseline.updatedAt > queued.updatedAt
-        if (!samePosition || !insertedDuringUpload ||
+        val matchesAcceptedUpload = samePosition && insertedDuringUpload
+        if (!matchesAcceptedUpload ||
             activeProfile()?.profileId != profileId.value || outbox.find(sent.sessionId) != latest
         ) {
             return false
@@ -320,11 +321,13 @@ constructor(
         return retry?.let { settleUploaded(latest, it, clock.now().toEpochMilli()) } == true
     }
 
-    private suspend fun changedPositionFromUpload(sent: PlaybackSessionEntity, completedAt: Instant): PlaybackSessionEntity? =
-        outbox.find(sent.sessionId)?.takeIf { current ->
-            current.state != SessionOutboxState.SYNCED && current.positionMillis != sent.positionMillis &&
-                current.updatedAt <= completedAt.toEpochMilli()
-        }
+    private suspend fun changedPositionFromUpload(
+        sent: PlaybackSessionEntity,
+        completedAt: Instant,
+    ): PlaybackSessionEntity? = outbox.find(sent.sessionId)?.takeIf { current ->
+        current.state != SessionOutboxState.SYNCED && current.positionMillis != sent.positionMillis &&
+            current.updatedAt <= completedAt.toEpochMilli()
+    }
 
     private suspend fun settleUploaded(
         sent: PlaybackSessionEntity,
