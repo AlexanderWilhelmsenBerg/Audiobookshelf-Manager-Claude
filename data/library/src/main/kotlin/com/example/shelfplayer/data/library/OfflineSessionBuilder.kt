@@ -64,7 +64,7 @@ class OfflineSessionBuilder @Inject constructor(
         downloads.observe(serverId, bookId).first()
 
     /**
-     * A session for [bookId] from Room and [manifest], or `null` when the catalogue has no usable row.
+     * A session for [bookId] from Room and [manifest], or `null` when a required track cannot play locally.
      *
      * `null` rather than a failure: the caller's next move is the server, and "there is nothing local" is
      * not an error worth reporting to somebody who is about to get a real session anyway.
@@ -78,22 +78,7 @@ class OfflineSessionBuilder @Inject constructor(
         if (!manifest.isLocalStorageReachable(locations)) return null
         val bookKey = EntityKey.of(serverId.value, bookId.value)
         val stored = libraryDao.observeBook(profileId.value, bookKey).first() ?: return null
-        val local = manifest.files.associateBy { file -> file.remoteFileId }
-
-        val tracks = stored.tracks
-            .sortedBy(AudioTrackEntity::trackIndex)
-            .mapNotNull { track ->
-                // A track with no committed file cannot be played from disk. Excluded ones were never
-                // downloaded and are carried through as excluded, which is what PLAY-003 expects; any other
-                // gap means the manifest and the catalogue disagree and the book is not really complete.
-                val uri = local[track.remoteFileId]?.uri
-                when {
-                    track.isExcluded -> track.toPlayable(url = "")
-                    uri.isNullOrBlank() -> null
-                    else -> track.toPlayable(url = uri)
-                }
-            }
-        if (tracks.none { !it.isExcluded }) return null
+        val tracks = localTracks(stored.tracks, manifest) ?: return null
 
         val progress = progressDao.findProgress(profileId.value, bookKey)
         return PlaybackSession(
@@ -122,6 +107,18 @@ class OfflineSessionBuilder @Inject constructor(
                 )
             },
         )
+    }
+
+    private fun localTracks(catalogue: List<AudioTrackEntity>, manifest: OfflineBook): List<PlayableTrack>? {
+        val local = manifest.files.associateBy { file -> file.remoteFileId }
+        val tracks = catalogue.sortedBy(AudioTrackEntity::trackIndex).map { track ->
+            if (track.isExcluded) return@map track.toPlayable(url = "")
+            // The catalogue can change after the manifest was marked complete. Dropping a required
+            // file would also cut that part out of the book's playback timeline.
+            val uri = local[track.remoteFileId]?.uri?.takeIf(String::isNotBlank) ?: return null
+            track.toPlayable(url = uri)
+        }
+        return tracks.takeIf { it.any { track -> !track.isExcluded } }
     }
 
     /**

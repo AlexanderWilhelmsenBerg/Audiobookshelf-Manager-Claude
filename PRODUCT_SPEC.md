@@ -492,6 +492,7 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Multi-file audiobooks play in server-defined track order.
 - Seeking across track boundaries preserves global book position.
 - Excluded server tracks are not played.
+- An offline queue requires a committed local file for every current non-excluded track, including after a catalogue refresh.
 - Chapter navigation works independently of file boundaries.
 - A missing local part marks the download incomplete and prevents false “downloaded” state.
 - If a local file becomes unreadable, playback stops safely and offers repair/redownload.
