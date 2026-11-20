@@ -419,6 +419,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - If that session has a loaded book, the mini player is visible on every normal BookWave screen except while the full player is expanded, regardless of whether playback originated from the phone UI, notification/system controls, Bluetooth/headset, Android Auto, playback resumption, or a surviving playback service observed after Activity recreation.
 - The full player scrolls within short windows so the transport, History, and Sleep Timer stay reachable with large text.
 - A process restart restores the last playable item in a paused state unless a valid user action requests playback.
+- Explicit Play or Retry after a decoding failure prepares a fresh player in the existing media session
+  at the current book position. A failed retry leaves playback stopped and reports the error.
 
 ### PLAY-002 Audio focus and route handling
 

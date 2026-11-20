@@ -82,6 +82,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import javax.inject.Inject
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -282,6 +283,9 @@ class PlaybackService : MediaLibraryService() {
     internal lateinit var coldStartToggleGate: ColdStartToggleGate
     private var serviceStartedAt: Duration = Duration.ZERO
     private var player: ExoPlayer? = null
+    private var playerEvents: PlayerEvents? = null
+    private var decoderFailedPlayer: ExoPlayer? = null
+    private var currentPlayerSettings = PlaybackSettings.Default
     private lateinit var activeProfileGeneration: () -> Long
     private var session: MediaLibrarySession? = null
     private var journal: Job? = null
@@ -313,6 +317,7 @@ class PlaybackService : MediaLibraryService() {
             protectOutput = { expectedPlayer, willStartAudio, holdForSeek ->
                 audioOutputs.protectManualPlayOnGuardedHeadset(expectedPlayer, willStartAudio, holdForSeek)
             },
+            canRunDecoder = { it !== decoderFailedPlayer },
         )
     }
 
@@ -442,13 +447,9 @@ class PlaybackService : MediaLibraryService() {
         scope = CoroutineScope(SupervisorJob() + mainDispatcher)
         registerWallClockChanges()
         val settings = runBlocking { playbackSettings.observeSettings().first() }
+        currentPlayerSettings = settings
         val exoPlayer = createPlayerFromSettings(settings).also { player = it }
-        exoPlayer.addListener(PlayerEvents())
-        exoPlayer.addListener(
-            PlaybackFocusDiagnostics(clock) { fields ->
-                autoTraces.log("Playback focus observation", fields = fields + carSnapshotFields())
-            },
-        )
+        attachPlayerListeners(exoPlayer)
         resumeFreshness.attach(exoPlayer)
         val sessionPlayer = createSessionPlayer(exoPlayer)
         // Issue #91 — controllers see the forwarding player; service-owned timers/sync/routing below keep
@@ -483,9 +484,7 @@ class PlaybackService : MediaLibraryService() {
         // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does. It is given the
         // player rather than owning one, for the same reason the timer is: there is exactly one.
         sessionSync.attach(exoPlayer, ::effectiveBookPosition)
-        autoRewind.attach(exoPlayer) {
-            resumeFreshness.invalidate(ResumeInvalidation.AutoRewind)
-        }
+        attachAutoRewind(exoPlayer)
         startJournal()
         observeSleepTimer()
         observeSkipIntervals()
@@ -500,6 +499,19 @@ class PlaybackService : MediaLibraryService() {
         outputDevices.start(scope, DeviceActions())
         observeBrowseTreeInvalidation()
         logger.info(LogCategory.Playback, "Playback service started")
+    }
+
+    private fun attachPlayerListeners(exoPlayer: ExoPlayer) {
+        playerEvents = PlayerEvents().also(exoPlayer::addListener)
+        exoPlayer.addListener(
+            PlaybackFocusDiagnostics(clock) { fields ->
+                autoTraces.log("Playback focus observation", fields = fields + carSnapshotFields())
+            },
+        )
+    }
+
+    private fun attachAutoRewind(exoPlayer: ExoPlayer) {
+        autoRewind.attach(exoPlayer) { resumeFreshness.invalidate(ResumeInvalidation.AutoRewind) }
     }
 
     private fun attachRouteSafetyMonitor(exoPlayer: ExoPlayer) {
@@ -917,7 +929,7 @@ class PlaybackService : MediaLibraryService() {
         invalidate = ::onControllerCommand,
         onPlayWhenReadyRequest = { requestedPlay -> onControllerTransportRequest(requestedPlay, exoPlayer) },
         skipIntervals = { skips },
-        allowEffects = { callbackFutures.playerEffectsAllowed() },
+        allowEffects = { player === exoPlayer && callbackFutures.playerEffectsAllowed() },
     )
 
     /** All controller entry paths share the governor's synchronous arbitration. */
@@ -1324,13 +1336,16 @@ class PlaybackService : MediaLibraryService() {
         val started = clock.elapsed()
         var outcome = "cancelled-or-failed"
         try {
+            val authorized = {
+                controllerCommandGeneration == expectedCommandGeneration &&
+                    currentExplicitSelectionSequence() == expectedSelectionSequence
+            }
+            val rebuildingDecoder = decoderFailedPlayer != null
+            if (!recoverDecoderBeforePlay(explicit, authorized)) return false
             return performFreshnessPlay(
                 explicit = explicit,
-                bypassFreshness = bypassFreshness,
-                stillAuthorized = {
-                    controllerCommandGeneration == expectedCommandGeneration &&
-                        currentExplicitSelectionSequence() == expectedSelectionSequence
-                },
+                bypassFreshness = bypassFreshness && !rebuildingDecoder,
+                stillAuthorized = authorized,
             ).also { outcome = if (it) "issued" else "denied-or-superseded" }
         } finally {
             logger.info(
@@ -1343,6 +1358,60 @@ class PlaybackService : MediaLibraryService() {
                 LogField.Public("identityCapability", audioOutputs.identityCapability.value.name),
             )
         }
+    }
+
+    /** PLAY-001 — only a deliberate Play can retire a decoder that failed on the current queue. */
+    private suspend fun recoverDecoderBeforePlay(explicit: Boolean, authorized: () -> Boolean): Boolean =
+        withContext(mainDispatcher) {
+            val failed = decoderFailedPlayer ?: return@withContext true
+            val claim = deferredWork.capture() ?: return@withContext false
+            if (!explicit || !authorized() || claim.player !== failed) return@withContext false
+            val owner = claim.item?.let(MediaItems::ownerOf) ?: return@withContext false
+
+            // Leave the old forwarding player's command callback before swapping the session's delegate.
+            yield()
+            if (!authorized() || lock.isActiveProfileLocked() || !auto.isActiveProfile(owner)) return@withContext false
+            val stillCurrent = {
+                authorized() && decoderFailedPlayer === failed && deferredWork.isMutationCurrent(claim)
+            }
+            stillCurrent() && replaceDecoderPlayer(failed, stillCurrent)
+        }
+
+    private fun replaceDecoderPlayer(failed: ExoPlayer, authorized: () -> Boolean): Boolean {
+        val mediaSession = session ?: return false
+        val index = failed.currentMediaItemIndex
+        if (index !in 0 until failed.mediaItemCount) return false
+        val queue = List(failed.mediaItemCount, failed::getMediaItemAt)
+        val position = effectiveBookPosition(failed).inWholeMilliseconds
+        val replacement = createPlayerFromSettings(currentPlayerSettings)
+        var installed = false
+        try {
+            replacement.playbackParameters = failed.playbackParameters
+            // Install before attaching observers so the same queue is not counted as a new book.
+            replacement.setMediaItems(queue, index, position)
+            if (!authorized()) return false
+            mediaSession.setPlayer(createSessionPlayer(replacement))
+            installed = true
+            adoptDecoderReplacement(failed, replacement)
+            logger.info(LogCategory.Playback, "Replaced a failed decoder for explicit Play")
+            return true
+        } finally {
+            if (installed) failed.release() else replacement.release()
+        }
+    }
+
+    private fun adoptDecoderReplacement(failed: ExoPlayer, replacement: ExoPlayer) {
+        playerEvents?.let(failed::removeListener)
+        player = replacement
+        decoderFailedPlayer = null
+        resumeFreshness.attach(replacement)
+        attachRouteSafetyMonitor(replacement)
+        sleepTimer.replaceFailedPlayer(failed, replacement)
+        sessionSync.onPlayingChanged(false)
+        sessionSync.attach(replacement, ::effectiveBookPosition)
+        attachAutoRewind(replacement)
+        autoRewind.onSeeked()
+        attachPlayerListeners(replacement)
     }
 
     /**
@@ -1713,6 +1782,7 @@ class PlaybackService : MediaLibraryService() {
             autoCapture?.intentReset()
             positionEffects.retireForItemTransition()
             mediaItemGeneration += 1
+            decoderFailedPlayer = null
             pendingRecoveryRetry?.cancel()
             autoTraces.activeTrace?.let { trace ->
                 autoTraces.log(
@@ -1839,6 +1909,7 @@ class PlaybackService : MediaLibraryService() {
          * bounded.
          */
         override fun onPlayerError(error: PlaybackException) {
+            if (error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED) decoderFailedPlayer = player
             pendingRecoveryRetry?.cancel()
             val retryIn = recovery.onError(error)
             logger.log(
@@ -1935,6 +2006,7 @@ class PlaybackService : MediaLibraryService() {
     private fun observeSkipIntervals() {
         skipWatch = scope.launch {
             playbackSettings.observeSettings().collect { settings ->
+                currentPlayerSettings = settings
                 skips = settings.skips
                 players.setEqualizer(settings.equalizer)
                 buttonRouting.settings(settings)

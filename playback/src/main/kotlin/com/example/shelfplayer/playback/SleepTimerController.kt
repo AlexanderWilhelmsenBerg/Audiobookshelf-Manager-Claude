@@ -226,6 +226,20 @@ class SleepTimerController @Inject constructor(
         }
     }
 
+    /** A decoder replacement keeps the same book and the same running timer. */
+    internal fun replaceFailedPlayer(failed: Player, replacement: Player) {
+        if (player !== failed) return
+        playbackGeneration += 1
+        invalidateTransientPhase()
+        invalidatePlayRequestNow()
+        playbackActive = false
+        player = replacement
+        volumeEffects.attach(replacement)
+        routeMuted = volumeEffects.isRouteMuted(replacement)
+        reconcileCountdown(isPlaying = false)
+        scheduleScheduleBoundary()
+    }
+
     /**
      * The exact MediaSession Play/Pause intent boundary.
      *

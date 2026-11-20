@@ -61,3 +61,23 @@ The next export should distinguish nested CodecException from IllegalStateExcept
 available transient/recoverable flags. It may still require a private Android bug report to diagnose
 an OEM codec failure. Automated tests establish transaction behavior, not the original codec cause
 or physical continuity.
+
+## Explicit recovery after a stopped decoder
+
+Build 2298 later reproduced a decoder failure while playing downloaded AAC. BookWave received both
+app and headset Play commands. Reconnecting the headset still left the same decoder error, while
+restarting the playback service let the book resume from its existing checkpoint.
+
+The running service now holds the failed player idle until deliberate Play reaches its media session.
+It preserves the queue, book position, speed, selected output, and active sleep timer when replacing
+the player. The same media session exposes the successor, and the existing playback path checks
+freshness and routing before playing. New transport, output, book, or account changes supersede an
+in-progress recovery. If the service is recreated, explicit Play or Retry can resolve the remembered
+book and saved position through the existing cold-resumption callback.
+
+On a device, repeat the downloaded AAC case with ordinary Play and with Retry. Verify the book
+continues at the failure position through the expected headset and the notification stays usable.
+Repeat with the output disconnected, then with a locked profile or a different book. Separately
+kill the test process while a downloaded book is playing, reopen BookWave, and confirm that explicit
+Resume can continue within ten seconds of the last heard position. Test notification and headset
+Play after service recreation where Android offers those controls.
