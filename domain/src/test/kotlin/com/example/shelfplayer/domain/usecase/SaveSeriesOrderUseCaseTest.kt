@@ -37,7 +37,7 @@ class SaveSeriesOrderUseCaseTest {
 
     @Test
     fun `a missing book can be saved offline without a metadata update`() = runTest {
-        val useCase = useCase(online = false) { _, _, _ -> error("Cannot write series metadata offline") }
+        val useCase = useCase(online = false) { _, _, _, _ -> error("Cannot write series metadata offline") }
         val result = useCase(owner, series.series.id, original.addMissing(4))
 
         assertNull(result.error)
@@ -48,7 +48,7 @@ class SaveSeriesOrderUseCaseTest {
     fun `the result records partial writes and the draft can be retried`() = runTest {
         val applied = mutableSetOf<LibraryItemId>()
         var connected = false
-        val useCase = useCase { profile, id, change ->
+        val useCase = useCase { profile, id, change, _ ->
             assertEquals(active.id to series.series.id, profile to id)
             if (!connected && change.bookId.value == "first") {
                 AppResult.Failure(AppError.Timeout())
@@ -78,7 +78,7 @@ class SaveSeriesOrderUseCaseTest {
 
     @Test
     fun `a confirmed server save with a failed readback is reported separately from unsaved changes`() = runTest {
-        val useCase = useCase { _, _, change ->
+        val useCase = useCase { _, _, change, _ ->
             AppResult.Success(MetadataSaveResult(book = null, isLocalCopyStale = change.bookId.value == "second"))
         }
 
@@ -94,7 +94,7 @@ class SaveSeriesOrderUseCaseTest {
     fun `undo after an interrupted swap restores both confirmed and uncertain server writes`() = runTest {
         val server = mutableMapOf("first" to "1", "second" to "2")
         var loseResponse = true
-        val useCase = useCase { _, _, change ->
+        val useCase = useCase { _, _, change, _ ->
             val id = change.bookId.value
             val current = server.getValue(id)
             if (current == change.after) return@useCase fresh
@@ -128,10 +128,28 @@ class SaveSeriesOrderUseCaseTest {
     @Test
     fun `an old profile cannot save after selection changes`() = runTest {
         profileRepository.setActiveProfile(ProfileId("different"))
-        val useCase = useCase { _, _, _ -> error("Cannot edit on an inactive profile") }
+        val useCase = useCase { _, _, _, _ -> error("Cannot edit on an inactive profile") }
         val failure = useCase(owner, series.series.id, original.addMissing(3))
 
         assertIs<AppError.Conflict>(failure.error)
+        assertTrue(store.saved.isEmpty())
+    }
+
+    @Test
+    fun `a profile switch during fresh metadata lookup retires the pending write`() = runTest {
+        val useCase = useCase { _, _, _, beforeWrite ->
+            profileRepository.setActiveProfile(ProfileId("different"))
+            AppResult.Failure(assertIs<AppError.Conflict>(beforeWrite()))
+        }
+        val moved = original.move(
+            SeriesOrderRow(original.slots[1].key),
+            SeriesOrderRow(original.slots[0].key),
+            SeriesOrderMove.Reorder,
+        )
+        val result = useCase(owner, series.series.id, moved)
+
+        assertIs<AppError.Conflict>(result.error)
+        assertEquals(0, result.applied)
         assertTrue(store.saved.isEmpty())
     }
 

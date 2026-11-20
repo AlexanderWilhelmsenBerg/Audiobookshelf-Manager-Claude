@@ -39,6 +39,9 @@ interface ProfileRepository {
      */
     fun activeProfileGeneration(): Long = 0L
 
+    /** Null while a durable profile selection is changing. */
+    fun stableActiveProfileGeneration(): Long? = activeProfileGeneration()
+
     /**
      * PRODUCT_SPEC 6.5 — the switch is atomic: either the whole profile context changes or none of
      * it does. Phase 2 extends this to flush playback progress before the swap.

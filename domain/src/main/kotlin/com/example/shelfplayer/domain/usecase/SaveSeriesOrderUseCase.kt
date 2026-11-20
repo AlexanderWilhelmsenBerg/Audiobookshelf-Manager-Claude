@@ -46,7 +46,7 @@ class SaveSeriesOrderUseCase @Inject constructor(
         for (change in changes) {
             val blocked = errorFor(owner) ?: if (network.isOnline.first()) null else AppError.Network()
             if (blocked != null) return finish(blocked)
-            when (val result = sequences.changeSequence(owner.profileId, seriesId, change)) {
+            when (val result = sequences.changeSequence(owner.profileId, seriesId, change) { errorFor(owner) }) {
                 is AppResult.Failure -> return finish(result.error, change.takeIf { result.error.mayHaveCommitted() })
 
                 is AppResult.Success -> {
@@ -70,7 +70,7 @@ class SaveSeriesOrderUseCase @Inject constructor(
     private suspend fun errorFor(owner: SeriesOrderOwner): AppError? {
         val active = profiles.observeActiveProfile().first()
         return when {
-            active?.id != owner.profileId || profiles.activeProfileGeneration() != owner.generation ->
+            active?.id != owner.profileId || profiles.stableActiveProfileGeneration() != owner.generation ->
                 AppError.Conflict("The active profile changed while saving.")
 
             active.requiresReauthentication -> AppError.Authentication()

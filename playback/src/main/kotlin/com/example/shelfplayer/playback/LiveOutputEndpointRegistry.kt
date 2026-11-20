@@ -90,11 +90,12 @@ class LiveOutputEndpointRegistry @Inject constructor() {
                     it.productName == observation.productName && (it.identity == identity || it.identity == null) &&
                     observation.identity !in ambiguous
             }
-            updated[handle] = existing?.copy(identity = identity) ?: Endpoint(
+            val retainedId = identity?.let(retained::get)
+            updated[handle] = Endpoint(
                 platformId = handle,
                 type = observation.type,
                 productName = observation.productName,
-                id = identity?.let(retained::get)
+                id = retainedId ?: existing?.id
                     ?: (output.kind.name.lowercase() + ":endpoint:" + processToken + ":e" + ++next),
                 knownDeviceId = output.id,
                 output = output,
