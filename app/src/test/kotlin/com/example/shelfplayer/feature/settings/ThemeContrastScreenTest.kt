@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
-class ThemeContrastTest {
+class ThemeContrastScreenTest {
 
     @get:Rule
     val compose = createComposeRule()

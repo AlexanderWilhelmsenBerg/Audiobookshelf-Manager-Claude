@@ -110,6 +110,7 @@ class FakeAudiobookshelfGateway @Inject constructor(
         bookId: LibraryItemId,
         edit: BookMetadataEdit,
         changed: Set<BookMetadataField>,
+        beforeWrite: suspend () -> AppError?,
     ): AppResult<MetadataSaveOutcome> = AppError.ApiCompatibility(
         summary = "The demo library cannot be edited.",
         missingField = "media",

@@ -112,7 +112,7 @@ class AbsPlaybackContractTest {
      *
      * The response shape depends on it: `supportedMimeTypes` is what makes the server answer with a
      * direct play rather than a transcoded stream. The codec probe captures that negotiation for
-     * Ogg Opus, Ogg Vorbis and ADTS AAC.
+     * Ogg Opus, Ogg Vorbis and ADTS AAC. Standalone AAC requires server transcoding for seeking.
      */
     @Test
     fun `the play request advertises the mime types the fixtures were captured with`() = runTest {
@@ -121,7 +121,12 @@ class AbsPlaybackContractTest {
         val body = json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
         val capture = requireNotNull(javaClass.getResource("/compatibility/codec-negotiation.json")).readText()
         val verifiedTypes = json.parseToJsonElement(capture).jsonObject.getValue("supportedMimeTypes").jsonArray
-        assertEquals(verifiedTypes, body.getValue("supportedMimeTypes").jsonArray)
+        assertEquals(
+            verifiedTypes.filterNot {
+                it.jsonPrimitive.content == "audio/aac"
+            },
+            body.getValue("supportedMimeTypes").jsonArray,
+        )
         assertEquals("exo-player", body.getValue("mediaPlayer").jsonPrimitive.content)
         assertEquals("false", body.getValue("forceDirectPlay").jsonPrimitive.content)
         assertEquals("false", body.getValue("forceTranscode").jsonPrimitive.content)

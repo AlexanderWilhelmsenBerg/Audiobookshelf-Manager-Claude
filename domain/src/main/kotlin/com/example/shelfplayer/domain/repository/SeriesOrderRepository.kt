@@ -1,5 +1,6 @@
 package com.example.shelfplayer.domain.repository
 
+import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.SeriesId
@@ -19,5 +20,6 @@ fun interface SeriesSequenceRepository {
         profileId: ProfileId,
         seriesId: SeriesId,
         change: SeriesSequenceChange,
+        beforeWrite: suspend () -> AppError?,
     ): AppResult<MetadataSaveResult>
 }

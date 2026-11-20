@@ -396,6 +396,7 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Save sends changed sequence values through the existing book metadata operation and preserves each book's
   other series memberships. After a partial save, users can retry the remaining changes or revise their draft.
   A later save can undo a confirmed change and checks the current sequence when a previous reply was ambiguous.
+  A failed read before the write leaves the position unapplied.
   If Audiobookshelf saves the order and the follow-up read fails, the series shows a refresh action that reads the
   affected books again without resubmitting the edits.
 - Undo reverses one draft edit at a time, including insertion and ungrouping. Cancel discards unsaved
@@ -627,7 +628,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - In Settings → Playback, choose Original, Warm Voice, Clear Voice or tune bass, presence and treble in 1 dB steps, from −6 to +6 dB.
 - Original is the upgrade and install default. Changes apply to decoded audio during playback without reopening the book, interrupting the session or changing audio routing or position.
 - The setting stays on the device and also applies offline. Gain changes are smoothed and boosts leave headroom.
-- Advertise Ogg and standalone AAC for direct play on compatible Audiobookshelf servers, using captured negotiation evidence.
+- Advertise Ogg for direct play on compatible Audiobookshelf servers. Standalone ADTS AAC uses server
+  transcoding to keep seeking available. AAC in MP4 remains eligible for direct play.
 
 ---
 

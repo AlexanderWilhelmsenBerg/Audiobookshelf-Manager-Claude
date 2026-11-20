@@ -24,7 +24,7 @@ import java.security.MessageDigest
  */
 internal object DownloadCommitCheckpoint {
     suspend fun prepare(part: File, before: OfflineFile, completed: OfflineFile): AppResult<Unit> = resultOf(onError = {
-        AppError.Storage("The download could not be prepared for offline use.", temporarilyUnavailable = true)
+        AppError.Storage("The download could not be prepared for offline use.")
     }) {
         val canonicalPart = part.canonicalPath
         val hash = digest(part)

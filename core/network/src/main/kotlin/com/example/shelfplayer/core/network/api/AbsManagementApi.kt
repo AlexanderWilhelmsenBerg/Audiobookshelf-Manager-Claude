@@ -67,6 +67,7 @@ internal class AbsManagementApi @Inject constructor(
         bookId: LibraryItemId,
         edit: BookMetadataEdit,
         changed: Set<BookMetadataField>,
+        beforeWrite: suspend () -> AppError?,
     ): AppResult<MetadataSaveOutcome> {
         // An empty `PATCH` is not a cheap no-op on this endpoint: the server still saves the item, still
         // touches `updatedAt`, still rewrites the metadata file and still broadcasts to every connected
@@ -76,6 +77,7 @@ internal class AbsManagementApi @Inject constructor(
         }
         val connection = connections.connectionFor(profileId)
             ?: return AppResult.Failure(AppError.Authentication())
+        beforeWrite()?.let { return AppResult.Failure(it) }
 
         return when (val sent = send(connection, bookId, edit, changed)) {
             is AppResult.Failure -> AppResult.Failure(sent.error)

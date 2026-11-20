@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
+import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SyncOutcome
 import com.example.shelfplayer.core.model.playback.SyncTrigger
@@ -290,6 +291,34 @@ internal class DefaultSessionSyncRepositoryTest : SessionSyncRepositoryFixture()
         val uploaded = gateway.uploaded.flatten()
         assertEquals(listOf(sessionId, sessionId), uploaded.map { it.id })
         assertEquals(listOf(first.position, pause.position), uploaded.map { it.progress.position })
+        assertFalse(storedProgress().hasUnsyncedChanges)
+    }
+
+    @Test
+    fun `a rewind queued during the first insert uses the exact acknowledged server version`() = runTest {
+        val sessionId = openId(remoteSessionId = null)
+        val ahead = SessionProgress(40.minutes, 6.hours, 2.minutes)
+        val back = ahead.copy(position = 38.minutes)
+        repository.syncOpenSession(sessionId, ahead, clock.now(), SyncTrigger.Interval)
+        seedUnsyncedProgress(recordedAt = clock.now().toEpochMilli(), position = ahead.position)
+        gateway.offlineResults = { rows ->
+            val sent = rows.single()
+            if (sent.progress.position == ahead.position) {
+                clock.advanceBy(1.seconds)
+                val observedAt = clock.now()
+                seedUnsyncedProgress(recordedAt = observedAt.toEpochMilli(), position = back.position)
+                repository.syncOpenSession(sessionId, back, observedAt, SyncTrigger.Paused)
+                clock.advanceBy(1.seconds)
+                gateway.reportedProgress = ServerProgress(ahead.position, clock.now(), isFinished = false)
+            }
+            val applied = sent.progress.position == ahead.position ||
+                sent.updatedAt >= checkNotNull(gateway.reportedProgress).updatedAt
+            listOf(OfflineSessionResult(sent.id, wasAccepted = true, wasProgressApplied = applied))
+        }
+
+        assertEquals(AppResult.Success(1), repository.drainOutbox())
+        assertEquals(listOf(ahead.position, back.position), gateway.uploaded.flatten().map { it.progress.position })
+        assertEquals(gateway.reportedProgress?.updatedAt, gateway.uploaded.last().single().updatedAt)
         assertFalse(storedProgress().hasUnsyncedChanges)
     }
 
