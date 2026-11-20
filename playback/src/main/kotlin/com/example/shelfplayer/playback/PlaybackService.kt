@@ -12,6 +12,8 @@ import android.os.IBinder
 import android.os.Process
 import android.view.KeyEvent
 import androidx.annotation.OptIn
+import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -62,8 +64,10 @@ import com.example.shelfplayer.domain.usecase.RestoreProfilePlaybackUseCase
 import com.example.shelfplayer.domain.usecase.SwitchProfileUseCase
 import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
 import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.FutureCallback
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
@@ -427,6 +431,7 @@ class PlaybackService : MediaLibraryService() {
      * [flushProgress].
      */
     private lateinit var scope: CoroutineScope
+    private var mediaButtonForegroundTimeout: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -761,14 +766,75 @@ class PlaybackService : MediaLibraryService() {
         return super.onBind(intent)
     }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val receiverKey = intent?.takeIf { it.action == Intent.ACTION_MEDIA_BUTTON && it.data == null }
+            ?.let(::mediaButtonKeyEvent)
+        if ((player?.mediaItemCount ?: 0) == 0 && receiverKey?.canStartMediaButtonReceiver() == true) {
+            holdMediaButtonForeground()
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+    private fun holdMediaButtonForeground() {
+        if (mediaButtonForegroundTimeout != null || !startMediaButtonForeground(this, logger)) return
+        mediaButtonForegroundTimeout = scope.launch {
+            delay(MEDIA_BUTTON_FOREGROUND_TIMEOUT)
+            mediaButtonForegroundTimeout = null
+            ServiceCompat.stopForeground(this@PlaybackService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        }
+    }
+
+    @Suppress("ForbiddenVoid") // Media3 exposes this as a Java ListenableFuture<Void>.
+    override fun onUpdateNotificationAsync(
+        session: MediaSession,
+        startInForegroundRequired: Boolean,
+    ): ListenableFuture<Void?> {
+        val pending = mediaButtonForegroundTimeout
+            ?: return super.onUpdateNotificationAsync(session, startInForegroundRequired)
+        // An empty or buffering queue prompts a remove before Media3 requests audio focus.
+        // Keep the foreground entry until the real player notification can take over.
+        if (!startInForegroundRequired) return Futures.immediateVoidFuture()
+        val update = super.onUpdateNotificationAsync(session, true)
+        return Futures.transform(
+            update,
+            {
+                finishMediaButtonForeground(pending, handedOff = true)
+                null
+            },
+            MoreExecutors.directExecutor(),
+        )
+    }
+
+    private fun finishMediaButtonForeground(pending: Job, handedOff: Boolean) {
+        if (mediaButtonForegroundTimeout !== pending) return
+        mediaButtonForegroundTimeout = null
+        pending.cancel()
+        if (!handedOff) ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+    }
+
+    private fun watchMediaButtonResumption(result: ListenableFuture<MediaSession.MediaItemsWithStartPosition>) {
+        val pending = mediaButtonForegroundTimeout ?: return
+        Futures.addCallback(
+            result,
+            object : FutureCallback<MediaSession.MediaItemsWithStartPosition> {
+                override fun onSuccess(result: MediaSession.MediaItemsWithStartPosition) {
+                    if (result.mediaItems.isEmpty()) {
+                        finishMediaButtonForeground(pending, handedOff = false)
+                    }
+                }
+
+                override fun onFailure(t: Throwable) {
+                    finishMediaButtonForeground(pending, handedOff = false)
+                }
+            },
+            ContextCompat.getMainExecutor(this),
+        )
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
         traceControllerEntry("session-lookup", controllerInfo)
-        // MediaButtonReceiver starts this service in the foreground before Media3 asks for a session.
-        // If the cold-start safety gate consumes that receiver event later in onMediaButtonEvent, no
-        // playback starts and Android tears the service down for missing its foreground promotion.
-        // Reject only this exact Media3 fallback request when the same gate says to consume its event.
-        // Media3's onStartCommand handles a null session through stopSelfSafely(), completing the
-        // foreground-service start without manufacturing a playback notification or opening media.
+        // Reject this exact fallback before the virtual toggle can reach playback resumption.
+        // A null session lets Media3 end the rejected receiver start through stopSelfSafely().
         if (isSuppressedReceiverStart(controllerInfo)) {
             logger.info(LogCategory.Playback, "Cold virtual Bluetooth toggle consumed before service resume")
             return null
@@ -3294,7 +3360,7 @@ class PlaybackService : MediaLibraryService() {
                     authorized = { controllerQueueResolution.isUnchanged(claim) },
                     playable = { it.mediaItems.isNotEmpty() },
                     block = resolve,
-                )
+                ).also(::watchMediaButtonResumption)
             } else {
                 future(resolve)
             }
@@ -3747,6 +3813,7 @@ class PlaybackService : MediaLibraryService() {
          * state-changing `/play` recovery after ownership may have moved elsewhere.
          */
         val SEEK_CONFIRM_TIMEOUT: Duration = 2.seconds
+        val MEDIA_BUTTON_FOREGROUND_TIMEOUT: Duration = 30.seconds
 
         const val SECONDS_PER_MINUTE = 60L
 

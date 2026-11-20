@@ -607,6 +607,7 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 **Acceptance criteria**
 - When the user presses Play on a connected headset, Android routes the command to the media session and the last item for the active profile resumes when platform policy permits.
 - If no playable item exists, the command does nothing and logs a non-fatal diagnostic.
+- An empty or unavailable cold media-button resume completes the Android foreground start without a crash or a lingering playback notification.
 - A media-button command is treated as explicit user intent and may start playback.
 - During Android Auto, a fresh Play from a verified dashboard controller requests Car. With headset-button
   routing enabled (default), a recognized headset-style media key followed by its Play can request the one
