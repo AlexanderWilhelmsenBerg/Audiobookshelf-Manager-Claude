@@ -46,8 +46,13 @@ class SaveSeriesOrderUseCase @Inject constructor(
         for (change in changes) {
             val blocked = errorFor(owner) ?: if (network.isOnline.first()) null else AppError.Network()
             if (blocked != null) return finish(blocked)
-            when (val result = sequences.changeSequence(owner.profileId, seriesId, change) { errorFor(owner) }) {
-                is AppResult.Failure -> return finish(result.error, change.takeIf { result.error.mayHaveCommitted() })
+            var reachedWrite = false
+            val result = sequences.changeSequence(owner.profileId, seriesId, change) {
+                errorFor(owner).also { reachedWrite = it == null }
+            }
+            when (result) {
+                is AppResult.Failure ->
+                    return finish(result.error, change.takeIf { reachedWrite && result.error.mayHaveCommitted() })
 
                 is AppResult.Success -> {
                     applied++

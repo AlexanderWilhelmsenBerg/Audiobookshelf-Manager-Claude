@@ -91,16 +91,26 @@ class SaveSeriesOrderUseCaseTest {
     }
 
     @Test
+    fun `a timed out fresh read does not make a series write uncertain`() = runTest {
+        val useCase = useCase { _, _, _, _ -> AppResult.Failure(AppError.Timeout()) }
+        val result = useCase(owner, series.series.id, swapFirstTwo(original))
+        assertIs<AppError.Timeout>(result.error)
+        assertTrue(result.order.changes.all { it.possibleBefore.isEmpty() })
+        assertTrue(swapFirstTwo(result.order).changes.isEmpty())
+    }
+
+    @Test
     fun `undo after an interrupted swap restores both confirmed and uncertain server writes`() = runTest {
         val server = mutableMapOf("first" to "1", "second" to "2")
         var loseResponse = true
-        val useCase = useCase { _, _, change, _ ->
+        val useCase = useCase { _, _, change, beforeWrite ->
             val id = change.bookId.value
             val current = server.getValue(id)
             if (current == change.after) return@useCase fresh
             if (current != change.before && current !in change.possibleBefore) {
                 return@useCase AppResult.Failure(AppError.Conflict("The sequence changed."))
             }
+            beforeWrite()?.let { return@useCase AppResult.Failure(it) }
             server[id] = change.after
             if (loseResponse && id == "first") AppResult.Failure(AppError.Timeout()) else fresh
         }

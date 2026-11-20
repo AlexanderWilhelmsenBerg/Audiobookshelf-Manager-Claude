@@ -762,6 +762,13 @@ The capture should send a realistic `updatedAt` next time so the *accepted* path
 rejected path is worth keeping regardless — it is the only fixture that shows what a declined sync
 looks like.
 
+A separate loopback test with a fresh synthetic account on 2.36.0 confirmed that the first upload
+creates a progress row at server insertion time. A rewind observed during that first upload can
+therefore arrive with an older timestamp. When a newer local snapshot races an accepted upload,
+BookWave reads back the original position and its version. It tries the newer snapshot once at that
+exact version if the version falls inside the upload window. The server accepted that equality
+case on the fixture and rejected the same version after a newer position had been written.
+
 ### What wave 3 built on this, and the one thing it had to leave unsettled
 
 Everything above is captured and is now load-bearing in `AbsPlaybackApi` and

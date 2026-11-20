@@ -347,6 +347,28 @@ class DefaultDownloadRepositoryTest {
     }
 
     @Test
+    fun `retry replaces a retired unfinished track while keeping committed parts`() = runTest {
+        seedCatalogue(files())
+        completeDownload()
+        val committed = assertNotNull(stored()).files
+
+        val removed = file("file-3", index = 2)
+        seedCatalogue(files() + removed)
+        repository.request(SERVER, BOOK, ADA, files() + removed)
+        repository.markPaused(SERVER, BOOK)
+
+        val replacement = file("file-4", index = 2)
+        seedCatalogue(files() + replacement)
+        val repaired = assertIs<AppResult.Success<OfflineBook>>(
+            repository.request(SERVER, BOOK, ADA, files() + replacement),
+        ).value
+        assertEquals(DownloadState.Queued, repaired.state)
+        assertEquals(committed + replacement, repaired.files)
+        assertIs<AppResult.Failure>(repository.updateFile(SERVER, BOOK, removed.copy(downloadedBytes = 500)))
+        assertEquals(committed + replacement, assertNotNull(stored()).files)
+    }
+
+    @Test
     fun `refreshing the requested files preserves the old storage volume and committed file rows`() = runTest {
         seedCatalogue(files())
         completeDownload()

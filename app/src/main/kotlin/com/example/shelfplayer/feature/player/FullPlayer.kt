@@ -67,6 +67,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -183,7 +184,8 @@ fun FullPlayer(
 
             // In short windows the title and transport can need more height than the entire viewport.
             // Keep the top bar fixed and place the artwork beside the title in the scrolling control stack.
-            if (windowSize().height < SHORT_PLAYER_HEIGHT) {
+            val availableHeight = windowSize().height / LocalDensity.current.fontScale.coerceAtLeast(1f)
+            if (availableHeight < SHORT_PLAYER_HEIGHT) {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                     PlayerNotices(isNotificationBlocked, state.hasFailed, actions.onRetry)
                     PlayerControls(

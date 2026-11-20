@@ -395,6 +395,7 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Save sends changed sequence values through the existing book metadata operation and preserves each book's
   other series memberships. After a partial save, users can retry the remaining changes or revise their draft.
   A later save can undo a confirmed change and checks the current sequence when a previous reply was ambiguous.
+  A failed read before the write leaves the position unapplied.
   If Audiobookshelf saves the order and the follow-up read fails, the series shows a refresh action that reads the
   affected books again without resubmitting the edits.
 - Undo reverses one draft edit at a time, including insertion and ungrouping. Cancel discards unsaved
