@@ -10,6 +10,11 @@ In Settings → Appearance → Design, choose **Classic** for the existing look,
 
 The Theme setting controls brightness, and accent and contrast remain available. Minimal and Editorial use flat backgrounds. Choosing Classic brings back the saved glass and background options.
 
+**Home card text** moves labels below or beside the cover on the book and series shelves. **Show Home card borders**
+switches the outline independently. Changing the design keeps both choices. Long labels are shortened on the
+cards to keep each shelf even. Open a card to read the full title. Compare `MinimalHomeDesignPreview` and
+`MinimalHorizontalHomeDesignPreview` to see both arrangements on the same fixture.
+
 Add a stable key to `AppDesign` and localized labels for a new design. Map the key to its Compose style in `BookWaveAppearance.kt`, then add palettes and shapes in `:core:designsystem`. Use the root theme to apply the style without rebuilding navigation or the player.
 
 ## Edit and compare
@@ -39,7 +44,8 @@ Use fixture screenshots for shared design references. For a live-library capture
 ## API 36 emulator captures
 
 - [Appearance with the Design selector open](design-screenshots/design-selector.png)
-- [Minimal Home in light mode](design-screenshots/minimal-home.png)
+- [Minimal Home with text below and borders visible](design-screenshots/minimal-home.png)
+- [Minimal Home with text beside the cover and borders hidden](design-screenshots/minimal-home-horizontal.png)
 - [Minimal Now Playing in dark mode at 150% text size](design-screenshots/minimal-player.png)
 - [Editorial Home in light mode](design-screenshots/editorial-home.png)
 - [Editorial Now Playing in dark mode](design-screenshots/editorial-player.png)

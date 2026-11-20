@@ -358,11 +358,9 @@ internal class AbsPlaybackApi @Inject constructor(
     )
 
     /**
-     * The request the fixtures were captured with, field for field.
-     *
      * [SUPPORTED_MIME_TYPES] tells the server which containers to direct-play. Audiobookshelf
      * 2.36.0 labels both Ogg Opus and Ogg Vorbis as audio/ogg, and standalone ADTS AAC as audio/aac.
-     * The generated codec capture verifies those types with forceDirectPlay=false.
+     * Leave ADTS to server transcoding because Media3's default ADTS seek map is unseekable.
      */
     private fun requestFor(device: PlaybackDevice) = PlaySessionRequestDto(
         deviceInfo = PlayDeviceInfoDto(
@@ -380,7 +378,7 @@ internal class AbsPlaybackApi @Inject constructor(
     )
 
     private companion object {
-        val SUPPORTED_MIME_TYPES = listOf("audio/mpeg", "audio/mp4", "audio/flac", "audio/ogg", "audio/aac")
+        val SUPPORTED_MIME_TYPES = listOf("audio/mpeg", "audio/mp4", "audio/flac", "audio/ogg")
 
         /** What the server records as the player; the official app and the capture both send this. */
         const val MEDIA_PLAYER = "exo-player"

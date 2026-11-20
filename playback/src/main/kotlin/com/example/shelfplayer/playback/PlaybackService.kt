@@ -64,7 +64,6 @@ import com.example.shelfplayer.domain.usecase.RestoreProfilePlaybackUseCase
 import com.example.shelfplayer.domain.usecase.SwitchProfileUseCase
 import com.example.shelfplayer.domain.usecase.SyncAccountUseCase
 import com.google.common.collect.ImmutableList
-import com.google.common.util.concurrent.FutureCallback
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
@@ -431,7 +430,7 @@ class PlaybackService : MediaLibraryService() {
      * [flushProgress].
      */
     private lateinit var scope: CoroutineScope
-    private var mediaButtonForegroundTimeout: Job? = null
+    private var mediaButtonForeground: MediaButtonForegroundHold? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -770,17 +769,26 @@ class PlaybackService : MediaLibraryService() {
         val receiverKey = intent?.takeIf { it.action == Intent.ACTION_MEDIA_BUTTON && it.data == null }
             ?.let(::mediaButtonKeyEvent)
         if ((player?.mediaItemCount ?: 0) == 0 && receiverKey?.canStartMediaButtonReceiver() == true) {
-            holdMediaButtonForeground()
+            holdMediaButtonForeground(startId)
         }
         return super.onStartCommand(intent, flags, startId)
     }
 
-    private fun holdMediaButtonForeground() {
-        if (mediaButtonForegroundTimeout != null || !startMediaButtonForeground(this, logger)) return
-        mediaButtonForegroundTimeout = scope.launch {
-            delay(MEDIA_BUTTON_FOREGROUND_TIMEOUT)
-            mediaButtonForegroundTimeout = null
-            ServiceCompat.stopForeground(this@PlaybackService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+    private fun holdMediaButtonForeground(startId: Int) {
+        val hold = mediaButtonForeground ?: MediaButtonForegroundHold(
+            scope,
+            ContextCompat.getMainExecutor(this),
+            ::abandonMediaButtonStart,
+        ).also { mediaButtonForeground = it }
+        if (hold.current != null || startMediaButtonForeground(this, logger)) hold.start(startId)
+    }
+
+    private fun abandonMediaButtonStart(startId: Int) {
+        if ((player?.mediaItemCount ?: 0) == 0) {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelfResult(startId)
+        } else {
+            session?.let { super.onUpdateNotificationAsync(it, false) }
         }
     }
 
@@ -789,7 +797,8 @@ class PlaybackService : MediaLibraryService() {
         session: MediaSession,
         startInForegroundRequired: Boolean,
     ): ListenableFuture<Void?> {
-        val pending = mediaButtonForegroundTimeout
+        val hold = mediaButtonForeground
+        val pending = hold?.current
             ?: return super.onUpdateNotificationAsync(session, startInForegroundRequired)
         // An empty or buffering queue prompts a remove before Media3 requests audio focus.
         // Keep the foreground entry until the real player notification can take over.
@@ -798,36 +807,10 @@ class PlaybackService : MediaLibraryService() {
         return Futures.transform(
             update,
             {
-                finishMediaButtonForeground(pending, handedOff = true)
+                hold.handOff(pending)
                 null
             },
             MoreExecutors.directExecutor(),
-        )
-    }
-
-    private fun finishMediaButtonForeground(pending: Job, handedOff: Boolean) {
-        if (mediaButtonForegroundTimeout !== pending) return
-        mediaButtonForegroundTimeout = null
-        pending.cancel()
-        if (!handedOff) ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-    }
-
-    private fun watchMediaButtonResumption(result: ListenableFuture<MediaSession.MediaItemsWithStartPosition>) {
-        val pending = mediaButtonForegroundTimeout ?: return
-        Futures.addCallback(
-            result,
-            object : FutureCallback<MediaSession.MediaItemsWithStartPosition> {
-                override fun onSuccess(result: MediaSession.MediaItemsWithStartPosition) {
-                    if (result.mediaItems.isEmpty()) {
-                        finishMediaButtonForeground(pending, handedOff = false)
-                    }
-                }
-
-                override fun onFailure(t: Throwable) {
-                    finishMediaButtonForeground(pending, handedOff = false)
-                }
-            },
-            ContextCompat.getMainExecutor(this),
         )
     }
 
@@ -1084,6 +1067,7 @@ class PlaybackService : MediaLibraryService() {
     private val outputDispatch: (() -> Boolean) -> Boolean = { effect -> governor.output(effect) }
 
     override fun onDestroy() {
+        mediaButtonForeground?.close()
         autoCapture?.disconnected("service-stopped")
         governor.close()
         buttonRouting.close()
@@ -3360,7 +3344,7 @@ class PlaybackService : MediaLibraryService() {
                     authorized = { controllerQueueResolution.isUnchanged(claim) },
                     playable = { it.mediaItems.isNotEmpty() },
                     block = resolve,
-                ).also(::watchMediaButtonResumption)
+                ).also { mediaButtonForeground?.watch(it) }
             } else {
                 future(resolve)
             }
@@ -3813,7 +3797,6 @@ class PlaybackService : MediaLibraryService() {
          * state-changing `/play` recovery after ownership may have moved elsewhere.
          */
         val SEEK_CONFIRM_TIMEOUT: Duration = 2.seconds
-        val MEDIA_BUTTON_FOREGROUND_TIMEOUT: Duration = 30.seconds
 
         const val SECONDS_PER_MINUTE = 60L
 

@@ -318,6 +318,9 @@ message AppSettings {
   string app_design_key = 58;
   // PLAY-010. An absent message reads as flat gain on upgrades and fresh installs.
   AudioEqualizer audio_equalizer = 59;
+  // SET-002. Older installs retain below-cover text and visible borders.
+  bool shelf_card_text_beside_cover = 60;
+  bool hide_shelf_card_borders = 61;
 }
 
 message AudioEqualizer {

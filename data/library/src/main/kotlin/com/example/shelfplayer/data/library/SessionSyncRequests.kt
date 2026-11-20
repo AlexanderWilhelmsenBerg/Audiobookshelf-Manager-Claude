@@ -2,10 +2,12 @@ package com.example.shelfplayer.data.library
 
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
+import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
 import com.example.shelfplayer.domain.repository.AuthRepository
@@ -28,6 +30,9 @@ class SessionSyncRequests @Inject constructor(
 
     suspend fun upload(profileId: ProfileId, sessions: List<OfflineSession>): AppResult<List<OfflineSessionResult>> =
         sendWithRenewal(profileId) { gateway.playback.syncOfflineSessions(profileId, sessions) }
+
+    suspend fun serverProgress(profileId: ProfileId, bookId: LibraryItemId): AppResult<ServerProgress> =
+        sendWithRenewal(profileId) { gateway.playback.serverProgress(profileId, bookId) }
 
     private suspend fun <T> sendWithRenewal(profileId: ProfileId, request: suspend () -> AppResult<T>): AppResult<T> {
         val first = request()

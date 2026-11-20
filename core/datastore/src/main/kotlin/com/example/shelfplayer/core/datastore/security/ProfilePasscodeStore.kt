@@ -17,6 +17,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.nio.file.Files
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration
@@ -78,15 +79,21 @@ class ProfilePasscodeStore @Inject constructor(
 
     private suspend fun refresh(): Unit = withContext(ioDispatcher) {
         mutex.withLock {
-            val folder = directory()
-            protected.value = if (folder.exists()) {
-                folder.listFiles()
-                    ?.mapNotNull { file -> file.name.removeSuffix(SUFFIX).takeIf { it != file.name } }
-                    ?.toSet()
-            } else {
-                emptySet()
-            }
+            protected.value = readInventory()
         }
+    }
+
+    /** Null means the inventory could not establish whether this profile is protected. */
+    suspend fun protectionFor(profileKey: String): Boolean? = withContext(ioDispatcher) {
+        mutex.withLock { readInventory()?.contains(profileKey) }
+    }
+
+    private fun readInventory(): Set<String>? {
+        val folder = directory()
+        if (Files.notExists(folder.toPath())) return emptySet()
+        return folder.listFiles()
+            ?.mapNotNull { file -> file.name.removeSuffix(SUFFIX).takeIf { it != file.name } }
+            ?.toSet()
     }
 
     /**

@@ -72,6 +72,7 @@ import com.example.shelfplayer.feature.settings.resolvedColor
 import com.example.shelfplayer.navigation.ShelfDestinations
 import com.example.shelfplayer.navigation.ShelfPlayerNavHost
 import com.example.shelfplayer.playback.PlaybackController
+import com.example.shelfplayer.ui.LocalShelfCardAppearance
 import com.example.shelfplayer.ui.glass.BackdropArtwork
 import com.example.shelfplayer.ui.glass.BackdropScroll
 import com.example.shelfplayer.ui.glass.GlassPreferences
@@ -221,7 +222,9 @@ private fun AppAppearance(
             systemTintEnabled = state.systemGlassTintEnabled,
             blurRadius = state.glassBlurDp.dp,
         )
-        content(glass, !design.usesGlass || plainBackdrop, artwork)
+        CompositionLocalProvider(LocalShelfCardAppearance provides state.shelfCards) {
+            content(glass, !design.usesGlass || plainBackdrop, artwork)
+        }
     }
 }
 
