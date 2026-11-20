@@ -79,6 +79,7 @@ class DefaultProfileLockRepository @Inject constructor(
         // not read here: `isUnlocked` evaluates the relock delay against the clock at read time, and
         // reading the map directly would miss an expiry that no event announced.
         val profileId = activeId ?: return@combine ProfileLockState.Unlocked
+        if (protectedKeys == null) return@combine lockedStateFor(profileId)
         if (keyFor(profileId) !in protectedKeys) return@combine ProfileLockState.Unlocked
         if (gate.isUnlocked(profileId)) return@combine ProfileLockState.Unlocked
         lockedStateFor(profileId)
@@ -95,7 +96,7 @@ class DefaultProfileLockRepository @Inject constructor(
     override fun observeProtectedProfiles(): Flow<Set<ProfileId>> =
         combine(passcodes.observeProtectedProfiles(), profileDao.observeProfiles()) { keys, profiles ->
             profiles.map { entity -> ProfileId(entity.profileId) }
-                .filter { profileId -> keyFor(profileId) in keys }
+                .filter { profileId -> keys == null || keyFor(profileId) in keys }
                 .toSet()
         }
 

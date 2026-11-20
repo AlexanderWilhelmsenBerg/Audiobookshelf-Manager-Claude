@@ -290,6 +290,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Backup/restore must not create an undecryptable state that crashes the app; it should require reauthentication.
 - Passwords are never stored by default.
 - Optional biometric locking protects profile selection, not server authentication semantics.
+- On a cold launch, BookWave waits for persisted passcode protection before drawing the active
+  profile's library.
 
 ### AUTH-004 Session expiry
 

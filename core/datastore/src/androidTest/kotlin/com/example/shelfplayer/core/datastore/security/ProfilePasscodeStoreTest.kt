@@ -301,13 +301,11 @@ class ProfilePasscodeStoreTest {
 
     /** The set the switcher and the settings screen read comes off the directory, not off a cache. */
     @Test
-    fun refresh_reports_every_protected_profile() = runTest {
+    fun first_observation_reports_every_persisted_protected_profile() = runTest {
         store.setPasscode(profile, "492817".toCharArray(), existing = null)
         store.setPasscode(other, "573920".toCharArray(), existing = null)
 
         val fresh = ProfilePasscodeStore(context, KeystoreLockCipher(), clock, Dispatchers.IO)
-        fresh.refresh()
-
         assertEquals(setOf(profile, other), fresh.observeProtectedProfiles().first())
     }
 
