@@ -341,6 +341,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Filters and sort order persist per profile and library.
 - Empty, loading, error, and offline states are distinct.
 - Home shelf cards expose a direct, labelled play/resume action without replacing the card's details action.
+- Minimal and Editorial Home shelves wrap long book and series titles, including the next book on
+  Continue a series. Library book rows grow to fit the full title at larger text sizes.
 - Series, author, and genre rows use representative cached book covers. An author portrait is requested
   only after synchronized author metadata confirms one exists, and cached covers remain the loading,
   missing-image, and offline fallback.

@@ -6,6 +6,8 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.ProfileRole
+import com.example.shelfplayer.core.model.SeriesId
+import com.example.shelfplayer.core.model.SeriesSequence
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.ServerStatus
 import com.example.shelfplayer.core.model.SyncStatus
@@ -14,6 +16,8 @@ import com.example.shelfplayer.core.model.library.Book
 import com.example.shelfplayer.core.model.library.Chapter
 import com.example.shelfplayer.core.model.library.LocalAvailability
 import com.example.shelfplayer.core.model.library.MediaProgress
+import com.example.shelfplayer.core.model.library.Series
+import com.example.shelfplayer.core.model.library.SeriesMembership
 import com.example.shelfplayer.domain.library.homeShelvesOf
 import com.example.shelfplayer.feature.home.HomeUiState
 import com.example.shelfplayer.playback.PlaybackUiState
@@ -41,16 +45,24 @@ internal object DesignPreviewFixtures {
         )
     }
     private val secondBook = book("lantern", "The Long Road to Lantern Bay", "Robin Vale")
+    private val lanternSeries = Series(server, SeriesId("lantern"), "The Lantern Keepers of the Northern Isles")
+    private val prequel = book("winter-map", "The Winter Map", "Robin Vale").let { book ->
+        book.copy(
+            seriesMemberships = listOf(SeriesMembership(lanternSeries, SeriesSequence.parse("1"), true)),
+            progress = currentBook.progress?.copy(bookId = book.id, position = book.duration, isFinished = true),
+        )
+    }
     private val books = listOf(
         currentBook,
         secondBook.copy(
+            seriesMemberships = listOf(SeriesMembership(lanternSeries, SeriesSequence.parse("2"), true)),
             progress = currentBook.progress?.copy(
                 bookId = secondBook.id,
                 position = 44.minutes,
                 updatedAt = Instant.EPOCH,
             ),
         ),
-        book("winter-map", "The Winter Map", "Jules Pine"),
+        prequel,
         book("radio", "Radio at Midnight", "Ari Lake"),
     )
     private val chapters = listOf(

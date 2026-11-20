@@ -149,8 +149,6 @@ private fun ContinueListeningShelf(
                                 MaterialTheme.typography.titleMedium
                             },
                         ),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
                     )
                     val author = book.authors.firstOrNull()
                     if (author != null) Text(text = author.name, style = MaterialTheme.typography.bodyMedium)
@@ -197,8 +195,6 @@ private fun MoreListeningBooks(
                     text = book.title,
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.titleSmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
                 )
                 FilledIconButton(onClick = { onBookPlaySelected(book.id) }, shape = RectangleShape) {
                     Icon(
@@ -225,10 +221,7 @@ private fun BookShelfRow(
             contentPadding = PaddingValues(horizontal = BookWaveLayout.ShelfGutter),
             horizontalArrangement = Arrangement.spacedBy(BookWaveLayout.ShelfCardGap),
         ) {
-            // PRODUCT_SPEC 4 — every card in a *row* is the same height, so whether the readings row is
-            // drawn is a property of the shelf rather than of each book. A shelf where nothing has been
-            // started reserves nothing; one with a single part-listened book reserves the strip on every
-            // card, so its neighbours do not sit a line higher than it.
+            // Reserve the readings strip across the shelf so titles start at the same baseline.
             val anyInProgress = books.any { it.listeningProgress() != null }
             items(items = books, key = { it.id.value }) { book ->
                 ShelfCard(
@@ -274,9 +267,6 @@ private fun SeriesShelfRow(
                     progress = entry.finishedCount.toFloat() / entry.bookCount.toFloat(),
                     onClick = { onSeriesSelected(entry.series.id) },
                     labels = {
-                        // Unchanged, deliberately. A series card's three lines are a name, a position and
-                        // the next book — none of which is the book-card triple below, and the owner asked
-                        // for this shelf to stay as it is.
                         SeriesShelfLabels(
                             title = entry.series.name,
                             subtitle = stringResource(
@@ -388,16 +378,7 @@ private fun ShelfCover(
  * is how they place it. The author does that in one word where a title takes three, and on a shelf of
  * one writer it is the line that stops repeating and lets the titles do the distinguishing.
  *
- * ### Every line is one line, and scrolls if it does not fit
- *
- * The title used to reserve two lines so neighbouring cards stayed aligned, which cost every card a blank
- * line and still cut long titles off. Three single lines are aligned by construction, and a line too long
- * for the card scrolls its own text instead of ending in an ellipsis — the same answer, and the same
- * reasoning, as the mini player's title: it is the card's job to say what the book is, and half a title
- * does not. `Clip` rather than `Ellipsis` because an ellipsis truncates the string *before* the marquee
- * can scroll it, which produces a scrolling ellipsis and no more text than before.
- *
- * Text that fits does not move. The marquee animates only when the content is wider than its box.
+ * Classic scrolls long labels. Minimal and Editorial wrap book and series titles at the card width.
  */
 @Composable
 private fun BookShelfLabels(book: Book, reserveReadings: Boolean) {
@@ -416,7 +397,11 @@ private fun BookShelfLabels(book: Book, reserveReadings: Boolean) {
     }
     // All three drawn whether or not there is anything to say, so a book with no author or no series is
     // the same height as one with both. A blank line costs what a filled one does.
-    ShelfLine(text = book.authors.firstOrNull()?.name.orEmpty(), style = MaterialTheme.typography.bodySmall)
+    ShelfLine(
+        text = book.authors.firstOrNull()?.name.orEmpty(),
+        style = MaterialTheme.typography.bodySmall,
+        wrap = false,
+    )
     ShelfLine(text = book.title, style = MaterialTheme.typography.titleSmall, muted = false)
     ShelfLine(
         // The primary membership where the server names one. A book can be third in one series and first
@@ -492,19 +477,17 @@ private fun ReadingText(text: String) {
     )
 }
 
-/** One line of a book card: one line high, and scrolling rather than truncated when it overflows. */
 @Composable
-private fun ShelfLine(text: String, style: TextStyle, muted: Boolean = true) {
+private fun ShelfLine(text: String, style: TextStyle, muted: Boolean = true, wrap: Boolean = true) {
     val design = LocalBookWaveDesign.current
     val sharp = design.sharpEdges
-    val lines = if (sharp && !muted) 2 else 1
     Text(
         text = text,
         style = if (muted) style else design.bookTitle(style),
         color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
-        minLines = lines,
-        maxLines = lines,
-        overflow = if (sharp) TextOverflow.Ellipsis else TextOverflow.Clip,
+        minLines = if (sharp && !muted) 2 else 1,
+        maxLines = if (sharp && wrap) Int.MAX_VALUE else 1,
+        overflow = if (sharp && !wrap) TextOverflow.Ellipsis else TextOverflow.Clip,
         modifier = if (!sharp) {
             Modifier.basicMarquee(iterations = Int.MAX_VALUE)
         } else {
@@ -513,31 +496,22 @@ private fun ShelfLine(text: String, style: TextStyle, muted: Boolean = true) {
     )
 }
 
-/** The series shelf's three lines, unchanged: a series name, a position in it, and the next book. */
+/** Keep the reading order as series, position, then next book as the card grows. */
 @Composable
 private fun SeriesShelfLabels(title: String, subtitle: String, detail: String) {
     Text(
         text = title,
         style = MaterialTheme.typography.titleSmall,
-        minLines = 1,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
     )
     Text(
         text = subtitle,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        minLines = 1,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
     )
     Text(
         text = detail,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        minLines = 1,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
     )
 }
 
