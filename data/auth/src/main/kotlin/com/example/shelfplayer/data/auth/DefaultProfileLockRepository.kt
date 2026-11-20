@@ -79,8 +79,8 @@ class DefaultProfileLockRepository @Inject constructor(
         // not read here: `isUnlocked` evaluates the relock delay against the clock at read time, and
         // reading the map directly would miss an expiry that no event announced.
         val profileId = activeId ?: return@combine ProfileLockState.Unlocked
-        if (keyFor(profileId) !in protectedKeys) return@combine ProfileLockState.Unlocked
         if (gate.isUnlocked(profileId)) return@combine ProfileLockState.Unlocked
+        if (protectedKeys != null && keyFor(profileId) !in protectedKeys) return@combine ProfileLockState.Unlocked
         lockedStateFor(profileId)
     }
 
@@ -95,7 +95,7 @@ class DefaultProfileLockRepository @Inject constructor(
     override fun observeProtectedProfiles(): Flow<Set<ProfileId>> =
         combine(passcodes.observeProtectedProfiles(), profileDao.observeProfiles()) { keys, profiles ->
             profiles.map { entity -> ProfileId(entity.profileId) }
-                .filter { profileId -> keyFor(profileId) in keys }
+                .filter { profileId -> keys == null || keyFor(profileId) in keys }
                 .toSet()
         }
 
@@ -135,8 +135,19 @@ class DefaultProfileLockRepository @Inject constructor(
      * somebody re-authenticating after an expired session, and their lock is left exactly as they set it.
      */
     override suspend fun clearIfLocked(profileId: ProfileId) {
-        if (mayActivate(profileId)) return
-        forget(profileId)
+        if (gate.isUnlocked(profileId)) return
+        when (passcodes.protectionFor(keyFor(profileId))) {
+            false -> return
+
+            true -> forget(profileId)
+
+            null -> {
+                // A successful password check proves presence for this account. Preserve the
+                // unreadable inventory and keep the exception scoped to this foreground session.
+                gate.grant(profileId, Duration.ZERO)
+                return
+            }
+        }
         logger.info(
             LogCategory.Auth,
             "A locked profile was signed in to again, so its passcode was cleared",
@@ -151,8 +162,7 @@ class DefaultProfileLockRepository @Inject constructor(
      * passcode, and the alternative is opening an account because a disk read failed.
      */
     override suspend fun mayActivate(profileId: ProfileId): Boolean = resultOf {
-        if (!passcodes.hasPasscode(keyFor(profileId))) return@resultOf true
-        gate.isUnlocked(profileId)
+        gate.isUnlocked(profileId) || passcodes.protectionFor(keyFor(profileId)) == false
     }.let { result ->
         when (result) {
             is AppResult.Success -> result.value
@@ -282,8 +292,7 @@ class DefaultProfileLockRepository @Inject constructor(
      */
     override suspend fun isActiveProfileLocked(): Boolean = resultOf {
         val profileId = settings.activeProfileId.first() ?: return@resultOf false
-        if (!passcodes.hasPasscode(keyFor(profileId))) return@resultOf false
-        !gate.isUnlocked(profileId)
+        !mayActivate(profileId)
     }.let { result ->
         when (result) {
             is AppResult.Success -> result.value

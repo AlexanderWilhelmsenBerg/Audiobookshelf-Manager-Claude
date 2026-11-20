@@ -60,6 +60,26 @@ class SwitchProfileUseCaseTest {
         assertEquals(listOf(OTHER), auth.restoredProfiles)
     }
 
+    @Test
+    fun `sign-in hands over outgoing playback before selecting and restoring the incoming profile`() = runTest {
+        val result = useCase(lockedProfiles = setOf(OTHER)).activateAfterSignIn(OTHER)
+
+        assertEquals(AppResult.Success(SessionStatus.Active), result)
+        assertEquals(listOf("handover:" + TEST_PROFILE.value, "active:" + OTHER.value), profiles.journal)
+        assertEquals(listOf<ProfileId?>(TEST_PROFILE), handover.activeWhenCalled)
+        assertEquals(listOf(OTHER), auth.restoredProfiles)
+        assertTrue(auth.permissionRefreshes.isEmpty())
+    }
+
+    @Test
+    fun `sign-in to the already selected profile keeps its current playback`() = runTest {
+        val result = useCase().activateAfterSignIn(TEST_PROFILE)
+
+        assertEquals(AppResult.Success(SessionStatus.Active), result)
+        assertTrue(handover.handedOver.isEmpty())
+        assertEquals(listOf(TEST_PROFILE), auth.restoredProfiles)
+    }
+
     /**
      * PRODUCT_SPEC 6.3 / AUTH-004 — a profile whose credential will not load still becomes active.
      *

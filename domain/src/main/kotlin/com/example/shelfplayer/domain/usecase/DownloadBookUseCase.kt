@@ -4,6 +4,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.download.DownloadState
+import com.example.shelfplayer.core.model.download.OfflineFile
 import com.example.shelfplayer.core.model.download.TrafficCategory
 import com.example.shelfplayer.core.model.isFailure
 import com.example.shelfplayer.domain.download.BookAssetSource
@@ -47,10 +48,13 @@ class DownloadBookUseCase @Inject constructor(
         val planned = assets.assetsFor(profile.id, bookId)
         if (planned.isFailure()) return AppResult.Failure(planned.error)
         val book = (planned as AppResult.Success).value
+        val oldFiles = existing?.files.orEmpty()
+        val oldIds = oldFiles.mapTo(hashSetOf()) { it.remoteFileId }
+        val additions = book.files.filterNot { it.remoteFileId in oldIds }
 
         // PD-003 — another profile may already have the complete physical copy. Claim that copy immediately:
         // entitlement is proven above, but no free-space gate or WorkManager job is needed because no bytes move.
-        if (existing?.isComplete == true) {
+        if (existing?.isComplete == true && additions.isEmpty()) {
             if (profile.id in existing.requestedBy) return AppResult.Success(Unit)
             return when (val claimed = downloads.request(profile.serverId, bookId, profile.id, existing.files)) {
                 is AppResult.Success -> AppResult.Success(Unit)
@@ -63,7 +67,7 @@ class DownloadBookUseCase @Inject constructor(
             )
         }
 
-        val required = book.estimatedBytes + (book.estimatedBytes / HEADROOM_DIVISOR)
+        val required = requiredBytes(oldFiles, additions, book.estimatedBytes)
         val free = downloads.freeBytes()
         if (free in 1 until required) {
             return AppResult.Failure(
@@ -82,6 +86,12 @@ class DownloadBookUseCase @Inject constructor(
             category = categoryFor(isAutomatic),
         )
         return AppResult.Success(Unit)
+    }
+
+    private fun requiredBytes(oldFiles: List<OfflineFile>, additions: List<OfflineFile>, wholeBookBytes: Long): Long {
+        val extending = oldFiles.isNotEmpty() && oldFiles.all { it.state == DownloadState.Complete }
+        val estimated = if (extending) additions.sumOf { it.expectedBytes ?: 0L } else wholeBookBytes
+        return estimated + (estimated / HEADROOM_DIVISOR)
     }
 
     private fun categoryFor(isAutomatic: Boolean): TrafficCategory =

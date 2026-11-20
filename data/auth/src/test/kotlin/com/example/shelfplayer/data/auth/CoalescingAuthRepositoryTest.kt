@@ -36,7 +36,8 @@ class CoalescingAuthRepositoryTest {
     fun `session open and stream recovery rotate one refresh token once`() = runTest {
         tokenDirectory().deleteRecursively()
         val tokens = tokenProvider()
-        tokens.adopt(profileId, FakeAuthGateway.session(), SERVER_URL)
+        tokens.storeCredentials(profileId, FakeAuthGateway.session())
+        tokens.activate(profileId, SERVER_URL)
         val refreshStarted = CompletableDeferred<Unit>()
         val allowRefresh = CompletableDeferred<Unit>()
         val delegate = CoordinatedFakeAuthRepository(tokens, refreshStarted, allowRefresh)
@@ -67,7 +68,8 @@ class CoalescingAuthRepositoryTest {
     fun `sign out cannot be undone by an in flight renewal`() = runTest {
         tokenDirectory().deleteRecursively()
         val tokens = tokenProvider()
-        tokens.adopt(profileId, FakeAuthGateway.session(), SERVER_URL)
+        tokens.storeCredentials(profileId, FakeAuthGateway.session())
+        tokens.activate(profileId, SERVER_URL)
         val refreshStarted = CompletableDeferred<Unit>()
         val allowRefresh = CompletableDeferred<Unit>()
         val delegate = CoordinatedFakeAuthRepository(tokens, refreshStarted, allowRefresh)
@@ -113,7 +115,7 @@ class CoalescingAuthRepositoryTest {
             renewCalls += 1
             refreshStarted.complete(Unit)
             allowRefresh.await()
-            tokens.adopt(
+            tokens.adoptRenewal(
                 profileId,
                 FakeAuthGateway.session(accessToken = "access-2", refreshToken = "refresh-2"),
                 SERVER_URL,

@@ -11,12 +11,13 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.nio.file.Files
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration
@@ -66,21 +67,33 @@ class ProfilePasscodeStore @Inject constructor(
      */
     private val mutex = Mutex()
 
-    private val protected = MutableStateFlow<Set<String>>(emptySet())
+    private val protected = MutableStateFlow<Set<String>?>(null)
 
     /**
      * Which profiles have a passcode, for the settings screen and the profile switcher.
      *
-     * A `StateFlow` seeded by [refresh] rather than a directory watch: the set changes only when this
-     * class changes it, so there is nothing to observe that is not already a method call here.
+     * Read the persisted inventory before the first emission. An empty set means the inventory
+     * was available and has no records. A null inventory leaves profile protection unresolved.
      */
-    fun observeProtectedProfiles(): Flow<Set<String>> = protected.asStateFlow()
+    fun observeProtectedProfiles(): Flow<Set<String>?> = protected.onStart { refresh() }
 
-    /** Re-reads the directory. Called once at startup and after every mutation. */
-    suspend fun refresh(): Unit = withContext(ioDispatcher) {
-        protected.value = directory().listFiles().orEmpty()
-            .mapNotNull { file -> file.name.removeSuffix(SUFFIX).takeIf { it != file.name } }
-            .toSet()
+    private suspend fun refresh(): Unit = withContext(ioDispatcher) {
+        mutex.withLock {
+            protected.value = readInventory()
+        }
+    }
+
+    /** Null means the inventory could not establish whether this profile is protected. */
+    suspend fun protectionFor(profileKey: String): Boolean? = withContext(ioDispatcher) {
+        mutex.withLock { readInventory()?.contains(profileKey) }
+    }
+
+    private fun readInventory(): Set<String>? {
+        val folder = directory()
+        if (Files.notExists(folder.toPath())) return emptySet()
+        return folder.listFiles()
+            ?.mapNotNull { file -> file.name.removeSuffix(SUFFIX).takeIf { it != file.name } }
+            ?.toSet()
     }
 
     /**

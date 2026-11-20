@@ -532,7 +532,8 @@ data class SleepTimerSessionEntity(
  * the library, so they are copied when the session opens.
  *
  * @property state `Open`, `Pending` or `Synced` — see `SessionOutboxState`.
- * @property timeListenedMillis audio actually played, accumulated across the session. Not a position delta:
+ * @property timeListenedMillis audio actually played. Offline rows hold the session total, and rows with
+ *   a server session retain the latest live delta for recovery. This is independent of position:
  *   a seek moves the position without anybody having listened to the difference.
  * @property updatedAt the honest moment [positionMillis] was recorded. The server resolves conflicts on
  *   this, so it is never rounded, defaulted or stamped at upload time.

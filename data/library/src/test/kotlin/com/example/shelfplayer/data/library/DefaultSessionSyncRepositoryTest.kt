@@ -5,9 +5,14 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
+import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.model.playback.SessionProgress
+import com.example.shelfplayer.core.model.playback.SyncOutcome
 import com.example.shelfplayer.core.model.playback.SyncTrigger
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -17,6 +22,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -226,6 +232,158 @@ internal class DefaultSessionSyncRepositoryTest : SessionSyncRepositoryFixture()
         assertEquals(SessionOutboxState.SYNCED, stored.state)
         assertEquals(false, stored.wasProgressApplied)
         assertEquals(1, repository.observeDiagnostics().first().progressDeclined)
+    }
+
+    @Test
+    fun `a stationary tick keeps a declined offline position unsynced`() = runTest {
+        val sessionId = openId(remoteSessionId = null)
+        val paused = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 2.minutes)
+        repository.syncOpenSession(sessionId, paused, clock.now(), SyncTrigger.Paused)
+        seedUnsyncedProgress(recordedAt = 9_000L, position = paused.position)
+        gateway.offlineResults = { rows ->
+            rows.map { OfflineSessionResult(it.id, wasAccepted = true, wasProgressApplied = false) }
+        }
+        assertEquals(AppResult.Success(1), repository.drainOutbox())
+        assertTrue(storedProgress().hasUnsyncedChanges)
+
+        val duplicate = paused.copy(timeListened = 0.seconds)
+        val result = repository.syncOpenSession(sessionId, duplicate, clock.now(), SyncTrigger.Interval)
+
+        assertTrue(storedProgress().hasUnsyncedChanges)
+        assertEquals(AppResult.Success(SyncOutcome.Unacknowledged), result)
+        assertEquals(AppResult.Success(0), repository.drainOutbox())
+        assertEquals(1, gateway.uploaded.size)
+    }
+
+    @Test
+    fun `an older batch cannot settle a backwards pause recorded during upload`() = runTest {
+        val sessionId = openId(remoteSessionId = null)
+        val first = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 2.minutes)
+        val updatedAt = clock.now()
+        repository.syncOpenSession(sessionId, first, updatedAt, SyncTrigger.Interval)
+        seedUnsyncedProgress(recordedAt = updatedAt.toEpochMilli(), position = first.position)
+        val uploadStarted = CompletableDeferred<Unit>()
+        val completeUpload = CompletableDeferred<Unit>()
+        val completeNextUpload = CompletableDeferred<Unit>()
+        gateway.offlineResults = { rows ->
+            if (rows.single().progress.position == first.position) {
+                uploadStarted.complete(Unit)
+                completeUpload.await()
+            } else {
+                completeNextUpload.await()
+            }
+            rows.map { OfflineSessionResult(it.id, wasAccepted = true, wasProgressApplied = true) }
+        }
+        val firstDrain = async { repository.drainOutbox() }
+        uploadStarted.await()
+
+        val pause = first.copy(position = 38.minutes)
+        seedUnsyncedProgress(recordedAt = updatedAt.toEpochMilli(), position = pause.position)
+        repository.syncOpenSession(sessionId, pause, updatedAt, SyncTrigger.Paused)
+        val nextDrain = async(start = CoroutineStart.UNDISPATCHED) { repository.drainOutbox() }
+        completeUpload.complete(Unit)
+
+        assertEquals(AppResult.Success(0), firstDrain.await())
+        assertTrue(storedProgress().hasUnsyncedChanges)
+        assertEquals(1, repository.observeDiagnostics().first().sessionsPending)
+        completeNextUpload.complete(Unit)
+        assertEquals(AppResult.Success(1), nextDrain.await())
+        val uploaded = gateway.uploaded.flatten()
+        assertEquals(listOf(sessionId, sessionId), uploaded.map { it.id })
+        assertEquals(listOf(first.position, pause.position), uploaded.map { it.progress.position })
+        assertFalse(storedProgress().hasUnsyncedChanges)
+    }
+
+    @Test
+    fun `a rewind queued during the first insert uses the exact acknowledged server version`() = runTest {
+        val sessionId = openId(remoteSessionId = null)
+        val ahead = SessionProgress(40.minutes, 6.hours, 2.minutes)
+        val back = ahead.copy(position = 38.minutes)
+        repository.syncOpenSession(sessionId, ahead, clock.now(), SyncTrigger.Interval)
+        seedUnsyncedProgress(recordedAt = clock.now().toEpochMilli(), position = ahead.position)
+        gateway.offlineResults = { rows ->
+            val sent = rows.single()
+            if (sent.progress.position == ahead.position) {
+                clock.advanceBy(1.seconds)
+                val observedAt = clock.now()
+                seedUnsyncedProgress(recordedAt = observedAt.toEpochMilli(), position = back.position)
+                repository.syncOpenSession(sessionId, back, observedAt, SyncTrigger.Paused)
+                clock.advanceBy(1.seconds)
+                gateway.reportedProgress = ServerProgress(ahead.position, clock.now(), isFinished = false)
+            }
+            val applied = sent.progress.position == ahead.position ||
+                sent.updatedAt >= checkNotNull(gateway.reportedProgress).updatedAt
+            listOf(OfflineSessionResult(sent.id, wasAccepted = true, wasProgressApplied = applied))
+        }
+
+        assertEquals(AppResult.Success(1), repository.drainOutbox())
+        assertEquals(listOf(ahead.position, back.position), gateway.uploaded.flatten().map { it.progress.position })
+        assertEquals(gateway.reportedProgress?.updatedAt, gateway.uploaded.last().single().updatedAt)
+        assertFalse(storedProgress().hasUnsyncedChanges)
+    }
+
+    @Test
+    fun `offline history carries all intervals through a zero delta close`() = runTest {
+        val sessionId = openId(remoteSessionId = null)
+        val interval = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 30.seconds)
+        repository.syncOpenSession(sessionId, interval, clock.now(), SyncTrigger.Interval)
+        val paused = interval.copy(position = 39.minutes, timeListened = 12.seconds)
+        repository.syncOpenSession(sessionId, paused, clock.now(), SyncTrigger.Paused)
+        repository.closeSession(
+            sessionId,
+            paused.copy(timeListened = 0.seconds),
+            clock.now(),
+            SyncTrigger.ServiceShutdown,
+        )
+        gateway.offlineResults = { rows ->
+            rows.map { OfflineSessionResult(it.id, wasAccepted = true, wasProgressApplied = true) }
+        }
+
+        assertEquals(AppResult.Success(1), repository.drainOutbox())
+
+        val uploaded = gateway.uploaded.single().single()
+        assertEquals(paused.position, uploaded.progress.position)
+        assertEquals(42.seconds, uploaded.progress.timeListened)
+        assertEquals(AppResult.Success(0), repository.drainOutbox())
+    }
+
+    @Test
+    fun `another offline interval updates the same history even at the same position`() = runTest {
+        val sessionId = openId(remoteSessionId = null)
+        val interval = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 30.seconds)
+        gateway.offlineResults = { rows ->
+            rows.map { OfflineSessionResult(it.id, wasAccepted = true, wasProgressApplied = true) }
+        }
+        repository.syncOpenSession(sessionId, interval, clock.now(), SyncTrigger.Interval)
+        assertEquals(AppResult.Success(1), repository.drainOutbox())
+
+        repository.syncOpenSession(
+            sessionId,
+            interval.copy(timeListened = 12.seconds),
+            clock.now(),
+            SyncTrigger.Interval,
+        )
+
+        assertEquals(AppResult.Success(1), repository.drainOutbox())
+        assertEquals(listOf(sessionId, sessionId), gateway.uploaded.flatten().map { it.id })
+        assertEquals(listOf(30.seconds, 42.seconds), gateway.uploaded.flatten().map { it.progress.timeListened })
+    }
+
+    @Test
+    fun `live session writes send interval deltas`() = runTest {
+        val sessionId = openId()
+        val interval = SessionProgress(position = 40.minutes, duration = 6.hours, timeListened = 30.seconds)
+        repository.syncOpenSession(sessionId, interval, clock.now(), SyncTrigger.Interval)
+        val paused = interval.copy(position = 39.minutes, timeListened = 12.seconds)
+        repository.syncOpenSession(sessionId, paused, clock.now(), SyncTrigger.Paused)
+        repository.closeSession(
+            sessionId,
+            paused.copy(timeListened = 0.seconds),
+            clock.now(),
+            SyncTrigger.ServiceShutdown,
+        )
+
+        assertEquals(listOf(30.seconds, 12.seconds, 0.seconds), gateway.syncedProgress.map { it.timeListened })
     }
 
     /** A session the batch did not mention keeps its row: the case that would otherwise vanish silently. */

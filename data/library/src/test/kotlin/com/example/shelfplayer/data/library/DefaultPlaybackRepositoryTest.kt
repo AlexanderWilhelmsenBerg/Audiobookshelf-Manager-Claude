@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.common.log.DefaultRedactor
 import com.example.shelfplayer.core.common.log.RedactingLogger
 import com.example.shelfplayer.core.common.log.RedactionPolicy
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
+import com.example.shelfplayer.core.database.entity.AudioTrackEntity
 import com.example.shelfplayer.core.database.entity.EntityKey
 import com.example.shelfplayer.core.database.entity.MediaProgressEntity
 import com.example.shelfplayer.core.database.entity.ProfileEntity
@@ -17,7 +18,12 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.Profile
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.Server
+import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.auth.AccountProgress
+import com.example.shelfplayer.core.model.download.DownloadState
+import com.example.shelfplayer.core.model.download.OfflineBook
+import com.example.shelfplayer.core.model.download.OfflineFile
+import com.example.shelfplayer.core.model.library.PlayableTrack
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.AcknowledgedPause
 import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
@@ -30,19 +36,23 @@ import com.example.shelfplayer.core.network.gateway.PlaybackApi
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
 import com.example.shelfplayer.domain.download.SmartDownload
+import com.example.shelfplayer.domain.repository.DownloadRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -69,11 +79,15 @@ import kotlin.time.Duration.Companion.seconds
 @Config(sdk = [34])
 class DefaultPlaybackRepositoryTest {
 
+    @get:Rule
+    val mediaFiles = TemporaryFolder()
+
     private lateinit var database: ShelfPlayerDatabase
     private lateinit var repository: DefaultPlaybackRepository
     private lateinit var libraryRepository: DefaultLibraryRepository
     private val sink = RecordingLogSink()
     private val profileId = ProfileId("fixture-profile")
+    private val downloadManifest = MutableStateFlow<OfflineBook?>(null)
 
     /** PRODUCT_SPEC 6.5 — mutable, so a test can switch the app to another account mid-journal. */
     private val profiles = StubProfileRepository(profileId)
@@ -112,7 +126,10 @@ class DefaultPlaybackRepositoryTest {
                 sessions = OfflineSessionBuilder(
                     libraryDao = database.libraryDao(),
                     progressDao = database.progressDao(),
-                    downloads = NoDownloads,
+                    downloads = object : DownloadRepository by NoDownloads {
+                        override fun observe(serverId: ServerId, itemId: LibraryItemId): Flow<OfflineBook?> =
+                            downloadManifest
+                    },
                     locations = InternalDownloadLocations,
                 ),
                 // PRODUCT_SPEC DL-005 — recorded rather than performed. These cases are about the journal,
@@ -291,6 +308,97 @@ class DefaultPlaybackRepositoryTest {
 
         assertEquals(profileId, result.value.profileId)
         assertFalse(storedProgress().isFinished, "restart from 0:00 must clear the owner's finished flag")
+    }
+
+    @Test
+    fun `offline playback refuses a catalogue track missing from a completed manifest`() = runTest {
+        seedStaleMultipartDownload()
+        serverProgress.openSessionOverride = { _, _ -> AppResult.Failure(AppError.Network()) }
+
+        val result = repository.openSession(BOOK)
+
+        assertIs<AppError.Network>(assertIs<AppResult.Failure>(result).error)
+    }
+
+    @Test
+    fun `an excluded catalogue track does not make an offline download incomplete`() = runTest {
+        val local = seedStaleMultipartDownload(excludeMiddle = true)
+        serverProgress.openSessionOverride = { _, _ -> AppResult.Failure(AppError.Network()) }
+
+        val session = assertIs<AppResult.Success<PlaybackSession>>(repository.openSession(BOOK)).value
+
+        assertEquals("", session.id)
+        assertEquals(listOf(0, 1, 2), session.tracks.map { it.index })
+        assertEquals(listOf(1), session.tracks.filter { it.isExcluded }.map { it.index })
+        assertEquals(listOf(local[0], local[2]), session.tracks.filterNot { it.isExcluded }.map { it.url })
+    }
+
+    @Test
+    fun `online playback still uses local parts from an older manifest`() = runTest {
+        val local = seedStaleMultipartDownload()
+        val base = assertIs<AppResult.Success<PlaybackSession>>(openedAtStart(profileId, BOOK)).value
+        val tracks = (0..2).map { index ->
+            PlayableTrack(
+                index = index,
+                url = "https://fixture.invalid/api/items/book/file/part-$index",
+                startOffset = (index * 60).seconds,
+                duration = 60.seconds,
+                mimeType = "audio/mpeg",
+                isExcluded = false,
+            )
+        }
+        serverProgress.openSessionOverride = { _, _ -> AppResult.Success(base.copy(tracks = tracks)) }
+
+        val session = assertIs<AppResult.Success<PlaybackSession>>(repository.openSession(BOOK)).value
+
+        assertEquals(listOf(local[0], tracks[1].url, local[2]), session.tracks.map { it.url })
+    }
+
+    private suspend fun seedStaleMultipartDownload(excludeMiddle: Boolean = false): Map<Int, String> {
+        val bookKey = EntityKey.of(SERVER, BOOK.value)
+        val tracks = (0..2).map { index ->
+            AudioTrackEntity(
+                trackKey = "$bookKey:track-$index",
+                bookKey = bookKey,
+                serverId = SERVER,
+                trackIndex = index,
+                remoteFileId = "part-$index",
+                startOffsetMillis = index * 60_000L,
+                durationMillis = 60_000L,
+                mimeType = "audio/mpeg",
+                sizeBytes = 4,
+                isExcluded = index == 1 && excludeMiddle,
+            )
+        }
+        database.libraryWriteDao().deleteTracksFor(bookKey)
+        database.libraryWriteDao().upsertTracks(tracks)
+        val files = tracks.filterNot { it.trackIndex == 1 }.map { track ->
+            val file = mediaFiles.newFile(track.remoteFileId).apply { writeBytes(ByteArray(4)) }
+            OfflineFile(
+                remoteFileId = track.remoteFileId,
+                index = track.trackIndex,
+                uri = file.toURI().toString(),
+                state = DownloadState.Complete,
+                expectedBytes = file.length(),
+                downloadedBytes = file.length(),
+                mimeType = track.mimeType,
+                duration = 60.seconds,
+                eTag = null,
+                lastModified = null,
+            )
+        }
+        downloadManifest.value = OfflineBook(
+            serverId = ServerId(SERVER),
+            itemId = BOOK,
+            state = DownloadState.Complete,
+            files = files,
+            coverUri = null,
+            requestedBy = setOf(profileId),
+            isPinned = false,
+            createdAt = Instant.EPOCH,
+            updatedAt = Instant.EPOCH,
+        )
+        return files.associate { it.index to it.uri }
     }
 
     private fun openedAtStart(owner: ProfileId, bookId: LibraryItemId): AppResult<PlaybackSession> = AppResult.Success(
@@ -920,13 +1028,6 @@ class DefaultPlaybackRepositoryTest {
             return AppResult.Success(Unit)
         }
     }
-
-    /**
-     * PRODUCT_SPEC DL-001 — a device with nothing downloaded, which is what every case in this file assumes.
-     *
-     * The offline path has its own tests. Here the point is that a repository with no local copy behaves
-     * exactly as it did before downloads existed, and a stub that answers `null` is what asserts that.
-     */
 
     private companion object {
         const val SERVER = "fixture-server"

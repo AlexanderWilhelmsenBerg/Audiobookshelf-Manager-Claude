@@ -66,7 +66,9 @@ class SignInViewModelTest {
         ),
         profileRepository = FakeProfiles(),
         authRepository = auth,
-        signIn = SignInUseCase(auth, capabilities, LockedProfileRecovery { }),
+        signIn = SignInUseCase(auth, capabilities, LockedProfileRecovery { }) {
+            AppResult.Success(SessionStatus.Active)
+        },
     )
 
     /** PRODUCT_SPEC AUTH-001 — the address stage offers the servers this device already knows. */

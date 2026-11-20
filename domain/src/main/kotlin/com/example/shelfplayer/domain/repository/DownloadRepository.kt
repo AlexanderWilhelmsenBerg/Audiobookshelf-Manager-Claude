@@ -65,7 +65,8 @@ interface DownloadRepository {
      *
      * Idempotent in the way that matters: a second request from the same profile does not reset the
      * manifest, re-time the claim, or clear a pin. A request from a *different* profile for a book already
-     * downloaded is the shared-copy case and adds only a claim — no bytes move.
+     * downloaded is the shared-copy case and adds only a claim. If the catalogue has gained a track,
+     * an explicit request can extend the committed copy with the newly required files.
      *
      * @param files the audio files to expect, in playback order, with the locations they will be written to.
      */

@@ -3,6 +3,8 @@ package com.example.shelfplayer.domain.usecase
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.Profile
+import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.core.model.flatMap
 import com.example.shelfplayer.domain.lock.LockedProfileRecovery
 import com.example.shelfplayer.domain.repository.AuthRepository
@@ -48,6 +50,7 @@ class SignInUseCase @Inject constructor(
     private val capabilityRepository: CapabilityRepository,
     /** AUTH-005 — makes the curtain's "sign in again" route real. */
     private val lockRecovery: LockedProfileRecovery,
+    private val activation: SignedInProfileActivation,
 ) {
     /**
      * Returns the saved profile, or the reason the credentials were refused.
@@ -85,12 +88,29 @@ class SignInUseCase @Inject constructor(
         // PRODUCT_SPEC SYNC-001 puts the handshake "on login". It is one request, so awaiting it does
         // not make the user wait in any meaningful sense — unlike the sync, which is one request per
         // item and now runs on the screen that shows its result.
-        AppResult.Success(
-            SignInOutcome(profile = profile, warning = capabilityRepository.handshake(profile.id).failureOrNull()),
-        )
+        activation.activateAfterSignIn(profile.id).flatMap { status ->
+            if (status == SessionStatus.Active) {
+                AppResult.Success(
+                    SignInOutcome(
+                        profile = profile,
+                        warning = capabilityRepository.handshake(profile.id).failureOrNull(),
+                    ),
+                )
+            } else {
+                AppResult.Failure(
+                    AppError.Authentication(summary = "The saved session could not be opened. Sign in again."),
+                )
+            }
+        }
     }
 
     private fun AppResult<*>.failureOrNull(): AppError? = (this as? AppResult.Failure)?.error
+}
+
+/** The sign-in entry point to the shared playback handover and profile selection transaction. */
+fun interface SignedInProfileActivation {
+    /** A saved passcode still gates the selected profile's content, including after successful server sign-in. */
+    suspend fun activateAfterSignIn(profileId: ProfileId): AppResult<SessionStatus>
 }
 
 /**

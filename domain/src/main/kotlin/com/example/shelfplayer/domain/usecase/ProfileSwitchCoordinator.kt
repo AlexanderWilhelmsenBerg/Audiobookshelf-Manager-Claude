@@ -8,7 +8,7 @@ import javax.inject.Singleton
 /**
  * AUTH-002 / PRODUCT_SPEC 6.5 — serialize full profile-switch transactions across callers.
  *
- * The phone, passcode unlock, and Android Auto can inject distinct SwitchProfileUseCase instances.
+ * Phone selection, passcode unlock, successful sign-in and Android Auto can use distinct instances.
  * Their screen-local locks cannot protect the handover → active profile → credential transition.
  * This singleton owns only ordering; ProfileRepository remains the selection source of truth.
  */

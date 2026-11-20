@@ -247,6 +247,9 @@ These are UI concepts, not invented server roles. The actual decision is always 
 7. The user may press play to resume that profile’s last book.
 8. Optional “continue playing across profile switch” is not supported in version 1.
 
+Successful sign-in to a different account also flushes and stops the previous playback session before
+selecting the incoming profile and activating its credentials.
+
 ---
 
 # 7. Functional requirements and acceptance criteria
@@ -290,6 +293,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Backup/restore must not create an undecryptable state that crashes the app; it should require reauthentication.
 - Passwords are never stored by default.
 - Optional biometric locking protects profile selection, not server authentication semantics.
+- On a cold launch, BookWave waits for persisted passcode protection before drawing the active
+  profile's library.
 
 ### AUTH-004 Session expiry
 
@@ -297,6 +302,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - A `401` from an authenticated Audiobookshelf request first uses one shared, generation-aware renewal
   coordinator. A renewable session is renewed once and the failed operation is retried once; a missing or
   refused refresh token marks the profile as requiring reauthentication.
+- A refresh exchange rejected with `401` retires that profile's saved credentials. Later requests and
+  app restarts keep the profile and local progress available while requesting a fresh sign-in.
 - Background playback session sync, close, and offline outbox upload use the same bounded renewal path.
   They remain bound to the profile captured by the durable session row or drain, including across a profile
   switch; failed requests keep their outbox rows and unsynced progress until the server accepts the position.
@@ -485,8 +492,10 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Multi-file audiobooks play in server-defined track order.
 - Seeking across track boundaries preserves global book position.
 - Excluded server tracks are not played.
+- An offline queue requires a committed local file for every current non-excluded track, including after a catalogue refresh.
 - Chapter navigation works independently of file boundaries.
 - A missing local part marks the download incomplete and prevents false “downloaded” state.
+- When the catalogue gains a required file, Retry reuses committed files and queues the new part.
 - If a local file becomes unreadable, playback stops safely and offers repair/redownload.
 - No automatic fallback to cellular streaming occurs unless policy allows it.
 
@@ -514,6 +523,12 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - If two devices update the same book, the event with the latest trustworthy server timestamp wins unless the local device has a newer unsynced event.
 - Clock-skew greater than five minutes is detected and shown in diagnostics.
 - A sync conflict never deletes local playback history silently.
+- A redundant tick leaves declined local progress unsynced and records no confirmed resume baseline.
+  The already accepted listening history stays settled.
+- An offline batch acknowledgement settles only the submitted snapshot. A pause or backwards seek
+  recorded during that upload stays queued and is sent under the same session UUID on a later drain.
+- A locally opened session uploads its accumulated listening time. A final close with no added
+  listening preserves the accumulated total.
 
 ### PLAY-006 Streaming buffer
 
@@ -1093,7 +1108,9 @@ See [the device integration contract](docs/garmin-device-management.md) and
 **Appearance/accessibility**
 - device-wide visual design under Appearance → Design, with Classic as the default and Minimal and Editorial as opt-in choices;
 - Minimal and Editorial show their own built-in accent as Design default and let the reader return to it after choosing a preset;
+- derived primary and primary-container label pairs meet 4.5:1 contrast for the supported accents;
 - system/light/dark;
+- status-bar icons follow the visible app theme, including when it differs from the system theme;
 - dynamic color;
 - text scaling follows system;
 - reduced motion;

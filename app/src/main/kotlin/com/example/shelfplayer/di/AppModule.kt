@@ -17,7 +17,9 @@ import com.example.shelfplayer.domain.download.SmartDownload
 import com.example.shelfplayer.domain.playback.PlaybackHandover
 import com.example.shelfplayer.domain.playback.StartupPlayer
 import com.example.shelfplayer.domain.sync.BackgroundSync
+import com.example.shelfplayer.domain.usecase.SignedInProfileActivation
 import com.example.shelfplayer.domain.usecase.SmartDownloadUseCase
+import com.example.shelfplayer.domain.usecase.SwitchProfileUseCase
 import com.example.shelfplayer.download.WorkManagerDownloadExecutionObserver
 import com.example.shelfplayer.download.WorkManagerDownloadScheduler
 import com.example.shelfplayer.feature.lock.BiometricGateway
@@ -102,6 +104,9 @@ interface AppModule {
     @Binds
     @Singleton
     fun bindsBackgroundSync(impl: WorkManagerBackgroundSync): BackgroundSync
+
+    @Binds
+    fun bindsSignedInProfileActivation(impl: SwitchProfileUseCase): SignedInProfileActivation
 
     /**
      * PRODUCT_SPEC SET-003 — which launcher icon is enabled, which only `:app` can answer.

@@ -11,6 +11,8 @@ import com.example.shelfplayer.core.database.RoomDatabaseTransactionRunner
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
 import com.example.shelfplayer.core.datastore.AppSettingsDataSource
 import com.example.shelfplayer.core.datastore.AppSettingsSerializer
+import com.example.shelfplayer.core.datastore.security.LockCipher
+import com.example.shelfplayer.core.datastore.security.ProfilePasscodeStore
 import com.example.shelfplayer.core.datastore.security.SessionTokenStore
 import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
@@ -23,9 +25,11 @@ import com.example.shelfplayer.core.model.ServerProbe
 import com.example.shelfplayer.core.model.asFailure
 import com.example.shelfplayer.core.model.auth.SessionIdentity
 import com.example.shelfplayer.core.model.auth.SessionStatus
+import com.example.shelfplayer.core.model.lock.ProfileLockState
 import com.example.shelfplayer.core.network.http.ServerUrlNormalizer
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
+import com.example.shelfplayer.domain.lock.ProfileLockGate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -173,7 +177,7 @@ class DefaultAuthRepositoryTest {
     // --- AUTH-001/AUTH-002: sign-in and profile creation -------------------------------------------
 
     @Test
-    fun `a successful sign-in stores the server, the profile, the token and the selection`() = runTest {
+    fun `a successful sign-in stores the server profile and token for activation`() = runTest {
         val profile = assertIs<AppResult.Success<*>>(repository.signIn("books.example", "ada", "pw")).value
             as Profile
 
@@ -192,8 +196,9 @@ class DefaultAuthRepositoryTest {
         assertNotNull(storedProfile)
         assertEquals("remote-user-1", storedProfile.remoteUserId)
 
-        assertEquals("access-1", tokens.current()?.token)
-        assertEquals(profile.id, settings.activeProfileId.first())
+        assertEquals("access-1", tokens.accessTokenFor(profile.id)?.value)
+        assertNull(tokens.current())
+        assertNull(settings.activeProfileId.first())
     }
 
     /** PRODUCT_SPEC AUTH-001 — the password is used and dropped; only the token is stored. */
@@ -205,7 +210,8 @@ class DefaultAuthRepositoryTest {
             .filter(File::isFile)
             .joinToString(separator = "\n") { it.readBytes().decodeToString() }
         assertFalse(storedBytes.contains("correct-horse-battery-staple"))
-        assertFalse(settingsFile.readBytes().decodeToString().contains("correct-horse-battery-staple"))
+        val storedSettings = settingsFile.takeIf(File::isFile)?.readBytes()?.decodeToString().orEmpty()
+        assertFalse(storedSettings.contains("correct-horse-battery-staple"))
     }
 
     /** PRODUCT_SPEC AUTH-001 — "given an invalid login, then no credential material is persisted". */
@@ -251,6 +257,20 @@ class DefaultAuthRepositoryTest {
         assertEquals(ada.serverId, grace.serverId)
         assertEquals(2, database.profileDao().observeProfiles().first().size)
         assertEquals(setOf("ada", "grace"), database.profileDao().observeProfiles().first().map { it.username }.toSet())
+    }
+
+    @Test
+    fun `accepted sign-in leaves the outgoing selection and credential available for handover`() = runTest {
+        val outgoing = successfulSignIn()
+        gateway.signInResult = AppResult.Success(
+            FakeAuthGateway.session(accessToken = "access-grace", userId = "remote-user-2", username = "grace"),
+        )
+
+        val incoming = assertIs<AppResult.Success<Profile>>(repository.signIn("books.example", "grace", "pw")).value
+
+        assertEquals(outgoing.id, settings.activeProfileId.first())
+        assertEquals(outgoing.id, tokens.activeProfileId())
+        assertEquals("access-grace", tokens.accessTokenFor(incoming.id)?.value)
     }
 
     /**
@@ -310,6 +330,44 @@ class DefaultAuthRepositoryTest {
     }
 
     // --- AUTH-004: restoring and ending a session -------------------------------------------------
+
+    @Test
+    fun `password recovery with an unreadable inventory unlocks one profile for this session`() = runTest {
+        val profile = successfulSignIn()
+        val inventory = File(context.filesDir, "locks").apply { writeText("unreadable inventory fixture") }
+        try {
+            settings.setActiveProfile(profile.id)
+            val clock = TestAppClock()
+            val passcodes = ProfilePasscodeStore(
+                context,
+                object : LockCipher {
+                    override fun wrap(plaintext: ByteArray): ByteArray = plaintext
+                    override fun unwrap(encrypted: ByteArray): ByteArray = encrypted
+                    override fun clear() = Unit
+                },
+                clock,
+                dispatcher,
+            )
+            val lock = DefaultProfileLockRepository(
+                passcodes,
+                ProfileLockGate(clock),
+                settings,
+                database.profileDao(),
+                RedactingLogger(sink, DefaultRedactor(RedactionPolicy.Default)),
+            )
+            assertIs<ProfileLockState.Locked>(lock.observeLockState().first())
+            assertTrue(lock.isActiveProfileLocked())
+            lock.clearIfLocked(profile.id)
+            assertEquals(ProfileLockState.Unlocked, lock.observeLockState().first())
+            assertFalse(lock.isActiveProfileLocked())
+            assertFalse(lock.mayActivate(ProfileId("different-fixture-profile")))
+            assertTrue(inventory.isFile)
+            lock.lockNow()
+            assertTrue(lock.isActiveProfileLocked())
+        } finally {
+            inventory.delete()
+        }
+    }
 
     @Test
     fun `restoring a profile with a stored token reports an active session`() = runTest {
@@ -438,14 +496,35 @@ class DefaultAuthRepositoryTest {
         assertEquals("ada", stored.username)
     }
 
-    /** PRODUCT_SPEC AUTH-004 — "the app never loops login requests": one attempt per call, no retry. */
     @Test
-    fun `a refused renewal is attempted exactly once`() = runTest {
+    fun `a rejected refresh cannot be renewed again or restored from storage`() = runTest {
         val profile = successfulSignIn()
         gateway.refreshResult = AppError.Authentication().asFailure()
 
+        val first = repository.renewSession(profile.id)
+        val next = repository.renewSession(profile.id)
+        val restoration = repository.restoreSession(profile.id)
+
+        assertEquals(1, gateway.refreshCalls.size)
+        assertEquals(AppResult.Success(SessionStatus.ReauthenticationRequired), first)
+        assertEquals(first, next)
+        assertEquals(first, restoration)
+        assertNull(tokens.current())
+        assertNull(tokens.accessTokenFor(profile.id))
+        assertNull(tokens.refreshTokenFor(profile.id))
+        assertTrue(assertNotNull(database.profileDao().findProfile(profile.id.value)).requiresReauthentication)
+    }
+
+    @Test
+    fun `a network failure during refresh keeps the original credential`() = runTest {
+        val profile = successfulSignIn()
+        val originalRefresh = tokens.refreshTokenFor(profile.id)
+        gateway.refreshResult = AppError.Network().asFailure()
+
         repository.renewSession(profile.id)
 
+        assertNotNull(originalRefresh)
+        assertEquals(originalRefresh, tokens.refreshTokenFor(profile.id))
         assertEquals(1, gateway.refreshCalls.size)
     }
 
@@ -687,6 +766,9 @@ class DefaultAuthRepositoryTest {
 
     private suspend fun successfulSignIn(username: String = "ada"): Profile {
         val result = repository.signIn("books.example", username, "pw")
-        return assertIs<AppResult.Success<Profile>>(result).value
+        val profile = assertIs<AppResult.Success<Profile>>(result).value
+        settings.setActiveProfile(profile.id)
+        repository.restoreSession(profile.id)
+        return profile
     }
 }

@@ -8,6 +8,7 @@ import com.example.shelfplayer.core.common.log.DefaultRedactor
 import com.example.shelfplayer.core.common.log.RedactingLogger
 import com.example.shelfplayer.core.common.log.RedactionPolicy
 import com.example.shelfplayer.core.common.time.ServerClock
+import com.example.shelfplayer.core.database.RoomDatabaseTransactionRunner
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
 import com.example.shelfplayer.core.database.entity.BookEntity
 import com.example.shelfplayer.core.database.entity.EntityKey
@@ -85,6 +86,7 @@ internal open class SessionSyncRepositoryFixture {
             profileDao = database.profileDao(),
             outbox = database.sessionOutboxDao(),
             progressDao = database.progressDao(),
+            transaction = RoomDatabaseTransactionRunner(database),
             requests = SessionSyncRequests(gateway, auth),
             serverClock = ServerClock(logger),
             clock = clock,

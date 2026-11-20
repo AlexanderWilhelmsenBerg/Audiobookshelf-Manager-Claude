@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.view.Window
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -24,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -137,7 +140,7 @@ class MainActivity : ComponentActivity() {
             // PRODUCT_SPEC SET-002 — outside the theme, because it decides what every string below says
             // and the theme only decides what colour it is drawn in.
             AppLocale(language = appState.language) {
-                AppAppearance(appState) { glass, flatBackdrop, background ->
+                AppAppearance(appState, window) { glass, flatBackdrop, background ->
                     // The graph is not composed until the start destination is known. Composing it early
                     // and correcting it would show a flash of the wrong screen on every cold start, and
                     // would put a spurious entry in the back stack.
@@ -189,11 +192,15 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AppAppearance(
     state: AppUiState,
+    window: Window,
     content: @Composable (glass: GlassPreferences, flatBackdrop: Boolean, background: BackgroundTheme?) -> Unit,
 ) {
     val design = state.design.visualStyle()
     val pack = state.backgroundTheme
     val isDark = pack?.isDark ?: state.resolveDarkTheme(systemInDarkTheme = isSystemInDarkTheme())
+    SideEffect {
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = !isDark
+    }
     val plainBackdrop = state.resolveTheme().prefersFlatBackdrop
     val artwork = pack?.takeIf { design.usesGlass }
     ShelfPlayerTheme(

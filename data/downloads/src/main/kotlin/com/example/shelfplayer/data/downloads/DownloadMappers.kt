@@ -19,7 +19,9 @@ internal object DownloadMappers {
     fun toDomain(row: DownloadedBookWithFiles): OfflineBook = OfflineBook(
         serverId = ServerId(row.book.serverId),
         itemId = LibraryItemId(row.book.remoteItemId),
-        state = stateOf(row.book.state),
+        state = stateOf(row.book.state).let { state ->
+            if (state == DownloadState.Complete && row.hasMissingCatalogueFiles) DownloadState.Failed else state
+        },
         // BW-DL-02 / #107 — already sanitized before persistence; never replace this with a raw throwable.
         failureSummary = row.book.failureSummary,
         storageVolumeUuid = row.book.storageVolumeUuid,
@@ -29,6 +31,7 @@ internal object DownloadMappers {
         isPinned = row.requests.any { request -> request.isPinned },
         createdAt = Instant.ofEpochMilli(row.book.createdAt),
         updatedAt = Instant.ofEpochMilli(row.book.updatedAt),
+        hasMissingCatalogueFiles = row.hasMissingCatalogueFiles,
     )
 
     fun toEntity(bookKey: String, file: OfflineFile): DownloadedFileEntity = DownloadedFileEntity(

@@ -66,7 +66,7 @@ class SwitchProfileUseCase @Inject constructor(
     private val handover: PlaybackHandover,
     /** Shared across phone, passcode unlock and Android Auto callers. */
     private val coordinator: ProfileSwitchCoordinator,
-) {
+) : SignedInProfileActivation {
     suspend operator fun invoke(profileId: ProfileId): AppResult<SessionStatus> =
         coordinator.serialize { switch(profileId) }
 
@@ -78,6 +78,23 @@ class SwitchProfileUseCase @Inject constructor(
                 summary = "That account is locked. Enter its passcode to switch to it.",
             ).asFailure()
         }
+        val status = commitSwitch(profileId)
+        if (status.isActive()) {
+            // Network work remains cancellable, but it cannot leave the selected account with the
+            // previous account's active token: the local transaction completed before reaching here.
+            refreshPermissions(profileId)
+            // A refresh can complete without suspension; never schedule work after cancellation.
+            currentCoroutineContext().ensureActive()
+            // PRODUCT_SPEC SYNC-003 — schedules are idempotent by unique work name.
+            backgroundSync.schedule(profileId)
+        }
+        return status
+    }
+
+    override suspend fun activateAfterSignIn(profileId: ProfileId): AppResult<SessionStatus> =
+        coordinator.serialize { commitSwitch(profileId) }
+
+    private suspend fun commitSwitch(profileId: ProfileId): AppResult<SessionStatus> {
         // PRODUCT_SPEC 6.5 steps 2–3, and they happen *here* — while `activeProfileId` still names the
         // account being left, so every write the flush produces is unambiguously theirs.
         //
@@ -100,15 +117,6 @@ class SwitchProfileUseCase @Inject constructor(
         // NonCancellable protects only the local selection/credential commit. Returning from it
         // does not guarantee that a cancelled caller is stopped before the next synchronous action.
         currentCoroutineContext().ensureActive()
-        if (status.isActive()) {
-            // Network work remains cancellable, but it cannot leave the selected account with the
-            // previous account's active token: the local transaction completed before reaching here.
-            refreshPermissions(profileId)
-            // A refresh can complete without suspension; never schedule work after cancellation.
-            currentCoroutineContext().ensureActive()
-            // PRODUCT_SPEC SYNC-003 — schedules are idempotent by unique work name.
-            backgroundSync.schedule(profileId)
-        }
         return status
     }
 

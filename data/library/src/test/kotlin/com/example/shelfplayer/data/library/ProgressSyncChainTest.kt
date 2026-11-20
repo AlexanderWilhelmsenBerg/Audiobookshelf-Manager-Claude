@@ -193,6 +193,7 @@ class ProgressSyncChainTest {
             profileDao = database.profileDao(),
             outbox = database.sessionOutboxDao(),
             progressDao = database.progressDao(),
+            transaction = RoomDatabaseTransactionRunner(database),
             requests = SessionSyncRequests(gateway, NoRenewAuthRepository),
             serverClock = ServerClock(logger),
             clock = clock,

@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.model.ServerCapabilities
 import com.example.shelfplayer.core.model.ServerCapability
 import com.example.shelfplayer.core.model.ServerId
 import com.example.shelfplayer.core.model.asFailure
+import com.example.shelfplayer.core.model.auth.SessionStatus
 import com.example.shelfplayer.domain.FakeAuthRepository
 import com.example.shelfplayer.domain.FakeLibraryRepository
 import com.example.shelfplayer.domain.TEST_PROFILE
@@ -43,8 +44,13 @@ class SignInUseCaseTest {
     /** Records which profiles were offered for recovery, so the sign-in route can be asserted. */
     private val cleared = mutableListOf<ProfileId>()
     private val recovery = LockedProfileRecovery { profileId -> cleared += profileId }
+    private val activated = mutableListOf<ProfileId>()
+    private val activation = SignedInProfileActivation { profileId ->
+        activated += profileId
+        AppResult.Success(SessionStatus.Active)
+    }
 
-    private fun useCase() = SignInUseCase(auth, capabilities, recovery)
+    private fun useCase() = SignInUseCase(auth, capabilities, recovery, activation)
 
     private suspend fun signIn(intent: SignInIntent = SignInIntent.Reauthenticate) =
         useCase()("https://books.example", "ada", "pw", intent)
@@ -55,6 +61,7 @@ class SignInUseCaseTest {
 
         assertEquals(TEST_PROFILE, outcome.profile.id)
         assertNull(outcome.warning)
+        assertEquals(listOf(TEST_PROFILE), activated)
         assertEquals(listOf(TEST_PROFILE), capabilities.handshakes)
     }
 
@@ -64,6 +71,20 @@ class SignInUseCaseTest {
      * Awaiting it here made the sign-in button spin for the length of an N+1 over every item in the
      * library, and then had that work cancelled when the screen was popped. Home starts it instead.
      */
+    @Test
+    fun `accepted credentials do not report success when activation requires sign in`() = runTest {
+        val locked = SignedInProfileActivation { AppResult.Success(SessionStatus.ReauthenticationRequired) }
+        val result = SignInUseCase(auth, capabilities, recovery, locked)(
+            "https://books.example",
+            "ada",
+            "pw",
+            SignInIntent.Reauthenticate,
+        )
+
+        assertIs<AppError.Authentication>(assertIs<AppResult.Failure>(result).error)
+        assertTrue(capabilities.handshakes.isEmpty())
+    }
+
     @Test
     fun `a successful sign-in does not start the initial sync`() = runTest {
         signIn()
@@ -78,6 +99,7 @@ class SignInUseCaseTest {
         val result = useCase()("https://books.example", "ada", "wrong", SignInIntent.Reauthenticate)
 
         assertIs<AppError.Authentication>(assertIs<AppResult.Failure>(result).error)
+        assertTrue(activated.isEmpty())
         assertTrue(capabilities.handshakes.isEmpty())
         assertTrue(libraries.refreshedProfiles.isEmpty())
     }

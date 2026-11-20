@@ -4,8 +4,12 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import app.cash.turbine.test
+import com.example.shelfplayer.core.database.RoomDatabaseTransactionRunner
 import com.example.shelfplayer.core.database.ShelfPlayerDatabase
+import com.example.shelfplayer.core.database.entity.AudioTrackEntity
+import com.example.shelfplayer.core.database.entity.BookEntity
 import com.example.shelfplayer.core.database.entity.EntityKey
+import com.example.shelfplayer.core.database.entity.LibraryEntity
 import com.example.shelfplayer.core.database.entity.ProfileEntity
 import com.example.shelfplayer.core.database.entity.ServerEntity
 import com.example.shelfplayer.core.model.AppResult
@@ -310,6 +314,78 @@ class DefaultDownloadRepositoryTest {
         }
     }
 
+    @Test
+    fun `a changed catalogue hides a completed badge until the new part is committed`() = runTest {
+        seedCatalogue(files())
+        completeDownload()
+        val committed = assertNotNull(stored()).files
+        assertEquals(setOf(BOOK), repository.observeCompletedFor(ADA).first())
+
+        val added = file("file-3", index = 2)
+        val revised = files() + added
+        repository.observeCompletedFor(ADA).test {
+            assertEquals(setOf(BOOK), awaitItem())
+            seedCatalogue(revised, excluded = file("excluded", index = 3))
+            assertTrue(awaitItem().isEmpty())
+        }
+
+        val stale = assertNotNull(stored())
+        assertFalse(stale.isComplete)
+        assertEquals(DownloadState.Failed, stale.state)
+        assertTrue(repository.observeCompletedFor(ADA).first().isEmpty())
+        assertEquals(DownloadState.Failed, repository.observeAll().first().single().state)
+        assertIs<AppResult.Failure>(repository.markComplete(SERVER, BOOK, coverUri = null))
+
+        val planned = assertIs<AppResult.Success<OfflineBook>>(repository.request(SERVER, BOOK, ADA, revised)).value
+        assertEquals(DownloadState.Queued, planned.state)
+        assertEquals(committed + added, planned.files)
+        assertIs<AppResult.Failure>(repository.markComplete(SERVER, BOOK, coverUri = null))
+
+        repository.updateFile(SERVER, BOOK, added.copy(state = DownloadState.Complete, downloadedBytes = 1_000))
+        assertIs<AppResult.Success<OfflineBook>>(repository.markComplete(SERVER, BOOK, coverUri = null))
+        assertEquals(setOf(BOOK), repository.observeCompletedFor(ADA).first())
+    }
+
+    @Test
+    fun `retry replaces a retired unfinished track while keeping committed parts`() = runTest {
+        seedCatalogue(files())
+        completeDownload()
+        val committed = assertNotNull(stored()).files
+
+        val removed = file("file-3", index = 2)
+        seedCatalogue(files() + removed)
+        repository.request(SERVER, BOOK, ADA, files() + removed)
+        repository.markPaused(SERVER, BOOK)
+
+        val replacement = file("file-4", index = 2)
+        seedCatalogue(files() + replacement)
+        val repaired = assertIs<AppResult.Success<OfflineBook>>(
+            repository.request(SERVER, BOOK, ADA, files() + replacement),
+        ).value
+        assertEquals(DownloadState.Queued, repaired.state)
+        assertEquals(committed + replacement, repaired.files)
+        assertIs<AppResult.Failure>(repository.updateFile(SERVER, BOOK, removed.copy(downloadedBytes = 500)))
+        assertEquals(committed + replacement, assertNotNull(stored()).files)
+    }
+
+    @Test
+    fun `refreshing the requested files preserves the old storage volume and committed file rows`() = runTest {
+        seedCatalogue(files())
+        completeDownload()
+        val old = assertNotNull(stored())
+        val added = file("file-3", index = 2)
+        val revised = files() + added
+        seedCatalogue(revised)
+
+        repository.request(SERVER, BOOK, GRACE, revised)
+        repository.request(SERVER, BOOK, GRACE, revised)
+
+        val updated = assertNotNull(stored())
+        assertEquals(old.files + added, updated.files)
+        assertEquals(old.storageVolumeUuid, updated.storageVolumeUuid)
+        assertEquals(setOf(ADA, GRACE), updated.requestedBy)
+    }
+
     /** A failure is recorded with a summary the screen can show, and does not become a complete download. */
     @Test
     fun `a failure is recorded`() = runTest {
@@ -386,6 +462,77 @@ class DefaultDownloadRepositoryTest {
     )
 
     private fun key() = EntityKey.of(SERVER.value, BOOK.value)
+
+    private suspend fun seedCatalogue(files: List<OfflineFile>, excluded: OfflineFile? = null) =
+        RoomDatabaseTransactionRunner(database).invoke { writeCatalogue(files, excluded) }
+
+    private suspend fun writeCatalogue(files: List<OfflineFile>, excluded: OfflineFile?) {
+        val write = database.libraryWriteDao()
+        val libraryKey = EntityKey.of(SERVER.value, "lib-1")
+        write.upsertLibraries(
+            listOf(
+                LibraryEntity(
+                    libraryKey = libraryKey,
+                    serverId = SERVER.value,
+                    remoteId = "lib-1",
+                    name = "Audio",
+                    kind = "Book",
+                    displayOrder = 0,
+                    remoteUpdatedAt = null,
+                    lastFetchedAt = 0,
+                    isDeleted = false,
+                    finishedTimeRemainingSeconds = null,
+                ),
+            ),
+        )
+        write.upsertBooks(listOf(catalogueBook(libraryKey, files.size)))
+        write.deleteTracksFor(key())
+        write.upsertTracks(
+            (files + listOfNotNull(excluded)).map { file ->
+                AudioTrackEntity(
+                    trackKey = "${key()}:${file.remoteFileId}",
+                    bookKey = key(),
+                    serverId = SERVER.value,
+                    trackIndex = file.index,
+                    remoteFileId = file.remoteFileId,
+                    startOffsetMillis = file.index * 20.minutes.inWholeMilliseconds,
+                    durationMillis = 20.minutes.inWholeMilliseconds,
+                    mimeType = file.mimeType,
+                    sizeBytes = file.expectedBytes ?: 0,
+                    isExcluded = file == excluded,
+                )
+            },
+        )
+    }
+
+    private fun catalogueBook(libraryKey: String, trackCount: Int) = BookEntity(
+        bookKey = key(),
+        serverId = SERVER.value,
+        remoteId = BOOK.value,
+        libraryKey = libraryKey,
+        title = "Test audiobook",
+        subtitle = null,
+        narratorsJson = "[]",
+        genresJson = "[]",
+        tagsJson = "[]",
+        durationMillis = 20.minutes.inWholeMilliseconds,
+        description = null,
+        publishedYear = null,
+        publisher = null,
+        language = null,
+        isbn = null,
+        asin = null,
+        isExplicit = false,
+        isAbridged = false,
+        coverPath = null,
+        trackCount = trackCount,
+        sizeBytes = 0,
+        remoteUpdatedAt = null,
+        addedAt = null,
+        lastFetchedAt = 0,
+        isDeleted = false,
+        localAvailability = "NotDownloaded",
+    )
 
     private suspend fun seedAccounts() {
         database.profileDao().upsertServer(

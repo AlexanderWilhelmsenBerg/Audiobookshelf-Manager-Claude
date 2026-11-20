@@ -47,6 +47,7 @@ class LockRecoveryStateTest {
                 authRepository = neverCalled(),
                 capabilityRepository = neverCalled(),
                 lockRecovery = LockedProfileRecovery { },
+                activation = neverCalled(),
             ),
         )
         val password = "secret".toCharArray()

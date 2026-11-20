@@ -62,7 +62,8 @@ internal class SessionSyncRecordingGateway :
     val offlineProfiles = mutableListOf<ProfileId>()
     val offlineResponses = mutableListOf<AppResult<List<OfflineSessionResult>>>()
     var offlineUpload: AppResult<List<OfflineSessionResult>>? = null
-    var offlineResults: (List<OfflineSession>) -> List<OfflineSessionResult> = { emptyList() }
+    var offlineResults: suspend (List<OfflineSession>) -> List<OfflineSessionResult> = { emptyList() }
+    var reportedProgress: ServerProgress? = null
 
     val syncedProgress = mutableListOf<SessionProgress>()
     val uploaded = mutableListOf<List<OfflineSession>>()
@@ -135,7 +136,7 @@ internal class SessionSyncRecordingGateway :
         unsupported()
 
     override suspend fun serverProgress(profileId: ProfileId, bookId: LibraryItemId): AppResult<ServerProgress> =
-        unsupported()
+        reportedProgress?.let { AppResult.Success(it) } ?: unsupported()
 
     override suspend fun syncSession(
         profileId: ProfileId,
