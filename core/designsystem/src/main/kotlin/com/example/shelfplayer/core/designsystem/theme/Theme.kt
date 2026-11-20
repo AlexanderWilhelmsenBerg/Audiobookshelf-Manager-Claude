@@ -184,12 +184,15 @@ private fun ColorScheme.withTextContrast(contrast: Float): ColorScheme {
  * rather than reverting to the shipped teal — which is what an accent that only replaced `primary` looked
  * like, and it read as a bug.
  */
-private fun ColorScheme.withAccent(accent: Color): ColorScheme = copy(
-    primary = accent,
-    onPrimary = contrastOn(accent),
-    primaryContainer = lerp(accent, surface, CONTAINER_BLEND),
-    onPrimaryContainer = contrastOn(lerp(accent, surface, CONTAINER_BLEND)),
-)
+private fun ColorScheme.withAccent(accent: Color): ColorScheme {
+    val container = lerp(accent, surface, CONTAINER_BLEND)
+    return copy(
+        primary = accent,
+        onPrimary = contrastOn(accent),
+        primaryContainer = container,
+        onPrimaryContainer = contrastOn(container),
+    )
+}
 
 /**
  * PRODUCT_SPEC SET-002 — the AMOLED theme: every large area is an unlit pixel.
@@ -228,9 +231,19 @@ private val AmoledContainerHighest = Color(0xFF1C1C1C)
 /** Not pure black: a hair of warmth stops dark-on-accent text reading as a hole punched in the colour. */
 private val OnLightAccent = Color(0xFF10100F)
 
-/** Black or white, whichever the eye can read on [background]. */
-private fun contrastOn(background: Color): Color =
-    if (background.luminance() > LUMINANCE_MIDPOINT) OnLightAccent else Color.White
+/** Chooses a readable foreground against [background] using WCAG relative luminance. */
+private fun contrastOn(background: Color): Color {
+    val ground = background.luminance()
+    val ink = OnLightAccent.luminance()
+    val inkContrast = (maxOf(ground, ink) + CONTRAST_LUMINANCE_OFFSET) /
+        (minOf(ground, ink) + CONTRAST_LUMINANCE_OFFSET)
+    val whiteContrast = (1f + CONTRAST_LUMINANCE_OFFSET) / (ground + CONTRAST_LUMINANCE_OFFSET)
+    return when {
+        inkContrast >= whiteContrast && inkContrast >= MIN_TEXT_CONTRAST -> OnLightAccent
+        whiteContrast >= MIN_TEXT_CONTRAST -> Color.White
+        else -> Color.Black
+    }
+}
 
 /**
  * How far a container sits from its accent, towards the surface.
@@ -240,14 +253,8 @@ private fun contrastOn(background: Color): Color =
  */
 private const val CONTAINER_BLEND = 0.78f
 
-/**
- * Where "light enough to need dark text on it" begins.
- *
- * 0.5 rather than the WCAG crossover (about 0.18) deliberately: the accents here are mid-tones, and the
- * perceptual midpoint puts white on the darker half of them, which is the pairing with more headroom when
- * the surrounding surface is also light.
- */
-private const val LUMINANCE_MIDPOINT = 0.5f
+private const val CONTRAST_LUMINANCE_OFFSET = 0.05f
+private const val MIN_TEXT_CONTRAST = 4.5f
 
 /**
  * How much of the body text's contrast a hint keeps.
