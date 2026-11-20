@@ -553,7 +553,9 @@ No token, no query string, no signature. Two consequences, and both are good new
 `audio/mpeg`. A separate 2.36.0 capture used generated Ogg Vorbis, Opus in `.opus` and `.ogg`, and
 standalone ADTS AAC. With the previous advertised types those samples returned `playMethod: 2`
 with an HLS URL. Adding `audio/ogg` and `audio/aac` produced `playMethod: 0` and file URLs for all
-four with `forceDirectPlay` disabled. Both Opus samples used `audio/ogg` on the wire.
+four with `forceDirectPlay` disabled. Both Opus samples used `audio/ogg` on the wire. BookWave advertises
+Ogg but leaves standalone ADTS AAC to server transcoding so resume and seeks remain available.
+AAC in MP4 audiobooks uses the `audio/mp4` advertisement.
 The capture and sample generator are in [`scripts/capture-codec-contracts.py`](../scripts/capture-codec-contracts.py),
 and the sanitized responses are in [`codec-negotiation.json`](../core/network/src/test/resources/compatibility/codec-negotiation.json).
 

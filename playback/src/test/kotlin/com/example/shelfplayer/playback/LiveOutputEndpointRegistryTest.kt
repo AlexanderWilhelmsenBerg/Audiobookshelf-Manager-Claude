@@ -59,6 +59,22 @@ class LiveOutputEndpointRegistryTest {
     }
 
     @Test
+    fun verifiedHeadsetKeepsItsIdentityWhenSwappingWithAnUnidentifiedHeadset() {
+        for (verifiedFirst in listOf(false, true)) {
+            val registry = LiveOutputEndpointRegistry()
+            val verified = seen(31, "Buds").copy(identity = "headset-a", capability = BluetoothIdentityCapability.Verified)
+            val other = seen(49, "Buds")
+            val before = registry.reconcile(listOf(verified, other)).first().id
+            val swapped = verified.copy(platformId = 49)
+            val observations = listOf(swapped, other.copy(platformId = 31))
+            registry.reconcile(if (verifiedFirst) observations else observations.reversed())
+            assertEquals(before, registry.find(49, swapped.type, swapped.productName, swapped.identity)?.id)
+            registry.reconcile(emptyList())
+            assertEquals(before, registry.retainedPlayingIdentity(swapped))
+        }
+    }
+
+    @Test
     fun coldStartDoesNotKnowAnEarlierSessionsOutputs() {
         val first = LiveOutputEndpointRegistry()
         first.reconcile(listOf(seen(1, "Buds"), seen(2, "Other")))

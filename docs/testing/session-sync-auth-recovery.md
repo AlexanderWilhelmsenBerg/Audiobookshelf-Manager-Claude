@@ -49,7 +49,7 @@ No device, physical playback or server acknowledgement acceptance is claimed by 
 
 ## Android 16 and Audiobookshelf 2.36.0 acceptance
 
-The API 36 emulator ran BookWave's local debug build from the cold-start candidate and played a
+The API 36 emulator ran a local BookWave debug build (source revision unknown) and played a
 generated audiobook on a disposable Audiobookshelf 2.36.0 server. Once playback was underway,
 the **Expire the access token** action replaced the app's access token while keeping its refresh
 token. Playback continued without a seek, profile switch, or new Play request.
@@ -65,6 +65,7 @@ returned these results in order.
 | Retried periodic sync | HTTP 200 with the identical request body |
 | Final progress sync after Pause | HTTP 200 |
 
-The interval replay completed without an intervening authorize request. Offline-batch recovery,
-profile switches during renewal, and the refused-refresh case still need real-server acceptance.
-The software cases above cover their failure and retention rules.
+The interval replay completed without an intervening authorize request. Offline-batch recovery
+and profile switches during renewal still need real-server acceptance at this revision. The software
+cases above cover retention after a refused refresh. A separate real-server trace of that refusal
+recorded repeated refresh attempts in this build. The credential-retirement change addresses it in PR #320.

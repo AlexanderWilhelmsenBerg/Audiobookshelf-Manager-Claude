@@ -33,6 +33,13 @@ class SeriesOrderTest {
     }
 
     @Test
+    fun `reordering unnumbered books assigns the unchanged prefix needed to preserve the order`() {
+        val original = order("", "", "", "")
+        val moved = original.move(row(original, 2), row(original, 1), SeriesOrderMove.Reorder)
+        assertEquals(mapOf("b0" to "1", "b2" to "2", "b1" to "3"), moved.changes.toWireValues())
+    }
+
+    @Test
     fun `parts can be joined, reordered vertically and lifted back out`() {
         val original = order("1", "2", "3", "4", "5", "6", "8")
         val first = original.move(row(original, 4), row(original, 3), SeriesOrderMove.Indent)

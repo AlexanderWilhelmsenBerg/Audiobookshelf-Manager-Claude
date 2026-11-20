@@ -154,6 +154,7 @@ class DefaultMetadataRepository @Inject constructor(
         profileId: ProfileId,
         seriesId: SeriesId,
         change: SeriesSequenceChange,
+        beforeWrite: suspend () -> AppError?,
     ): AppResult<Unit> = withContext(ioDispatcher) {
         val book = when (val fresh = reload(profileId, change.bookId)) {
             is AppResult.Failure -> return@withContext fresh
@@ -178,6 +179,7 @@ class DefaultMetadataRepository @Inject constructor(
                 book.id,
                 edit.copy(series = memberships),
                 setOf(BookMetadataField.Series),
+                beforeWrite,
             )
         ) {
             is AppResult.Failure -> saved

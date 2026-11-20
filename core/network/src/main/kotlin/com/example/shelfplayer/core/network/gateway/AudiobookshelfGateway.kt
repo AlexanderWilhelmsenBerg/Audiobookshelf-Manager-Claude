@@ -1,5 +1,6 @@
 package com.example.shelfplayer.core.network.gateway
 
+import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryId
 import com.example.shelfplayer.core.model.LibraryItemId
@@ -504,6 +505,7 @@ interface ManagementApi {
         bookId: LibraryItemId,
         edit: BookMetadataEdit,
         changed: Set<BookMetadataField>,
+        beforeWrite: suspend () -> AppError? = { null },
     ): AppResult<MetadataSaveOutcome>
 
     /**

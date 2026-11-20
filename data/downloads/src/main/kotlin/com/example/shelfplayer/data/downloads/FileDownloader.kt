@@ -259,7 +259,14 @@ class FileDownloader @Inject constructor(
             withContext(NonCancellable) { onVerificationCancelled() }
             throw cancelled
         }
-        if (checkpoint.isFailure()) return AppResult.Failure(checkpoint.error)
+        if (checkpoint.isFailure()) {
+            if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
+            // The part was verified. Keep its response validators so retry can use the existing
+            // length and range/416 checks after storage space becomes available.
+            val pending = stored.copy(uri = manifestFile.uri, state = DownloadState.Failed)
+            val recorded = repository.updateFile(serverId, itemId, pending)
+            return if (recorded.isFailure()) AppResult.Failure(recorded.error) else AppResult.Failure(checkpoint.error)
+        }
         if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
 
         val committed = storage.commit(part)

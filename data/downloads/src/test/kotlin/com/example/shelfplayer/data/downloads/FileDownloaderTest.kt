@@ -126,6 +126,31 @@ class FileDownloaderTest {
         assertTrue(stored.uri.endsWith("file-1.mp3"), "the manifest points at the committed name")
     }
 
+    @Test
+    fun `a mounted checkpoint write failure preserves validated bytes for retry`() = runTest {
+        val content = "complete"
+        api.body = content.toByteArray()
+        val blockedSidecar = File(part().parentFile, part().name + ".verified.new").apply { mkdirs() }
+        File(blockedSidecar, "occupant").writeText("fixture")
+
+        val failure = assertIs<AppResult.Failure>(download(queuedFile())).error
+        assertFalse(assertIs<AppError.Storage>(failure).temporarilyUnavailable)
+        val pending = storedFile()
+        assertEquals(DownloadState.Failed, pending.state)
+        assertEquals(content.length.toLong(), pending.downloadedBytes)
+        assertEquals(api.eTag, pending.eTag)
+        assertEquals(content, part().readText())
+        assertFalse(committed().exists())
+
+        blockedSidecar.deleteRecursively()
+        api.rangeNotSatisfiableOnce = true
+        api.rangeNotSatisfiableTotalBytes = content.length.toLong()
+        api.rangeNotSatisfiableETag = api.eTag
+        assertNotNull(download(pending).getOrNull())
+        assertEquals(content.length.toLong() to api.eTag, api.requests.last())
+        assertEquals(content, committed().readText())
+    }
+
     /** DL-003 criterion 1 — the layout is the one the requirement writes, under the app-private root. */
     @Test
     fun `the file lands where DL-003 says`() = runTest {
