@@ -91,7 +91,7 @@ class DefaultDownloadRepository @Inject constructor(
                     files.map { file -> DownloadMappers.toEntity(key, file) },
                 )
             } else {
-                extendCompletedManifest(existing, files, now.toEpochMilli())
+                refreshStaleManifest(existing, files, now.toEpochMilli())
             }
 
             downloadDao.addRequest(
@@ -107,20 +107,16 @@ class DefaultDownloadRepository @Inject constructor(
         }
     }
 
-    private suspend fun extendCompletedManifest(
+    private suspend fun refreshStaleManifest(
         existing: DownloadedBookWithFiles,
         planned: List<OfflineFile>,
         updatedAt: Long,
     ) {
-        // Existing incomplete transfers keep their plan. A completed copy can reuse every committed
-        // part and queue only catalogue additions, including replacements with a different file ID.
-        if (!existing.hasMissingCatalogueFiles || existing.files.any { it.state != DownloadState.Complete.name }) {
-            return
-        }
+        if (!existing.hasMissingCatalogueFiles) return
         val storedIds = existing.files.mapTo(hashSetOf()) { it.remoteFileId }
         val added = planned.filterNot { it.remoteFileId in storedIds }
         if (added.isEmpty()) return
-        downloadDao.writeManifest(
+        downloadDao.repairManifest(
             existing.book.copy(state = DownloadState.Queued.name, updatedAt = updatedAt, failureSummary = null),
             added.map { DownloadMappers.toEntity(existing.book.bookKey, it) },
         )
@@ -129,8 +125,8 @@ class DefaultDownloadRepository @Inject constructor(
     override suspend fun updateFile(serverId: ServerId, itemId: LibraryItemId, file: OfflineFile): AppResult<Unit> =
         io {
             val key = keyOf(serverId, itemId)
-            checkNotNull(downloadDao.find(key)) { "no manifest to update" }
-            downloadDao.upsertFiles(listOf(DownloadMappers.toEntity(key, file)))
+            val updated = downloadDao.updatePlannedFile(DownloadMappers.toEntity(key, file))
+            check(updated == 1) { "the file no longer belongs to this download plan" }
             touch(key, state = null)
         }
 

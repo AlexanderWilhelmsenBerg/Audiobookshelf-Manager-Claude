@@ -72,6 +72,20 @@ class SignInUseCaseTest {
      * library, and then had that work cancelled when the screen was popped. Home starts it instead.
      */
     @Test
+    fun `accepted credentials do not report success when activation requires sign in`() = runTest {
+        val locked = SignedInProfileActivation { AppResult.Success(SessionStatus.ReauthenticationRequired) }
+        val result = SignInUseCase(auth, capabilities, recovery, locked)(
+            "https://books.example",
+            "ada",
+            "pw",
+            SignInIntent.Reauthenticate,
+        )
+
+        assertIs<AppError.Authentication>(assertIs<AppResult.Failure>(result).error)
+        assertTrue(capabilities.handshakes.isEmpty())
+    }
+
+    @Test
     fun `a successful sign-in does not start the initial sync`() = runTest {
         signIn()
 

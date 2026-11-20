@@ -21,6 +21,7 @@ import com.example.shelfplayer.core.model.AppError
 import com.example.shelfplayer.core.model.AppResult
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.core.model.getOrNull
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.OfflineSession
 import com.example.shelfplayer.core.model.playback.OfflineSessionResult
@@ -60,7 +61,7 @@ import kotlin.time.Duration.Companion.milliseconds
  *
  * ### What is deliberately absent
  *
- * **No clamping.** The position sent is the position observed, and `updatedAt` is the moment it was observed.
+ * **No clamping.** The position sent is the position observed, and ordinary uploads use its observation time.
  * The server takes the newer timestamp and lets progress move *backwards*, which is exactly PLAY-004's "never
  * blindly chooses the maximum position" — implemented on the server, and the app's job is to feed it honest
  * input rather than to pre-empt it. Sending `max(local, remote)` here, or stamping `updatedAt` at upload time,
@@ -258,6 +259,7 @@ constructor(
         }
         val profileId = ProfileId(profile.profileId)
         val sessions = queued.map { row -> row.toOfflineSession() }
+        val startedAt = clock.now()
         val uploaded = requests.upload(profileId, sessions)
         return when (uploaded) {
             is AppResult.Failure -> {
@@ -267,9 +269,15 @@ constructor(
 
             is AppResult.Success -> {
                 val results = uploaded.value.filter { it.wasAccepted }.associateBy { it.id }
-                val syncedAt = clock.now().toEpochMilli()
+                val completedAt = clock.now()
+                val bookCounts = queued.groupingBy { it.bookKey }.eachCount()
                 val settled = queued.count { row ->
-                    results[row.sessionId]?.let { settleUploaded(row, it, syncedAt) } == true
+                    val response = results[row.sessionId] ?: return@count false
+                    settleUploaded(row, response, completedAt.toEpochMilli()) ||
+                        (
+                            response.wasProgressApplied && bookCounts[row.bookKey] == 1 &&
+                                repairAppCreatedProgress(profileId, row, startedAt..completedAt)
+                            )
                 }
                 val unresolved = queued.map(PlaybackSessionEntity::sessionId) - results.keys
                 if (unresolved.isNotEmpty()) outbox.markAttempted(unresolved, NOT_ACCEPTED)
@@ -284,6 +292,41 @@ constructor(
                 AppResult.Success(settled)
             }
         }
+    }
+
+    /**
+     * Audiobookshelf 2.36 dates a newly inserted progress row at the server's insertion time.
+     * Use that exact version once if it still describes the accepted snapshot and was created
+     * during this upload. The server timestamp comparison still protects later writes.
+     */
+    private suspend fun repairAppCreatedProgress(
+        profileId: ProfileId,
+        sent: PlaybackSessionEntity,
+        uploadWindow: ClosedRange<Instant>,
+    ): Boolean {
+        val latest = changedPositionFromUpload(sent, uploadWindow.endInclusive) ?: return false
+        val queued = latest.toOfflineSession()
+        val baseline = requests.serverProgress(profileId, queued.bookId).getOrNull() ?: return false
+        val samePosition = !baseline.isFinished && baseline.position.inWholeMilliseconds == sent.positionMillis
+        val insertedDuringUpload = baseline.updatedAt in uploadWindow && baseline.updatedAt > queued.updatedAt
+        val matchesAcceptedUpload = samePosition && insertedDuringUpload
+        if (!matchesAcceptedUpload ||
+            activeProfile()?.profileId != profileId.value || outbox.find(sent.sessionId) != latest
+        ) {
+            return false
+        }
+
+        val retry = requests.upload(profileId, listOf(queued.copy(updatedAt = baseline.updatedAt))).getOrNull()
+            ?.singleOrNull { it.id == queued.id && it.wasAccepted && it.wasProgressApplied }
+        return retry?.let { settleUploaded(latest, it, clock.now().toEpochMilli()) } == true
+    }
+
+    private suspend fun changedPositionFromUpload(
+        sent: PlaybackSessionEntity,
+        completedAt: Instant,
+    ): PlaybackSessionEntity? = outbox.find(sent.sessionId)?.takeIf { current ->
+        current.state != SessionOutboxState.SYNCED && current.positionMillis != sent.positionMillis &&
+            current.updatedAt <= completedAt.toEpochMilli()
     }
 
     private suspend fun settleUploaded(

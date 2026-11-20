@@ -9,22 +9,45 @@ data class SeriesOrder private constructor(
     val slots: List<SeriesOrderSlot>,
     private val originals: Map<LibraryItemId, String>,
     private val edited: Set<LibraryItemId> = emptySet(),
+    private val confirmed: Map<LibraryItemId, String> = emptyMap(),
     private val unconfirmed: Map<LibraryItemId, Set<String>> = emptyMap(),
 ) {
     val missingBooks: Set<Int>
         get() = slots.filter { it.content == SeriesSlotContent.Missing }.mapTo(mutableSetOf()) { it.number }
 
     val changes: List<SeriesSequenceChange>
-        get() = assignments(slots).mapNotNull { (id, position) ->
-            val before = originals.getValue(id)
-            val assigned = position.sequence()
+        get() = assignedSequences().mapNotNull { (id, assigned) ->
+            val before = confirmed[id] ?: originals.getValue(id)
             val attempted = unconfirmed[id].orEmpty()
-            if (id in edited && (before != assigned || attempted.isNotEmpty())) {
+            if (before != assigned || attempted.isNotEmpty()) {
                 SeriesSequenceChange(id, before, assigned, attempted)
             } else {
                 null
             }
         }
+
+    private fun assignedSequences(): Map<LibraryItemId, String> {
+        val positions = assignments(slots).mapValues { (_, position) -> position.sequence() }
+        val changed = edited.filterTo(mutableSetOf()) { positions[it] != originals[it] }
+        if (changed.isEmpty()) return originals
+
+        // Use the original labels to plan the layout, including when a partial save has
+        // already written some of the new positions. Confirmed and uncertain values
+        // only determine which writes are still needed.
+        var lowerBound: SeriesSequence? = null
+        for (id in positions.keys) {
+            val original = SeriesSequence.parse(originals.getValue(id))
+            if (lowerBound != null && original <= lowerBound) changed += id
+            if (id in changed) lowerBound = SeriesSequence.parse(positions.getValue(id))
+        }
+        var upperBound: SeriesSequence? = null
+        for (id in positions.keys.reversed()) {
+            val original = SeriesSequence.parse(originals.getValue(id))
+            if (upperBound != null && original >= upperBound) changed += id
+            if (id in changed) upperBound = SeriesSequence.parse(positions.getValue(id))
+        }
+        return positions.mapValues { (id, assigned) -> if (id in changed) assigned else originals.getValue(id) }
+    }
 
     internal fun recordSave(accepted: List<SeriesSequenceChange>, uncertain: SeriesSequenceChange?): SeriesOrder {
         val confirmed = accepted.associate { it.bookId to it.after }
@@ -34,7 +57,7 @@ data class SeriesOrder private constructor(
         } else {
             pending + (uncertain.bookId to (pending[uncertain.bookId].orEmpty() + uncertain.after))
         }
-        return copy(originals = originals + confirmed, unconfirmed = attempted)
+        return copy(confirmed = this.confirmed + confirmed, unconfirmed = attempted)
     }
 
     fun addMissing(number: Int): SeriesOrder {

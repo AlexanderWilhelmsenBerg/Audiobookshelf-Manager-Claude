@@ -89,13 +89,14 @@ internal class LibraryBrowseCallbacks(
         // Capture synchronously at Media3 callback entry. The future currently completes on main,
         // but browse work must not gain permission to read Player after suspension or a dispatcher change.
         // The plain snapshot also keeps the requested book/position pair coherent (R-66 / ADR-0016).
-        val profileGeneration = auto.activeProfileGeneration()
+        val profileGeneration = auto.stableActiveProfileGeneration()
         val now = nowPlaying()
         val trace = autoTraces.forController(browser.packageName, carPackages)
         val entryPlayer = if (trace == null) emptyList() else AndroidAutoDiagnostics.playerFields(player())
         val startedAt = clock.elapsed()
         return futures.submit {
             if (!mayBrowse(session, browser)) return@submit deniedList(browser, "onGetChildren")
+            if (profileChanged(profileGeneration)) return@submit LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
             val all = auto.children(parentId, now)
             if (profileChanged(profileGeneration)) return@submit LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
             logger.info(
@@ -197,13 +198,14 @@ internal class LibraryBrowseCallbacks(
         browser: MediaSession.ControllerInfo,
         mediaId: String,
     ): ListenableFuture<LibraryResult<MediaItem>> {
-        val profileGeneration = auto.activeProfileGeneration()
+        val profileGeneration = auto.stableActiveProfileGeneration()
         val now = nowPlaying()
         val trace = autoTraces.forController(browser.packageName, carPackages)
         val entryPlayer = if (trace == null) emptyList() else AndroidAutoDiagnostics.playerFields(player())
         val startedAt = clock.elapsed()
         return futures.submit {
             if (!mayBrowse(session, browser)) return@submit deniedItem(browser, "onGetItem")
+            if (profileChanged(profileGeneration)) return@submit LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
             val resolved = auto.item(mediaId, now)
             if (profileChanged(profileGeneration)) return@submit LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
             if (trace != null) {
@@ -243,13 +245,27 @@ internal class LibraryBrowseCallbacks(
         query: String,
         params: LibraryParams?,
     ): ListenableFuture<LibraryResult<Void>> {
-        val profileGeneration = auto.activeProfileGeneration()
+        val profileGeneration = auto.stableActiveProfileGeneration()
         return futures.submit {
             if (!mayBrowse(session, browser)) return@submit deniedVoid(browser, "onSearch")
-            val results = auto.search(query)
-            if (profileChanged(profileGeneration)) return@submit LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
-            session.notifySearchResultChanged(browser, query, results.size, params)
-            LibraryResult.ofVoid(params)
+            val results = if (profileChanged(profileGeneration)) emptyList() else auto.search(query)
+            val current = profileGeneration?.takeUnless { profileChanged(it) }
+            // MediaBrowserCompat detaches its result and requests the page synchronously from this
+            // callback. Keep that request bound to the original search even for a count of zero.
+            val previous = notifyingSearch
+            notifyingSearch = SearchDelivery(browser, query, current)
+            try {
+                session.notifySearchResultChanged(browser, query, if (current == null) 0 else results.size, params)
+            } finally {
+                notifyingSearch = previous
+            }
+            if (current ==
+                null
+            ) {
+                LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
+            } else {
+                LibraryResult.ofVoid(params)
+            }
         }
     }
 
@@ -261,11 +277,16 @@ internal class LibraryBrowseCallbacks(
         pageSize: Int,
         params: LibraryParams?,
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
-        val profileGeneration = auto.activeProfileGeneration()
+        val search = notifyingSearch?.takeIf { it.browser == browser && it.query == query }
+        val profileGeneration = if (search == null) auto.stableActiveProfileGeneration() else search.generation
         val trace = autoTraces.forController(browser.packageName, carPackages)
         val startedAt = clock.elapsed()
         return futures.submit {
             if (!mayBrowse(session, browser)) return@submit deniedList(browser, "onGetSearchResult")
+            if (profileChanged(profileGeneration)) {
+                if (search != null) return@submit LibraryResult.ofItemList(ImmutableList.of(), params)
+                return@submit LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
+            }
             val all = auto.search(query)
             if (profileChanged(profileGeneration)) return@submit LibraryResult.ofError(SessionError.ERROR_INVALID_STATE)
             val from = (page * pageSize).coerceAtMost(all.size)
@@ -291,7 +312,16 @@ internal class LibraryBrowseCallbacks(
     }
 
     /** PD-001. A switch back to the same profile still retires requests from before the boundary. */
-    private fun profileChanged(expectedGeneration: Long): Boolean = auto.activeProfileGeneration() != expectedGeneration
+    private fun profileChanged(expectedGeneration: Long?): Boolean =
+        expectedGeneration == null || auto.stableActiveProfileGeneration() != expectedGeneration
+
+    private data class SearchDelivery(
+        val browser: MediaSession.ControllerInfo,
+        val query: String,
+        val generation: Long?,
+    )
+
+    private var notifyingSearch: SearchDelivery? = null
 
     private fun denied(browser: MediaSession.ControllerInfo, callback: String) {
         logger.info(

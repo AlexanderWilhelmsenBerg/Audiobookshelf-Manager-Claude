@@ -76,6 +76,17 @@ class FullPlayerScreenTest {
     }
 
     @Test
+    @Config(qualifiers = "w380dp-h600dp", fontScale = 2.0f)
+    fun `large text in a tall narrow window can still reach every secondary action`() {
+        render(state = playing(position = 35.minutes))
+
+        composeRule.onNodeWithContentDescription("Pause").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Set a sleep timer").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("History").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Close the player").assertIsDisplayed()
+    }
+
+    @Test
     fun `Bookmarks and Add Bookmark remain reachable from player actions`() {
         var bookmarkOpens = 0
         var bookmarkAdds = 0
