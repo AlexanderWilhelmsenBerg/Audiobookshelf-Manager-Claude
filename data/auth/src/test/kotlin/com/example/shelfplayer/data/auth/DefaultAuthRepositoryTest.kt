@@ -173,7 +173,7 @@ class DefaultAuthRepositoryTest {
     // --- AUTH-001/AUTH-002: sign-in and profile creation -------------------------------------------
 
     @Test
-    fun `a successful sign-in stores the server, the profile, the token and the selection`() = runTest {
+    fun `a successful sign-in stores the server profile and token for activation`() = runTest {
         val profile = assertIs<AppResult.Success<*>>(repository.signIn("books.example", "ada", "pw")).value
             as Profile
 
@@ -192,8 +192,9 @@ class DefaultAuthRepositoryTest {
         assertNotNull(storedProfile)
         assertEquals("remote-user-1", storedProfile.remoteUserId)
 
-        assertEquals("access-1", tokens.current()?.token)
-        assertEquals(profile.id, settings.activeProfileId.first())
+        assertEquals("access-1", tokens.accessTokenFor(profile.id)?.value)
+        assertNull(tokens.current())
+        assertNull(settings.activeProfileId.first())
     }
 
     /** PRODUCT_SPEC AUTH-001 — the password is used and dropped; only the token is stored. */
@@ -205,7 +206,8 @@ class DefaultAuthRepositoryTest {
             .filter(File::isFile)
             .joinToString(separator = "\n") { it.readBytes().decodeToString() }
         assertFalse(storedBytes.contains("correct-horse-battery-staple"))
-        assertFalse(settingsFile.readBytes().decodeToString().contains("correct-horse-battery-staple"))
+        val storedSettings = settingsFile.takeIf(File::isFile)?.readBytes()?.decodeToString().orEmpty()
+        assertFalse(storedSettings.contains("correct-horse-battery-staple"))
     }
 
     /** PRODUCT_SPEC AUTH-001 — "given an invalid login, then no credential material is persisted". */
@@ -251,6 +253,20 @@ class DefaultAuthRepositoryTest {
         assertEquals(ada.serverId, grace.serverId)
         assertEquals(2, database.profileDao().observeProfiles().first().size)
         assertEquals(setOf("ada", "grace"), database.profileDao().observeProfiles().first().map { it.username }.toSet())
+    }
+
+    @Test
+    fun `accepted sign-in leaves the outgoing selection and credential available for handover`() = runTest {
+        val outgoing = successfulSignIn()
+        gateway.signInResult = AppResult.Success(
+            FakeAuthGateway.session(accessToken = "access-grace", userId = "remote-user-2", username = "grace"),
+        )
+
+        val incoming = assertIs<AppResult.Success<Profile>>(repository.signIn("books.example", "grace", "pw")).value
+
+        assertEquals(outgoing.id, settings.activeProfileId.first())
+        assertEquals(outgoing.id, tokens.activeProfileId())
+        assertEquals("access-grace", tokens.accessTokenFor(incoming.id)?.value)
     }
 
     /**
@@ -708,6 +724,9 @@ class DefaultAuthRepositoryTest {
 
     private suspend fun successfulSignIn(username: String = "ada"): Profile {
         val result = repository.signIn("books.example", username, "pw")
-        return assertIs<AppResult.Success<Profile>>(result).value
+        val profile = assertIs<AppResult.Success<Profile>>(result).value
+        settings.setActiveProfile(profile.id)
+        repository.restoreSession(profile.id)
+        return profile
     }
 }

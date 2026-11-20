@@ -82,15 +82,21 @@ class SessionTokenProvider @Inject constructor(private val store: SessionTokenSt
     }
 
     /**
-     * Persists both tokens of [session] for [profileId] and makes its access token active.
+     * Persists both tokens of [session] for [profileId]. The existing active credential remains
+     * available until the profile handover activates the incoming account.
      *
      * A session the server declared non-renewable stores no refresh token, and any refresh token left
      * over from an earlier sign-in of the same profile is removed. Keeping a stale one would let
      * `AUTH-004` renewal try a credential the current session never issued.
      */
-    suspend fun adopt(profileId: ProfileId, session: AuthSession, serverBaseUrl: String) {
-        store(profileId, session)
-        cached.set(CachedToken(profileId, session.accessToken.value, serverBaseUrl))
+    internal suspend fun storeCredentials(profileId: ProfileId, session: AuthSession) {
+        store.save(profileId.value, SessionTokenKind.Access, session.accessToken.value)
+        val refresh = session.refreshToken
+        if (refresh == null) {
+            store.clear(profileId.value, SessionTokenKind.Refresh)
+        } else {
+            store.save(profileId.value, SessionTokenKind.Refresh, refresh.value)
+        }
     }
 
     /**
@@ -100,23 +106,13 @@ class SessionTokenProvider @Inject constructor(private val store: SessionTokenSt
      * updated in memory; B stays active and will never send A's newly rotated bearer by accident.
      */
     suspend fun adoptRenewal(profileId: ProfileId, session: AuthSession, serverBaseUrl: String) {
-        store(profileId, session)
+        storeCredentials(profileId, session)
         cached.updateAndGet { current ->
             if (current?.profileId == profileId) {
                 CachedToken(profileId, session.accessToken.value, serverBaseUrl)
             } else {
                 current
             }
-        }
-    }
-
-    private suspend fun store(profileId: ProfileId, session: AuthSession) {
-        store.save(profileId.value, SessionTokenKind.Access, session.accessToken.value)
-        val refresh = session.refreshToken
-        if (refresh == null) {
-            store.clear(profileId.value, SessionTokenKind.Refresh)
-        } else {
-            store.save(profileId.value, SessionTokenKind.Refresh, refresh.value)
         }
     }
 

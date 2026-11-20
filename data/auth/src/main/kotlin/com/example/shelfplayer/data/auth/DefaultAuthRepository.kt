@@ -112,9 +112,9 @@ class DefaultAuthRepository @Inject constructor(
      * Writes the profile and takes custody of the credential.
      *
      * The transaction covers both rows because a profile without its server violates a foreign key and
-     * a server without its profile is invisible. It deliberately does *not* cover the token write or the
-     * active-profile selection: neither is a database operation, and holding a transaction open across a
-     * Keystore encryption and a DataStore write would block every other writer on file I/O.
+     * a server without its profile is invisible. Credentials are written after the transaction so
+     * Keystore encryption does not block other database writers. Profile selection follows later in
+     * the sign-in use case, after the outgoing playback handover.
      *
      * The consequence is that a crash between the transaction and the token write leaves a profile with
      * no session. That state is already modelled — it is exactly a profile requiring reauthentication —
@@ -171,8 +171,7 @@ class DefaultAuthRepository @Inject constructor(
             )
         }
 
-        sessionTokens.adopt(profileId, session, normalized.value)
-        settings.setActiveProfile(profileId)
+        sessionTokens.storeCredentials(profileId, session)
 
         logger.info(
             LogCategory.Auth,

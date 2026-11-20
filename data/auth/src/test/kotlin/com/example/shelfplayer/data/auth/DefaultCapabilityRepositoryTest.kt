@@ -123,7 +123,8 @@ class DefaultCapabilityRepositoryTest {
     @Test
     fun `the handshake carries the profile's own access token`() = runTest {
         seedServerAndProfile()
-        tokens.adopt(PROFILE, FakeAuthGateway.session(accessToken = "profile-a-token"), SERVER_URL)
+        tokens.storeCredentials(PROFILE, FakeAuthGateway.session(accessToken = "profile-a-token"))
+        tokens.activate(PROFILE, SERVER_URL)
 
         repository.handshake(PROFILE)
 

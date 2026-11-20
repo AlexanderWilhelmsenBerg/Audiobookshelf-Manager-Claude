@@ -33,10 +33,9 @@ interface AuthRepository {
     /**
      * PRODUCT_SPEC AUTH-001 — exchange credentials for a stored session and a saved profile.
      *
-     * On success the server and profile rows exist, the token is encrypted on disk, the profile is the
-     * active one, and [password] has been used and dropped — PRODUCT_SPEC AUTH-001 requires it never
-     * to be persisted. On failure nothing is written at all: a rejected sign-in must not leave a
-     * half-created profile behind for the user to wonder about.
+     * On success the server and profile rows exist, the token is encrypted on disk, and [password]
+     * has been used and dropped. The sign-in use case activates the saved profile after handing over
+     * playback. A rejected credential leaves the stored profiles and selection intact.
      *
      * Signing the same account in again reuses its existing [ProfileId], so a reauthentication keeps
      * that profile's downloads and progress (PRODUCT_SPEC AUTH-004).

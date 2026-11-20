@@ -247,6 +247,9 @@ These are UI concepts, not invented server roles. The actual decision is always 
 7. The user may press play to resume that profile’s last book.
 8. Optional “continue playing across profile switch” is not supported in version 1.
 
+Successful sign-in to a different account also flushes and stops the previous playback session before
+selecting the incoming profile and activating its credentials.
+
 ---
 
 # 7. Functional requirements and acceptance criteria
