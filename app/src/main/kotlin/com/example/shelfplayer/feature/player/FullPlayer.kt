@@ -22,7 +22,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Bedtime
@@ -77,6 +79,7 @@ import coil.compose.AsyncImage
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.layout.BookWaveLayout
 import com.example.shelfplayer.core.designsystem.layout.hasRoomForTwoPanes
+import com.example.shelfplayer.core.designsystem.layout.windowSize
 import com.example.shelfplayer.core.designsystem.layout.windowWidth
 import com.example.shelfplayer.core.designsystem.theme.BookWaveDesign
 import com.example.shelfplayer.core.designsystem.theme.LocalBookWaveDesign
@@ -178,20 +181,24 @@ fun FullPlayer(
                 onMoreMenuOpenChange = { isMoreMenuOpen = it },
             )
 
-            // PRODUCT_SPEC PLAY-001 — the requirement is a notification with transport controls, and on
-            // Android 13+ the user can decline it. Saying so here is the difference between a missing
-            // notification and a *silently* missing one: the app cannot grant itself the permission, but it can
-            // stop pretending the feature is working.
-            if (isNotificationBlocked) NotificationBlockedNotice()
+            // In short windows the title and transport can need more height than the entire viewport.
+            // Keep the top bar fixed and place the artwork beside the title in the scrolling control stack.
+            if (windowSize().height < SHORT_PLAYER_HEIGHT) {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                    PlayerNotices(isNotificationBlocked, state.hasFailed, actions.onRetry)
+                    PlayerControls(
+                        state = state,
+                        timer = timer,
+                        actions = actions,
+                        skips = skips,
+                        pushesToBottom = false,
+                        shortLayout = true,
+                    )
+                }
+                return@Column
+            }
 
-            // PRODUCT_SPEC PLAY-001 — playback stopped and the service has stopped retrying.
-            //
-            // Above the artwork rather than as a transient message: the book is not playing and will not
-            // start on its own, so this is the state of the screen until somebody acts on it. A device run
-            // found a stopped book with no explanation and a play button that did nothing, which is the
-            // exact combination this replaces.
-            if (state.hasFailed) PlaybackFailedNotice(onRetry = actions.onRetry)
-
+            PlayerNotices(isNotificationBlocked, state.hasFailed, actions.onRetry)
             // PRODUCT_SPEC 4 / §129 — the cover moves beside the controls when there is width for it.
             //
             // Stacked vertically in a landscape tablet window the artwork either dominates the screen or
@@ -262,6 +269,13 @@ fun FullPlayer(
     }
 }
 
+/** Keep blocked notifications and failed playback visible until the listener can act (PLAY-001). */
+@Composable
+private fun PlayerNotices(isNotificationBlocked: Boolean, hasFailed: Boolean, onRetry: () -> Unit) {
+    if (isNotificationBlocked) NotificationBlockedNotice()
+    if (hasFailed) PlaybackFailedNotice(onRetry = onRetry)
+}
+
 /**
  * Everything below the artwork: the title block, the seek bar and the two rows of controls.
  *
@@ -279,9 +293,20 @@ private fun ColumnScope.PlayerControls(
     actions: PlayerActions,
     skips: SkipControls,
     pushesToBottom: Boolean,
+    shortLayout: Boolean = false,
 ) {
-    Spacer(modifier = Modifier.height(20.dp))
-    NowPlaying(state = state)
+    Spacer(modifier = Modifier.height(if (shortLayout) 8.dp else 20.dp))
+    if (shortLayout) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            PlayerArtwork(state = state, modifier = Modifier.size(64.dp))
+            NowPlaying(state = state, modifier = Modifier.weight(WEIGHT_FILL))
+        }
+    } else {
+        NowPlaying(state = state)
+    }
 
     Spacer(modifier = Modifier.height(8.dp))
     // Only where this column owns the slack. In the one-column arrangement the artwork above is the
@@ -312,6 +337,7 @@ private fun ColumnScope.PlayerControls(
  */
 private const val ARTWORK_WEIGHT = 0.45f
 private const val CONTROLS_WEIGHT = 0.55f
+private val SHORT_PLAYER_HEIGHT = 480.dp
 
 /**
  * The wash behind the player.

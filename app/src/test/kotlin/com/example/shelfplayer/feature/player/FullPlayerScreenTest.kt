@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ServerId
@@ -54,6 +55,23 @@ class FullPlayerScreenTest {
         composeRule.onNodeWithContentDescription("Forward 30 seconds").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("History").assertIsDisplayed().performClick()
 
+        assertEquals(1, historyOpens)
+    }
+
+    @Test
+    @Config(qualifiers = "w711dp-h320dp-land", fontScale = 2.0f)
+    fun `short landscape windows can scroll to the player secondary actions at large text`() {
+        var historyOpens = 0
+        render(
+            state = playing(position = 35.minutes),
+            onOpenHistory = { historyOpens += 1 },
+        )
+
+        composeRule.onNodeWithContentDescription("Close the player").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Pause").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Set a sleep timer").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("History").performScrollTo().assertIsDisplayed().performClick()
+        composeRule.onNodeWithContentDescription("Close the player").assertIsDisplayed()
         assertEquals(1, historyOpens)
     }
 
