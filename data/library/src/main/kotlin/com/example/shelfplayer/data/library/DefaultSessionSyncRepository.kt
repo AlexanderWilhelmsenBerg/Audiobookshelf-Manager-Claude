@@ -304,20 +304,27 @@ constructor(
         sent: PlaybackSessionEntity,
         uploadWindow: ClosedRange<Instant>,
     ): Boolean {
-        val latest = outbox.find(sent.sessionId) ?: return false
+        val latest = changedPositionFromUpload(sent, uploadWindow.endInclusive) ?: return false
         val queued = latest.toOfflineSession()
-        if (latest.state == SessionOutboxState.SYNCED || latest.positionMillis == sent.positionMillis) return false
-        if (queued.updatedAt > uploadWindow.endInclusive) return false
         val baseline = requests.serverProgress(profileId, queued.bookId).getOrNull() ?: return false
-        if (baseline.isFinished || baseline.position.inWholeMilliseconds != sent.positionMillis) return false
-        if (baseline.updatedAt !in uploadWindow || baseline.updatedAt <= queued.updatedAt) return false
-        if (activeProfile()?.profileId != profileId.value || outbox.find(sent.sessionId) != latest) return false
+        val samePosition = !baseline.isFinished && baseline.position.inWholeMilliseconds == sent.positionMillis
+        val insertedDuringUpload = baseline.updatedAt in uploadWindow && baseline.updatedAt > queued.updatedAt
+        if (!samePosition || !insertedDuringUpload ||
+            activeProfile()?.profileId != profileId.value || outbox.find(sent.sessionId) != latest
+        ) {
+            return false
+        }
 
         val retry = requests.upload(profileId, listOf(queued.copy(updatedAt = baseline.updatedAt))).getOrNull()
             ?.singleOrNull { it.id == queued.id && it.wasAccepted && it.wasProgressApplied }
-            ?: return false
-        return settleUploaded(latest, retry, clock.now().toEpochMilli())
+        return retry?.let { settleUploaded(latest, it, clock.now().toEpochMilli()) } == true
     }
+
+    private suspend fun changedPositionFromUpload(sent: PlaybackSessionEntity, completedAt: Instant): PlaybackSessionEntity? =
+        outbox.find(sent.sessionId)?.takeIf { current ->
+            current.state != SessionOutboxState.SYNCED && current.positionMillis != sent.positionMillis &&
+                current.updatedAt <= completedAt.toEpochMilli()
+        }
 
     private suspend fun settleUploaded(
         sent: PlaybackSessionEntity,

@@ -364,6 +364,8 @@ class DefaultDownloadRepositoryTest {
         ).value
         assertEquals(DownloadState.Queued, repaired.state)
         assertEquals(committed + replacement, repaired.files)
+        assertIs<AppResult.Failure>(repository.updateFile(SERVER, BOOK, removed.copy(downloadedBytes = 500)))
+        assertEquals(committed + replacement, assertNotNull(stored()).files)
     }
 
     @Test

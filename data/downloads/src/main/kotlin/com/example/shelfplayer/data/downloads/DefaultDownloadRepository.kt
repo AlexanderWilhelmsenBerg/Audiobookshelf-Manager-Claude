@@ -125,8 +125,8 @@ class DefaultDownloadRepository @Inject constructor(
     override suspend fun updateFile(serverId: ServerId, itemId: LibraryItemId, file: OfflineFile): AppResult<Unit> =
         io {
             val key = keyOf(serverId, itemId)
-            checkNotNull(downloadDao.find(key)) { "no manifest to update" }
-            downloadDao.upsertFiles(listOf(DownloadMappers.toEntity(key, file)))
+            val updated = downloadDao.updatePlannedFile(DownloadMappers.toEntity(key, file))
+            check(updated == 1) { "the file no longer belongs to this download plan" }
             touch(key, state = null)
         }
 

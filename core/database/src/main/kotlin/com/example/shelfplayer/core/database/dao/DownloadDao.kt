@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Relation
 import androidx.room.Transaction
+import androidx.room.Update
 import androidx.room.Upsert
 import com.example.shelfplayer.core.database.entity.DownloadRequestEntity
 import com.example.shelfplayer.core.database.entity.DownloadedBookEntity
@@ -66,6 +67,9 @@ interface DownloadDao {
 
     @Upsert
     suspend fun upsertFiles(files: List<DownloadedFileEntity>)
+
+    @Update
+    suspend fun updatePlannedFile(file: DownloadedFileEntity): Int
 
     @Transaction
     suspend fun writeManifest(book: DownloadedBookEntity, files: List<DownloadedFileEntity>) {
