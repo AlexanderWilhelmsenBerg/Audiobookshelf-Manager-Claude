@@ -1156,6 +1156,7 @@
     <string name="settings_theme_amoled">AMOLED</string>
     <string name="settings_section_colour">Colour</string>
     <string name="settings_accent_colour">Accent colour</string>
+    <string name="settings_accent_design_default">Design default</string>
     <string name="settings_accent_theme">Theme colours</string>
     <string name="settings_accent_teal">Teal</string>
     <string name="settings_accent_indigo">Indigo</string>

@@ -1092,6 +1092,7 @@ See [the device integration contract](docs/garmin-device-management.md) and
 
 **Appearance/accessibility**
 - device-wide visual design under Appearance → Design, with Classic as the default and Minimal and Editorial as opt-in choices;
+- Minimal and Editorial show their own built-in accent as Design default and let the reader return to it after choosing a preset;
 - system/light/dark;
 - dynamic color;
 - text scaling follows system;

@@ -130,6 +130,8 @@ private fun BookWaveDesign.defaultColors(dark: Boolean): ColorScheme = when (thi
     BookWaveDesign.Editorial -> if (dark) EditorialDarkColors else EditorialLightColors
 }
 
+fun BookWaveDesign.defaultAccentColor(isDark: Boolean): Color = defaultColors(isDark).primary
+
 /**
  * The shipped scheme, with the accent, the AMOLED grounds and an authored palette applied in that order.
  *
