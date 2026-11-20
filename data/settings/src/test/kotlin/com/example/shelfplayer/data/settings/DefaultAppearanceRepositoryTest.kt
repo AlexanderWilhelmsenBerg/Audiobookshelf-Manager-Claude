@@ -14,6 +14,7 @@ import com.example.shelfplayer.core.datastore.ThemeMode
 import com.example.shelfplayer.core.model.settings.AppDesign
 import com.example.shelfplayer.core.model.settings.AppTheme
 import com.example.shelfplayer.core.model.settings.BackgroundTheme
+import com.example.shelfplayer.core.model.settings.ShelfCardAppearance
 import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.domain.settings.BackgroundThemeCatalog
 import kotlinx.coroutines.CoroutineScope
@@ -135,6 +136,25 @@ class DefaultAppearanceRepositoryTest {
         repository.setDesign(AppDesign.Classic)
         assertEquals(AppDesign.Classic, repository.observeAppearance().first().design)
         assertEquals(AppTheme.Dark, repository.observeAppearance().first().theme)
+    }
+
+    @Test
+    fun `old settings keep cover above text and visible shelf borders`() = runTest {
+        settings.setAppDesign(AppDesign.Minimal)
+        assertEquals(ShelfCardAppearance(), repository.observeAppearance().first().shelfCards)
+    }
+
+    @Test
+    fun `shelf text and border choices persist independently`() = runTest {
+        repository.setShelfCardTextBesideCover(true)
+        repository.setShelfCardBordersVisible(false)
+        val stored = storeFile.inputStream().use { AppSettings.parseFrom(it) }
+        assertEquals(true, stored.shelfCardTextBesideCover)
+        assertEquals(true, stored.hideShelfCardBorders)
+        assertEquals(ShelfCardAppearance(true, false), repository.observeAppearance().first().shelfCards)
+
+        repository.setShelfCardTextBesideCover(false)
+        assertEquals(ShelfCardAppearance(false, false), repository.observeAppearance().first().shelfCards)
     }
 
     private object EmptyCatalog : BackgroundThemeCatalog {

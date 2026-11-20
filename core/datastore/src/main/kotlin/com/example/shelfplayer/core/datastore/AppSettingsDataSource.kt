@@ -312,6 +312,14 @@ class AppSettingsDataSource @Inject constructor(
         dataStore.updateData { current -> current.toBuilder().setAppDesignKey(design.key).build() }
     }
 
+    suspend fun setShelfCardTextBesideCover(beside: Boolean) {
+        dataStore.updateData { current -> current.toBuilder().setShelfCardTextBesideCover(beside).build() }
+    }
+
+    suspend fun setShelfCardBordersVisible(visible: Boolean) {
+        dataStore.updateData { current -> current.toBuilder().setHideShelfCardBorders(!visible).build() }
+    }
+
     /** PRODUCT_SPEC SET-002 (Appearance) — the colour of the wash over every frosted surface. */
     suspend fun setGlassTint(tint: GlassTint) {
         dataStore.updateData { current -> current.toBuilder().setGlassTintKey(tint.key).build() }

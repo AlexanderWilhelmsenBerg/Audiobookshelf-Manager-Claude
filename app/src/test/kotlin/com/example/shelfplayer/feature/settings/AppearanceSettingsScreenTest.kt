@@ -70,6 +70,24 @@ class AppearanceSettingsScreenTest {
     }
 
     @Test
+    fun `Design lets the listener put text beside the cover and hide Home card borders`() {
+        var beside: Boolean? = null
+        var borders: Boolean? = null
+        render(
+            actions = AppearanceActions(
+                onShelfCardTextBesideCoverChanged = { beside = it },
+                onShelfCardBordersVisibleChanged = { borders = it },
+            ),
+        )
+
+        open("Home card text, Below the cover")
+        composeRule.onNodeWithText("Beside the cover").performClick()
+        assertEquals(true, beside)
+        composeRule.onNodeWithText("Show Home card borders").performClick()
+        assertEquals(false, borders)
+    }
+
+    @Test
     fun `Editorial announces the default accent as the design colour`() {
         render(state = AppearanceUiState(design = AppDesign.Editorial, theme = AppTheme.Dark, isDark = true))
 

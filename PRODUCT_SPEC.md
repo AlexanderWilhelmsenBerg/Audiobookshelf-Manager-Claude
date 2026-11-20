@@ -341,8 +341,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Filters and sort order persist per profile and library.
 - Empty, loading, error, and offline states are distinct.
 - Home shelf cards expose a direct, labelled play/resume action without replacing the card's details action.
-- Minimal and Editorial Home shelves wrap long book and series titles, including the next book on
-  Continue a series. Library book rows grow to fit the full title at larger text sizes.
+- Home shelf cards reserve a consistent number of lines for book and series labels so long titles do
+  not change card height within a shelf. Library book rows reserve two title lines and can grow for
+  series and progress metadata at larger text sizes.
 - Series, author, and genre rows use representative cached book covers. An author portrait is requested
   only after synchronized author metadata confirms one exists, and cached covers remain the loading,
   missing-image, and offline fallback.
@@ -1122,6 +1123,8 @@ See [the device integration contract](docs/garmin-device-management.md) and
 
 **Appearance/accessibility**
 - device-wide visual design under Appearance → Design, with Classic as the default and Minimal and Editorial as opt-in choices;
+- Home shelf cards default to text below the cover and visible borders. Appearance → Design lets the listener
+  put text alongside the cover or hide the border. These device-wide choices apply across designs;
 - Minimal and Editorial show their own built-in accent as Design default and let the reader return to it after choosing a preset;
 - derived primary and primary-container label pairs meet 4.5:1 contrast for the supported accents;
 - system/light/dark;

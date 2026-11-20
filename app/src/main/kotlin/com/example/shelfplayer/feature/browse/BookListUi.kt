@@ -87,6 +87,8 @@ internal fun BookCard(
                     text = book.title,
                     style = MaterialTheme.typography.titleMedium,
                     minLines = 2,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 // Drawn blank when the book has no author, for the same reason.
                 Text(
