@@ -12,6 +12,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.log10
 import kotlin.math.sin
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -49,6 +50,56 @@ class BookWaveEqualizerTest {
         assertTrue(peak(low) > peak(high) * 1.3)
         assertTrue(low.indices.filter { it % 2 != 0 }.all { low[it] == 0.toShort() })
         assertTrue(high.indices.filter { it % 2 != 0 }.all { high[it] == 0.toShort() })
+    }
+
+    @Test
+    fun `a moderate bass boost lifts quiet fundamentals and leaves high frequencies level`() {
+        settings = PlaybackEqualizer(bass = 3)
+        for ((frequency, expectedGain) in listOf(125 to 2.5..2.7, 6_000 to -0.1..0.15)) {
+            configure()
+            val input = tone(frequency, 1)
+            val gain = 20 * log10(peak(process(input)).toDouble() / peak(input))
+            assertTrue(gain in expectedGain, "Measured gain at $frequency Hz was $gain dB")
+        }
+    }
+
+    @Test
+    fun `all three bands can boost quiet speech together`() {
+        settings = PlaybackEqualizer(3, 3, 3)
+        configure()
+        val input = tone(900, 1)
+        val gain = 20 * log10(peak(process(input)).toDouble() / peak(input))
+        assertTrue(gain in 2.98..3.02, "Measured broadband gain was $gain dB")
+    }
+
+    @Test
+    fun `loud peaks share protection across stereo and quiet audio recovers`() {
+        settings = PlaybackEqualizer(6, 6, 6)
+        configure(channels = 2)
+        val loud = ShortArray(3_000) { if (it % 2 == 0) 30_000 else -10_000 }
+        val limited = process(loud)
+        assertTrue(limited[0] in 30_300..32_500)
+        for (i in limited.indices step 2) {
+            assertTrue(limited[i] in 30_300..32_500)
+            assertTrue(abs(limited[i] + 3 * limited[i + 1]) <= 2)
+        }
+        val quiet = process(ShortArray(48_000) { 6_000 })
+        assertTrue(quiet.first() < 9_000)
+        assertTrue(quiet.last() in 11_960..11_980)
+    }
+
+    @Test
+    fun `returning to original after a limited peak releases smoothly and restores full scale`() {
+        settings = PlaybackEqualizer(6, 6, 6)
+        configure()
+        val hot = ShortArray(2_000) { Short.MIN_VALUE }
+        val before = process(hot).last()
+        settings = PlaybackEqualizer.Original
+        val returning = process(ShortArray(48_000) { Short.MIN_VALUE })
+        assertEquals(before, returning.first())
+        assertEquals(Short.MIN_VALUE, returning.last())
+        assertTrue((1 until returning.size).all { abs(returning[it] - returning[it - 1]) < 80 })
+        assertContentEquals(hot, process(hot))
     }
 
     @Test
