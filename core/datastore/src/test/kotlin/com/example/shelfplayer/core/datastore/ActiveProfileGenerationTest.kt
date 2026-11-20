@@ -7,6 +7,7 @@ import com.example.shelfplayer.core.model.ProfileId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -56,13 +57,15 @@ class ActiveProfileGenerationTest {
         val source = source(store = store)
         val before = source.stableActiveProfileGeneration
         val write = launch { source.setActiveProfile(B) }
-        transformed.await()
-
-        assertEquals(A.value, source.current().activeProfileId)
-        assertNull(source.stableActiveProfileGeneration)
-        publish.complete(Unit)
+        try {
+            transformed.await()
+            assertEquals(A, source.activeProfileId.first())
+            assertNull(source.stableActiveProfileGeneration)
+        } finally {
+            publish.complete(Unit)
+        }
         write.join()
-        assertEquals(B.value, source.current().activeProfileId)
+        assertEquals(B, source.activeProfileId.first())
         assertTrue(requireNotNull(source.stableActiveProfileGeneration) > requireNotNull(before))
     }
 
