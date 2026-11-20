@@ -29,7 +29,7 @@ import kotlin.test.assertTrue
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w360dp-h1100dp", fontScale = 1.5f)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-class HomeShelfTitleLayoutTest {
+class HomeShelfTitleLayoutScreenTest {
     @get:Rule
     val compose = createComposeRule()
 
