@@ -332,7 +332,7 @@ class DefaultAuthRepositoryTest {
     // --- AUTH-004: restoring and ending a session -------------------------------------------------
 
     @Test
-    fun `password recovery from an unreadable inventory unlocks only the recovered profile for this session`() = runTest {
+    fun `password recovery with an unreadable inventory unlocks one profile for this session`() = runTest {
         val profile = successfulSignIn()
         val inventory = File(context.filesDir, "locks").apply { writeText("unreadable inventory fixture") }
         try {

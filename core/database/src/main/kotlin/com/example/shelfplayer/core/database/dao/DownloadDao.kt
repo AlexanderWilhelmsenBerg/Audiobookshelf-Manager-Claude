@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.Flow
  * class.
  */
 @Dao
-interface DownloadDao {
+interface DownloadDao : DownloadManifestWrites {
 
     /**
      * Every download on the device, newest first — the storage screen's list.
@@ -61,40 +61,6 @@ interface DownloadDao {
     @Transaction
     @Query("$READ_MANIFEST WHERE state = 'Complete' ORDER BY updatedAt ASC")
     suspend fun completed(): List<DownloadedBookWithFiles>
-
-    @Upsert
-    suspend fun upsertBook(book: DownloadedBookEntity)
-
-    @Upsert
-    suspend fun upsertFiles(files: List<DownloadedFileEntity>)
-
-    @Update
-    suspend fun updatePlannedFile(file: DownloadedFileEntity): Int
-
-    @Transaction
-    suspend fun writeManifest(book: DownloadedBookEntity, files: List<DownloadedFileEntity>) {
-        upsertBook(book)
-        upsertFiles(files)
-    }
-
-    @Transaction
-    suspend fun repairManifest(book: DownloadedBookEntity, files: List<DownloadedFileEntity>) {
-        removeRetiredIncompleteFiles(book.bookKey)
-        writeManifest(book, files)
-    }
-
-    @Query(
-        """
-        DELETE FROM downloaded_files
-        WHERE bookKey = :bookKey AND state != 'Complete'
-            AND NOT EXISTS (
-                SELECT 1 FROM audio_tracks AS track
-                WHERE track.bookKey = :bookKey AND track.remoteFileId = downloaded_files.remoteFileId
-                    AND track.isExcluded = 0
-            )
-        """,
-    )
-    suspend fun removeRetiredIncompleteFiles(bookKey: String)
 
     /**
      * PRODUCT_SPEC DL-003 criterion 4 — a second profile asking for a book that is already here.
@@ -188,6 +154,43 @@ interface DownloadDao {
     /** What the storage screen puts at the top: how much of the device this is using. */
     @Query("SELECT COALESCE(SUM(downloadedBytes), 0) FROM downloaded_files")
     fun observeTotalBytes(): Flow<Long>
+}
+
+/** File mutations inherited by the single download DAO so preparation and publication share Room. */
+interface DownloadManifestWrites {
+    @Upsert
+    suspend fun upsertBook(book: DownloadedBookEntity)
+
+    @Upsert
+    suspend fun upsertFiles(files: List<DownloadedFileEntity>)
+
+    @Update
+    suspend fun updatePlannedFile(file: DownloadedFileEntity): Int
+
+    @Transaction
+    suspend fun writeManifest(book: DownloadedBookEntity, files: List<DownloadedFileEntity>) {
+        upsertBook(book)
+        upsertFiles(files)
+    }
+
+    @Transaction
+    suspend fun repairManifest(book: DownloadedBookEntity, files: List<DownloadedFileEntity>) {
+        removeRetiredIncompleteFiles(book.bookKey)
+        writeManifest(book, files)
+    }
+
+    @Query(
+        """
+        DELETE FROM downloaded_files
+        WHERE bookKey = :bookKey AND state != 'Complete'
+            AND NOT EXISTS (
+                SELECT 1 FROM audio_tracks AS track
+                WHERE track.bookKey = :bookKey AND track.remoteFileId = downloaded_files.remoteFileId
+                    AND track.isExcluded = 0
+            )
+        """,
+    )
+    suspend fun removeRetiredIncompleteFiles(bookKey: String)
 }
 
 /** One book's manifest and its files, which are never useful apart. */
