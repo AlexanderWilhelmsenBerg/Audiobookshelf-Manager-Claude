@@ -46,3 +46,25 @@ recorder code is unchanged.
    without a refresh loop. Do not invalidate a production refresh token just to stage this case.
 
 No device, physical playback or server acknowledgement acceptance is claimed by JVM/CI results.
+
+## Android 16 and Audiobookshelf 2.36.0 acceptance
+
+The API 36 emulator ran BookWave's local debug build from the cold-start candidate and played a
+generated audiobook on a disposable Audiobookshelf 2.36.0 server. Once playback was underway,
+the **Expire the access token** action replaced the app's access token while keeping its refresh
+token. Playback continued without a seek, profile switch, or new Play request.
+
+A loopback HTTP observer forwarded each request to Audiobookshelf and retained only method,
+route category, status, and whether the retried bytes matched the rejected write. The server
+returned these results in order.
+
+| Action | Server result |
+| --- | --- |
+| Periodic session sync with the expired access token | HTTP 401 |
+| Refresh exchange | HTTP 200 |
+| Retried periodic sync | HTTP 200 with the identical request body |
+| Final progress sync after Pause | HTTP 200 |
+
+The interval replay completed without an intervening authorize request. Offline-batch recovery,
+profile switches during renewal, and the refused-refresh case still need real-server acceptance.
+The software cases above cover their failure and retention rules.
