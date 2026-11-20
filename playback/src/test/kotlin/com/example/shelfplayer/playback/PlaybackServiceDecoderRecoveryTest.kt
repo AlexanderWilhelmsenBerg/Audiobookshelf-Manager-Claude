@@ -39,6 +39,7 @@ import org.robolectric.RuntimeEnvironment
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotSame
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration
@@ -68,7 +69,7 @@ class PlaybackServiceDecoderRecoveryTest {
             assertEquals(1.25f, replacement.playbackParameters.speed)
             assertTrue(replacement.playWhenReady)
 
-            fixture.controller.handleSetPlayWhenReady(false).get()
+            assertNull(fixture.controller.handleSetPlayWhenReady(false).get())
             assertTrue(replacement.playWhenReady)
         }
     }
@@ -120,7 +121,7 @@ class PlaybackServiceDecoderRecoveryTest {
             registry,
             volumeEffects = volume,
         )
-        val service = Robolectric.buildService(PlaybackService::class.java).get()
+        val service: PlaybackService = Robolectric.buildService(PlaybackService::class.java).get()
         val original = ExoPlayer.Builder(context).build()
         val replacements = mutableListOf<ExoPlayer>()
         val controller: ResumeFreshnessPlayer
