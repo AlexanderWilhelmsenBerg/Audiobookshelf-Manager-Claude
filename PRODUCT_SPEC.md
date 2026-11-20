@@ -381,17 +381,23 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 
 **Acceptance criteria**
 
-- Accounts with book metadata edit access can open Edit from an accessible series. Drag a row vertically
-  to reorder it, sideways onto a book to group parts, or sideways out of a group to promote it.
+- Accounts with book metadata edit access can open Edit from an accessible series. Book cards show their
+  covers. Drag a handle immediately or hold a card to pick it up. Vertical movement previews an insertion
+  between books. Grouping requires a deliberate rightward drag over the middle of another card.
+  Parts appear inside a shared frame. Its × separates all parts into individual books in their displayed
+  order. Dragging a single part left promotes just that part.
   The same actions are available through the row's reorder menu, including choosing a specific book or part for a group.
-- A missing book can occupy an explicit number. Placeholders are saved per profile and series on the device.
+- A + on each top-level boundary inserts a missing book there. It uses a free number when one exists
+  and shifts consecutive occupied numbers when necessary. Placeholders are saved per profile and series on the device.
   A real book with that number takes its place in the series view.
 - Save sends changed sequence values through the existing book metadata operation and preserves each book's
   other series memberships. After a partial save, users can retry the remaining changes or revise their draft.
   A later save can undo a confirmed change and checks the current sequence when a previous reply was ambiguous.
   If Audiobookshelf saves the order and the follow-up read fails, the series shows a refresh action that reads the
   affected books again without resubmitting the edits.
-- Placeholders can be saved offline. Book metadata edits require a connection and a current grant.
+- Undo reverses one draft edit at a time, including insertion and ungrouping. Cancel discards unsaved
+  edits. Confirmed and uncertain writes from a partial save remain accounted for in subsequent saves.
+- Placeholder-only changes can be saved offline. Changes that renumber real books require a connection and a current grant.
 
 ---
 

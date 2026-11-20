@@ -160,7 +160,7 @@ fun AppearanceDesignPreview() {
 }
 
 @Composable
-private fun PreviewTheme(design: BookWaveDesign, content: @Composable () -> Unit) {
+internal fun PreviewTheme(design: BookWaveDesign, content: @Composable () -> Unit) {
     val window = LocalActivity.current?.window
     val dark = isSystemInDarkTheme()
     SideEffect {

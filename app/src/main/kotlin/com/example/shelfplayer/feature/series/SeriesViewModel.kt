@@ -102,9 +102,15 @@ class SeriesViewModel @Inject constructor(
         if (editing.value?.saving != true) editing.value = null
     }
 
-    fun addMissing(number: Int) = changeOrder { it.addMissing(number) }
+    fun insertMissing(number: Int) = changeOrder { it.insertMissing(number) }
 
     fun removeMissing(number: Int) = changeOrder { it.removeMissing(number) }
+
+    fun ungroup(slotKey: String) = changeOrder { it.ungroup(slotKey) }
+
+    fun undo() {
+        editing.update { draft -> draft?.takeIf { it.owner == browse.value.owner }?.undo() ?: draft }
+    }
 
     fun move(from: SeriesOrderRow, to: SeriesOrderRow, move: SeriesOrderMove) = changeOrder { it.move(from, to, move) }
 
@@ -156,7 +162,7 @@ class SeriesViewModel @Inject constructor(
             if (draft == null || draft.saving || draft.owner != browse.value.owner) {
                 draft
             } else {
-                draft.copy(order = transform(draft.order), result = null)
+                draft.edit(transform(draft.order))
             }
         }
     }
@@ -190,8 +196,25 @@ data class SeriesEditorState(
     val initialMissing: Set<Int>,
     val saving: Boolean = false,
     val result: SeriesOrderSave? = null,
+    val history: List<SeriesOrder> = emptyList(),
 ) {
     val hasChanges: Boolean get() = order.changes.isNotEmpty() || order.missingBooks != initialMissing
+
+    internal fun edit(next: SeriesOrder): SeriesEditorState =
+        if (saving || next == order) this else copy(order = next, history = history + order, result = null)
+
+    internal fun undo(): SeriesEditorState {
+        val previous = history.lastOrNull() ?: return this
+        return if (saving) {
+            this
+        } else {
+            copy(
+                order = order.restoreLayout(previous),
+                history = history.dropLast(1),
+                result = null,
+            )
+        }
+    }
 }
 
 data class SeriesEditorActions(
@@ -199,7 +222,9 @@ data class SeriesEditorActions(
     val cancel: () -> Unit = {},
     val save: () -> Unit = {},
     val move: (SeriesOrderRow, SeriesOrderRow, SeriesOrderMove) -> Unit = { _, _, _ -> },
-    val addMissing: (Int) -> Unit = {},
+    val insertMissing: (Int) -> Unit = {},
+    val ungroup: (String) -> Unit = {},
+    val undo: () -> Unit = {},
     val removeMissing: (Int) -> Unit = {},
     val refresh: () -> Unit = {},
 )

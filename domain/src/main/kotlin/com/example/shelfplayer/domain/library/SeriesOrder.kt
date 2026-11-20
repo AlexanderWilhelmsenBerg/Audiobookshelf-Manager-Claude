@@ -9,6 +9,7 @@ data class SeriesOrder private constructor(
     val slots: List<SeriesOrderSlot>,
     private val originals: Map<LibraryItemId, String>,
     private val edited: Set<LibraryItemId> = emptySet(),
+    private val confirmed: Map<LibraryItemId, String> = emptyMap(),
     private val unconfirmed: Map<LibraryItemId, Set<String>> = emptyMap(),
 ) {
     val missingBooks: Set<Int>
@@ -16,10 +17,11 @@ data class SeriesOrder private constructor(
 
     val changes: List<SeriesSequenceChange>
         get() = assignments(slots).mapNotNull { (id, position) ->
-            val before = originals.getValue(id)
-            val assigned = position.sequence()
+            val original = originals.getValue(id)
+            val before = confirmed[id] ?: original
+            val assigned = if (id in edited) position.sequence() else original
             val attempted = unconfirmed[id].orEmpty()
-            if (id in edited && (before != assigned || attempted.isNotEmpty())) {
+            if (before != assigned || attempted.isNotEmpty()) {
                 SeriesSequenceChange(id, before, assigned, attempted)
             } else {
                 null
@@ -34,7 +36,27 @@ data class SeriesOrder private constructor(
         } else {
             pending + (uncertain.bookId to (pending[uncertain.bookId].orEmpty() + uncertain.after))
         }
-        return copy(originals = originals + confirmed, unconfirmed = attempted)
+        return copy(confirmed = this.confirmed + confirmed, unconfirmed = attempted)
+    }
+
+    /** Restore one draft step while retaining the latest evidence about server writes. */
+    fun restoreLayout(previous: SeriesOrder): SeriesOrder = copy(slots = previous.slots, edited = previous.edited)
+
+    fun insertMissing(number: Int): SeriesOrder {
+        if (number !in 1..MAX_BOOK_NUMBER) return this
+        val index = slots.indexOfFirst { it.number >= number }
+        if (index < 0 || slots[index].number != number) return addMissing(number)
+        return splice(index, 0, listOf(SeriesOrderSlot(number, SeriesSlotContent.Missing)))
+    }
+
+    fun ungroup(slotKey: String): SeriesOrder {
+        val index = slots.indexOfFirst { it.key == slotKey }
+        val slot = slots.getOrNull(index) ?: return this
+        val parts = slot.content as? SeriesSlotContent.Parts ?: return this
+        val books = parts.books.mapIndexed { offset, id ->
+            SeriesOrderSlot(slot.number + offset, SeriesSlotContent.Book(id))
+        }
+        return splice(index, 1, books)
     }
 
     fun addMissing(number: Int): SeriesOrder {
@@ -102,17 +124,25 @@ data class SeriesOrder private constructor(
     private fun outdent(source: Int, id: LibraryItemId): SeriesOrder {
         val slot = slots[source]
         if (slot.content !is SeriesSlotContent.Parts || id !in slot.content.books) return this
-        val before = slots.take(source)
         val parent = slot.without(id)
         val newNumber = if (parent == null) slot.number else slot.number + 1
         val newSlot = SeriesOrderSlot(newNumber, SeriesSlotContent.Book(id))
-        var last = newNumber
-        val after = slots.drop(source + 1).map { later ->
-            val moved = later.copy(number = later.number.coerceAtLeast(last + 1))
-            last = moved.number
-            moved
+        return splice(source, 1, listOfNotNull(parent, newSlot))
+    }
+
+    /** Shift only the contiguous occupied numbers following an insertion. */
+    private fun splice(index: Int, removed: Int, replacement: List<SeriesOrderSlot>): SeriesOrder {
+        var last = replacement.last().number
+        if (last > MAX_BOOK_NUMBER) return this
+        val updated = slots.take(index).toMutableList()
+        updated.addAll(replacement)
+        for (slot in slots.drop(index + removed)) {
+            val number = slot.number.coerceAtLeast(last + 1)
+            if (number != slot.number && number > MAX_BOOK_NUMBER) return this
+            updated.add(if (number == slot.number) slot else slot.copy(number = number))
+            last = number
         }
-        return update(before + listOfNotNull(parent, newSlot) + after)
+        return update(updated)
     }
 
     private fun update(updated: List<SeriesOrderSlot>): SeriesOrder {

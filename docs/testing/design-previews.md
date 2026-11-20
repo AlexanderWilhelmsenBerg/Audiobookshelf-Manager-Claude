@@ -47,6 +47,12 @@ Use fixture screenshots for shared design references. For a live-library capture
 ## Series Editor preview
 
 Launch `com.example.shelfplayer.design.SeriesEditorPreviewKt.SeriesEditorPreview` with the same ADB
-activity. The fixture has books 1, 2, 3 and 5 and a missing book at 4. Drag book 2 up and right onto
-book 1, reorder the two parts, and drag one part to the left to separate it. Tap a handle to exercise
-the reorder menu. The preview keeps edits in memory for the session.
+activity. The fixture starts with books 1, 2, 3 and 5. Tap the + between 3 and 5 to insert missing book
+4 and tap Undo to remove it. Drag a handle vertically to preview its insertion point. Hold a cover or
+title to pick up the same card. Move book 2 up and then right over the middle of book 1 until the target
+reads **Group as parts**. Release, then use the × in the group's upper corner to separate the parts.
+Try Undo, Cancel, and Save. Tap a handle to use the accessible reorder menu. The preview keeps its saved
+order in memory for the session.
+
+Android 16 captures show the [vertical insertion preview](design-screenshots/series-editor-reorder.png)
+and a [multipart group with a missing book below it](design-screenshots/series-editor-parts.png).

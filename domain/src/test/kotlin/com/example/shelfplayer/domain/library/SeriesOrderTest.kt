@@ -23,6 +23,38 @@ class SeriesOrderTest {
     }
 
     @Test
+    fun `inline insertion shifts contiguous books only and fills a natural gap without edits`() {
+        val original = order("1", "2", "3", "5")
+        val inserted = original.insertMissing(2)
+        assertEquals(setOf(2), inserted.missingBooks)
+        assertEquals(mapOf("b1" to "3", "b2" to "4"), inserted.changes.toWireValues())
+        assertTrue(original.insertMissing(4).changes.isEmpty())
+        assertEquals(original, inserted.restoreLayout(original))
+        val full = order("999999")
+        assertEquals(full, full.insertMissing(999999))
+    }
+
+    @Test
+    fun `dissolving a group preserves part order and all following books`() {
+        val group = order("4.01 (Part 1)", "4.02 (Part 2)", "4.03 (Part 3)", "5", "9")
+        val split = group.ungroup(group.slots.first().key)
+        assertEquals(listOf(4, 5, 6, 7, 9), split.slots.map { it.number })
+        assertEquals(listOf("b0", "b1", "b2", "b3", "b4"), split.slots.map { it.content.books.single().value })
+        assertEquals(group, split.restoreLayout(group))
+    }
+
+    @Test
+    fun `undo after a partial save keeps acknowledged and uncertain writes and restores original spelling`() {
+        val original = order("01", "2")
+        val moved = original.move(row(original, 1), row(original, 0), SeriesOrderMove.Reorder)
+        val partial = moved.recordSave(moved.changes.take(1), moved.changes.last())
+        val undo = partial.restoreLayout(original)
+        assertEquals(mapOf("b0" to "01", "b1" to "2"), undo.changes.toWireValues())
+        assertEquals("1", undo.changes.single { it.bookId.value == "b1" }.before)
+        assertEquals(setOf("2"), undo.changes.single { it.bookId.value == "b0" }.possibleBefore)
+    }
+
+    @Test
     fun `moving a book vertically changes the affected positions and leaves later numbers alone`() {
         val original = order("1", "2", "3", "5")
         val moved = original.move(row(original, 2), row(original, 0), SeriesOrderMove.Reorder)
