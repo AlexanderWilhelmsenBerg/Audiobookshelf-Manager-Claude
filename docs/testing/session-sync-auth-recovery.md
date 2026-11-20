@@ -65,6 +65,18 @@ returned these results in order.
 | Retried periodic sync | HTTP 200 with the identical request body |
 | Final progress sync after Pause | HTTP 200 |
 
-The interval replay completed without an intervening authorize request. Offline-batch recovery,
-profile switches during renewal, and the refused-refresh case still need real-server acceptance.
-The software cases above cover their failure and retention rules.
+The interval replay completed without an intervening authorize request. Offline-batch recovery
+and profile switches during renewal still need real-server acceptance.
+
+### Refused refresh
+
+In a separate run, the loopback observer substituted an intentionally invalid fixture
+credential only for the refresh exchange. Audiobookshelf itself returned HTTP 401. The
+prior build made four refresh requests as periodic sync and offline uploads continued to
+encounter authentication errors.
+
+With credential retirement enabled, the periodic write returned 401, the refresh exchange
+returned 401, and the next observation window contained one refresh request in total.
+The repository regression also checks that a restore keeps the profile marked for sign-in
+and that a temporary network failure preserves the saved credential. The progress repository
+tests cover retention of unsent writes across the refusal.

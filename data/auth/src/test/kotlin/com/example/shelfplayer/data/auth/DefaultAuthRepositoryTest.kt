@@ -438,14 +438,35 @@ class DefaultAuthRepositoryTest {
         assertEquals("ada", stored.username)
     }
 
-    /** PRODUCT_SPEC AUTH-004 — "the app never loops login requests": one attempt per call, no retry. */
     @Test
-    fun `a refused renewal is attempted exactly once`() = runTest {
+    fun `a rejected refresh cannot be renewed again or restored from storage`() = runTest {
         val profile = successfulSignIn()
         gateway.refreshResult = AppError.Authentication().asFailure()
 
+        val first = repository.renewSession(profile.id)
+        val next = repository.renewSession(profile.id)
+        val restoration = repository.restoreSession(profile.id)
+
+        assertEquals(1, gateway.refreshCalls.size)
+        assertEquals(AppResult.Success(SessionStatus.ReauthenticationRequired), first)
+        assertEquals(first, next)
+        assertEquals(first, restoration)
+        assertNull(tokens.current())
+        assertNull(tokens.accessTokenFor(profile.id))
+        assertNull(tokens.refreshTokenFor(profile.id))
+        assertTrue(assertNotNull(database.profileDao().findProfile(profile.id.value)).requiresReauthentication)
+    }
+
+    @Test
+    fun `a network failure during refresh keeps the original credential`() = runTest {
+        val profile = successfulSignIn()
+        val originalRefresh = tokens.refreshTokenFor(profile.id)
+        gateway.refreshResult = AppError.Network().asFailure()
+
         repository.renewSession(profile.id)
 
+        assertNotNull(originalRefresh)
+        assertEquals(originalRefresh, tokens.refreshTokenFor(profile.id))
         assertEquals(1, gateway.refreshCalls.size)
     }
 

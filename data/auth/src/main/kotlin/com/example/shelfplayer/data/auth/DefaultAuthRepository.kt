@@ -237,6 +237,9 @@ class DefaultAuthRepository @Inject constructor(
 
         when (val renewed = gateway.auth.refresh(baseUrl, refreshToken)) {
             is AppResult.Failure -> {
+                // A rejected refresh credential cannot recover on a later outbox attempt or app
+                // restart. Keep credentials for failures where the server could not validate them.
+                if (renewed.error is AppError.Authentication) sessionTokens.clear(profileId)
                 logger.info(
                     LogCategory.Auth,
                     "Session renewal was refused",
