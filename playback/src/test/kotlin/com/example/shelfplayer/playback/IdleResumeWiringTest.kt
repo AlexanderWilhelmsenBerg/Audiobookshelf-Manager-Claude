@@ -35,7 +35,7 @@ class IdleResumeWiringTest {
         )
         assertTrue("auto.heldResumeAfter(::refreshResumeAccount)" in postConnect)
         assertTrue("activeProfileId = auto::activeProfileId" in postConnect)
-        assertTrue("profileGeneration = auto::activeProfileGeneration" in postConnect)
+        assertTrue("profileGeneration = auto::stableActiveProfileGeneration" in postConnect)
         val restorerFactory = source
             .substringAfter("private fun carPostConnectRestorer(")
             .substringBefore("private suspend fun refreshResumeAccount")
@@ -53,11 +53,12 @@ class IdleResumeWiringTest {
         val source = serviceSource()
         val restorer = source.substringAfter("private fun carPostConnectRestorer(")
             .substringBefore("private suspend fun refreshResumeAccount")
-        assertTrue("prepareQueue(bookId, startAt = null)" in restorer)
-        assertTrue("bookChanges.acceptBook(prepared.session, authorized, install)" in restorer)
+        assertTrue("prepareQueue(owner, bookId, startAt = null)" in restorer)
+        assertTrue("bookChanges.acceptBook(prepared.session, authorized, install = install)" in restorer)
         val prepare = source.substringAfter("private suspend fun prepareQueue(")
             .substringBefore("private fun <T> future(")
-        assertTrue("bookChanges.onBookOpened" !in prepare)
+        assertTrue("openPlaybackSession(owner, bookId)" in prepare)
+        assertTrue("bookChanges.acceptBook" !in prepare)
     }
 
     @Test
