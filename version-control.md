@@ -80,7 +80,7 @@ This file is the quick answer to **“what version are we on, what is the newest
 | `androidxUiAutomator` | 2.4.0 | 2.4.0 | ✅ Current. | 7 | 2026-09-15 | [UI Automator releases](https://developer.android.com/jetpack/androidx/releases/test-uiautomator) |
 | `androidxWork` | 2.11.2 | 2.11.2 | ✅ Current. | 4 | 2026-09-15 | [WorkManager releases](https://developer.android.com/jetpack/androidx/releases/work) |
 | `composeBom` | 2025.06.01 | 2026.08.00 | ⛔ Large Compose jump; execute with Phase 3 platform/AGP compatibility and device UI regression coverage. | 3 | 2026-09-15 | [Compose BOM](https://developer.android.com/develop/ui/compose/bom) |
-| `media3` | 1.11.0 | 1.11.0 | ✅ Current. | 4 | 2026-09-15 | [Media3 releases](https://developer.android.com/jetpack/androidx/releases/media3) |
+| `media3` | 1.11.1 | 1.11.1 | ✅ Stable patch on compileSdk 36. Signed hardware acceptance covers decoder recovery, routing, Android Auto and downloaded audio. | 4 | 2026-11-21 | [Media3 1.11.1 release](https://developer.android.com/jetpack/androidx/releases/media3#1.11.1) |
 
 ## Dependency injection
 
