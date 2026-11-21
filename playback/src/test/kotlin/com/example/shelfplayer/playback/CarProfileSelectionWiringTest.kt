@@ -107,7 +107,7 @@ class CarProfileSelectionWiringTest {
 
         val guard = start.indexOf("if (!startPlaying && media.currentMediaItem.isRealBook())")
         assertTrue(guard >= 0, "start must guard an arm against a loaded real book")
-        assertTrue(guard < start.indexOf("bookChanges.onBookOpened"), "the guard precedes any book-change claim")
+        assertTrue(guard < start.indexOf("bookChanges.acceptBook("), "the guard precedes any book-change claim")
         assertTrue(guard < start.indexOf("media.setMediaItem("), "the guard precedes the player write")
     }
 
@@ -116,17 +116,17 @@ class CarProfileSelectionWiringTest {
     fun `scoped courtesy restore uses guarded session acceptance rather than eager BookChanges`() {
         val controller = controllerSource()
         val arm = controller.substringAfter("suspend fun armForProfile(").substringBefore("private suspend fun start(")
-        val scoped = controller.substringAfter("private suspend fun startScopedArm(")
-            .substringBefore("private suspend fun start(")
+        val start = controller.substringAfter("private suspend fun start(")
+            .substringBefore("private suspend fun playbackOpenResult(")
         val binding = File("../app/src/main/kotlin/com/example/shelfplayer/di/AppModule.kt").readText()
 
-        assertTrue("claim = RestoreClaim(profileId, generation)" in arm)
-        assertTrue("bookChanges.acceptBook(" in scoped)
-        assertTrue("stillAuthorized = {" in scoped)
-        assertTrue("stillCurrent(claim)" in scoped)
-        assertTrue("profileRepository.activeProfileGeneration() == claim.generation" in controller)
-        assertTrue("media.setMediaItem(" in scoped.substringAfter("install = {"))
-        assertFalse("media.play()" in scoped, "a profile switch must never start audio")
+        assertTrue("startPlaying = false, claim = PlaybackOpenOwner(profileId, generation)" in arm)
+        assertTrue("openPlaybackSession(owner, bookId)" in arm)
+        assertTrue("bookChanges.acceptBook(" in start)
+        assertTrue("owner.isCurrent(profileRepository)" in start.substringAfter("stillAuthorized = {"))
+        assertTrue("media.setMediaItem(" in start.substringAfter("initialPlayWillFollow = startPlaying,"))
+        assertTrue("if (startPlaying) media.play()" in start, "a profile switch must never start audio")
+        assertFalse("bookChanges.onBookOpened" in start)
         assertTrue("controller.armForProfile(bookId, profileId, generation)" in binding)
     }
 

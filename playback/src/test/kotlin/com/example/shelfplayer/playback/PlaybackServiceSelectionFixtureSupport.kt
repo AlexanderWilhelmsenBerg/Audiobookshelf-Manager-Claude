@@ -208,6 +208,7 @@ internal class PlaybackServiceSelectionFixtureSupport(
         val profiles = object : ProfileRepository by selectionFixtureUnused() {
             override suspend fun activeProfileId(): ProfileId? = profileId
             override fun activeProfileGeneration(): Long = 0L
+            override fun stableActiveProfileGeneration(): Long = activeProfileGeneration()
         }
         val library = object : LibraryRepository by selectionFixtureUnused() {
             override fun observeAccessibleBooks(profileId: ProfileId) = flowOf(listOf(book))
