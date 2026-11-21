@@ -36,7 +36,7 @@ This file is the quick answer to **“what version are we on, what is the newest
 
 | Component | Current in BookWave | Latest stable | Status / next action | Phase | Last checked | Authoritative source |
 | --- | --- | --- | --- | --- | --- | --- |
-| Gradle wrapper | 8.14.5 | 9.7.1 | 🎯 Current on the latest Gradle 8.14 maintenance release while ADR-0011 gates the Gradle 9 / AGP 9 foundation. The 8.14.5 binary distribution is SHA-256 pinned in the wrapper properties. | 1 | 2026-09-15 | [Gradle 8.14.5 release notes](https://docs.gradle.org/8.14.5/release-notes.html) |
+| Gradle wrapper | 8.14.8 | 9.9.2 | 🎯 Latest on the accepted 8.14 line. Includes the fixes for [GHSA-3cfg-jpcr-gfp3](https://github.com/gradle/gradle/security/advisories/GHSA-3cfg-jpcr-gfp3) and [GHSA-pcp8-98xm-c6pr](https://github.com/gradle/gradle/security/advisories/GHSA-pcp8-98xm-c6pr). ADR-0011 gates Gradle 9 and AGP 9. The distribution and wrapper JAR are SHA-256 pinned. | 1 | 2026-11-21 | [Gradle 8.14.8 release](https://github.com/gradle/gradle/releases/tag/v8.14.8) |
 | Android Gradle Plugin | 8.12.0 | 9.4.0 | ⛔ ADR-0011 requires stable detekt support for AGP 9 before this move. | 1 | 2026-09-15 | [AGP 9.4 release notes](https://developer.android.com/build/releases/agp-9-4-0-release-notes) |
 | Kotlin | 2.2.0 | 2.4.20 | ⛔ Re-resolve with the compiler/build foundation; detekt type-resolution compatibility remains part of the gate. | 2 | 2026-09-15 | [Kotlin releases](https://kotlinlang.org/docs/releases.html) |
 | KSP | 2.3.12 | 2.3.12 | ✅ Current; merged in PR #155. | 2 | 2026-09-15 | [KSP releases](https://github.com/google/ksp/releases) |
@@ -59,7 +59,7 @@ This file is the quick answer to **“what version are we on, what is the newest
 | Android command-line tools | build 15859902 | build 15859902 | ✅ Current pinned download/checksum. | 8 | 2026-09-15 | [Android Studio / command-line tools](https://developer.android.com/studio) |
 | Android Platform Tools | `sdkmanager "platform-tools"` (not exact-pinned) | 37.0.1 | ↔️ Dynamic. Phase 8 should decide whether to keep the SDK-manager moving package or record/pin a resolved revision. | 8 | 2026-09-15 | [Platform Tools release notes](https://developer.android.com/tools/releases/platform-tools) |
 | GitHub Android CI JDK | Java 17 via the digest-pinned Android image / `setup-java` major selection | Temurin 26.0.2.1 was the latest stable family checked on 2026-09-15 | 🎯 Java-17 verification lane. GitHub PR/main-seed jobs use the image; release/APK select Temurin 17. Keep the minimum/bytecode lane; a selected major is not an exact patch pin. | 8 | 2026-09-19 | [Gradle Java compatibility](https://docs.gradle.org/current/userguide/compatibility.html) |
-| Codex JDK | Temurin 21 major line | Temurin 26.0.2.1 | 🎯 JDK 21 is the newest fully verified BookWave baseline. Gradle 8.14.5 officially runs through Java 24; Java 25 requires Gradle 9.1+ and Java 26 requires Gradle 9.4+, so re-probe modern JDKs only after the gated build-foundation migration. | 8 | 2026-09-15 | [Gradle Java compatibility](https://docs.gradle.org/current/userguide/compatibility.html) |
+| Codex JDK | Temurin 21 major line | Temurin 26.0.2.1 | 🎯 JDK 21 is the newest fully verified BookWave baseline. Gradle 8.14 officially runs through Java 24; Java 25 requires Gradle 9.1+ and Java 26 requires Gradle 9.4+, so re-probe modern JDKs only after the gated build-foundation migration. | 8 | 2026-09-15 | [Gradle Java compatibility](https://docs.gradle.org/current/userguide/compatibility.html) |
 
 ## AndroidX, Jetpack and Compose
 
