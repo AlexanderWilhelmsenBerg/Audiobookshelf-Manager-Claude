@@ -35,16 +35,17 @@ internal class PlaybackCommandEffects(
     private val itemGeneration: () -> Long,
     private val isAttached: (Player) -> Boolean,
     private val protectOutput: (Player, Boolean, Boolean) -> ManualPlayProtection,
+    private val canRunDecoder: (Player) -> Boolean = { true },
 ) : PlaybackCommands {
     override fun prepare(current: Player, stillAuthorized: () -> Boolean, holdForSeek: Boolean): Boolean {
         val expectedItemGeneration = itemGeneration()
-        if (!isCurrent(current, expectedItemGeneration, stillAuthorized)) return false
+        if (!canActivate(current, expectedItemGeneration, stillAuthorized)) return false
         if (current.playWhenReady &&
             protectOutput(current, true, holdForSeek) == ManualPlayProtection.Denied
         ) {
             return false
         }
-        if (!isCurrent(current, expectedItemGeneration, stillAuthorized) ||
+        if (!canActivate(current, expectedItemGeneration, stillAuthorized) ||
             (holdForSeek && current.playWhenReady)
         ) {
             return false
@@ -55,14 +56,14 @@ internal class PlaybackCommandEffects(
 
     override fun play(current: Player, stillAuthorized: () -> Boolean, beforeRawPlay: () -> Unit): Boolean {
         val expectedItemGeneration = itemGeneration()
-        if (!isCurrent(current, expectedItemGeneration, stillAuthorized) ||
+        if (!canActivate(current, expectedItemGeneration, stillAuthorized) ||
             (!current.playWhenReady && protectOutput(current, true, false) == ManualPlayProtection.Denied)
         ) {
             return false
         }
-        if (!isCurrent(current, expectedItemGeneration, stillAuthorized)) return false
+        if (!canActivate(current, expectedItemGeneration, stillAuthorized)) return false
         beforeRawPlay()
-        if (!isCurrent(current, expectedItemGeneration, stillAuthorized)) return false
+        if (!canActivate(current, expectedItemGeneration, stillAuthorized)) return false
         current.play()
         return true
     }
@@ -104,6 +105,9 @@ internal class PlaybackCommandEffects(
     private fun isCurrent(current: Player, expectedItemGeneration: Long, stillAuthorized: () -> Boolean): Boolean =
         currentPlayer() === current && isAttached(current) &&
             itemGeneration() == expectedItemGeneration && stillAuthorized()
+
+    private fun canActivate(current: Player, expectedItemGeneration: Long, stillAuthorized: () -> Boolean): Boolean =
+        isCurrent(current, expectedItemGeneration, stillAuthorized) && canRunDecoder(current)
 
     private fun shouldRefuseInheritedPlayback(current: Player): Boolean {
         if (!current.playWhenReady) return false

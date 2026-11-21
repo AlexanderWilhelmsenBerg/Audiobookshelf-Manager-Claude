@@ -43,6 +43,16 @@ class PlaybackResumptionCallbacksTest {
     }
 
     @Test
+    fun `a fresh service starts playback at the remembered position`() = runTest {
+        val fixture = Fixture().apply { diagnostic.consumeForColdPlaybackResumption() }
+        val result = fixture.callback.forPlayback(fixture.resolution.capture())
+
+        assertEquals("resolved", result.mediaItems.single().mediaId)
+        assertEquals(42_000L, result.startPositionMs)
+        assertEquals(1, fixture.accepted)
+    }
+
+    @Test
     fun `locked cold playback opens nothing and creates no passive intent`() = runTest {
         val fixture = Fixture().apply { locked = true }
         assertTrue(fixture.callback.forPlayback(fixture.resolution.capture()).mediaItems.isEmpty())

@@ -414,6 +414,31 @@ class SleepTimerControllerTest {
     }
 
     @Test
+    fun `decoder replacement keeps the active timer frozen until audio resumes`() = runTest {
+        val clock = TestAppClock()
+        val controller = controller(FakeSleepTimerRepository(), FakeShakeSource(), clock)
+        val failed = player(playing = { true })
+        val replacement = player(playing = { false })
+        controller.attach(failed)
+        assertIs<AppResult.Success<Unit>>(controller.start(SleepTimerMode.Fixed(30.minutes)))
+        clock.advanceBy(5.minutes)
+
+        controller.replaceFailedPlayer(failed, replacement)
+        clock.advanceBy(1.minutes)
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        assertTrue(controller.state.value.isActive)
+        assertEquals(25.minutes, controller.state.value.remaining)
+        controller.onPlaybackChanged(true)
+        runCurrent()
+        clock.advanceBy(1.minutes)
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertEquals(24.minutes, controller.state.value.remaining)
+    }
+
+    @Test
     fun `manual sleep timer and history survive car focus pause without fabricated resume`() = runTest {
         val clock = TestAppClock()
         val repository = FakeSleepTimerRepository()

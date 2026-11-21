@@ -30,6 +30,7 @@ internal class PlaybackServiceFixtureSetup(
     private val dispatcher: CoroutineDispatcher,
     private val clock: TestAppClock,
     private val logger: Logger,
+    private val profiles: ProfileRepository = unusedPlaybackDependency(),
 ) {
     fun configure() {
         val context = org.robolectric.RuntimeEnvironment.getApplication()
@@ -63,7 +64,7 @@ internal class PlaybackServiceFixtureSetup(
         service.carConnections = CarConnections(clock)
         service.resumeFreshness = ResumeFreshnessCoordinator(
             unusedPlaybackDependency<PlaybackRepository>(),
-            unusedPlaybackDependency<ProfileRepository>(),
+            profiles,
             baseline,
             RealtimeProgressEvidenceStore(),
             logger,

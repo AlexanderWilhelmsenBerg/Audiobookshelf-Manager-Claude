@@ -314,33 +314,26 @@ class PlaybackController @Inject constructor(
     fun togglePlayPause() {
         applicationScope.launch(mainDispatcher) {
             val media = connect() ?: return@launch
-            when {
-                media.isPlaying -> media.pause()
-
-                media.needsPreparing() -> {
-                    media.prepare()
-                    media.play()
-                }
-
-                else -> media.play()
-            }
+            if (media.isPlaying) media.pause() else media.playOrResume()
         }
     }
 
     /**
      * PRODUCT_SPEC PLAY-001 — retry after a failure the service gave up on.
      *
-     * The service retries a transient error a few times on its own (see [PlaybackRecovery]); this is what
-     * the *user* presses when it has stopped trying. Same two calls, because there is only one way out of
-     * idle — the difference is who decided to take it.
+     * This is the same explicit Play request as the transport button. An empty, recreated session uses
+     * Media3's playback resumption callback to resolve the saved book and position.
      */
     fun retry() {
         applicationScope.launch(mainDispatcher) {
             val media = connect() ?: return@launch
-            if (media.mediaItemCount == 0) return@launch
-            media.prepare()
-            media.play()
+            media.playOrResume()
         }
+    }
+
+    private fun MediaController.playOrResume() {
+        if (mediaItemCount > 0 && needsPreparing()) prepare()
+        play()
     }
 
     /**
@@ -632,7 +625,11 @@ class PlaybackController @Inject constructor(
      */
     private suspend fun connect(): MediaController? = withContext(mainDispatcher) {
         connectionMutex.withLock {
-            controller?.let { return@withLock it }
+            controller?.let { current ->
+                if (current.isConnected) return@withLock current
+                connectionGeneration += 1
+                releaseCurrentController()
+            }
 
             val generation = connectionGeneration
             val built = connector.connect(sessionListener) ?: return@withLock null
