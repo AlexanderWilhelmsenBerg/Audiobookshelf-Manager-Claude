@@ -482,7 +482,7 @@ class SessionSyncCoordinatorTest {
             return AppResult.Success(SyncOutcome.Accepted)
         }
 
-        override suspend fun drainOutbox(): AppResult<Int> = AppResult.Success(0)
+        override suspend fun drainOutbox(profileId: ProfileId?): AppResult<Int> = AppResult.Success(0)
 
         override fun observeDiagnostics(): Flow<SessionSyncDiagnostics> = emptyFlow()
     }
@@ -525,7 +525,7 @@ class SessionSyncCoordinatorTest {
             return AppResult.Success(SyncOutcome.Accepted)
         }
 
-        override suspend fun drainOutbox(): AppResult<Int> = AppResult.Success(0)
+        override suspend fun drainOutbox(profileId: ProfileId?): AppResult<Int> = AppResult.Success(0)
 
         override fun observeDiagnostics(): Flow<SessionSyncDiagnostics> = emptyFlow()
     }

@@ -17,15 +17,8 @@ import kotlin.time.Duration
  * working when the first cannot reach the server at all.
  */
 interface PlaybackRepository {
-    /**
-     * PRODUCT_SPEC PLAY-001 — asks the server to open a session for [bookId], as the active profile.
-     *
-     * The profile is resolved here rather than passed in, unlike every read on [LibraryRepository]. The
-     * caller is a media service reacting to a transport control, and it has no profile to pass: a media
-     * button arrives with no idea who is signed in. Resolving it in one place is also what keeps a
-     * session from being opened for a profile that has since been switched away from (PRODUCT_SPEC 5.2).
-     */
-    suspend fun openSession(bookId: LibraryItemId): AppResult<PlaybackSession>
+    /** Opens a session for the captured account only while its selection generation is current. */
+    suspend fun openSession(owner: PlaybackOpenOwner, bookId: LibraryItemId): AppResult<PlaybackSession>
 
     /**
      * PRODUCT_SPEC PLAY-004 — records where the listener has got to, locally.

@@ -22,6 +22,7 @@ import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.DeviceRepository
 import com.example.shelfplayer.domain.repository.DownloadRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
+import com.example.shelfplayer.domain.repository.PlaybackOpenOwner
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.repository.RememberedBookRepository
@@ -207,6 +208,7 @@ internal class PlaybackServiceSelectionFixtureSupport(
         val profiles = object : ProfileRepository by selectionFixtureUnused() {
             override suspend fun activeProfileId(): ProfileId? = profileId
             override fun activeProfileGeneration(): Long = 0L
+            override fun stableActiveProfileGeneration(): Long = activeProfileGeneration()
         }
         val library = object : LibraryRepository by selectionFixtureUnused() {
             override fun observeAccessibleBooks(profileId: ProfileId) = flowOf(listOf(book))
@@ -238,7 +240,10 @@ internal class PlaybackServiceSelectionFixtureSupport(
     private fun createOpenPlaybackSession(ports: PostConnectRepositories) = OpenPlaybackSessionUseCase(
         ports.profiles,
         object : PlaybackRepository by selectionFixtureUnused() {
-            override suspend fun openSession(bookId: LibraryItemId): AppResult<PlaybackSession> {
+            override suspend fun openSession(
+                owner: PlaybackOpenOwner,
+                bookId: LibraryItemId,
+            ): AppResult<PlaybackSession> {
                 postConnectSessionOpens += 1
                 return AppResult.Failure(AppError.Network())
             }

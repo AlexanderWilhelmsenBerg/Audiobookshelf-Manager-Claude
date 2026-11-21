@@ -124,7 +124,7 @@ class PlaybackResumptionCallbacksTest {
             serviceOwner = { identity },
             activeProfileId = { PROFILE },
             isProfileLocked = { locked },
-            prepare = { _, _ ->
+            prepare = { _, _, _ ->
                 opened++
                 CarPostConnectRestorer.Prepared(
                     session(),

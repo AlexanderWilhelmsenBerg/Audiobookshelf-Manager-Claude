@@ -1,6 +1,7 @@
 package com.example.shelfplayer.domain.repository
 
 import com.example.shelfplayer.core.model.AppResult
+import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.SessionProgress
 import com.example.shelfplayer.core.model.playback.SessionSyncDiagnostics
@@ -85,9 +86,11 @@ interface SessionSyncRepository {
      * conflict rule working, not a failure, and retrying into it would be the app arguing with the server
      * (PLAY-004).
      *
+     * A playback open supplies its captured [profileId]. Background drains may resolve the current profile.
+     *
      * @return how many submitted snapshots the server accepted and the local outbox settled.
      */
-    suspend fun drainOutbox(): AppResult<Int>
+    suspend fun drainOutbox(profileId: ProfileId? = null): AppResult<Int>
 
     /**
      * PRODUCT_SPEC SET-002 (Privacy/diagnostics) — the outbox as numbers, for the active profile.

@@ -6,6 +6,7 @@ import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
+import com.example.shelfplayer.domain.repository.PlaybackOpenOwner
 
 /**
  * Issue #88 / #185 — installs the last book into an idle player once a car controller is connected.
@@ -20,7 +21,7 @@ import com.example.shelfplayer.core.model.library.PlaybackSession
  */
 internal class CarPostConnectRestorer(
     private val activeProfileId: suspend () -> ProfileId?,
-    private val profileGeneration: () -> Long,
+    private val profileGeneration: () -> Long?,
     private val isRequestCurrent: () -> Boolean = { true },
     private val commands: PlaybackCommands,
     private val isProfileLocked: suspend () -> Boolean,
@@ -28,13 +29,11 @@ internal class CarPostConnectRestorer(
     private val lastPlayedBookId: suspend () -> LibraryItemId?,
     /** The metadata-only holder for the resume candidate, after one allowed account refresh. */
     private val heldResume: suspend () -> AutoLibrary.HeldResume?,
-    private val openQueue: suspend (LibraryItemId) -> Prepared?,
+    private val openQueue: suspend (PlaybackOpenOwner, LibraryItemId) -> Prepared?,
     private val acceptQueue: suspend (Prepared, suspend () -> Boolean, () -> Unit) -> Boolean,
     private val observer: Observer,
 ) {
     data class Prepared(val session: PlaybackSession, val queue: MediaItems.Queue)
-
-    private data class Claim(val profileId: ProfileId, val profileGeneration: Long)
 
     /** Diagnostics seam; implementations must not affect behaviour. */
     interface Observer {
@@ -46,9 +45,9 @@ internal class CarPostConnectRestorer(
 
     /** Applies the policy [action] to [current]. Named `restore` so it never reads as the scope function. */
     suspend fun restore(action: AutoStartAction, current: Player) {
-        val generation = profileGeneration()
+        val generation = profileGeneration() ?: return
         val profileId = activeProfileId() ?: return
-        val claim = Claim(profileId, generation)
+        val claim = PlaybackOpenOwner(profileId, generation)
         if (superseded(current, claim)) return
         when (action) {
             AutoStartAction.ArmAndPlay -> startLastBook(current, claim, play = true)
@@ -65,7 +64,7 @@ internal class CarPostConnectRestorer(
     }
 
     /** Loads the last played book, playing it or leaving it paused. Silent when there is nothing to load. */
-    private suspend fun startLastBook(current: Player, claim: Claim, play: Boolean) {
+    private suspend fun startLastBook(current: Player, claim: PlaybackOpenOwner, play: Boolean) {
         val bookId = lastPlayedBookId()
         if (bookId == null) {
             observer.note("Android Auto post-connect found no resumable book", null)
@@ -75,7 +74,7 @@ internal class CarPostConnectRestorer(
             observer.note("Android Auto post-connect playable install was superseded", current)
             return
         }
-        val prepared = openQueue(bookId)
+        val prepared = openQueue(claim, bookId)
         if (prepared == null) {
             observer.note("Android Auto post-connect could not open the resume queue", null)
             return
@@ -93,7 +92,7 @@ internal class CarPostConnectRestorer(
         }
     }
 
-    private fun install(current: Player, claim: Claim, queue: MediaItems.Queue, play: Boolean): Boolean {
+    private fun install(current: Player, claim: PlaybackOpenOwner, queue: MediaItems.Queue, play: Boolean): Boolean {
         observer.installing(
             direction = "installing",
             item = queue.item,
@@ -107,10 +106,10 @@ internal class CarPostConnectRestorer(
             item = queue.item,
             startPositionMs = queue.startPositionMs,
             authorizedBeforeInstall = {
-                profileGeneration() == claim.profileGeneration && isRequestCurrent() && current.mediaItemCount == 0
+                profileGeneration() == claim.generation && isRequestCurrent() && current.mediaItemCount == 0
             },
             stillAuthorizedAfterInstall = {
-                profileGeneration() == claim.profileGeneration && isRequestCurrent() &&
+                profileGeneration() == claim.generation && isRequestCurrent() &&
                     current.currentMediaItem == queue.item
             },
             startPlaying = play,
@@ -122,7 +121,7 @@ internal class CarPostConnectRestorer(
      *
      * The second profile/lock/emptiness check is after the possible account reconcile.
      */
-    private suspend fun holdLastBook(current: Player, claim: Claim) {
+    private suspend fun holdLastBook(current: Player, claim: PlaybackOpenOwner) {
         val held = heldResume()
         if (held == null) {
             observer.note("Android Auto held resume candidate was empty", null)
@@ -142,19 +141,19 @@ internal class CarPostConnectRestorer(
             held.item,
             held.startPositionMs,
             authorizedBeforeInstall = {
-                profileGeneration() == claim.profileGeneration && isRequestCurrent() && current.mediaItemCount == 0
+                profileGeneration() == claim.generation && isRequestCurrent() && current.mediaItemCount == 0
             },
             stillAuthorizedAfterInstall = {
-                profileGeneration() == claim.profileGeneration && isRequestCurrent()
+                profileGeneration() == claim.generation && isRequestCurrent()
             },
         )
         if (installed) observer.note("A car connected and the last book was held for display", current)
     }
 
-    private suspend fun superseded(current: Player, claim: Claim): Boolean {
+    private suspend fun superseded(current: Player, claim: PlaybackOpenOwner): Boolean {
         // Check the lock after the identity lookup, which can suspend while the profile becomes locked.
         val validProfile = activeProfileId() == claim.profileId && !isProfileLocked()
-        val validRequest = profileGeneration() == claim.profileGeneration && isRequestCurrent()
+        val validRequest = profileGeneration() == claim.generation && isRequestCurrent()
         return !validProfile || !validRequest || current.mediaItemCount > 0
     }
 }

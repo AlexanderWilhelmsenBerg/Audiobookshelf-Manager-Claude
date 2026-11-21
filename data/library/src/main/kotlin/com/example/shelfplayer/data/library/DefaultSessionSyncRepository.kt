@@ -243,21 +243,22 @@ constructor(
         }
     }
 
-    override suspend fun drainOutbox(): AppResult<Int> = withContext(ioDispatcher) {
-        drainGate.withLock { drainActiveProfile() }
+    override suspend fun drainOutbox(profileId: ProfileId?): AppResult<Int> = withContext(ioDispatcher) {
+        drainGate.withLock {
+            val owner = profileId ?: activeProfile()?.profileId?.let(::ProfileId)
+            if (owner == null) AppResult.Failure(AppError.Authentication()) else drainProfile(owner)
+        }
     }
 
-    private suspend fun drainActiveProfile(): AppResult<Int> {
-        val profile = activeProfile() ?: return AppResult.Failure(AppError.Authentication())
+    private suspend fun drainProfile(profileId: ProfileId): AppResult<Int> {
         // A session left `Open` by a process death is finalized before the drain rather than skipped. Nobody
         // is coming back to it in this process, and leaving it open is how it would sit in the table forever.
-        outbox.closeOpen(profile.profileId, SessionOutboxState.OPEN, SessionOutboxState.PENDING)
-        val queued = outbox.pending(profile.profileId, SessionOutboxState.SYNCED, BATCH_SIZE)
+        outbox.closeOpen(profileId.value, SessionOutboxState.OPEN, SessionOutboxState.PENDING)
+        val queued = outbox.pending(profileId.value, SessionOutboxState.SYNCED, BATCH_SIZE)
         if (queued.isEmpty()) {
             compact()
             return AppResult.Success(0)
         }
-        val profileId = ProfileId(profile.profileId)
         val sessions = queued.map { row -> row.toOfflineSession() }
         val startedAt = clock.now()
         val uploaded = requests.upload(profileId, sessions)

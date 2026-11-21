@@ -175,6 +175,25 @@ internal class DefaultSessionSyncRepositoryTest : SessionSyncRepositoryFixture()
         assertEquals(SessionOutboxState.SYNCED, assertNotNull(database.sessionOutboxDao().find(sessionId)).state)
     }
 
+    @Test
+    fun `a captured playback drain never adopts the new active profile`() = runTest {
+        val sessionId = openId(remoteSessionId = null)
+        repository.closeSession(
+            sessionId,
+            SessionProgress(position = 5.minutes, duration = 6.hours, timeListened = 5.minutes),
+            clock.now(),
+            SyncTrigger.ServiceShutdown,
+        )
+        settings.setActiveProfile(ProfileId("other-profile"))
+        gateway.offlineResults = { sessions -> sessions.map { OfflineSessionResult(it.id, true, true) } }
+
+        val drained = repository.drainOutbox(profileId)
+
+        assertEquals(1, assertIs<AppResult.Success<Int>>(drained).value)
+        assertEquals(listOf(profileId), gateway.offlineProfiles)
+        assertEquals(listOf(sessionId), gateway.uploaded.single().map { it.id })
+    }
+
     /**
      * PRODUCT_SPEC PLAY-005 — "retrying a session sync is idempotent".
      *

@@ -1,7 +1,9 @@
 package com.example.shelfplayer.playback
 
+import androidx.media3.common.MediaItem
 import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
+import com.example.shelfplayer.domain.repository.PlaybackOpenOwner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -18,17 +20,17 @@ import kotlin.time.Duration
  */
 internal class ControllerQueueResolution(
     private val commandGeneration: () -> Long,
-    private val profileGeneration: () -> Long,
+    private val profileGeneration: () -> Long?,
     private val explicitSelectionSequence: () -> Long,
     private val serviceOwner: () -> Any?,
     private val activeProfileId: suspend () -> ProfileId?,
     private val isProfileLocked: suspend () -> Boolean,
-    private val prepare: suspend (LibraryItemId, Duration?) -> CarPostConnectRestorer.Prepared?,
+    private val prepare: suspend (PlaybackOpenOwner, LibraryItemId, Duration?) -> CarPostConnectRestorer.Prepared?,
     private val accept: suspend (CarPostConnectRestorer.Prepared, suspend () -> Boolean, () -> Unit) -> Boolean,
 ) {
     class Claim internal constructor(
         internal val commandGeneration: Long,
-        internal val profileGeneration: Long,
+        internal val profileGeneration: Long?,
         internal val selectionSequence: Long,
         internal val owner: Any?,
     )
@@ -41,10 +43,16 @@ internal class ControllerQueueResolution(
     }
 
     /** Check before and after other suspending candidate reads, not only after `/play`. */
-    suspend fun requireCurrent(claim: Claim): ProfileId {
-        val profile = activeProfileId()
-        if (profile == null || !isCurrent(claim, profile)) superseded()
-        return profile
+    suspend fun requireCurrent(claim: Claim): PlaybackOpenOwner {
+        val profile = activeProfileId() ?: superseded()
+        val generation = claim.profileGeneration ?: superseded()
+        if (!isCurrent(claim, profile)) superseded()
+        return PlaybackOpenOwner(profile, generation)
+    }
+
+    fun requireItemOwner(item: MediaItem, owner: PlaybackOpenOwner) {
+        val generation = item.requestMetadata.extras?.getLong(MediaItems.KEY_OPEN_PROFILE_GENERATION, -1L)
+        if (MediaItems.ownerOf(item) != owner.profileId || generation != owner.generation) superseded()
     }
 
     suspend fun resolve(claim: Claim, bookId: LibraryItemId, startAt: Duration?): MediaItems.Queue? {
@@ -59,12 +67,12 @@ internal class ControllerQueueResolution(
         bookId: LibraryItemId,
         startAt: Duration?,
     ): CarPostConnectRestorer.Prepared? {
-        val profile = requireCurrent(claim)
-        val prepared = prepare(bookId, startAt)
+        val owner = requireCurrent(claim)
+        val prepared = prepare(owner, bookId, startAt)
         // A failed network request is still stale if Stop or a different request won while it failed.
         requireCurrent(claim)
         if (prepared == null) return null
-        if (prepared.session.profileId != profile) superseded()
+        if (prepared.session.profileId != owner.profileId) superseded()
         return prepared
     }
 

@@ -24,8 +24,10 @@ import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.core.model.playback.FinishedThreshold
 import com.example.shelfplayer.core.model.playback.ServerProgress
 import com.example.shelfplayer.core.network.gateway.AudiobookshelfGateway
+import com.example.shelfplayer.domain.repository.PlaybackOpenOwner
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.playbackProfileChanged
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -84,18 +86,14 @@ class DefaultPlaybackRepository @Inject constructor(
      * itself: a user whose session expired needs to be told, and silently playing on would hide it until the
      * next sync lost their progress.
      */
-    override suspend fun openSession(bookId: LibraryItemId): AppResult<PlaybackSession> {
-        val profileId = profileRepository.activeProfileId()
-            ?: return AppResult.Failure(
-                AppError.Authentication(
-                    summary = "Sign in to a server before playing.",
-                    requiresReauthentication = false,
-                ),
-            )
+    override suspend fun openSession(owner: PlaybackOpenOwner, bookId: LibraryItemId): AppResult<PlaybackSession> {
+        val profileId = owner.profileId
         val serverId = profileDao.findProfile(profileId.value)?.serverId?.let(::ServerId)
         val manifest = serverId?.let { downloads.sessions.manifestFor(it, bookId) }
 
+        if (!owner.isCurrent(profileRepository)) return playbackProfileChanged()
         val opened = gateway.playback.openSession(profileId, bookId)
+        if (!owner.isCurrent(profileRepository)) return playbackProfileChanged()
         if (opened is AppResult.Success) {
             clearFinishedIfRestarting(profileId, bookId, opened.value.startAt)
             return AppResult.Success(downloads.sessions.localise(opened.value, manifest))

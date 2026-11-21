@@ -55,7 +55,9 @@ import com.example.shelfplayer.domain.playback.ResumeBaseline
 import com.example.shelfplayer.domain.repository.BookmarkRepository
 import com.example.shelfplayer.domain.repository.DeviceRepository
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
+import com.example.shelfplayer.domain.repository.PlaybackOpenOwner
 import com.example.shelfplayer.domain.repository.PlaybackRepository
+import com.example.shelfplayer.domain.repository.playbackProfileChanged
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.domain.usecase.OpenPlaybackSessionUseCase
@@ -335,7 +337,7 @@ class PlaybackService : MediaLibraryService() {
             explicitSelectionSequence = ::currentExplicitSelectionSequence,
             commands = playbackCommandEffects,
             acceptPrepared = { prepared, authorized, install ->
-                bookChanges.acceptBook(prepared.session, authorized, install)
+                bookChanges.acceptBook(prepared.session, authorized, install = install)
             },
         )
     }
@@ -726,7 +728,7 @@ class PlaybackService : MediaLibraryService() {
 
             // A lookup and /play can both suspend. Do not announce a new session until the same listener
             // intent, profile and empty player have won the guarded, main-thread commit.
-            val prepared = prepareQueue(book.id, startAt = null) ?: return
+            val prepared = prepareQueue(PlaybackOpenOwner(profileId, claim.profile), book.id, startAt = null) ?: return
             if (prepared.session.profileId != profileId) return
             deferredWork.installIfCurrent(
                 claim = claim,
@@ -1458,7 +1460,7 @@ class PlaybackService : MediaLibraryService() {
         val profileId = target.profileId
         if (profileId == null || !stillAuthorized() || lock.isActiveProfileLocked()) return false
         val claim = withContext(mainDispatcher) { deferredWork.capture() } ?: return false
-        val prepared = prepareQueue(target.bookId, startAt = null)
+        val prepared = prepareQueue(PlaybackOpenOwner(profileId, claim.profile), target.bookId, startAt = null)
         return prepared != null && installMaterializedResume(target, prepared, claim, stillAuthorized)
     }
 
@@ -2853,14 +2855,14 @@ class PlaybackService : MediaLibraryService() {
     private val controllerQueueResolution by lazy {
         ControllerQueueResolution(
             commandGeneration = { controllerCommandGeneration },
-            profileGeneration = auto::activeProfileGeneration,
+            profileGeneration = auto::stableActiveProfileGeneration,
             explicitSelectionSequence = ::currentExplicitSelectionSequence,
             serviceOwner = { player.takeIf { scope.isActive } },
             activeProfileId = auto::activeProfileId,
             isProfileLocked = lock::isActiveProfileLocked,
             prepare = ::prepareQueue,
             accept = { prepared, authorized, install ->
-                bookChanges.acceptBook(prepared.session, authorized, install)
+                bookChanges.acceptBook(prepared.session, authorized, install = install)
             },
         )
     }
@@ -2907,7 +2909,7 @@ class PlaybackService : MediaLibraryService() {
 
         // Do not publish a session for an automatic candidate before it wins. Both the next-book lookup
         // and /play may suspend while the listener chooses a different book from phone or Android Auto.
-        val prepared = prepareQueue(next.id, startAt = null) ?: return
+        val prepared = prepareQueue(PlaybackOpenOwner(profileId, claim.profile), next.id, startAt = null) ?: return
         if (prepared.session.profileId != profileId ||
             MediaItems.ownerOf(claim.item)?.let { it != profileId } == true
         ) {
@@ -2927,29 +2929,34 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /** Resolves media without publishing a book change; car restore owns a later guarded acceptance. */
-    private suspend fun prepareQueue(bookId: LibraryItemId, startAt: Duration?): CarPostConnectRestorer.Prepared? =
-        when (val opened = openPlaybackSession(bookId)) {
-            is AppResult.Failure -> {
+    private suspend fun prepareQueue(
+        owner: PlaybackOpenOwner,
+        bookId: LibraryItemId,
+        startAt: Duration?,
+    ): CarPostConnectRestorer.Prepared? = when (val opened = openPlaybackSession(owner, bookId)) {
+        is AppResult.Failure -> {
+            if (opened != playbackProfileChanged()) {
                 logger.warn(
                     LogCategory.Playback,
                     "Could not open a session for a browse or resume request",
                     LogField.Public("error", opened.error.code),
                 )
                 reportSessionFailureToControllers(opened.error)
-                null
             }
-
-            is AppResult.Success -> {
-                val playbackSession = opened.value
-                val queue = MediaItems.queueFor(playbackSession)
-                val positioned = if (startAt == null) {
-                    queue
-                } else {
-                    queue.copy(startPositionMs = startAt.inWholeMilliseconds.coerceAtLeast(0))
-                }
-                CarPostConnectRestorer.Prepared(playbackSession, positioned)
-            }
+            null
         }
+
+        is AppResult.Success -> {
+            val playbackSession = opened.value
+            val queue = MediaItems.queueFor(playbackSession)
+            val positioned = if (startAt == null) {
+                queue
+            } else {
+                queue.copy(startPositionMs = startAt.inWholeMilliseconds.coerceAtLeast(0))
+            }
+            CarPostConnectRestorer.Prepared(playbackSession, positioned)
+        }
+    }
 
     private fun <T> future(block: suspend () -> T): ListenableFuture<T> = callbackFutures.submit(block)
 
@@ -3111,10 +3118,11 @@ class PlaybackService : MediaLibraryService() {
             if (!onControllerCommand(ResumeInvalidation.MediaChanged)) return Futures.immediateCancelledFuture()
             val claim = controllerQueueResolution.capture()
             return future {
-                controllerQueueResolution.requireCurrent(claim)
+                val owner = controllerQueueResolution.requireCurrent(claim)
                 val trusted = controller.isThisApplication()
                 val matches = mediaItems.mapNotNull { item ->
                     if (trusted && MediaItems.isReadyToPlay(item)) {
+                        controllerQueueResolution.requireItemOwner(item, owner)
                         Triple(item, item, null)
                     } else {
                         AutoLibrary.resolve(item.mediaId)?.let { target ->
@@ -3229,7 +3237,7 @@ class PlaybackService : MediaLibraryService() {
             trace: AndroidAutoTraceRecorder.Trace?,
             claim: ControllerQueueResolution.Claim,
         ): MediaSession.MediaItemsWithStartPosition {
-            controllerQueueResolution.requireCurrent(claim)
+            val owner = controllerQueueResolution.requireCurrent(claim)
             val spokenRequest = mediaItems
                 .firstNotNullOfOrNull { item -> item.requestMetadata.searchQuery?.let { q -> item to q } }
                 ?.takeIf { session.mayBrowse(controller) }
@@ -3249,7 +3257,8 @@ class PlaybackService : MediaLibraryService() {
 
                 controller.isThisApplication() &&
                     mediaItems.isNotEmpty() &&
-                    mediaItems.all(MediaItems::isReadyToPlay) ->
+                    mediaItems.all(MediaItems::isReadyToPlay) -> {
+                    mediaItems.forEach { controllerQueueResolution.requireItemOwner(it, owner) }
                     Selection(
                         branch = "passthrough",
                         resolved = true,
@@ -3260,6 +3269,7 @@ class PlaybackService : MediaLibraryService() {
                             startPositionMs,
                         ),
                     )
+                }
 
                 else ->
                     mediaItems
@@ -3645,7 +3655,7 @@ class PlaybackService : MediaLibraryService() {
             selectionSequence: Long,
         ): CarPostConnectRestorer = CarPostConnectRestorer(
             activeProfileId = auto::activeProfileId,
-            profileGeneration = auto::activeProfileGeneration,
+            profileGeneration = auto::stableActiveProfileGeneration,
             isRequestCurrent = {
                 controllerCommandGeneration == requestGeneration &&
                     currentExplicitSelectionSequence() == selectionSequence
@@ -3654,9 +3664,9 @@ class PlaybackService : MediaLibraryService() {
             isProfileLocked = lock::isActiveProfileLocked,
             lastPlayedBookId = { auto.lastPlayedAfter(::refreshResumeAccount)?.id },
             heldResume = { auto.heldResumeAfter(::refreshResumeAccount) },
-            openQueue = { bookId -> prepareQueue(bookId, startAt = null) },
+            openQueue = { owner, bookId -> prepareQueue(owner, bookId, startAt = null) },
             acceptQueue = { prepared, authorized, install ->
-                bookChanges.acceptBook(prepared.session, authorized, install)
+                bookChanges.acceptBook(prepared.session, authorized, install = install)
             },
             observer = object : CarPostConnectRestorer.Observer {
                 override fun note(message: String, player: Player?) {

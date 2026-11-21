@@ -5,8 +5,11 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.ProfileId
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.core.model.playback.AcknowledgedPause
+import com.example.shelfplayer.domain.repository.PlaybackOpenOwner
 import com.example.shelfplayer.domain.repository.PlaybackRepository
+import com.example.shelfplayer.domain.repository.ProfileRepository
 import com.example.shelfplayer.domain.repository.SessionSyncRepository
+import com.example.shelfplayer.domain.repository.playbackProfileChanged
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration
@@ -27,10 +30,12 @@ import kotlin.time.Duration
 class RefreshingPlaybackRepository @Inject constructor(
     private val delegate: DefaultPlaybackRepository,
     private val sessionSync: SessionSyncRepository,
+    private val profiles: ProfileRepository,
 ) : PlaybackRepository {
-    override suspend fun openSession(bookId: LibraryItemId): AppResult<PlaybackSession> {
-        sessionSync.drainOutbox()
-        return delegate.openSession(bookId)
+    override suspend fun openSession(owner: PlaybackOpenOwner, bookId: LibraryItemId): AppResult<PlaybackSession> {
+        if (!owner.isCurrent(profiles)) return playbackProfileChanged()
+        sessionSync.drainOutbox(owner.profileId)
+        return delegate.openSession(owner, bookId)
     }
 
     override suspend fun recordPosition(

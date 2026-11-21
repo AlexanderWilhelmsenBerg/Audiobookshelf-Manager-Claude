@@ -39,56 +39,18 @@ class BookChanges @Inject internal constructor(
     private val listeningHistory: ListeningHistoryRecorder,
 ) {
     /**
-     * A session has been opened for a book. Called before the player is handed the item.
-     *
-     * The outbox row is written first, deliberately: a session recorded only once playback succeeded would
-     * lose the listening of a book that started and then hit a network error (PLAY-005). This is suspending
-     * because "written first" must be an ordering guarantee, not a coroutine scheduled for later.
-     *
-     * A **server-backed** `/play` start position is staged after that durable-session request and before
-     * Media3 sees the item. `PlaybackService.onMediaItemTransition` promotes it into an acknowledged baseline,
-     * because that transition is the first point where both halves are true: the server chose the position
-     * and the player actually owns the incoming book. A blank session id means an offline/local session; its
-     * `startAt` is cached local progress and must never be promoted as server agreement.
-     *
-     * A single-file fallback also stages `null`. Its player position is file-relative while the server
-     * position is book-relative, so claiming they agree would create exactly the false evidence SYNC-002
-     * avoids.
-     *
-     * [initialPlayWillFollow] is true only for the direct [PlaybackController] path where opening the server
-     * session and immediately issuing Play are the same BookWave action. That lets the coordinator mint the
-     * one-shot first-Play exemption introduced by PR #93. Service-owned queue opens deliberately use the
-     * default `false`: browse/arm paths may remain paused, and cold Media3 playback resumption must let the
-     * loaded-item Play enter [ResumeFreshnessCoordinator] because the newly opened `/play` position can be
-     * stale or zero. This flag therefore describes a proven direct-play contract, not merely an expectation
-     * that some later Play will happen.
+     * Commits durable session bookkeeping before publishing the new book to the player.
+     * Only a direct phone Play gets the one-shot freshness exemption for its just-opened session.
      */
-    suspend fun onBookOpened(session: PlaybackSession, initialPlayWillFollow: Boolean = false) {
-        listeningHistory.onBookOpened(session.bookId, session.chapters, session.startAt, session.profileId)
-        sessionSync.onSessionOpened(session)
-        resumeBaseline.stageServerPosition(
-            bookId = session.bookId,
-            position = session.serverAcknowledgedStartPosition(),
-        )
-        // Issue #91 — keep the remote ABS session id service-side so realtime evidence can reject
-        // BookWave's own sync echo without exposing that identifier through MediaMetadata extras.
-        resumeFreshness.onSessionOpened(
-            session = session,
-            initialPlayWillFollow = initialPlayWillFollow,
-        )
-        sleepTimer.onBookChanged(session.chapters)
-        autoRewind.onBookChanged(session.chapters)
-    }
-
-    /** R-115 — a prepared car queue has no live book/timer/session authority until this guarded commit. */
     internal suspend fun acceptBook(
         session: PlaybackSession,
         stillAuthorized: suspend () -> Boolean,
+        initialPlayWillFollow: Boolean = false,
         install: () -> Unit,
     ): Boolean = sessionSync.acceptSession(session, stillAuthorized) {
         listeningHistory.onBookOpened(session.bookId, session.chapters, session.startAt, session.profileId)
         resumeBaseline.stageServerPosition(session.bookId, session.serverAcknowledgedStartPosition())
-        resumeFreshness.onSessionOpenedImmediately(session)
+        resumeFreshness.onSessionOpenedImmediately(session, initialPlayWillFollow)
         sleepTimer.onBookChangedImmediately(session.chapters)
         autoRewind.onBookChanged(session.chapters)
         install()

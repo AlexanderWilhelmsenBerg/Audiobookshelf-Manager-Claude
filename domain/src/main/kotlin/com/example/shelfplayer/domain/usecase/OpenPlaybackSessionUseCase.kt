@@ -6,8 +6,11 @@ import com.example.shelfplayer.core.model.LibraryItemId
 import com.example.shelfplayer.core.model.library.PlaybackSession
 import com.example.shelfplayer.domain.library.SeriesDisplayLabel
 import com.example.shelfplayer.domain.repository.LibraryRepository
+import com.example.shelfplayer.domain.repository.PlaybackOpenOwner
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.capturePlaybackOpenOwner
+import com.example.shelfplayer.domain.repository.playbackProfileChanged
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
@@ -31,22 +34,36 @@ class OpenPlaybackSessionUseCase @Inject constructor(
     private val renewSession: RenewProfileSessionUseCase,
     private val requireReauthentication: RequireProfileReauthenticationUseCase,
 ) {
-    suspend operator fun invoke(bookId: LibraryItemId): AppResult<PlaybackSession> {
-        val profileId = profiles.activeProfileId()
-        val first = playback.openSession(bookId)
-        val renewed =
-            profileId != null &&
-                first is AppResult.Failure &&
-                first.error is AppError.Authentication &&
-                profiles.activeProfileId() == profileId &&
-                renewSession(profileId)
-        val canRetry = renewed && profiles.activeProfileId() == profileId
-        if (!canRetry) return enrichDisplayMetadata(first)
-        val retried = playback.openSession(bookId)
-        if (retried is AppResult.Failure && retried.error is AppError.Authentication) {
-            requireReauthentication(profileId)
+    suspend operator fun invoke(bookId: LibraryItemId): AppResult<PlaybackSession> =
+        when (val owner = profiles.capturePlaybackOpenOwner()) {
+            is AppResult.Failure -> owner
+            is AppResult.Success -> invoke(owner.value, bookId)
         }
-        return enrichDisplayMetadata(retried)
+
+    suspend operator fun invoke(owner: PlaybackOpenOwner, bookId: LibraryItemId): AppResult<PlaybackSession> {
+        if (!owner.isCurrent(profiles)) return playbackProfileChanged()
+        val first = playback.openSession(owner, bookId)
+        if (!owner.isCurrent(profiles)) return playbackProfileChanged()
+        val result = if (first is AppResult.Failure && first.error is AppError.Authentication) {
+            retryAfterRenewal(owner, bookId, first)
+        } else {
+            first
+        }
+        val enriched = enrichDisplayMetadata(result)
+        return if (owner.isCurrent(profiles)) enriched else playbackProfileChanged()
+    }
+
+    private suspend fun retryAfterRenewal(
+        owner: PlaybackOpenOwner,
+        bookId: LibraryItemId,
+        first: AppResult.Failure,
+    ): AppResult<PlaybackSession> {
+        if (!renewSession(owner.profileId) || !owner.isCurrent(profiles)) return first
+        val retried = playback.openSession(owner, bookId)
+        if (retried is AppResult.Failure && retried.error is AppError.Authentication && owner.isCurrent(profiles)) {
+            requireReauthentication(owner.profileId)
+        }
+        return retried
     }
 
     private suspend fun enrichDisplayMetadata(result: AppResult<PlaybackSession>): AppResult<PlaybackSession> {

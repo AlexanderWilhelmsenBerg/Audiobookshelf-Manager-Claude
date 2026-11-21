@@ -634,7 +634,7 @@ internal class FakeSessionSync : SessionSyncRepository {
         trigger: SyncTrigger,
     ): AppResult<SyncOutcome> = AppResult.Success(SyncOutcome.Accepted)
 
-    override suspend fun drainOutbox(): AppResult<Int> = AppResult.Success(0)
+    override suspend fun drainOutbox(profileId: ProfileId?): AppResult<Int> = AppResult.Success(0)
 }
 
 internal class FakeSleepTimers : SleepTimerRepository {
