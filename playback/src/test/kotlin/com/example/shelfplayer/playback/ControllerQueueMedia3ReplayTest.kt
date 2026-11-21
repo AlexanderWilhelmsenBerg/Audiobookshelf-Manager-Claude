@@ -149,7 +149,7 @@ class ControllerQueueMedia3ReplayTest {
             serviceOwner = { player },
             activeProfileId = { PROFILE },
             isProfileLocked = { false },
-            prepare = { _, _ ->
+            prepare = { _, _, _ ->
                 prepared++
                 release.await()
                 CarPostConnectRestorer.Prepared(session(), MediaItems.Queue(item("old-answer"), 42_000L))

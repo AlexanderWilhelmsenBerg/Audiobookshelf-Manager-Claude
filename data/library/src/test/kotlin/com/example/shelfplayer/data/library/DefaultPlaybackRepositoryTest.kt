@@ -37,6 +37,7 @@ import com.example.shelfplayer.core.testing.RecordingLogSink
 import com.example.shelfplayer.core.testing.TestAppClock
 import com.example.shelfplayer.domain.download.SmartDownload
 import com.example.shelfplayer.domain.repository.DownloadRepository
+import com.example.shelfplayer.domain.repository.PlaybackOpenOwner
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -284,15 +285,28 @@ class DefaultPlaybackRepositoryTest {
             openedAtStart(requestedProfile, requestedBook)
         }
 
-        val opening = async(start = CoroutineStart.UNDISPATCHED) { repository.openSession(BOOK) }
+        val opening =
+            async(start = CoroutineStart.UNDISPATCHED) {
+                repository.openSession(PlaybackOpenOwner(profileId, profiles.activeProfileGeneration()), BOOK)
+            }
         reachedGateway.await()
         profiles.setActiveProfile(OTHER_PROFILE)
         completeGateway.complete(Unit)
 
-        val result = assertIs<AppResult.Success<PlaybackSession>>(opening.await())
-        assertEquals(profileId, result.value.profileId, "the response still belongs to outgoing A")
+        assertIs<AppError.Conflict>(assertIs<AppResult.Failure>(opening.await()).error)
         val after = database.progressDao().findProgress(OTHER_PROFILE.value, key)
         assertEquals(before, after, "a late A session must never modify B's finished flag or position")
+    }
+
+    @Test
+    fun `a stale playback owner is rejected before contacting the server`() = runTest {
+        val owner = PlaybackOpenOwner(profileId, profiles.activeProfileGeneration())
+        profiles.setActiveProfile(OTHER_PROFILE)
+        serverProgress.openSessionOverride = { _, _ -> error("A stale request must never reach /play") }
+
+        val result = repository.openSession(owner, BOOK)
+
+        assertIs<AppError.Conflict>(assertIs<AppResult.Failure>(result).error)
     }
 
     /** The protection above must not disable intentional same-profile restart/un-finish behavior. */
@@ -304,7 +318,10 @@ class DefaultPlaybackRepositoryTest {
         assertTrue(storedProgress().isFinished)
         serverProgress.openSessionOverride = { owner, book -> openedAtStart(owner, book) }
 
-        val result = assertIs<AppResult.Success<PlaybackSession>>(repository.openSession(BOOK))
+        val result =
+            assertIs<AppResult.Success<PlaybackSession>>(
+                repository.openSession(PlaybackOpenOwner(profileId, profiles.activeProfileGeneration()), BOOK),
+            )
 
         assertEquals(profileId, result.value.profileId)
         assertFalse(storedProgress().isFinished, "restart from 0:00 must clear the owner's finished flag")
@@ -315,7 +332,7 @@ class DefaultPlaybackRepositoryTest {
         seedStaleMultipartDownload()
         serverProgress.openSessionOverride = { _, _ -> AppResult.Failure(AppError.Network()) }
 
-        val result = repository.openSession(BOOK)
+        val result = repository.openSession(PlaybackOpenOwner(profileId, profiles.activeProfileGeneration()), BOOK)
 
         assertIs<AppError.Network>(assertIs<AppResult.Failure>(result).error)
     }
@@ -325,7 +342,9 @@ class DefaultPlaybackRepositoryTest {
         val local = seedStaleMultipartDownload(excludeMiddle = true)
         serverProgress.openSessionOverride = { _, _ -> AppResult.Failure(AppError.Network()) }
 
-        val session = assertIs<AppResult.Success<PlaybackSession>>(repository.openSession(BOOK)).value
+        val session = assertIs<AppResult.Success<PlaybackSession>>(
+            repository.openSession(PlaybackOpenOwner(profileId, profiles.activeProfileGeneration()), BOOK),
+        ).value
 
         assertEquals("", session.id)
         assertEquals(listOf(0, 1, 2), session.tracks.map { it.index })
@@ -349,7 +368,9 @@ class DefaultPlaybackRepositoryTest {
         }
         serverProgress.openSessionOverride = { _, _ -> AppResult.Success(base.copy(tracks = tracks)) }
 
-        val session = assertIs<AppResult.Success<PlaybackSession>>(repository.openSession(BOOK)).value
+        val session = assertIs<AppResult.Success<PlaybackSession>>(
+            repository.openSession(PlaybackOpenOwner(profileId, profiles.activeProfileGeneration()), BOOK),
+        ).value
 
         assertEquals(listOf(local[0], tracks[1].url, local[2]), session.tracks.map { it.url })
     }

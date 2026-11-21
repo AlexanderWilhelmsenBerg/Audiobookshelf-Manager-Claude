@@ -26,9 +26,12 @@ import com.example.shelfplayer.core.model.playback.PlaybackEvent
 import com.example.shelfplayer.core.model.playback.PlaybackSpeed
 import com.example.shelfplayer.domain.playback.GlobalTimeline
 import com.example.shelfplayer.domain.repository.PlaybackHistoryRepository
+import com.example.shelfplayer.domain.repository.PlaybackOpenOwner
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
+import com.example.shelfplayer.domain.repository.capturePlaybackOpenOwner
+import com.example.shelfplayer.domain.repository.playbackProfileChanged
 import com.example.shelfplayer.domain.usecase.OpenPlaybackSessionUseCase
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -184,121 +187,93 @@ class PlaybackController @Inject constructor(
 
     /** AUTH-002 — the profile switch's courtesy arm; the claim survives the async /play request. */
     suspend fun armForProfile(bookId: LibraryItemId, profileId: ProfileId, generation: Long): AppResult<Unit> =
-        open(bookId, startPlaying = false, claim = RestoreClaim(profileId, generation))
-
-    private data class RestoreClaim(val profileId: ProfileId, val generation: Long)
-
-    private suspend fun stillCurrent(claim: RestoreClaim): Boolean =
-        profileRepository.activeProfileId() == claim.profileId &&
-            profileRepository.activeProfileGeneration() == claim.generation
+        open(bookId, startPlaying = false, claim = PlaybackOpenOwner(profileId, generation))
 
     private suspend fun open(
         bookId: LibraryItemId,
         startPlaying: Boolean,
-        claim: RestoreClaim? = null,
+        claim: PlaybackOpenOwner? = null,
     ): AppResult<Unit> {
-        if (claim != null && !stillCurrent(claim)) return AppResult.Success(Unit)
-        _state.value = _state.value.copy(isLoading = true)
-        return when (val opened = openPlaybackSession(bookId)) {
-            is AppResult.Failure -> {
-                _state.value = _state.value.copy(isLoading = false)
-                opened
-            }
+        val captured = claim?.let { AppResult.Success(it) } ?: profileRepository.capturePlaybackOpenOwner()
+        if (captured is AppResult.Failure) return captured
+        val owner = (captured as AppResult.Success).value
+        if (claim != null && !owner.isCurrent(profileRepository)) return AppResult.Success(Unit)
 
-            is AppResult.Success -> {
-                if (claim == null) start(opened.value, startPlaying) else startScopedArm(opened.value, claim)
+        _state.value = _state.value.copy(isLoading = true)
+        val result = try {
+            when (val opened = openPlaybackSession(owner, bookId)) {
+                is AppResult.Failure -> opened
+                is AppResult.Success -> start(opened.value, owner, startPlaying)
             }
+        } finally {
+            _state.value = _state.value.copy(isLoading = false)
+        }
+        return if (claim != null && result is AppResult.Failure && result.error is AppError.Conflict) {
+            AppResult.Success(Unit)
+        } else {
+            result
         }
     }
 
-    /**
-     * AUTH-002 / R-115 — suspended courtesy work cannot make live claims until the account and
-     * generation are current at the final Main-thread commit. Reuse the existing SessionSync owner.
-     */
-    private suspend fun startScopedArm(session: PlaybackSession, claim: RestoreClaim): AppResult<Unit> =
-        withContext(mainDispatcher) {
-            if (session.profileId != claim.profileId || !stillCurrent(claim)) {
-                _state.value = _state.value.copy(isLoading = false)
-                return@withContext AppResult.Success(Unit)
-            }
-            val media = connect() ?: return@withContext AppResult.Failure(
-                AppError.Playback(summary = "The player could not be started.", isRetryable = true),
-            )
-            if (media.currentMediaItem.isRealBook() || !stillCurrent(claim)) {
-                _state.value = _state.value.copy(isLoading = false)
-                return@withContext AppResult.Success(Unit)
-            }
-            val speed = playbackSettings.speedFor(session.bookId).value
-            val queue = MediaItems.queueFor(session)
-            bookChanges.acceptBook(
-                session = session,
-                stillAuthorized = {
-                    controller === media && !media.currentMediaItem.isRealBook() && stillCurrent(claim)
-                },
-                install = {
-                    chapters = session.chapters
-                    lastChapter = null
-                    media.setMediaItem(queue.item, queue.startPositionMs)
-                    media.setPlaybackSpeed(speed)
-                    media.prepare()
-                },
-            )
-            _state.value = _state.value.copy(isLoading = false)
-            AppResult.Success(Unit)
+    /** A paused arm may replace a resume placeholder, but never an already loaded book. */
+    private suspend fun start(
+        session: PlaybackSession,
+        owner: PlaybackOpenOwner,
+        startPlaying: Boolean,
+    ): AppResult<Unit> = withContext(mainDispatcher) {
+        val media = connect() ?: return@withContext AppResult.Failure(
+            AppError.Playback(summary = "The player could not be started.", isRetryable = true),
+        )
+        if (session.profileId != owner.profileId || !owner.isCurrent(profileRepository)) {
+            return@withContext playbackProfileChanged()
         }
+        if (!startPlaying && media.currentMediaItem.isRealBook()) return@withContext AppResult.Success(Unit)
 
-    /**
-     * Opens [session] in the player.
-     *
-     * An arm (`startPlaying == false`) never replaces a real book that is already loaded: arming is a courtesy
-     * that can finish after a network round trip, by which time the listener may have started something else,
-     * and replacing it would also play the wrong book. Only the metadata-only resume placeholder is replaced.
-     */
-    private suspend fun start(session: PlaybackSession, startPlaying: Boolean): AppResult<Unit> =
-        withContext(mainDispatcher) {
-            val media = connect() ?: return@withContext AppResult.Failure(
-                AppError.Playback(summary = "The player could not be started.", isRetryable = true),
-            )
-            if (!startPlaying && media.currentMediaItem.isRealBook()) {
-                _state.value = _state.value.copy(isLoading = false)
-                return@withContext AppResult.Success(Unit)
-            }
-            // PRODUCT_SPEC PLAY-004 / PLAY-008 / PLAY-009 — the sleep timer, the outbox and auto-rewind all need
-            // to know, in that order. See [BookChanges]; the chapters travel to them here rather than in the
-            // playlist, because a long book's list in every `MediaItem`'s extras would be tens of kilobytes
-            // across the binder to answer one question. `startPlaying` also tells BookChanges whether the
-            // fresh server session's immediate first Play is part of this same action or whether this is an arm.
-            bookChanges.onBookOpened(session, initialPlayWillFollow = startPlaying)
+        val speed = playbackSettings.speedFor(session.bookId).value
+        val queue = MediaItems.queueFor(session, openProfileGeneration = owner.generation)
+        val installed = bookChanges.acceptBook(
+            session = session,
+            stillAuthorized = {
+                owner.isCurrent(profileRepository) && controller === media && media.isConnected &&
+                    (startPlaying || !media.currentMediaItem.isRealBook())
+            },
+            initialPlayWillFollow = startPlaying,
+        ) {
             chapters = session.chapters
             lastChapter = null
-            // ADR-0016 — one item for the whole book, and the resume point is a book position because the
-            // player's timeline is the book. `BookMediaSourceFactory` turns the item into the concatenation.
-            val queue = MediaItems.queueFor(session)
             media.setMediaItem(queue.item, queue.startPositionMs)
-            // PRODUCT_SPEC PLAY-007 — the book's own speed if it has one, the profile default otherwise, applied
-            // before `prepare` so the first second plays at the right rate rather than snapping a moment later.
-            media.setPlaybackSpeed(playbackSettings.speedFor(session.bookId).value)
+            media.setPlaybackSpeed(speed)
             media.prepare()
             if (startPlaying) media.play()
-            // PRODUCT_SPEC PLAY-003 — the one history entry with no "from": there was no before.
-            //
-            // Only for a book that is actually playing. Arming one on app open is not listening, and recording
-            // it would put a Resume in the history for every launch of a build set to restore.
-            if (startPlaying) {
-                applicationScope.launch {
-                    history.record(
-                        session.bookId,
-                        PlaybackEvent.Resume,
-                        from = null,
-                        to = session.startAt,
-                        // PRODUCT_SPEC 6.5 — the session says whose it is, so a launch that outlives a
-                        // profile switch still files the entry against the account that opened the book.
-                        owner = session.profileId,
-                    )
-                }
-            }
-            AppResult.Success(Unit)
         }
+        playbackOpenResult(session, owner, startPlaying, installed)
+    }
+
+    private suspend fun playbackOpenResult(
+        session: PlaybackSession,
+        owner: PlaybackOpenOwner,
+        startPlaying: Boolean,
+        installed: Boolean,
+    ): AppResult<Unit> {
+        if (!installed && !owner.isCurrent(profileRepository)) return playbackProfileChanged()
+        if (!installed && startPlaying) {
+            return AppResult.Failure(
+                AppError.Playback(summary = "The session could not be started.", isRetryable = true),
+            )
+        }
+        if (installed && startPlaying) {
+            applicationScope.launch {
+                history.record(
+                    session.bookId,
+                    PlaybackEvent.Resume,
+                    from = null,
+                    to = session.startAt,
+                    owner = session.profileId,
+                )
+            }
+        }
+        return AppResult.Success(Unit)
+    }
 
     private fun MediaItem?.isRealBook(): Boolean = this != null && !MediaItems.isResumePlaceholder(this)
 

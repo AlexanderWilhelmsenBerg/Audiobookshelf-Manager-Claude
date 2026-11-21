@@ -27,6 +27,21 @@ import kotlin.time.Duration.Companion.seconds
 @RunWith(RobolectricTestRunner::class)
 class ControllerQueueResolutionTest {
     @Test
+    fun `a ready phone item must match the current profile and generation`() = runTest {
+        val fixture = Fixture()
+        val owner = fixture.owner.requireCurrent(fixture.owner.capture())
+        val current = MediaItems.queueFor(session(PROFILE), openProfileGeneration = owner.generation).item
+        fixture.owner.requireItemOwner(current, owner)
+
+        fixture.profileGeneration += 2
+        val reselected = fixture.owner.requireCurrent(fixture.owner.capture())
+        assertFailsWith<CancellationException> { fixture.owner.requireItemOwner(current, reselected) }
+
+        val otherProfile = MediaItems.queueFor(session(ProfileId("other")), reselected.generation).item
+        assertFailsWith<CancellationException> { fixture.owner.requireItemOwner(otherProfile, reselected) }
+    }
+
+    @Test
     fun `cancellation during durable preparation revokes publication without a generation change`() = runTest {
         val fixture = Fixture()
         fixture.beforeAccept = { currentCoroutineContext().cancel() }
@@ -186,7 +201,7 @@ class ControllerQueueResolutionTest {
             serviceOwner = { serviceOwner },
             activeProfileId = { PROFILE },
             isProfileLocked = { locked },
-            prepare = { _, _ ->
+            prepare = { _, _, _ ->
                 prepared++
                 beforePrepare()
                 if (missing) {

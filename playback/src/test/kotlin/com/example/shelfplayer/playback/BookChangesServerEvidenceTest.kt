@@ -69,7 +69,7 @@ class BookChangesServerEvidenceTest {
         val baseline = ResumeBaseline()
         val changes = bookChanges(baseline).changes
 
-        changes.onBookOpened(session(id = ""))
+        assertTrue(changes.acceptBook(session(id = ""), { true }) {})
         baseline.onBookClosed()
 
         assertNull(baseline.acknowledged(BOOK))
@@ -80,7 +80,7 @@ class BookChangesServerEvidenceTest {
         val baseline = ResumeBaseline()
         val changes = bookChanges(baseline).changes
 
-        changes.onBookOpened(session(id = "remote-session"))
+        assertTrue(changes.acceptBook(session(id = "remote-session"), { true }) {})
         baseline.onBookClosed()
 
         assertEquals(START, baseline.acknowledged(BOOK)?.position)
@@ -100,7 +100,7 @@ class BookChangesServerEvidenceTest {
                 // Model audible playback; this case verifies commit ordering rather than decoding.
                 override fun isPlaying(): Boolean = true
             })
-            boundary.changes.onBookOpened(old)
+            assertTrue(boundary.changes.acceptBook(old, { true }) {})
             baseline.onBookClosed()
             boundary.timer.start(SleepTimerMode.Fixed(15.minutes))
             val oldTimer = boundary.timer.state.value
@@ -141,7 +141,7 @@ class BookChangesServerEvidenceTest {
             boundary.timer.attach(object : ForwardingPlayer(player) {
                 override fun isPlaying(): Boolean = true
             })
-            boundary.changes.onBookOpened(old)
+            assertTrue(boundary.changes.acceptBook(old, { true }) {})
             boundary.timer.start(SleepTimerMode.Fixed(15.minutes))
             assertTrue(boundary.timer.state.value != SleepTimerState.Idle)
             val incoming = session("remote", LibraryItemId("book-b"))
@@ -296,7 +296,7 @@ class BookChangesServerEvidenceTest {
             return AppResult.Success(SyncOutcome.Accepted)
         }
 
-        override suspend fun drainOutbox(): AppResult<Int> = AppResult.Success(0)
+        override suspend fun drainOutbox(profileId: ProfileId?): AppResult<Int> = AppResult.Success(0)
 
         override fun observeDiagnostics(): Flow<SessionSyncDiagnostics> = emptyFlow()
     }

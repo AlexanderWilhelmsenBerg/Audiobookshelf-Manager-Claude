@@ -15,6 +15,7 @@ import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.domain.FakeLibraryRepository
 import com.example.shelfplayer.domain.repository.AuthRepository
 import com.example.shelfplayer.domain.repository.LibraryRepository
+import com.example.shelfplayer.domain.repository.PlaybackOpenOwner
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.flow.Flow
@@ -102,20 +103,49 @@ class OpenPlaybackSessionUseCaseTest {
         assertEquals(null, opened.value.author)
     }
 
+    @Test
+    fun `switching away and back while opening discards the session`() = runTest {
+        val profiles = FakeProfileRepository(profile)
+        val playback = FakePlaybackRepository(AppResult.Success(session())).apply {
+            beforeReply = {
+                profiles.setActiveProfile(ProfileId("profile-b"))
+                profiles.setActiveProfile(profile)
+            }
+        }
+
+        val result = opener(playback, FakeAuthRepository(SessionStatus.Active), profiles = profiles)(book)
+
+        assertIs<AppError.Conflict>(assertIs<AppResult.Failure>(result).error)
+        assertEquals(1, playback.openCalls)
+    }
+
+    @Test
+    fun `a profile switch during renewal prevents retry`() = runTest {
+        val profiles = FakeProfileRepository(profile)
+        val playback = FakePlaybackRepository(AppResult.Failure(authentication()))
+        val auth = FakeAuthRepository(SessionStatus.Active).apply {
+            beforeRenewal = { profiles.setActiveProfile(ProfileId("profile-b")) }
+        }
+
+        val result = opener(playback, auth, profiles = profiles)(book)
+
+        assertIs<AppError.Conflict>(assertIs<AppResult.Failure>(result).error)
+        assertEquals(1, playback.openCalls)
+        assertEquals(1, auth.renewCalls)
+    }
+
     private fun opener(
         playback: PlaybackRepository,
         auth: FakeAuthRepository,
         library: LibraryRepository = FakeLibraryRepository(),
-    ): OpenPlaybackSessionUseCase {
-        val profiles = FakeProfileRepository(profile)
-        return OpenPlaybackSessionUseCase(
-            profiles = profiles,
-            playback = playback,
-            library = library,
-            renewSession = RenewProfileSessionUseCase(auth),
-            requireReauthentication = RequireProfileReauthenticationUseCase(auth),
-        )
-    }
+        profiles: ProfileRepository = FakeProfileRepository(profile),
+    ): OpenPlaybackSessionUseCase = OpenPlaybackSessionUseCase(
+        profiles = profiles,
+        playback = playback,
+        library = library,
+        renewSession = RenewProfileSessionUseCase(auth),
+        requireReauthentication = RequireProfileReauthenticationUseCase(auth),
+    )
 
     private fun authentication() = AppError.Authentication(
         summary = "Session expired.",
@@ -137,11 +167,13 @@ class OpenPlaybackSessionUseCaseTest {
 
     private class FakePlaybackRepository(vararg results: AppResult<PlaybackSession>) : PlaybackRepository {
         private val answers = ArrayDeque(results.toList())
+        var beforeReply: suspend () -> Unit = {}
         var openCalls = 0
             private set
 
-        override suspend fun openSession(bookId: LibraryItemId): AppResult<PlaybackSession> {
+        override suspend fun openSession(owner: PlaybackOpenOwner, bookId: LibraryItemId): AppResult<PlaybackSession> {
             openCalls += 1
+            beforeReply()
             return answers.removeFirst()
         }
 
@@ -166,17 +198,21 @@ class OpenPlaybackSessionUseCaseTest {
     }
 
     private class FakeProfileRepository(private var active: ProfileId?) : ProfileRepository {
+        private var generation = 0L
         override fun observeProfiles(): Flow<List<Profile>> = flowOf(emptyList())
         override fun observeServers(): Flow<List<Server>> = flowOf(emptyList())
         override fun observeActiveProfile(): Flow<Profile?> = flowOf(null)
         override suspend fun activeProfileId(): ProfileId? = active
+        override fun activeProfileGeneration(): Long = generation
         override suspend fun setActiveProfile(profileId: ProfileId): AppResult<Unit> {
             active = profileId
+            generation += 1
             return AppResult.Success(Unit)
         }
     }
 
     private class FakeAuthRepository(private val renewalStatus: SessionStatus) : AuthRepository {
+        var beforeRenewal: suspend () -> Unit = {}
         var renewCalls = 0
             private set
         var requireReauthenticationCalls = 0
@@ -184,6 +220,7 @@ class OpenPlaybackSessionUseCaseTest {
 
         override suspend fun renewSession(profileId: ProfileId): AppResult<SessionStatus> {
             renewCalls += 1
+            beforeRenewal()
             return AppResult.Success(renewalStatus)
         }
 

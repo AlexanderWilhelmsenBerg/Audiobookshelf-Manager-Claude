@@ -66,6 +66,8 @@ object MediaItems {
      */
     const val KEY_OWNER_PROFILE_ID = "com.example.shelfplayer.playback.OWNER_PROFILE_ID"
 
+    internal const val KEY_OPEN_PROFILE_GENERATION = "com.example.shelfplayer.playback.OPEN_PROFILE_GENERATION"
+
     /**
      * Issue #88 — true only for a metadata-only item held so Android system surfaces have a last book.
      *
@@ -87,7 +89,7 @@ object MediaItems {
      * book, which is the whole point of ADR-0016.
      */
 
-    fun queueFor(session: PlaybackSession): Queue {
+    fun queueFor(session: PlaybackSession, openProfileGeneration: Long? = null): Queue {
         val tracks = session.playableTracks
         val durations = recoveredDurations(session)
         val seriesLabel = session.seriesLabel?.takeIf(String::isNotBlank)
@@ -102,6 +104,15 @@ object MediaItems {
         }
         val item = MediaItem.Builder()
             .setMediaId(session.bookId.value)
+            .apply {
+                if (openProfileGeneration != null) {
+                    setRequestMetadata(
+                        MediaItem.RequestMetadata.Builder()
+                            .setExtras(Bundle().apply { putLong(KEY_OPEN_PROFILE_GENERATION, openProfileGeneration) })
+                            .build(),
+                    )
+                }
+            }
             // The first track's URI, so an item that somehow reaches a plain media source factory still plays
             // *something* of the right book rather than failing to resolve. The concatenation replaces it.
             .setUri(tracks.firstOrNull()?.url)

@@ -16,6 +16,7 @@ import com.example.shelfplayer.core.model.playback.AcknowledgedPause
 import com.example.shelfplayer.core.model.playback.ExternalSessionCheck
 import com.example.shelfplayer.domain.playback.ResumeBaseline
 import com.example.shelfplayer.domain.realtime.RealtimeProgressEvidenceStore
+import com.example.shelfplayer.domain.repository.PlaybackOpenOwner
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.ProfileRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -266,7 +267,8 @@ class ColdPlaybackResumptionFreshnessTest {
     private class FakePlaybackRepository(
         private val check: suspend (LibraryItemId, AcknowledgedPause?) -> ExternalSessionCheck,
     ) : PlaybackRepository {
-        override suspend fun openSession(bookId: LibraryItemId): AppResult<PlaybackSession> = error("unused")
+        override suspend fun openSession(owner: PlaybackOpenOwner, bookId: LibraryItemId): AppResult<PlaybackSession> =
+            error("unused")
 
         override suspend fun recordPosition(
             bookId: LibraryItemId,

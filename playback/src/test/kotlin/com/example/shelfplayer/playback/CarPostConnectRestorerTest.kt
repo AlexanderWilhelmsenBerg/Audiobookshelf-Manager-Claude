@@ -96,7 +96,7 @@ class CarPostConnectRestorerTest {
         isProfileLocked = { locked },
         lastPlayedBookId = lastPlayed,
         heldResume = heldResume,
-        openQueue = { bookId -> openQueue(bookId)?.let { CarPostConnectRestorer.Prepared(session(), it) } },
+        openQueue = { _, bookId -> openQueue(bookId)?.let { CarPostConnectRestorer.Prepared(session(), it) } },
         acceptQueue = { _, authorized, install ->
             beforeAcceptance()
             if (authorized()) {
