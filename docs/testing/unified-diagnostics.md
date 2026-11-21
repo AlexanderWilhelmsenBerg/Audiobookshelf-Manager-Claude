@@ -67,8 +67,10 @@ Playback diagnostics alongside it when a test needs AudioTrack timing bursts or 
 **Save JSON file** exports the retained attempt history. `attemptIndex` lists attempt numbers, connection
 times, headset presence and failure counts. A verified held headset or an identified wearable output
 counts as present. An ambiguous Bluetooth output or enabling mid-connection can yield unknown.
-`failedHeadsetReconnects` lists
-attempt and reconnect numbers for returns that needed a subsequent Play or never verified an output.
+`failedHeadsetReconnects` lists attempt and reconnect numbers for returns that needed a subsequent Play
+or went 30 seconds without verified output. Attempts that close at a connection boundary before those
+30 seconds show `unverified` in their reconnect details. Exports apply this distinction to retained v2
+records as well, while keeping their earlier verified recoveries.
 Look up those numbers under `attempts` for the full events. The button caller identifies software and
 does not identify a physical device. `headsetRecoveryMs` reports count, average, minimum and maximum
 separately for automatic returns and returns after an observed Play. Timing starts at the interruption
