@@ -483,10 +483,7 @@ class PlaybackService : MediaLibraryService() {
         buttonRouting.settings(settings)
         routeObservationEffects.attach()
         attachSleepTimer(exoPlayer)
-        // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does. It is given the
-        // player rather than owning one, for the same reason the timer is: there is exactly one.
-        sessionSync.attach(exoPlayer, ::effectiveBookPosition)
-        attachAutoRewind(exoPlayer)
+        attachSessionSyncAndAutoRewind(exoPlayer)
         startJournal()
         observeSleepTimer()
         observeSkipIntervals()
@@ -512,7 +509,9 @@ class PlaybackService : MediaLibraryService() {
         )
     }
 
-    private fun attachAutoRewind(exoPlayer: ExoPlayer) {
+    private fun attachSessionSyncAndAutoRewind(exoPlayer: ExoPlayer) {
+        // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does.
+        sessionSync.attach(exoPlayer, ::effectiveBookPosition)
         autoRewind.attach(exoPlayer) { resumeFreshness.invalidate(ResumeInvalidation.AutoRewind) }
     }
 
@@ -1410,8 +1409,7 @@ class PlaybackService : MediaLibraryService() {
         attachRouteSafetyMonitor(replacement)
         sleepTimer.replaceFailedPlayer(failed, replacement)
         sessionSync.onPlayingChanged(false)
-        sessionSync.attach(replacement, ::effectiveBookPosition)
-        attachAutoRewind(replacement)
+        attachSessionSyncAndAutoRewind(replacement)
         autoRewind.onSeeked()
         attachPlayerListeners(replacement)
     }
