@@ -579,6 +579,11 @@ internal class FakePlaybackSettings : PlaybackSettingsRepository {
         return AppResult.Success(Unit)
     }
 
+    override suspend fun setLockPlayingHeadset(enabled: Boolean): AppResult<Unit> {
+        controls.value = controls.value.copy(lockPlayingHeadset = enabled)
+        return AppResult.Success(Unit)
+    }
+
     override suspend fun setHeadsetButtonRouting(enabled: Boolean): AppResult<Unit> {
         controls.value = controls.value.copy(headsetButtonRouting = enabled)
         return AppResult.Success(Unit)

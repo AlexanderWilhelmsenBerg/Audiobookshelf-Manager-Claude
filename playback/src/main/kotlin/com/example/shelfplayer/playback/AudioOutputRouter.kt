@@ -17,6 +17,7 @@ import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import com.example.shelfplayer.core.model.playback.AudioOutputLockStatus
 import com.example.shelfplayer.core.model.playback.AudioOutputPresentation
+import com.example.shelfplayer.core.model.playback.AudioOutputRole
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -489,18 +490,21 @@ class AudioOutputRouter @Inject constructor(
 
     private fun onDisconnectedSelection(chosen: String, connectedIds: Set<String>) {
         outputIntentOwner.state.value.lock?.takeIf { it.outputId == chosen }?.let(outputIntentOwner::markWaiting)
-        if (!shouldRetainContinuityHeadset(headsetGuard.endpointId, chosen, connectedIds)) {
-            val epoch = preferenceEffects.supersede()
-            _selectedId.value = null
-            logger.info(
-                LogCategory.Playback,
-                "The chosen audio output disconnected, so routing is automatic again",
-                LogField.Public("kind", kindOf(chosen)),
-            )
-            applicationScope.launch { apply(null, epoch) }
+        if (shouldRetainContinuityHeadset(headsetGuard.endpointId, chosen, connectedIds)) {
+            retainMissingHeadset(chosen)
             return
         }
+        val epoch = preferenceEffects.supersede()
+        _selectedId.value = null
+        logger.info(
+            LogCategory.Playback,
+            "The chosen audio output disconnected, so routing is automatic again",
+            LogField.Public("kind", kindOf(chosen)),
+        )
+        applicationScope.launch { apply(null, epoch) }
+    }
 
+    private fun retainMissingHeadset(chosen: String) {
         val alreadyMissing = headsetGuard.markMissing()
         // Preserve fresh exact track evidence, otherwise pause before default routing can become audible.
         applicationScope.launch(mainDispatcher) {
@@ -523,7 +527,7 @@ class AudioOutputRouter @Inject constructor(
             if (_selectedId.value == chosen && handoffs.retireDisconnectedOutput(chosen, preserveContinuity = true)) {
                 return@launch
             }
-            if (_selectedId.value == chosen && headsetGuard.endpointId == chosen && chosen !in live) {
+            if (isStillMissingGuardedHeadset(chosen)) {
                 player?.takeIf { it.isPlaying }?.let(headsetGuard::pauseForSafety)
             }
         }
@@ -534,7 +538,7 @@ class AudioOutputRouter @Inject constructor(
             LogField.Public("kind", kindOf(chosen)),
         )
         headsetGuard.startGrace {
-            if (_selectedId.value == chosen && headsetGuard.endpointId == chosen && chosen !in live) {
+            if (isStillMissingGuardedHeadset(chosen)) {
                 // The waiting window ended, not the owner's explicit headset destination.
                 // Clearing the guard here allowed a subsequent virtual/unattributed headset
                 // Play to resume through the car on Android Auto. Stay fail-closed.
@@ -546,6 +550,9 @@ class AudioOutputRouter @Inject constructor(
             }
         }
     }
+
+    private fun isStillMissingGuardedHeadset(id: String): Boolean =
+        _selectedId.value == id && headsetGuard.endpointId == id && id !in live
 
     private fun onGuardedHeadsetReappeared(chosen: String) {
         // Exact identity returned. Preserve a freshly measured healthy route; otherwise reassert
@@ -944,6 +951,30 @@ private fun statusFor(lock: OutputIntentOwner.Lock?): AudioOutputLockStatus? = w
     OutputIntentOwner.LockPhase.Waiting -> AudioOutputLockStatus.Waiting
     OutputIntentOwner.LockPhase.Unverified -> AudioOutputLockStatus.Unverified
     null -> null
+}
+
+/** Use Android's selected headset for a fresh Play, then require the usual muted route proof. */
+internal fun AudioOutputRouter.followSystemHeadsetForPlay(): Boolean {
+    val selection = explicitSelection.value
+    if (outputLock.value != null ||
+        selection?.let { it.destination != OutputIntentOwner.Destination.Automatic && !it.followsSystem } == true
+    ) {
+        return true
+    }
+    val held = selectedId.value ?: return true
+    val target = localOutputs.systemHeadset() ?: return true
+    // A classic Bluetooth car can also look like an unclassified headset.
+    val safeCandidate = target.role != AudioOutputRole.Ambiguous || confirmedCarAbsent()
+    return target.id == held || !safeCandidate ||
+        handoffs.select(target.id, OutputIntentOwner.Destination.Output, followsSystem = true)
+}
+
+internal fun AudioOutputRouter.releaseAutomaticHeadsetProtection() {
+    if (explicitSelection.value?.followsSystem == true) {
+        select(null)
+    } else {
+        clearMeasuredPlayingHeadsetProtection()
+    }
 }
 
 internal fun shouldSuspendGuardedPlayback(

@@ -59,6 +59,7 @@ import com.example.shelfplayer.domain.repository.PlaybackOpenOwner
 import com.example.shelfplayer.domain.repository.PlaybackRepository
 import com.example.shelfplayer.domain.repository.playbackProfileChanged
 import com.example.shelfplayer.domain.repository.PlaybackSettingsRepository
+import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 import com.example.shelfplayer.domain.usecase.OpenPlaybackSessionUseCase
 import com.example.shelfplayer.domain.usecase.NextInSeriesUseCase
@@ -288,6 +289,11 @@ class PlaybackService : MediaLibraryService() {
     private var playerEvents: PlayerEvents? = null
     private var decoderFailedPlayer: ExoPlayer? = null
     private var currentPlayerSettings = PlaybackSettings.Default
+    private var appliedFocus = FocusBehaviour.Default
+    private var focusPlayCommand: Long? = null
+    private val manualFocus by lazy(LazyThreadSafetyMode.NONE) {
+        ManualPlaybackFocus(getSystemService(AudioManager::class.java), logger)
+    }
     private lateinit var activeProfileGeneration: () -> Long
     private var session: MediaLibrarySession? = null
     private var journal: Job? = null
@@ -320,6 +326,11 @@ class PlaybackService : MediaLibraryService() {
                 audioOutputs.protectManualPlayOnGuardedHeadset(expectedPlayer, willStartAudio, holdForSeek)
             },
             canRunDecoder = { it !== decoderFailedPlayer },
+            allowPlayWithFocus = {
+                appliedFocus != FocusBehaviour.Ignore ||
+                    manualFocus.play(focusPlayCommand == controllerCommandGeneration)
+                        .also { focusPlayCommand = null }
+            },
         )
     }
 
@@ -419,6 +430,7 @@ class PlaybackService : MediaLibraryService() {
      * and the physical AudioTrack. Lazy because Android injects CarConnections before onCreate.
      */
     internal val carLifecycle by lazy { CarLifecycleAuthority(carConnections) }
+    private var departedCarSelection: OutputIntentOwner.Selection? = null
 
     /** One owner for correlation, bounded reuse and privacy-safe Android Auto diagnostics. */
     private val autoTraces by lazy {
@@ -450,6 +462,7 @@ class PlaybackService : MediaLibraryService() {
         registerWallClockChanges()
         val settings = runBlocking { playbackSettings.observeSettings().first() }
         currentPlayerSettings = settings
+        appliedFocus = settings.focusBehaviour
         val exoPlayer = createPlayerFromSettings(settings).also { player = it }
         attachPlayerListeners(exoPlayer)
         resumeFreshness.attach(exoPlayer)
@@ -950,7 +963,12 @@ class PlaybackService : MediaLibraryService() {
         val destination = buttonRouting.transport(requestedPlay, session, current)
         return {
             logControllerTransportRequest(requestedPlay, current)
-            val accepted = routeExplicitCarPlay(requestedPlay, current) && buttonRouting.apply(destination)
+            val command = controllerCommandGeneration
+            val freshPlay = requestedPlay && !current.playWhenReady
+            prepareFocusForTransport(requestedPlay, current)
+            val accepted = routeExplicitCarPlay(requestedPlay, current) && buttonRouting.apply(destination) &&
+                prepareFreshPlayOutput(freshPlay, destination)
+            if (accepted && freshPlay) authorizeManualFocusPlay(command)
             if (destination != null) {
                 autoTraces.log(
                     "Media-button output request",
@@ -972,6 +990,22 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
+    private fun prepareFocusForTransport(play: Boolean, current: ExoPlayer) {
+        applyFocusWhilePaused(current)
+        if (!play && appliedFocus == FocusBehaviour.Ignore) manualFocus.release()
+    }
+
+    private fun authorizeManualFocusPlay(command: Long) {
+        if (appliedFocus == FocusBehaviour.Ignore && controllerCommandGeneration == command) focusPlayCommand = command
+    }
+
+    private fun prepareFreshPlayOutput(freshPlay: Boolean, destination: ButtonDestination?): Boolean {
+        if (!freshPlay || destination != null) return true
+        if (retireDepartedCarIfPaused("listener-play")) syncExplicitOutputIntent()
+        if (!currentPlayerSettings.lockPlayingHeadset || !currentPlayerSettings.headsetButtonRouting) return true
+        return audioOutputs.followSystemHeadsetForPlay().also { if (it) syncExplicitOutputIntent() }
+    }
+
     internal val governor by lazy(LazyThreadSafetyMode.NONE) {
         PlaybackGovernor(
             object : PlaybackGovernor.Source {
@@ -989,7 +1023,10 @@ class PlaybackService : MediaLibraryService() {
                 override fun invalidateResume(origin: ResumeInvalidation) = resumeFreshness.invalidate(origin)
                 override fun invalidateSleep(origin: ResumeInvalidation) = sleepTimer.onResumeInvalidation(origin)
                 override fun transportIntent() = sleepTimer.onControllerTransportIntent()
-                override fun stopped() = audioOutputs.outputIntentOwner.onPlaybackStopped()
+                override fun stopped() {
+                    if (appliedFocus == FocusBehaviour.Ignore) manualFocus.release()
+                    audioOutputs.outputIntentOwner.onPlaybackStopped()
+                }
                 override fun cancelContinuity(preserveHeard: Boolean) {
                     carConnectionRefresh.cancel()
                     headsetTakeBack.cancelPending()
@@ -1083,6 +1120,7 @@ class PlaybackService : MediaLibraryService() {
         mediaButtonForeground?.close()
         autoCapture?.disconnected("service-stopped")
         governor.close()
+        if (appliedFocus == FocusBehaviour.Ignore) manualFocus.release()
         buttonRouting.close()
         routeObservationEffects.detach()
         audioOutputs.outputIntentOwner.releaseRuntime()
@@ -1403,6 +1441,8 @@ class PlaybackService : MediaLibraryService() {
 
     private fun adoptDecoderReplacement(failed: ExoPlayer, replacement: ExoPlayer) {
         playerEvents?.let(failed::removeListener)
+        if (appliedFocus == FocusBehaviour.Ignore) manualFocus.release()
+        appliedFocus = currentPlayerSettings.focusBehaviour
         player = replacement
         decoderFailedPlayer = null
         resumeFreshness.attach(replacement)
@@ -1772,6 +1812,7 @@ class PlaybackService : MediaLibraryService() {
                 LogField.Public("reason", input.reasonName),
             )
             governor.observeTransport(input, routeSafetyPause)
+            if (!playWhenReady) player?.let(::applyFocusWhilePaused)
         }
 
         /**
@@ -1779,6 +1820,7 @@ class PlaybackService : MediaLibraryService() {
          * History sampler. Chapter lists remain in-process rather than duplicated in MediaItem extras.
          */
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            if (mediaItem == null && appliedFocus == FocusBehaviour.Ignore) manualFocus.release()
             autoCapture?.intentReset()
             positionEffects.retireForItemTransition()
             mediaItemGeneration += 1
@@ -1890,6 +1932,11 @@ class PlaybackService : MediaLibraryService() {
                         endedClaim != null && deferredWork.isCurrent(endedClaim)
                     }
                     if (endedClaim != null) advanceToNextInSeries(endedClaim)
+                    if (player === endedClaim?.player && player?.playbackState == Player.STATE_ENDED &&
+                        appliedFocus == FocusBehaviour.Ignore
+                    ) {
+                        manualFocus.release()
+                    }
                 }
             }
         }
@@ -2003,10 +2050,25 @@ class PlaybackService : MediaLibraryService() {
         return players.create(buffer = settings.buffer, focus = settings.focusBehaviour)
     }
 
+    private fun applyFocusWhilePaused(current: ExoPlayer) {
+        val focus = currentPlayerSettings.focusBehaviour
+        if (current.playWhenReady || appliedFocus == focus) return
+        if (appliedFocus == FocusBehaviour.Ignore) manualFocus.release()
+        appliedFocus = focus
+        current.setAudioAttributes(playbackAudioAttributes(focus), focus != FocusBehaviour.Ignore)
+    }
+
     private fun observeSkipIntervals() {
         skipWatch = scope.launch {
             playbackSettings.observeSettings().collect { settings ->
+                val wasLocked = currentPlayerSettings.lockPlayingHeadset
                 currentPlayerSettings = settings
+                player?.let(::applyFocusWhilePaused)
+                if (wasLocked && !settings.lockPlayingHeadset) {
+                    audioOutputs.releaseAutomaticHeadsetProtection()
+                } else if (!wasLocked && settings.lockPlayingHeadset) {
+                    observeCarContinuityHeadset(audioOutputs.outputs.value)
+                }
                 skips = settings.skips
                 players.setEqualizer(settings.equalizer)
                 buttonRouting.settings(settings)
@@ -2177,13 +2239,15 @@ class PlaybackService : MediaLibraryService() {
         val generation = routeOwnership.currentGeneration
         val headset = routeOwnership.measuredPlayingHeadsetForContinuity(outputs)
         if (generation != null && headset != null) {
-            audioOutputs.protectMeasuredPlayingHeadset(
-                headset,
-                generation,
-                currentExplicitSelectionSequence(),
-            ) {
-                routeOwnership.currentGeneration == generation &&
-                    routeOwnership.measuredPlayingHeadsetForContinuity(audioOutputs.outputs.value) == headset
+            if (currentPlayerSettings.lockPlayingHeadset) {
+                audioOutputs.protectMeasuredPlayingHeadset(
+                    headset,
+                    generation,
+                    currentExplicitSelectionSequence(),
+                ) {
+                    currentPlayerSettings.lockPlayingHeadset && routeOwnership.currentGeneration == generation &&
+                        routeOwnership.measuredPlayingHeadsetForContinuity(audioOutputs.outputs.value) == headset
+                }
             }
             headsetTakeBack.onHeadsetVerified(headset) {
                 !carBluetoothWindow.isOpen() && carLifecycle.definitelyAbsent
@@ -2435,6 +2499,7 @@ class PlaybackService : MediaLibraryService() {
         }
         when (edge) {
             CarLifecycleAuthority.ProjectionEdge.Arrival -> {
+                departedCarSelection = null
                 // Focus may precede the stronger physical arrival; the service remains the Play owner.
                 val decision = carRecovery.carArrival(
                     at = clock.elapsed(),
@@ -2465,16 +2530,35 @@ class PlaybackService : MediaLibraryService() {
         val selection = audioOutputs.explicitSelection.value
         val decision = completeCarDeparture("projection-disconnect", physicalProjection = true)
         if (decision.status == CarArrivalResumeGate.Status.Rejected &&
-            decision.reason == CarArrivalResumeGate.Reason.NoPlayingCarHeadset &&
-            audioOutputs.handoffs.retirePausedCar(selection)
+            decision.reason == CarArrivalResumeGate.Reason.NoPlayingCarHeadset
         ) {
-            logger.info(
-                LogCategory.Playback,
-                "A paused Car destination expired after projection disconnection",
-                LogField.Public("requestSelection", selection?.sequence?.toString() ?: "none"),
-                LogField.Public("selectionSequence", currentExplicitSelectionSequence()),
-            )
+            departedCarSelection = selection?.takeIf { it.destination == OutputIntentOwner.Destination.Car }
+            retireDepartedCarIfPaused("projection-disconnect")
         }
+    }
+
+    /** Playback may survive projection. Retire only its departed choice when a later Play starts from paused. */
+    private fun retireDepartedCarIfPaused(source: String): Boolean {
+        val selection = departedCarSelection ?: return false
+        if (audioOutputs.explicitSelection.value != selection) {
+            departedCarSelection = null
+            return false
+        }
+        if (!carLifecycle.definitelyAbsent || !audioOutputs.handoffs.retirePausedCar(selection) {
+                carLifecycle.definitelyAbsent && departedCarSelection == selection
+            }
+        ) {
+            return false
+        }
+        if (departedCarSelection == selection) departedCarSelection = null
+        logger.info(
+            LogCategory.Playback,
+            "A paused Car destination expired after projection disconnection",
+            LogField.Public("source", source),
+            LogField.Public("requestSelection", selection.sequence),
+            LogField.Public("selectionSequence", currentExplicitSelectionSequence()),
+        )
+        return true
     }
 
     private fun completeCarDeparture(

@@ -561,6 +561,8 @@ class AppSettingsDataSource @Inject constructor(
             focusBehaviour = when (stored.focusBehaviour) {
                 StoredFocusBehaviour.FOCUS_BEHAVIOUR_DUCK -> FocusBehaviour.Duck
 
+                StoredFocusBehaviour.FOCUS_BEHAVIOUR_IGNORE -> FocusBehaviour.Ignore
+
                 // The zero value and anything a newer build wrote. Both mean pause, which is the option
                 // that cannot surprise anybody.
                 StoredFocusBehaviour.FOCUS_BEHAVIOUR_PAUSE,
@@ -582,6 +584,7 @@ class AppSettingsDataSource @Inject constructor(
             // own comment on `auto_advance_series_disabled` for why the field is named for the other state.
             autoAdvanceSeries = !stored.autoAdvanceSeriesDisabled,
             headsetButtonRouting = !stored.headsetButtonRoutingDisabled,
+            lockPlayingHeadset = !stored.lockPlayingHeadsetDisabled,
             sonyTapDetection = stored.sonyTapDetection,
             equalizer = with(stored.audioEqualizer) { PlaybackEqualizer(bassDb, presenceDb, trebleDb).bounded() },
         )
@@ -595,6 +598,12 @@ class AppSettingsDataSource @Inject constructor(
             .setTrebleDb(gains.treble)
             .build()
         dataStore.updateData { current -> current.toBuilder().setAudioEqualizer(equalizer).build() }
+    }
+
+    suspend fun setLockPlayingHeadset(enabled: Boolean) {
+        dataStore.updateData { current ->
+            current.toBuilder().setLockPlayingHeadsetDisabled(!enabled).build()
+        }
     }
 
     suspend fun setHeadsetButtonRouting(enabled: Boolean) {
@@ -622,6 +631,7 @@ class AppSettingsDataSource @Inject constructor(
                     when (behaviour) {
                         FocusBehaviour.Pause -> StoredFocusBehaviour.FOCUS_BEHAVIOUR_PAUSE
                         FocusBehaviour.Duck -> StoredFocusBehaviour.FOCUS_BEHAVIOUR_DUCK
+                        FocusBehaviour.Ignore -> StoredFocusBehaviour.FOCUS_BEHAVIOUR_IGNORE
                     },
                 )
                 .build()

@@ -48,6 +48,65 @@ class PlaybackServiceCarDepartureIntentTest {
     }
 
     @Test
+    fun `departure while playing leaves playback alone and clears Car on the next deliberate Play`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this).use { fixture ->
+            fixture.projection(null, AndroidAutoProjectionMonitor.State.Projection)
+            fixture.selectCar()
+            runCurrent()
+            val carSelection = fixture.explicitSelectionSequence()
+            fixture.player.playWhenReady = true
+            fixture.reportedIsPlaying = true
+            fixture.projection(
+                AndroidAutoProjectionMonitor.State.Projection,
+                AndroidAutoProjectionMonitor.State.NotConnected,
+            )
+            fixture.returnMeasuredHeadset()
+            runCurrent()
+
+            assertTrue(fixture.player.playWhenReady)
+            assertEquals(carSelection, fixture.explicitSelectionSequence())
+            assertEquals(0, fixture.rawPlayCalls)
+
+            assertNull(fixture.forwarding.handleSetPlayWhenReady(false).get())
+            fixture.reportedIsPlaying = false
+            runCurrent()
+            assertFalse(fixture.player.playWhenReady)
+            assertEquals(carSelection, fixture.explicitSelectionSequence())
+
+            val play = fixture.forwarding.handleSetPlayWhenReady(true)
+            assertEquals(OutputIntentOwner.Destination.Automatic, fixture.explicitDestination())
+            runCurrent()
+            assertEquals(true, play.get())
+            assertEquals(1, fixture.rawPlayCalls)
+            assertNull(fixture.activeTransferDestination())
+        }
+    }
+
+    @Test
+    fun `fresh Play after departure preserves a newer Car selection`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this).use { fixture ->
+            fixture.projection(null, AndroidAutoProjectionMonitor.State.Projection)
+            fixture.selectCar()
+            runCurrent()
+            fixture.player.playWhenReady = true
+            fixture.projection(
+                AndroidAutoProjectionMonitor.State.Projection,
+                AndroidAutoProjectionMonitor.State.NotConnected,
+            )
+            runCurrent()
+            assertNull(fixture.forwarding.handleSetPlayWhenReady(false).get())
+            fixture.selectCar()
+            runCurrent()
+            val latest = fixture.explicitSelectionSequence()
+
+            fixture.forwarding.handleSetPlayWhenReady(true)
+
+            assertEquals(OutputIntentOwner.Destination.Car, fixture.explicitDestination())
+            assertEquals(latest, fixture.explicitSelectionSequence())
+        }
+    }
+
+    @Test
     fun `unknown projection and its recovery retain the paused Car choice`() = runTest {
         PlaybackServiceCommandContinuityFixture(this).use { fixture ->
             fixture.projection(null, AndroidAutoProjectionMonitor.State.Projection)

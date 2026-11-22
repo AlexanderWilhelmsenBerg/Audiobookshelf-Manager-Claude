@@ -123,6 +123,10 @@ class DefaultPlaybackSettingsRepository @Inject constructor(
         )
     }
 
+    override suspend fun setLockPlayingHeadset(enabled: Boolean): AppResult<Unit> = write {
+        settings.setLockPlayingHeadset(enabled)
+    }
+
     override suspend fun setHeadsetButtonRouting(enabled: Boolean): AppResult<Unit> = write {
         settings.setHeadsetButtonRouting(enabled)
     }

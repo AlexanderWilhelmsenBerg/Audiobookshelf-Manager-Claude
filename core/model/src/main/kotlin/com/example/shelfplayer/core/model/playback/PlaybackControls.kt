@@ -234,7 +234,7 @@ data class PlaybackSettings(
     val skips: SkipIntervals = SkipIntervals.Default,
     val autoRewind: AutoRewind = AutoRewind.Default,
     val buffer: BufferPreset = BufferPreset.Default,
-    /** PRODUCT_SPEC PLAY-002 — what a transient interruption does. Pause unless the listener says otherwise. */
+    /** PRODUCT_SPEC PLAY-002 — how to respond to audio focus changes. */
     val focusBehaviour: FocusBehaviour = FocusBehaviour.Default,
     /** PRODUCT_SPEC ROUTE-003 — what opening the app does to the player. */
     val startupMode: StartupMode = StartupMode.Default,
@@ -254,6 +254,7 @@ data class PlaybackSettings(
     val autoAdvanceSeries: Boolean = true,
     /** ROUTE-001 / SET-002 — a headset Play command may request its eligible output. */
     val headsetButtonRouting: Boolean = true,
+    val lockPlayingHeadset: Boolean = true,
     /** Explicit opt-in; direct WF-1000XM6 taps require Sound Connect to be absent or disabled. */
     val sonyTapDetection: Boolean = false,
     val equalizer: PlaybackEqualizer = PlaybackEqualizer.Original,
@@ -273,9 +274,8 @@ data class PlaybackSettings(
  *
  * ### It is expressed as what the audio *is*
  *
- * Media3's focus manager ducks a `TRANSIENT_CAN_DUCK` loss for music and pauses it for speech, so this
- * chooses the declared **content type** rather than intercepting the callback. Fighting the platform's own
- * focus handling would mean giving up `handleAudioFocus` and reimplementing every other case.
+ * Media3 uses content type to distinguish Pause from Duck. Ignore explicitly owns focus requests on the
+ * transport boundary and leaves the player running when Android changes focus.
  */
 enum class FocusBehaviour {
 
@@ -289,6 +289,9 @@ enum class FocusBehaviour {
      * either way, which is the platform's decision and not this setting's.
      */
     Duck,
+
+    /** Request focus for explicit Play and leave transport running on subsequent focus callbacks. */
+    Ignore,
     ;
 
     companion object {

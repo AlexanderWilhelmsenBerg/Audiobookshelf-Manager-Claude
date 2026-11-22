@@ -74,8 +74,7 @@ internal class DefaultPlayerFactory @Inject constructor(
             // PRODUCT_SPEC PLAY-006 — Automatic leaves Media3's own load control alone, which is a different
             // thing from any particular pair of numbers and is why the enum carries no override for it.
             .apply { loadControlFor(buffer)?.let(::setLoadControl) }
-            // The `true` is `handleAudioFocus`: Media3 requests and releases focus itself.
-            .setAudioAttributes(attributesFor(focus), true)
+            .setAudioAttributes(playbackAudioAttributes(focus), focus != FocusBehaviour.Ignore)
             // Standard Media3 AudioTrack provider, observed in memory for route safety even without
             // diagnostic capture. Null fallback retains Media3's original output provider.
             .apply { audioTrackRouteMonitor.providerForPlayer()?.let(::setAudioOutputProvider) }
@@ -119,25 +118,10 @@ internal class DefaultPlayerFactory @Inject constructor(
             )
             .build()
     }
-
-    /**
-     * PRODUCT_SPEC PLAY-002 — the setting, expressed as what the audio *is*.
-     *
-     * Media3's focus manager ducks a `TRANSIENT_CAN_DUCK` loss for music and pauses it for speech. So the
-     * choice is made by declaring a content type rather than by intercepting the callback: keeping
-     * `handleAudioFocus` means the platform still handles every other case — the phone call, the permanent
-     * loss, the alarm — and this app does not reimplement audio focus to change one branch of it.
-     *
-     * The default is speech, and the default is pause, because an audiobook ducked under a navigation
-     * prompt is an audiobook the listener has to rewind.
-     */
-    private fun attributesFor(focus: FocusBehaviour): AudioAttributes = AudioAttributes.Builder()
-        .setUsage(C.USAGE_MEDIA)
-        .setContentType(
-            when (focus) {
-                FocusBehaviour.Pause -> C.AUDIO_CONTENT_TYPE_SPEECH
-                FocusBehaviour.Duck -> C.AUDIO_CONTENT_TYPE_MUSIC
-            },
-        )
-        .build()
 }
+
+/** Media3 uses the declared content type to decide whether to duck a duckable interruption. */
+internal fun playbackAudioAttributes(focus: FocusBehaviour): AudioAttributes = AudioAttributes.Builder()
+    .setUsage(C.USAGE_MEDIA)
+    .setContentType(if (focus == FocusBehaviour.Duck) C.AUDIO_CONTENT_TYPE_MUSIC else C.AUDIO_CONTENT_TYPE_SPEECH)
+    .build()
