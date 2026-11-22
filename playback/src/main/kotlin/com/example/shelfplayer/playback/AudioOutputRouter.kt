@@ -489,18 +489,21 @@ class AudioOutputRouter @Inject constructor(
 
     private fun onDisconnectedSelection(chosen: String, connectedIds: Set<String>) {
         outputIntentOwner.state.value.lock?.takeIf { it.outputId == chosen }?.let(outputIntentOwner::markWaiting)
-        if (!shouldRetainContinuityHeadset(headsetGuard.endpointId, chosen, connectedIds)) {
-            val epoch = preferenceEffects.supersede()
-            _selectedId.value = null
-            logger.info(
-                LogCategory.Playback,
-                "The chosen audio output disconnected, so routing is automatic again",
-                LogField.Public("kind", kindOf(chosen)),
-            )
-            applicationScope.launch { apply(null, epoch) }
+        if (shouldRetainContinuityHeadset(headsetGuard.endpointId, chosen, connectedIds)) {
+            retainMissingHeadset(chosen)
             return
         }
+        val epoch = preferenceEffects.supersede()
+        _selectedId.value = null
+        logger.info(
+            LogCategory.Playback,
+            "The chosen audio output disconnected, so routing is automatic again",
+            LogField.Public("kind", kindOf(chosen)),
+        )
+        applicationScope.launch { apply(null, epoch) }
+    }
 
+    private fun retainMissingHeadset(chosen: String) {
         val alreadyMissing = headsetGuard.markMissing()
         // Preserve fresh exact track evidence, otherwise pause before default routing can become audible.
         applicationScope.launch(mainDispatcher) {
@@ -523,7 +526,7 @@ class AudioOutputRouter @Inject constructor(
             if (_selectedId.value == chosen && handoffs.retireDisconnectedOutput(chosen, preserveContinuity = true)) {
                 return@launch
             }
-            if (_selectedId.value == chosen && headsetGuard.endpointId == chosen && chosen !in live) {
+            if (isStillMissingGuardedHeadset(chosen)) {
                 player?.takeIf { it.isPlaying }?.let(headsetGuard::pauseForSafety)
             }
         }
@@ -534,7 +537,7 @@ class AudioOutputRouter @Inject constructor(
             LogField.Public("kind", kindOf(chosen)),
         )
         headsetGuard.startGrace {
-            if (_selectedId.value == chosen && headsetGuard.endpointId == chosen && chosen !in live) {
+            if (isStillMissingGuardedHeadset(chosen)) {
                 // The waiting window ended, not the owner's explicit headset destination.
                 // Clearing the guard here allowed a subsequent virtual/unattributed headset
                 // Play to resume through the car on Android Auto. Stay fail-closed.
@@ -546,6 +549,9 @@ class AudioOutputRouter @Inject constructor(
             }
         }
     }
+
+    private fun isStillMissingGuardedHeadset(id: String): Boolean =
+        _selectedId.value == id && headsetGuard.endpointId == id && id !in live
 
     private fun onGuardedHeadsetReappeared(chosen: String) {
         // Exact identity returned. Preserve a freshly measured healthy route; otherwise reassert
