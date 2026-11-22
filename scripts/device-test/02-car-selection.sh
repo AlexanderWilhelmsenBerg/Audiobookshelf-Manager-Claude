@@ -46,7 +46,7 @@ if (( ASKED == 0 )); then
     bad "No selection reached this service. The defect is upstream of it — discovery, or the item's flags."
   else
     bad "No selection line found, and logcat is not carrying this app — so this locates nothing."
-    note "Read Settings → About → Diagnostics → the event log and search 'asked to set' before concluding."
+    note "Read Settings → About → Advanced & diagnostics → the event log and search 'asked to set' before concluding."
   fi
 fi
 note "branch=   which route answered: browse (a car tap), spoken (a voice query), passthrough (the app)."
@@ -106,5 +106,5 @@ note "request became a book — do not read silence here as the server having op
 
 step "§2.8  And the same four lines from the in-app log"
 note "If logcat carried nothing above, this is not optional — it is the only record (R-70):"
-note "  Settings → About → Diagnostics → Open the event log → search 'asked to set'"
+note "  Settings → About → Advanced & diagnostics → Open the event log → search 'asked to set'"
 note "Then search 'player changed state'. Copy both into the report."
