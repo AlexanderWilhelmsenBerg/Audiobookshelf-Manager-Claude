@@ -27,7 +27,7 @@ Write-Step 'Section 2 step 4 - Browse responses'
 $children = @(Show-LogcatMatches -Pattern "asked for a node's children" -Last 20)
 if ($children.Count -eq 0) {
     Write-Warn 'No children= lines reached logcat. Check the in-app event log before deciding the result.'
-    Write-Note "Settings -> About -> Diagnostics -> Event log; search for: node's children"
+    Write-Note "Settings -> About -> Advanced & diagnostics -> Event log; search for: node's children"
 } else {
     $children | ForEach-Object { Write-Output $_ }
     Write-Ok "Found $($children.Count) answered browse request(s). Confirm children is nonzero."

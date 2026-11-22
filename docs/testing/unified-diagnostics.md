@@ -1,6 +1,6 @@
 # Playback diagnostics
 
-Open **Settings → About → Playback diagnostics**. Start recording with the current player in
+Open **Settings → About → Advanced & diagnostics → Playback diagnostics**. Start recording with the current player in
 place, including while audio is playing. BookWave attaches the passive AudioTrack observer when the
 player is created. Starting or clearing a capture samples the current track without recreating it
 or changing playback. Detailed recording is opt-in and the choice survives ordinary process recreation.
@@ -56,7 +56,7 @@ against API 37. A measured frame counter provides timing evidence without changi
 
 ## Daily Android Auto capture
 
-In a debug build, open **Settings → About → Debug → Android Auto diagnostics** and enable
+In a debug build, open **Settings → About → Advanced & diagnostics → Android Auto diagnostics** and enable
 **Record car connections** once. BookWave records when its playback service observes a car-class
 hands-free connection, an Android Auto controller, or projection. A hands-free-only candidate that
 never reaches a controller or projection is marked `connection-unconfirmed`. Projection departure

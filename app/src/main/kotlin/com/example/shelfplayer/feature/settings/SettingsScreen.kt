@@ -34,9 +34,7 @@ import androidx.compose.material3.TabPosition
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -60,7 +58,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.shelfplayer.BuildConfig
 import com.example.shelfplayer.R
 import com.example.shelfplayer.core.designsystem.layout.centredListPadding
 import com.example.shelfplayer.core.designsystem.layout.windowWidth
@@ -226,8 +223,6 @@ fun SettingsRoute(
  * The selection is `rememberSaveable`, so a rotation or a trip through the background comes back to the
  * tab the user was on. Losing it would be a small thing that reads as the screen restarting.
  */
-// Four independent diagnostic sheets make this Compose host intentionally branch-rich.
-@Suppress("CyclomaticComplexMethod")
 @Composable
 fun SettingsScreen(
     uiState: SettingsUiState,
@@ -283,15 +278,6 @@ fun SettingsScreen(
      * half the distance it looks like.
      */
     val overspill = rememberEdgeOverspill(onPulledPastStart = onNavigateUp)
-    // PRODUCT_SPEC 14.4 — the event log's open/closed state is this screen's, not the caller's. Lifting it
-    // would add a parameter and a callback to a signature that is already at detekt's limit, to describe a
-    // sheet nothing outside this screen can open.
-    var isEventLogOpen by rememberSaveable { mutableStateOf(false) }
-    // PRODUCT_SPEC 14.4 — the debug console, alongside the event log for the same reason it is on this tab:
-    // both exist to be *reported*, and the console is the log plus everything around it.
-    var isDebugConsoleOpen by rememberSaveable { mutableStateOf(false) }
-    var isUnifiedDiagnosticsOpen by rememberSaveable { mutableStateOf(false) }
-    var isAndroidAutoDiagnosticsOpen by rememberSaveable { mutableStateOf(false) }
     // The header's own blur source, and it must be *this* one rather than the app-wide state the mini
     // player uses. A haze effect that is a descendant of its own source draws nothing, and the header is
     // inside the navigation graph the app-wide source covers — the trap that made the navigation capsule
@@ -477,25 +463,12 @@ fun SettingsScreen(
                             uiState = uiState,
                             launcherIcon = launcherIcon,
                             onLauncherIconChanged = onLauncherIconChanged,
-                            diagnostics = DiagnosticsInputs(
-                                onOpenEventLog = { isEventLogOpen = true },
-                                onOpenDebugConsole = { isDebugConsoleOpen = true },
-                                onOpenUnifiedDiagnostics = { isUnifiedDiagnosticsOpen = true },
-                                onOpenAndroidAutoDiagnostics = { isAndroidAutoDiagnosticsOpen = true },
-                            ),
                             recovery = recovery,
                         )
                     }
                 }
             }
         }
-    }
-
-    if (isEventLogOpen) EventLogSheet(onDismiss = { isEventLogOpen = false })
-    if (isDebugConsoleOpen) DebugConsoleSheet(onDismiss = { isDebugConsoleOpen = false })
-    if (isUnifiedDiagnosticsOpen) UnifiedDiagnosticsSheet(onDismiss = { isUnifiedDiagnosticsOpen = false })
-    if (BuildConfig.DEBUG && isAndroidAutoDiagnosticsOpen) {
-        AndroidAutoDiagnosticsSheet(onDismiss = { isAndroidAutoDiagnosticsOpen = false })
     }
 }
 
@@ -580,7 +553,6 @@ private fun LazyListScope.aboutTab(
     uiState: SettingsUiState,
     launcherIcon: LauncherIcon,
     onLauncherIconChanged: (LauncherIcon) -> Unit,
-    diagnostics: DiagnosticsInputs,
     recovery: RecoveryTestInputs,
 ) {
     item { SectionHeader(text = stringResource(R.string.about_section_app)) }
@@ -598,84 +570,10 @@ private fun LazyListScope.aboutTab(
     item { LauncherIconPicker(selected = launcherIcon, onSelected = onLauncherIconChanged) }
     item { Hint(text = stringResource(R.string.settings_icon_hint)) }
 
-    // Keep About about BookWave; historical acceptance telemetry remains in Debug Console.
-    item { SectionHeader(text = stringResource(R.string.about_section_debug)) }
-    item {
-        TextButton(onClick = diagnostics.onOpenUnifiedDiagnostics, modifier = Modifier.padding(horizontal = 8.dp)) {
-            Text(stringResource(R.string.unified_diag_open))
-        }
-    }
-    if (BuildConfig.DEBUG) {
-        item {
-            TextButton(
-                onClick = diagnostics.onOpenAndroidAutoDiagnostics,
-                modifier = Modifier.padding(horizontal = 8.dp),
-            ) {
-                Text(stringResource(R.string.auto_diag_title))
-            }
-        }
-    }
-    item {
-        TextButton(onClick = diagnostics.onOpenEventLog, modifier = Modifier.padding(horizontal = 8.dp)) {
-            Text(stringResource(R.string.event_log_open))
-        }
-    }
-    item {
-        TextButton(onClick = diagnostics.onOpenDebugConsole, modifier = Modifier.padding(horizontal = 8.dp)) {
-            Text(stringResource(R.string.debug_console_open))
-        }
-    }
-    if (BuildConfig.DEBUG) recoveryTestRows(recovery)
+    item(key = "about-advanced-diagnostics") { SettingsAdvancedDiagnostics(recovery) }
 }
 
-/**
- * AUTH-004 — one button that puts this install into the state the renewal path exists for.
- *
- * `docs/testing/pr-playback-auth-recovery.md` has eleven steps and each begins by asking the tester to
- * reproduce an expired access token beside a valid refresh token. Doing that from outside the app means an
- * intercepting proxy or a shortened server-side token lifetime, and neither is available to somebody
- * holding a phone in a car — which is where the defect was found. Pressing this while a book plays makes
- * the next media range request receive a real `401` from a real server.
- *
- * Debug builds only. The caller gates it, so a release APK has no row here at all.
- */
-private fun LazyListScope.recoveryTestRows(inputs: RecoveryTestInputs) {
-    item { SubHeader(text = stringResource(R.string.about_recovery_test)) }
-    item { Hint(text = stringResource(R.string.about_recovery_test_body)) }
-    item {
-        TextButton(onClick = inputs.onExpireAccessToken, modifier = Modifier.padding(horizontal = 8.dp)) {
-            Text(text = stringResource(R.string.about_recovery_test_expire))
-        }
-    }
-    inputs.message?.let { message ->
-        item {
-            // Announced, and read once: what happened is the whole output of the button, and a sentence
-            // that outlived the tap would describe a state the tester has since left.
-            Hint(text = message)
-            DisposableEffect(message) { onDispose(inputs.onMessageShown) }
-        }
-    }
-}
-
-/**
- * The two diagnostics overlays the About tab can open, bundled for the reason the other `*Inputs` types
- * are: `aboutTab` is at detekt's parameter limit and these always travel together.
- *
- * Built at the call site rather than passed in from [SettingsRoute], because both open a sheet whose
- * open/closed state belongs to [SettingsScreen] and never leaves it.
- */
-@Immutable
-data class DiagnosticsInputs(
-    val onOpenEventLog: () -> Unit = {},
-    val onOpenDebugConsole: () -> Unit = {},
-    val onOpenUnifiedDiagnostics: () -> Unit = {},
-    val onOpenAndroidAutoDiagnostics: () -> Unit = {},
-)
-
-/**
- * The debug recovery control's three parameters, bundled for the reason the other `*Inputs` types are:
- * `aboutTab` is at detekt's limit and these always travel together.
- */
+/** The debug authentication recovery action and its temporary feedback. */
 @Immutable
 data class RecoveryTestInputs(
     val onExpireAccessToken: () -> Unit = {},

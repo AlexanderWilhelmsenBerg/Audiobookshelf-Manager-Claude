@@ -269,7 +269,7 @@ function Clear-Logcat {
         $script:LogcatCarriesApp = 'no'
         Write-Bad "logcat holds NO $AppTag lines before clearing, so it is not carrying this app at all."
         Write-Note 'A rolled buffer, or a vendor filter. Nothing dumped afterwards will be evidence.'
-        Write-Note 'Read Settings > About > Diagnostics > Open the event log instead (R-70).'
+        Write-Note 'Read Settings > About > Advanced & diagnostics > Open the event log instead (R-70).'
     }
     else {
         $script:LogcatCarriesApp = 'yes'
@@ -335,7 +335,7 @@ function Test-StepVerdict {
 
     if ($script:LogcatCarriesApp -ne 'yes') {
         Write-Bad "No verdict: logcat holds no $AppTag lines at all, so an empty result is not a result."
-        Write-Note 'This is a broken measurement, not a finding. Read Settings > About > Diagnostics >'
+        Write-Note 'This is a broken measurement, not a finding. Read Settings > About > Advanced & diagnostics >'
         Write-Note 'the event log for this step - it was complete when logcat was empty before (R-70).'
     }
     elseif ($Lines.Count -eq 0) {
@@ -386,7 +386,7 @@ function Show-LogcatMatches {
     }
     else {
         Write-Bad "logcat holds NO $AppTag lines at all, so nothing above is evidence either way."
-        Write-Note 'A rolled buffer, or a vendor filter. Read Settings > About > Diagnostics > event log.'
+        Write-Note 'A rolled buffer, or a vendor filter. Read Settings > About > Advanced & diagnostics > event log.'
         Write-Note 'Seen on an SM-S928B on 2026-08-28: logcat empty, the in-app log complete (R-70).'
     }
 }

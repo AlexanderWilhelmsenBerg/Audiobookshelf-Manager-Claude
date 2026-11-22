@@ -135,7 +135,7 @@ if ($spoken.Count -eq 0) {
     }
     else {
         Write-Bad 'No spoken request found, and logcat is not carrying this app - so this locates nothing.'
-        Write-Note 'Read Settings > About > Diagnostics > the event log and search "asked to set" first.'
+        Write-Note 'Read Settings > About > Advanced & diagnostics > the event log and search "asked to set" first.'
     }
 } else {
     $spoken | ForEach-Object { Write-Output $_ }

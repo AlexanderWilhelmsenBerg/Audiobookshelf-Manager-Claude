@@ -134,7 +134,7 @@ if (( SPOKEN == 0 )); then
     bad "The spoken request never reached this service."
   else
     bad "No spoken request found, and logcat is not carrying this app — so this locates nothing."
-    note "Read Settings → About → Diagnostics → the event log and search 'asked to set' first."
+    note "Read Settings → About → Advanced & diagnostics → the event log and search 'asked to set' first."
   fi
 fi
 note "Expect branch=spoken and kind=empty: a spoken request carries a search query and an EMPTY media"
