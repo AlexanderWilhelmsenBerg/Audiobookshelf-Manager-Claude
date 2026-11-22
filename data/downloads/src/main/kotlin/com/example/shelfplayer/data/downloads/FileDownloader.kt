@@ -76,9 +76,7 @@ class FileDownloader @Inject constructor(
      * @return the committed file's description, or the reason it is not committed. Ordinary failures leave
      *   the `.part` in place for resuming; an unsatisfied stale range clears it before one clean restart.
      *
-     * `LongMethod` is suppressed because this is an ordered durability protocol: persist, fetch, recover,
-     * verify, atomically commit, then publish the completed manifest. Keeping those transitions together
-     * makes the crash boundary visible; extracting them would hide the order behind parameter-heavy helpers.
+     * The durability steps remain visible here: fetch, verify, checkpoint, commit, then publish the manifest.
      */
     @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod")
     suspend fun download(
@@ -127,7 +125,7 @@ class FileDownloader @Inject constructor(
         val resumeFrom = if (file.eTag != null) onDisk else 0
         var manifestFile = file
 
-        var transfer = fetchRecordingCancellation(
+        val transfer = fetchRecordingCancellation(
             serverId,
             profileId,
             itemId,
@@ -139,12 +137,7 @@ class FileDownloader @Inject constructor(
         )
         if (transfer.isFailure()) {
             if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
-            record(
-                serverId,
-                itemId,
-                file.copy(state = DownloadState.Failed, downloadedBytes = storage.bytesOnDisk(part)),
-            )
-            return AppResult.Failure(transfer.error)
+            return recordTransferFailure(serverId, itemId, file, part, transfer.error)
         }
         if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
         var outcome = (transfer as AppResult.Success).value
@@ -173,62 +166,18 @@ class FileDownloader @Inject constructor(
                 eTag = null,
                 lastModified = null,
             )
-            if (!storage.delete(part)) {
-                if (!ownerAvailable()) {
-                    return AppResult.Failure(unavailableStorage())
-                }
-                val error = AppError.Storage(summary = "The stale partial download could not be cleared.")
-                record(
-                    serverId,
-                    itemId,
-                    restartFile.copy(state = DownloadState.Failed, downloadedBytes = storage.bytesOnDisk(part)),
-                )
-                return AppResult.Failure(error)
-            }
-
-            // Persist the cleared validator before touching the network again. If this request or the
-            // process dies, the next worker starts from zero instead of sending the same impossible range.
-            record(serverId, itemId, restartFile)
-            manifestFile = restartFile
-            transfer = fetchRecordingCancellation(
-                serverId,
+            val restarted = restartStalePart(
                 profileId,
+                serverId,
                 itemId,
                 restartFile,
                 part,
-                resumeFrom = 0,
-                onProgress = onProgress,
-                ownerAvailable = ::ownerAvailable,
+                onProgress,
+                ::ownerAvailable,
             )
-            if (transfer.isFailure()) {
-                if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
-                record(
-                    serverId,
-                    itemId,
-                    restartFile.copy(
-                        state = DownloadState.Failed,
-                        downloadedBytes = storage.bytesOnDisk(part),
-                    ),
-                )
-                return AppResult.Failure(transfer.error)
-            }
-            if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
-            outcome = (transfer as AppResult.Success).value
-            if (outcome.rangeNotSatisfiable) {
-                val error = AppError.ApiCompatibility(
-                    summary = "The server rejected a full-file download as an unsatisfied range.",
-                )
-                record(
-                    serverId,
-                    itemId,
-                    restartFile.copy(
-                        state = DownloadState.Failed,
-                        downloadedBytes = storage.bytesOnDisk(part),
-                    ),
-                )
-                return AppResult.Failure(error)
-            }
-            observe(serverId, askedForRange = false, outcome = outcome)
+            if (restarted.isFailure()) return restarted
+            manifestFile = restartFile
+            outcome = (restarted as AppResult.Success).value
         }
 
         verify(part, outcome, onVerificationCancelled)?.let { problem ->
@@ -288,6 +237,58 @@ class FileDownloader @Inject constructor(
             LogField.Public("resumed", outcome.wasResumed.toString()),
         )
         return published
+    }
+
+    private suspend fun restartStalePart(
+        profileId: ProfileId,
+        serverId: ServerId,
+        itemId: LibraryItemId,
+        restartFile: OfflineFile,
+        part: File,
+        onProgress: (Long) -> Unit,
+        ownerAvailable: () -> Boolean,
+    ): AppResult<FileTransfer> {
+        val transfer = if (storage.delete(part)) {
+            // A cancelled or interrupted retry must leave the next worker with a cleared validator.
+            record(serverId, itemId, restartFile)
+            fetchRecordingCancellation(
+                serverId,
+                profileId,
+                itemId,
+                restartFile,
+                part,
+                resumeFrom = 0,
+                onProgress = onProgress,
+                ownerAvailable = ownerAvailable,
+            )
+        } else {
+            AppResult.Failure(AppError.Storage(summary = "The stale partial download could not be cleared."))
+        }
+        if (!ownerAvailable()) return AppResult.Failure(unavailableStorage())
+        return when (transfer) {
+            is AppResult.Failure -> recordTransferFailure(serverId, itemId, restartFile, part, transfer.error)
+
+            is AppResult.Success -> if (transfer.value.rangeNotSatisfiable) {
+                val error = AppError.ApiCompatibility(
+                    summary = "The server rejected a full-file download as an unsatisfied range.",
+                )
+                recordTransferFailure(serverId, itemId, restartFile, part, error)
+            } else {
+                observe(serverId, askedForRange = false, outcome = transfer.value)
+                transfer
+            }
+        }
+    }
+
+    private suspend fun recordTransferFailure(
+        serverId: ServerId,
+        itemId: LibraryItemId,
+        file: OfflineFile,
+        part: File,
+        error: AppError,
+    ): AppResult.Failure {
+        record(serverId, itemId, file.copy(state = DownloadState.Failed, downloadedBytes = storage.bytesOnDisk(part)))
+        return AppResult.Failure(error)
     }
 
     private suspend fun publishCompleted(
