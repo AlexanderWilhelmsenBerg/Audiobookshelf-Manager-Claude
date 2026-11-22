@@ -64,3 +64,16 @@ then paused Car disconnection and manual headset/phone Play using one replacemen
 destination separately from host state. A repeated final-stage overshoot still needs investigation;
 do not accept it by raising the bound. Original-appearance loss and virtual-key attribution remain
 separate physical capability limits. Genuine #288 HTTP 401 and #295 startup acceptance remain separate.
+
+## Build 2303 follow-up
+
+After a confirmed projection exit, playback remained active and Android routed the playing track
+to the headset. The user paused after the departure callback. The next Play attempted to verify
+the original Car choice, refused that proof and paused. The manual focus callback at departure
+did not pause BookWave.
+
+Replay the confirmed departure while playing, then Pause and Play from the headset. Playback
+should continue through departure, and the next Play should retire the departed Car selection
+before verifying the new playback route. Check for one Play, no Car proof refusal, audio on the
+headset and stable book position. The `car-intent-retired` diagnostic uses `source=listener-play`
+for this case. A new output choice and any positive or unresolved projection retain precedence.
