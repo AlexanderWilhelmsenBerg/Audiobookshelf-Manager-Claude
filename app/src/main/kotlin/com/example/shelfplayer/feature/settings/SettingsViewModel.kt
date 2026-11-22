@@ -351,8 +351,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { playbackSettings.setStartupMode(mode) }
     }
 
-    /** PRODUCT_SPEC 6.4 step 6 — whether finishing a book starts the next one in its series. */
-    fun onLockPlayingHeadsetChanged(enabled: Boolean) {
+    val onLockPlayingHeadsetChanged: (Boolean) -> Unit = { enabled ->
         viewModelScope.launch { playbackSettings.setLockPlayingHeadset(enabled) }
     }
 

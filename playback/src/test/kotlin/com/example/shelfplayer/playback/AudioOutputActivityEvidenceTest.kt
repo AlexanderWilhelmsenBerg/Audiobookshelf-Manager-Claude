@@ -135,7 +135,7 @@ class AudioOutputActivityEvidenceTest {
         val headset = device(1, AudioDeviceInfo.TYPE_WIRED_HEADPHONES)
         val speaker = device(2, AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
         val car = device(3, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP)
-        val secondHeadset = device(4, AudioDeviceInfo.TYPE_USB_HEADSET)
+        val secondHeadset = device(4, AudioDeviceInfo.TYPE_BLE_HEADSET)
         private val context = RuntimeEnvironment.getApplication()
         private val manager = shadowOf(context.getSystemService(AudioManager::class.java))
         private val registry = LiveOutputEndpointRegistry()

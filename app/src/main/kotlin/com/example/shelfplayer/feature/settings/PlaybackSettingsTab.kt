@@ -145,24 +145,7 @@ private fun LazyListScope.behaviourCard(settings: PlaybackSettings, actions: Pla
                 checked = settings.lockPlayingHeadset,
                 onCheckedChange = actions.onLockPlayingHeadsetChanged,
             )
-            InlineChoiceRow(
-                label = stringResource(R.string.settings_section_interruptions),
-                options = FocusBehaviour.entries,
-                selected = settings.focusBehaviour,
-                labelOf = { option ->
-                    stringResource(
-                        when (option) {
-                            FocusBehaviour.Pause -> R.string.settings_focus_pause
-                            FocusBehaviour.Duck -> R.string.settings_focus_duck
-                            FocusBehaviour.Ignore -> R.string.settings_focus_ignore
-                        },
-                    )
-                },
-                onSelected = actions.onFocusBehaviourChanged,
-            )
-            if (settings.focusBehaviour == FocusBehaviour.Ignore) {
-                Hint(stringResource(R.string.settings_focus_ignore_hint))
-            }
+            AudioFocusChoice(settings.focusBehaviour, actions.onFocusBehaviourChanged)
             InlineChoiceRow(
                 label = stringResource(R.string.settings_section_startup),
                 options = StartupMode.entries,
@@ -179,6 +162,28 @@ private fun LazyListScope.behaviourCard(settings: PlaybackSettings, actions: Pla
                 onSelected = actions.onStartupModeChanged,
             )
         }
+    }
+}
+
+@Composable
+private fun AudioFocusChoice(selected: FocusBehaviour, onSelected: (FocusBehaviour) -> Unit) {
+    InlineChoiceRow(
+        label = stringResource(R.string.settings_section_interruptions),
+        options = FocusBehaviour.entries,
+        selected = selected,
+        labelOf = { option ->
+            stringResource(
+                when (option) {
+                    FocusBehaviour.Pause -> R.string.settings_focus_pause
+                    FocusBehaviour.Duck -> R.string.settings_focus_duck
+                    FocusBehaviour.Ignore -> R.string.settings_focus_ignore
+                },
+            )
+        },
+        onSelected = onSelected,
+    )
+    if (selected == FocusBehaviour.Ignore) {
+        Hint(stringResource(R.string.settings_focus_ignore_hint))
     }
 }
 
