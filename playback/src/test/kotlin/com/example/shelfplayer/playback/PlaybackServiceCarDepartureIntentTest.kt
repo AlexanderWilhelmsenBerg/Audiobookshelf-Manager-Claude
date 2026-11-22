@@ -67,7 +67,7 @@ class PlaybackServiceCarDepartureIntentTest {
             assertEquals(carSelection, fixture.explicitSelectionSequence())
             assertEquals(0, fixture.rawPlayCalls)
 
-            fixture.forwarding.handleSetPlayWhenReady(false).get()
+            assertNull(fixture.forwarding.handleSetPlayWhenReady(false).get())
             fixture.reportedIsPlaying = false
             runCurrent()
             assertFalse(fixture.player.playWhenReady)
@@ -94,7 +94,7 @@ class PlaybackServiceCarDepartureIntentTest {
                 AndroidAutoProjectionMonitor.State.NotConnected,
             )
             runCurrent()
-            fixture.forwarding.handleSetPlayWhenReady(false).get()
+            assertNull(fixture.forwarding.handleSetPlayWhenReady(false).get())
             fixture.selectCar()
             runCurrent()
             val latest = fixture.explicitSelectionSequence()
