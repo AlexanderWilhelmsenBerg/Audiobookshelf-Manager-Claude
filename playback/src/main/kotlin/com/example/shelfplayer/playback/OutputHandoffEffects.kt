@@ -64,12 +64,18 @@ internal class OutputHandoffEffects(private val source: Source) {
         }
     }
 
-    fun select(id: String?, destination: OutputIntentOwner.Destination): Boolean {
+    fun select(id: String?, destination: OutputIntentOwner.Destination, followsSystem: Boolean = false): Boolean {
         if (destination == OutputIntentOwner.Destination.Automatic) return releaseAutomatic()
         val origin = prepareOrigin() ?: return false
         val path = source.observation()?.path
         if (!unchanged(origin)) return false
-        val prepared = source.owner.prepareTransfer(id, destination, source.preferences.supersede(), path)
+        val prepared = source.owner.prepareTransfer(
+            id,
+            destination,
+            source.preferences.supersede(),
+            path,
+            followsSystem,
+        )
         return start(prepared, origin, forPlay = false)
     }
 

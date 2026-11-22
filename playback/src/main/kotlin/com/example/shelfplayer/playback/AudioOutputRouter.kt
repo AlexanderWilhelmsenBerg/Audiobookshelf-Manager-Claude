@@ -17,6 +17,7 @@ import com.example.shelfplayer.core.model.playback.AudioOutput
 import com.example.shelfplayer.core.model.playback.AudioOutputActivitySource
 import com.example.shelfplayer.core.model.playback.AudioOutputLockStatus
 import com.example.shelfplayer.core.model.playback.AudioOutputPresentation
+import com.example.shelfplayer.core.model.playback.AudioOutputRole
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -950,6 +951,30 @@ private fun statusFor(lock: OutputIntentOwner.Lock?): AudioOutputLockStatus? = w
     OutputIntentOwner.LockPhase.Waiting -> AudioOutputLockStatus.Waiting
     OutputIntentOwner.LockPhase.Unverified -> AudioOutputLockStatus.Unverified
     null -> null
+}
+
+/** Use Android's selected headset for a fresh Play, then require the usual muted route proof. */
+internal fun AudioOutputRouter.followSystemHeadsetForPlay(): Boolean {
+    val selection = explicitSelection.value
+    if (outputLock.value != null ||
+        selection?.let { it.destination != OutputIntentOwner.Destination.Automatic && !it.followsSystem } == true
+    ) {
+        return true
+    }
+    val held = selectedId.value ?: return true
+    val target = localOutputs.systemHeadset() ?: return true
+    // A classic Bluetooth car can also look like an unclassified headset.
+    val safeCandidate = target.role != AudioOutputRole.Ambiguous || confirmedCarAbsent()
+    return target.id == held || !safeCandidate ||
+        handoffs.select(target.id, OutputIntentOwner.Destination.Output, followsSystem = true)
+}
+
+internal fun AudioOutputRouter.releaseAutomaticHeadsetProtection() {
+    if (explicitSelection.value?.followsSystem == true) {
+        select(null)
+    } else {
+        clearMeasuredPlayingHeadsetProtection()
+    }
 }
 
 internal fun shouldSuspendGuardedPlayback(

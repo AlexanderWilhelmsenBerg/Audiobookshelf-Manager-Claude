@@ -36,6 +36,7 @@ internal class PlaybackCommandEffects(
     private val isAttached: (Player) -> Boolean,
     private val protectOutput: (Player, Boolean, Boolean) -> ManualPlayProtection,
     private val canRunDecoder: (Player) -> Boolean = { true },
+    private val allowPlayWithFocus: () -> Boolean = { true },
 ) : PlaybackCommands {
     override fun prepare(current: Player, stillAuthorized: () -> Boolean, holdForSeek: Boolean): Boolean {
         val expectedItemGeneration = itemGeneration()
@@ -61,7 +62,11 @@ internal class PlaybackCommandEffects(
         ) {
             return false
         }
-        if (!canActivate(current, expectedItemGeneration, stillAuthorized)) return false
+        if (!canActivate(current, expectedItemGeneration, stillAuthorized) ||
+            (!current.playWhenReady && !allowPlayWithFocus())
+        ) {
+            return false
+        }
         beforeRawPlay()
         if (!canActivate(current, expectedItemGeneration, stillAuthorized)) return false
         current.play()

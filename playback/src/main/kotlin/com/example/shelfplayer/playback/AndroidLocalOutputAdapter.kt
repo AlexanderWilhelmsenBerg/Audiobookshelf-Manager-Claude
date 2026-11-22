@@ -130,6 +130,12 @@ internal class AndroidLocalOutputAdapter(
     fun predictsOnly(id: String): Boolean =
         id in live && id !in collidingOutputIds && predictedIds(requireAllMapped = true) == setOf(id)
 
+    fun systemHeadset(): AudioOutput? {
+        val id = predictedIds(requireAllMapped = true)?.singleOrNull() ?: return null
+        if (id in collidingOutputIds) return null
+        return outputs().singleOrNull { it.id == id && it.isHeadsetCandidate }
+    }
+
     /** Framework policy prediction only; actual playing-track measurement belongs to the monitor. */
     fun predictedIds(): Set<String>? = predictedIds(requireAllMapped = false)
 

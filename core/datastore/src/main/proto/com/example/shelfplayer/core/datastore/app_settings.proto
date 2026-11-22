@@ -321,6 +321,8 @@ message AppSettings {
   // SET-002. Older installs retain below-cover text and visible borders.
   bool shelf_card_text_beside_cover = 60;
   bool hide_shelf_card_borders = 61;
+  // Inverted so upgrades keep verified headset protection enabled.
+  bool lock_playing_headset_disabled = 62;
 }
 
 message AudioEqualizer {
@@ -399,6 +401,7 @@ enum DeviceKind {
 enum FocusBehaviour {
   FOCUS_BEHAVIOUR_PAUSE = 0;
   FOCUS_BEHAVIOUR_DUCK = 1;
+  FOCUS_BEHAVIOUR_IGNORE = 2;
 }
 
 // PRODUCT_SPEC ROUTE-003. Zero is "only on a media command", which satisfies "app launch alone never starts

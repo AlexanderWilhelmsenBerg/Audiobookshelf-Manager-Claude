@@ -207,6 +207,7 @@ fun SettingsRoute(
             onStartupModeChanged = viewModel::onStartupModeChanged,
             onAutoAdvanceSeriesChanged = viewModel::onAutoAdvanceSeriesChanged,
             onHeadsetButtonRoutingChanged = viewModel.onHeadsetButtonRoutingChanged,
+            onLockPlayingHeadsetChanged = viewModel.onLockPlayingHeadsetChanged,
             onSonyTapDetectionChanged = viewModel.onSonyTapDetectionChanged,
             onManageDownloads = onManageDownloads,
         ),

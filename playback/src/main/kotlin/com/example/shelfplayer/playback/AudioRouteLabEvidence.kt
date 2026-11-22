@@ -13,6 +13,7 @@ internal object AudioRouteLabEvidence {
     private val allowed = mapOf(
         "Manual system route experiment" to "system-route-experiment",
         "Playback focus observation" to "focus-observation",
+        "Manual audio focus changed" to "focus-observation",
         "Android Auto connection entry observed" to "connection-entry",
         "Android Auto trace started" to "auto-trace-start",
         "Muted output route observation requested" to "output-observation",
