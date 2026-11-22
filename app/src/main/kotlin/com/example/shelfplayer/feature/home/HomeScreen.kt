@@ -270,100 +270,7 @@ fun HomeScreen(
         // PRODUCT_SPEC LIB-002 — frosted, like the capsule at the other end of the screen, and sharing its
         // blur source. Both are siblings of the body in the `Scaffold`, so both may read a state whose
         // source is that body; an effect that is a descendant of its own source draws nothing.
-        topBar = {
-            Column(
-                modifier = Modifier.systemGlass(
-                    state = axisBarHaze,
-                    backgroundColor = MaterialTheme.colorScheme.surface,
-                    shape = RectangleShape,
-                ),
-            ) {
-                TopAppBar(
-                    // Transparent so the glass is what is seen. `TopAppBar` paints its own container over the
-                    // modifier's background otherwise, and the blur would be hidden beneath it.
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                    title = {
-                        BoxWithConstraints {
-                            // Four 48 dp actions can leave less than a logo's width on a compact phone. The
-                            // title and status are information; the adjacent, duplicate brand mark is not.
-                            val showBrandMark = maxWidth >= HOME_MARK_MIN_TITLE_WIDTH &&
-                                LocalDensity.current.fontScale <= HOME_MARK_MAX_FONT_SCALE
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                if (showBrandMark) {
-                                    // Decorative: the adjacent title already names the app once for TalkBack.
-                                    // A dedicated small WebP avoids decoding the launcher master.
-                                    Image(
-                                        painter = painterResource(R.drawable.bookwave_logo_header),
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Fit,
-                                        modifier = Modifier
-                                            .testTag(HOME_MARK_TEST_TAG)
-                                            .size(HOME_MARK_SIZE)
-                                            .padding(end = 8.dp),
-                                    )
-                                }
-                                // PRODUCT_SPEC 6.1 step 9 — a shelf narrowed to one library is titled with it.
-                                // Showing "Library" over a subset of the profile's books reads as books having
-                                // gone missing, and the setting that caused it is two screens away.
-                                Text(
-                                    text = uiState.scopedTo?.name ?: stringResource(R.string.home_title),
-                                    modifier = Modifier.weight(1f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                ServerStatusIndicator(
-                                    status = uiState.serverStatus,
-                                    isOffline = uiState.isOffline,
-                                    modifier = Modifier.padding(start = 8.dp),
-                                )
-                            }
-                        }
-                    },
-                    actions = {
-                        // PRODUCT_SPEC LIB-002 / 21 — search is a button. A permanent field costs a row of
-                        // vertical space on every screen to serve the one visit in ten that is a search, and
-                        // a device run asked for it back.
-                        if (uiState.profile != null) {
-                            val searchLabel = if (uiState.isSearching) {
-                                R.string.home_search_close
-                            } else {
-                                R.string.home_search_open
-                            }
-                            IconButton(onClick = actions.onSearchToggled) {
-                                Icon(
-                                    imageVector = if (uiState.isSearching) Icons.Filled.Close else Icons.Filled.Search,
-                                    contentDescription = stringResource(searchLabel),
-                                )
-                            }
-                        }
-                        if (uiState.axis == HomeAxis.Books && uiState.profile != null) {
-                            HomeViewToggle(current = uiState.booksView, onChanged = actions.onBooksViewChanged)
-                        }
-                        // PRODUCT_SPEC LIB-001 — sync is "visible but non-blocking", and one indicator is
-                        // enough to say so. There used to be two: a bar across the top and the pull-to-refresh
-                        // spinner, for a single operation. The button that starts the sync is the honest place
-                        // to show it running.
-                        val syncing = uiState.syncStatus == SyncStatus.Syncing
-                        IconButton(onClick = actions.onRefresh, enabled = !syncing) {
-                            Icon(
-                                imageVector = Icons.Filled.Refresh,
-                                contentDescription = stringResource(
-                                    if (syncing) R.string.home_sync_running else R.string.home_refresh,
-                                ),
-                                modifier = Modifier
-                                    .rotate(refreshSpin(syncing))
-                                    .semantics { if (syncing) liveRegion = LiveRegionMode.Polite },
-                            )
-                        }
-                        HomeOverflowMenu(actions = actions)
-                    },
-                )
-                HomeFilters(uiState = uiState, actions = actions)
-            }
-        },
+        topBar = { HomeToolbar(uiState = uiState, actions = actions, haze = axisBarHaze) },
         // PRODUCT_SPEC LIB-002 — the axes live in a bottom bar rather than in tabs on a second screen.
         // Hidden while there is no profile: four destinations over "No server connected" are four ways
         // to reach the same empty screen.
@@ -456,6 +363,103 @@ fun HomeScreen(
         }
     }
     GenreEditDialog(state = uiState.genreEdit, actions = actions)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HomeToolbar(uiState: HomeUiState, actions: HomeActions, haze: HazeState) {
+    Column(
+        modifier = Modifier.systemGlass(
+            state = haze,
+            backgroundColor = MaterialTheme.colorScheme.surface,
+            shape = RectangleShape,
+        ),
+    ) {
+        TopAppBar(
+            // Transparent so the glass is what is seen. `TopAppBar` paints its own container over the
+            // modifier's background otherwise, and the blur would be hidden beneath it.
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+            title = {
+                BoxWithConstraints {
+                    // Four 48 dp actions can leave less than a logo's width on a compact phone. The
+                    // title and status are information; the adjacent, duplicate brand mark is not.
+                    val showBrandMark = maxWidth >= HOME_MARK_MIN_TITLE_WIDTH &&
+                        LocalDensity.current.fontScale <= HOME_MARK_MAX_FONT_SCALE
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (showBrandMark) {
+                            // Decorative: the adjacent title already names the app once for TalkBack.
+                            // A dedicated small WebP avoids decoding the launcher master.
+                            Image(
+                                painter = painterResource(R.drawable.bookwave_logo_header),
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .testTag(HOME_MARK_TEST_TAG)
+                                    .size(HOME_MARK_SIZE)
+                                    .padding(end = 8.dp),
+                            )
+                        }
+                        // PRODUCT_SPEC 6.1 step 9 — a shelf narrowed to one library is titled with it.
+                        // Showing "Library" over a subset of the profile's books reads as books having
+                        // gone missing, and the setting that caused it is two screens away.
+                        Text(
+                            text = uiState.scopedTo?.name ?: stringResource(R.string.home_title),
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        ServerStatusIndicator(
+                            status = uiState.serverStatus,
+                            isOffline = uiState.isOffline,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
+            },
+            actions = {
+                // PRODUCT_SPEC LIB-002 / 21 — search is a button. A permanent field costs a row of
+                // vertical space on every screen to serve the one visit in ten that is a search, and
+                // a device run asked for it back.
+                if (uiState.profile != null) {
+                    val searchLabel = if (uiState.isSearching) {
+                        R.string.home_search_close
+                    } else {
+                        R.string.home_search_open
+                    }
+                    IconButton(onClick = actions.onSearchToggled) {
+                        Icon(
+                            imageVector = if (uiState.isSearching) Icons.Filled.Close else Icons.Filled.Search,
+                            contentDescription = stringResource(searchLabel),
+                        )
+                    }
+                }
+                if (uiState.axis == HomeAxis.Books && uiState.profile != null) {
+                    HomeViewToggle(current = uiState.booksView, onChanged = actions.onBooksViewChanged)
+                }
+                // PRODUCT_SPEC LIB-001 — sync is "visible but non-blocking", and one indicator is
+                // enough to say so. There used to be two: a bar across the top and the pull-to-refresh
+                // spinner, for a single operation. The button that starts the sync is the honest place
+                // to show it running.
+                val syncing = uiState.syncStatus == SyncStatus.Syncing
+                IconButton(onClick = actions.onRefresh, enabled = !syncing) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = stringResource(
+                            if (syncing) R.string.home_sync_running else R.string.home_refresh,
+                        ),
+                        modifier = Modifier
+                            .rotate(refreshSpin(syncing))
+                            .semantics { if (syncing) liveRegion = LiveRegionMode.Polite },
+                    )
+                }
+                HomeOverflowMenu(actions = actions)
+            },
+        )
+        HomeFilters(uiState = uiState, actions = actions)
+    }
 }
 
 /**
