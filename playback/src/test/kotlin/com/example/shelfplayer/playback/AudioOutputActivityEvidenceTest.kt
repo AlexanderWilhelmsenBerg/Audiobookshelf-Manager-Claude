@@ -105,10 +105,37 @@ class AudioOutputActivityEvidenceTest {
         assertFalse(fixture.router.outputs.value.first { it.id == fixture.id(fixture.car) }.isActive)
     }
 
-    private class Fixture(scope: TestScope) {
+    @Test
+    fun `a fresh Play can follow the sole system-selected headset but preserves a manual destination`() = runTest {
+        val fixture = Fixture(this, withSecondHeadset = true)
+        val first = fixture.id(fixture.headset)
+        val second = fixture.id(fixture.secondHeadset)
+        fixture.router.protectPlayingHeadset(first)
+        fixture.predict(fixture.secondHeadset, fixture.speaker)
+
+        assertTrue(fixture.router.followSystemHeadsetForPlay())
+        assertEquals(first, fixture.router.selectedId.value)
+
+        fixture.predict(fixture.secondHeadset)
+        assertTrue(fixture.router.followSystemHeadsetForPlay())
+        assertEquals(second, fixture.router.selectedId.value)
+        assertEquals(true, fixture.router.explicitSelection.value?.followsSystem)
+
+        fixture.predict(fixture.headset)
+        assertTrue(fixture.router.followSystemHeadsetForPlay())
+        assertEquals(first, fixture.router.selectedId.value)
+
+        fixture.router.select(second)
+        assertTrue(fixture.router.followSystemHeadsetForPlay())
+        assertEquals(second, fixture.router.selectedId.value)
+        assertEquals(false, fixture.router.explicitSelection.value?.followsSystem)
+    }
+
+    private class Fixture(scope: TestScope, withSecondHeadset: Boolean = false) {
         val headset = device(1, AudioDeviceInfo.TYPE_WIRED_HEADPHONES)
         val speaker = device(2, AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
         val car = device(3, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP)
+        val secondHeadset = device(4, AudioDeviceInfo.TYPE_USB_HEADSET)
         private val context = RuntimeEnvironment.getApplication()
         private val manager = shadowOf(context.getSystemService(AudioManager::class.java))
         private val registry = LiveOutputEndpointRegistry()
@@ -127,7 +154,8 @@ class AudioOutputActivityEvidenceTest {
         )
 
         init {
-            manager.setOutputDevices(listOf(headset, speaker, car))
+            val outputs = listOf(headset, speaker, car)
+            manager.setOutputDevices(if (withSecondHeadset) outputs + secondHeadset else outputs)
             var playerVolume = 1f
             val player = Proxy.newProxyInstance(ExoPlayer::class.java.classLoader, arrayOf(ExoPlayer::class.java)) {
                     _,

@@ -431,16 +431,19 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   physical output proof; association learning requires positive car absence (PD-009, 2026-11-17).
 
 **Acceptance criteria**
-- The player requests audio focus through Media3.
-- A transient focus loss pauses or ducks according to setting; default is pause.
-- A permanent focus loss pauses.
-- Incoming calls and navigation prompts behave according to Android audio focus.
+- Media3 handles focus in the default Pause mode and the Duck mode. Permanent focus loss pauses in both modes.
+- In the opt-in Ignore focus loss mode, a fresh listener Play requests Android audio focus, and Pause or Stop
+  releases it. Once playing, BookWave records focus callbacks and leaves transport alone. Android still controls
+  the route, call muting and whether it grants a new Play request. Changes to the focus setting apply while paused.
+- The default **Lock headset while playing** setting protects a verified automatic headset output on supported
+  Android versions. Connection alone cannot select a replacement. Turn the setting off to release that automatic
+  protection. Explicit output choices, explicit locks and route-loss safety remain available.
 - Disconnecting headphones while playing pauses immediately.
 - Playback never unexpectedly moves from headphones to the phone speaker.
 - A unique verified Bluetooth identity retains its in-process route when Android reassigns device
   handles in one inventory update. Current track proof is still required before unmute.
 - Android Auto discovery must preserve an already verified, healthy headset route without a preference
-  reset or artificial waiting delay. Android focus loss or unavailable actual output still pauses safely.
+  reset or artificial waiting delay. Unavailable actual output still pauses safely in every focus mode.
 - An internal route-safety pause of verified active headset playback may authorize one silent recovery
   of that exact trusted headset within two seconds, without waiting for an Auto boundary. Current inventory
   and fresh actual-track proof are required before unmute. The absolute deadline is not restarted by
@@ -647,8 +650,11 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - A media-button command is treated as explicit user intent and may start playback.
 - During Android Auto, a fresh Play from a verified dashboard controller requests Car. With headset-button
   routing enabled (default), a recognized headset-style media key followed by its Play can request the one
-  recognizable live headset. Multiple candidates require evidence for the exact headset. Anonymous Play,
-  Pause and connection alone do not select a new output. An explicit output lock takes precedence.
+  recognizable live headset. An explicit output lock and manual output selection take precedence over
+  following the system. A fresh listener Play from paused may follow Android's uniquely selected headset
+  using muted actual-track verification, without claiming that the headset sent the command. A speaker,
+  an unresolved route and an ambiguous Classic Bluetooth route during possible car projection cannot
+  authorize this handoff. Pause and a connection event alone do not select a new output.
 - Optional WF-1000XM6 tap detection defaults off. BookWave must leave the Sony control channel alone whenever
   Sony Sound Connect is installed and enabled. A tap can supply identity to the pending key but cannot start
   playback. All transfers use the existing output handoff and actual-track verification.
@@ -1059,6 +1065,7 @@ Settings precedence:
 - default speed;
 - skip back/forward;
 - audio focus behavior;
+- lock headset while playing;
 - auto-rewind;
 - finished threshold;
 - sleep timer defaults;

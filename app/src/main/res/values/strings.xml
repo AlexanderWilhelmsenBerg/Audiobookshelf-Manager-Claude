@@ -661,9 +661,13 @@
       The hint has to say that a phone call pauses either way. Without it, somebody chooses Keep playing,
       takes a call, and concludes the setting is broken.
     -->
-    <string name="settings_section_interruptions">Short interruptions</string>
+    <string name="settings_section_interruptions">Audio focus</string>
     <string name="settings_focus_pause">Pause</string>
     <string name="settings_focus_duck">Keep playing, quietly</string>
+    <string name="settings_focus_ignore">Ignore focus loss</string>
+    <string name="settings_lock_playing_headset">Lock headset while playing</string>
+    <string name="settings_lock_playing_headset_hint">Keep the current headset during playback. Pause and press Play to follow a headset Android has selected.</string>
+    <string name="settings_focus_ignore_hint">Applies while paused. BookWave requests focus on Play and keeps playing when focus is lost if Android permits it.</string>
 
     <!-- PRODUCT_SPEC ROUTE-003 — what opening the app does. Only the third option makes a sound. -->
     <string name="settings_section_startup">When you open the app</string>

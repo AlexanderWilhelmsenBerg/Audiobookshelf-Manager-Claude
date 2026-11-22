@@ -500,9 +500,13 @@
     -->
     <!-- PRODUCT_SPEC ROUTE-002 — hva som skjer når en enhet kobles til. -->
     <!-- PRODUCT_SPEC PLAY-002 — pause eller demp ved korte avbrudd. -->
-    <string name="settings_section_interruptions">Korte avbrudd</string>
+    <string name="settings_section_interruptions">Lydfokus</string>
     <string name="settings_focus_pause">Sett på pause</string>
     <string name="settings_focus_duck">Fortsett, men lavt</string>
+    <string name="settings_focus_ignore">Ignorer tap av lydfokus</string>
+    <string name="settings_lock_playing_headset">Lås hodetelefonene under avspilling</string>
+    <string name="settings_lock_playing_headset_hint">Behold gjeldende hodetelefoner under avspilling. Sett på pause og trykk på Spill av for å følge hodetelefonene Android har valgt.</string>
+    <string name="settings_focus_ignore_hint">Gjelder fra neste pause. BookWave ber om lydfokus når du trykker på Spill av, og fortsetter ved tap av lydfokus hvis Android tillater det.</string>
 
     <!-- PRODUCT_SPEC ROUTE-003 — hva det å åpne appen gjør. Bare det tredje valget lager lyd. -->
     <string name="settings_section_startup">Når du åpner appen</string>

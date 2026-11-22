@@ -139,6 +139,12 @@ private fun LazyListScope.behaviourCard(settings: PlaybackSettings, actions: Pla
                 checked = settings.autoAdvanceSeries,
                 onCheckedChange = actions.onAutoAdvanceSeriesChanged,
             )
+            SwitchRow(
+                label = stringResource(R.string.settings_lock_playing_headset),
+                summary = stringResource(R.string.settings_lock_playing_headset_hint),
+                checked = settings.lockPlayingHeadset,
+                onCheckedChange = actions.onLockPlayingHeadsetChanged,
+            )
             InlineChoiceRow(
                 label = stringResource(R.string.settings_section_interruptions),
                 options = FocusBehaviour.entries,
@@ -148,11 +154,15 @@ private fun LazyListScope.behaviourCard(settings: PlaybackSettings, actions: Pla
                         when (option) {
                             FocusBehaviour.Pause -> R.string.settings_focus_pause
                             FocusBehaviour.Duck -> R.string.settings_focus_duck
+                            FocusBehaviour.Ignore -> R.string.settings_focus_ignore
                         },
                     )
                 },
                 onSelected = actions.onFocusBehaviourChanged,
             )
+            if (settings.focusBehaviour == FocusBehaviour.Ignore) {
+                Hint(stringResource(R.string.settings_focus_ignore_hint))
+            }
             InlineChoiceRow(
                 label = stringResource(R.string.settings_section_startup),
                 options = StartupMode.entries,
@@ -285,6 +295,7 @@ data class PlaybackSettingsActions(
     val onEqualizerChanged: (PlaybackEqualizer) -> Unit = {},
     val onAutoAdvanceSeriesChanged: (Boolean) -> Unit = {},
     val onHeadsetButtonRoutingChanged: (Boolean) -> Unit = {},
+    val onLockPlayingHeadsetChanged: (Boolean) -> Unit = {},
     val onSonyTapDetectionChanged: (Boolean) -> Unit = {},
     val onFocusBehaviourChanged: (FocusBehaviour) -> Unit = {},
     val onStartupModeChanged: (StartupMode) -> Unit = {},

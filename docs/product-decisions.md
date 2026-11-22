@@ -438,6 +438,15 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-22 owner refinement (headset lock and manual focus).** Enable **Lock headset while playing**
+by default and expose the switch in Playback settings. An explicit Play from paused may follow Android's
+uniquely selected headset, using the same muted route proof as an explicit transfer. This is routing
+evidence rather than evidence about the key sender. An explicit picker choice or **Keep audio here** wins.
+**Ignore focus loss** is a separate opt-in mode. BookWave requests focus on Play, releases it on Pause
+or Stop, and logs later focus callbacks without pausing playback. Android can still deny a request, mute
+or move the route. This changes focus ownership only for the opt-in mode. Confirm headset switching,
+ongoing playback during Auto arrival, and call muting on the phone before calling the behavior hardware-tested.
+
 **2026-11-18 owner refinement (earlier inferred arrival checks).** Observe route publications during
 the inferred-arrival settle wait. A fresh, stable framework prediction of the exact held headset as the
 sole route can shorten the wait, with a 350 ms minimum and the existing 500 ms fallback. The existing

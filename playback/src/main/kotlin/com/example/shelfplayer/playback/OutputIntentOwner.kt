@@ -17,7 +17,12 @@ internal class OutputIntentOwner {
     internal enum class LockPhase { Active, Waiting, Unverified }
     internal enum class TransferPhase { Waiting, Verifying, Verified, Delegated, Failed }
 
-    internal data class Selection(val sequence: Long, val outputId: String?, val destination: Destination)
+    internal data class Selection(
+        val sequence: Long,
+        val outputId: String?,
+        val destination: Destination,
+        val followsSystem: Boolean = false,
+    )
 
     /** Immutable request claim; the current selection and transfer state are owned only by [Snapshot]. */
     internal data class TransferRequest(
@@ -104,11 +109,12 @@ internal class OutputIntentOwner {
         destination: Destination,
         effectEpoch: Long,
         originalPath: AudioTrackPath?,
+        followsSystem: Boolean = false,
     ): PreparedTransfer {
         require(destination != Destination.Automatic)
         require(destination != Destination.Output || !outputId.isNullOrBlank())
         val current = _state.value
-        val selection = Selection(++nextSequence, outputId, destination)
+        val selection = Selection(++nextSequence, outputId, destination, followsSystem)
         return PreparedTransfer(
             current,
             TransferRequest(selection, effectEpoch, current.activeBookGeneration, originalPath),
