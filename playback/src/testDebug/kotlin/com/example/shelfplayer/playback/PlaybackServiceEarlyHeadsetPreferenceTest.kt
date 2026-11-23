@@ -22,7 +22,7 @@ import kotlin.test.assertTrue
 @Config(sdk = [34])
 class PlaybackServiceEarlyHeadsetPreferenceTest {
     @Test
-    fun `fresh car link refreshes only the verified playing headset once`() = runTest {
+    fun freshCarLinkRefreshesTheVerifiedPlayingHeadsetOnce() = runTest {
         withPlayingHeadset { fixture ->
             val monitor = fixture.carMonitor()
             val sequence = fixture.explicitSelectionSequence()
@@ -47,7 +47,7 @@ class PlaybackServiceEarlyHeadsetPreferenceTest {
     }
 
     @Test
-    fun `route proof lost before the queued effect blocks the refresh`() = runTest {
+    fun losingRouteProofBlocksTheQueuedRefresh() = runTest {
         withPlayingHeadset { fixture ->
             fixture.carMonitor().connectCar()
             fixture.service.audioOutputs.currentTrackObservation =
@@ -59,7 +59,7 @@ class PlaybackServiceEarlyHeadsetPreferenceTest {
     }
 
     @Test
-    fun `leaving the car link before the queued effect blocks the refresh`() = runTest {
+    fun losingTheCarLinkBlocksTheQueuedRefresh() = runTest {
         withPlayingHeadset { fixture ->
             val monitor = fixture.carMonitor()
             monitor.connectCar()
@@ -71,7 +71,7 @@ class PlaybackServiceEarlyHeadsetPreferenceTest {
     }
 
     @Test
-    fun `paused playback and calls cannot refresh the preference`() = runTest {
+    fun pausedPlaybackAndCallsPreventTheRefresh() = runTest {
         withPlayingHeadset { fixture ->
             val monitor = fixture.carMonitor()
             fixture.service.audioMode = { AudioManager.MODE_IN_COMMUNICATION }
@@ -92,7 +92,7 @@ class PlaybackServiceEarlyHeadsetPreferenceTest {
     }
 
     @Test
-    fun `a newer car controller connection supersedes the queued refresh`() = runTest {
+    fun aNewCarControllerSupersedesTheQueuedRefresh() = runTest {
         withPlayingHeadset { fixture ->
             fixture.carMonitor().connectCar()
             fixture.service.carLifecycle.onControllerConnected()
