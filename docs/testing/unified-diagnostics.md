@@ -31,6 +31,11 @@ exports with a different shape.
   Stable inventory callbacks do not produce repeated summary rows. Native timing is sampled in a
   bounded burst and raw timing rows are recorded at roughly one-second intervals, plus detected
   state changes. Useful native evidence includes frame position, timestamp, speed and underruns.
+- Each `track-timing` row pairs native audio timing with Media3's position within the current queue
+  item, buffer and playback state when a player is attached. `route-boundary` marks a route-safety pause
+  or confirmed Auto departure and retains timing rows up to four times per second for three seconds.
+  `player-discontinuity` records the public reason code and the numeric positions on either side.
+  Use the item index and book generation before comparing position deltas across rows.
 - `firstIncident` retains the first frame stall, Media3 stuck reason, or listener-marked silence
   or skipping and its context. The retained recorder rows are app private and expire after 24 hours.
 - `problems` contains up to forty recent redacted warnings and errors. A sanitized `previousCrash`
@@ -42,6 +47,15 @@ Remote submix and frame movement cannot prove which physical device was heard. V
 identify the sending software where available and cannot prove a physical button or headset identity.
 Output and input aliases are local to the process or capture. The report excludes raw addresses,
 names, descriptors, credentials and media metadata by default.
+
+To investigate the build 2308 startup pause and disconnect skip, clear the capture immediately before
+the parked run. Play the same downloaded chapter through the headset throughout one ordinary car
+startup and shutdown. Mark **Silence** or **Skipping** where heard. A seek reason with a matching
+position jump shows a Media3 transport discontinuity. Steady player progress with a native frame or
+timestamp step points toward the rendering path. If both clocks jump together, examine the reason code
+and buffer state before attributing the jump. A frame step alone does not establish lost audio.
+An optional second run with **Automatic headset take-back** off isolates the existing system-wide
+recovery request. Keep the headset lock and focus settings fixed between runs.
 
 Android 17 can block playback, volume and focus through background audio hardening. The app records
 the OS and target API for context but Android's raw focus owner, focus result and hardening decision

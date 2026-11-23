@@ -80,6 +80,7 @@ class AudioRouteLab @Inject constructor(
     private val frameProgress = AudioTrackProgressEvidence()
     private data class TimingRow(val capture: Long, val track: Long, val atNs: Long)
     private var lastTimingRow: TimingRow? = null
+    private var timingBoundary: Pair<Long, Long>? = null
 
     @Volatile internal var systemIncidentContext: (Instant) -> List<String> = { emptyList() }
     internal var onCaptureStarted: () -> Unit = {}
@@ -126,11 +127,33 @@ class AudioRouteLab @Inject constructor(
             it.capture == generation && it.track == sample.observerEpoch &&
                 sample.monotonicNs - it.atNs in 0 until TIMING_ROW_INTERVAL_NS
         } ?: false
-        if (observation != null || !withinSampleWindow) {
+        val nearBoundary = timingBoundary?.let { (capture, atNs) ->
+            capture == generation && sample.monotonicNs - atNs in 0 until BOUNDARY_TIMING_NS
+        } ?: false
+        if (observation != null || !withinSampleWindow || nearBoundary) {
             lastTimingRow = TimingRow(generation, sample.observerEpoch, sample.monotonicNs)
-            record(sample.evidence(), generation)
+            val state = playback?.let { " ${it.timingEvidence()}" }.orEmpty()
+            record(sample.evidence() + state, generation)
         }
         observation?.let { record(it.evidence(), generation) }
+    }
+
+    internal fun trackTimingBoundary(boundary: AudioTimingBoundary, playback: AudioTrackPlaybackSnapshot?) {
+        if (!_state.value.recording) return
+        val generation = recordingGeneration.get()
+        val atNs = clock.elapsed().inWholeNanoseconds
+        timingBoundary = generation to atNs
+        val state = playback?.let { " ${it.timingEvidence()}" }.orEmpty()
+        record("route-boundary edge=${boundary.name} monotonicNs=$atNs$state", generation)
+    }
+
+    internal fun playerDiscontinuity(reason: Int, previousMs: Long, nextMs: Long, sameItem: Boolean) {
+        if (!_state.value.recording) return
+        val atNs = clock.elapsed().inWholeNanoseconds
+        record(
+            "player-discontinuity reasonCode=$reason previousMs=$previousMs nextMs=$nextMs " +
+                "sameItem=$sameItem monotonicNs=$atNs",
+        )
     }
 
     internal fun deviceAlias(platformId: Int): String = deviceTimeline.aliasFor(platformId)
@@ -434,6 +457,7 @@ class AudioRouteLab @Inject constructor(
         const val MAX_ROWS = 350
         const val EVENT_BUFFER_CAPACITY = 1024
         const val TIMING_ROW_INTERVAL_NS = 1_000_000_000L
+        const val BOUNDARY_TIMING_NS = 3_000_000_000L
         const val RETENTION_MS = 24 * 60 * 60 * 1000L
         val OBSERVATIONS = setOf("Headset", "HeadsetA", "HeadsetB", "Car", "Phone", "Silence", "Skipping")
         val MARKERS = setOf("Baseline", "CarBluetooth", "AndroidAuto", "ButtonA", "ButtonB", "CarPlay")

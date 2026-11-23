@@ -26,6 +26,26 @@ import kotlin.test.assertTrue
 @Config(sdk = [34])
 class PlaybackServiceCarDepartureIntentTest {
     @Test
+    fun `physical projection departure is marked in an active diagnostics capture`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this).use { fixture ->
+            val lab = fixture.service.audioRouteLab
+            lab.start()
+            try {
+                fixture.projection(null, AndroidAutoProjectionMonitor.State.Projection)
+                fixture.projection(
+                    AndroidAutoProjectionMonitor.State.Projection,
+                    AndroidAutoProjectionMonitor.State.NotConnected,
+                )
+
+                assertTrue(lab.state.value.entries.any { "route-boundary edge=ProjectionDeparture" in it })
+                assertEquals(0, fixture.rawPlayCalls)
+            } finally {
+                lab.stop()
+            }
+        }
+    }
+
+    @Test
     fun `losing the playing car pauses before Android can fall back to a local output`() = runTest {
         PlaybackServiceCommandContinuityFixture(this).use { fixture ->
             fixture.projection(null, AndroidAutoProjectionMonitor.State.Projection)

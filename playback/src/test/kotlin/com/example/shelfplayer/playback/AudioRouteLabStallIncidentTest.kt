@@ -23,6 +23,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -101,6 +102,53 @@ class AudioRouteLabStallIncidentTest {
         f.lab.stop()
         runCurrent()
         assertTrue(f.recorder().state.value.stallIncident.isEmpty())
+    }
+
+    @Test
+    fun `native timing and player position are exported together during steady playback`() = runTest {
+        val f = Fixture(this)
+        f.lab.start()
+        f.lab.trackTiming(f.sample(100), f.snapshot)
+        f.clock.advanceBy(1.seconds)
+        f.lab.trackTiming(f.sample(22_150), f.snapshot.copy(positionMs = 1_100))
+        f.clock.advanceBy(1.seconds)
+        f.lab.trackTiming(f.sample(44_200), f.snapshot.copy(positionMs = 2_100))
+        val raw = f.lab.state.value.entries.filter { "track-timing" in it }.last()
+
+        assertTrue("headFrames=44200" in raw)
+        assertTrue("positionMs=2100" in raw)
+        assertTrue("playerState=3" in raw)
+    }
+
+    @Test
+    fun `transition retains denser samples briefly and pins the seek reason with listener marking`() = runTest {
+        val f = Fixture(this)
+        f.lab.trackTimingBoundary(AudioTimingBoundary.ProjectionDeparture, f.snapshot)
+        f.lab.playerDiscontinuity(Player.DISCONTINUITY_REASON_SEEK, 10, 20, true)
+        assertTrue(f.lab.state.value.entries.isEmpty())
+
+        f.lab.start()
+        f.lab.trackTimingBoundary(AudioTimingBoundary.ProjectionDeparture, f.snapshot)
+        f.lab.trackTiming(f.sample(100), f.snapshot)
+        f.clock.advanceBy(250.milliseconds)
+        f.lab.trackTiming(f.sample(5_612), f.snapshot)
+        f.clock.advanceBy(250.milliseconds)
+        f.lab.trackTiming(f.sample(11_125), f.snapshot)
+        f.clock.advanceBy(3.seconds)
+        f.lab.trackTiming(f.sample(77_275), f.snapshot)
+        f.clock.advanceBy(250.milliseconds)
+        f.lab.trackTiming(f.sample(82_787), f.snapshot)
+        f.lab.playerDiscontinuity(Player.DISCONTINUITY_REASON_SEEK, 3_500, 4_000, true)
+        f.lab.heardAt("Skipping")
+
+        val state = f.lab.state.value
+        assertEquals(4, state.entries.count { "track-timing" in it })
+        assertTrue(state.stallIncident.any { "route-boundary edge=ProjectionDeparture" in it })
+        assertTrue(
+            state.stallIncident.any {
+                "player-discontinuity" in it && "previousMs=3500 nextMs=4000 sameItem=true" in it
+            },
+        )
     }
 
     private inner class Fixture(scope: TestScope) {
