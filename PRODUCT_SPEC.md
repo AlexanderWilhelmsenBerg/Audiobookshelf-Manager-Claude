@@ -429,6 +429,11 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   car-link deadline and permits at most one transfer invocation per link. New listener/content intent,
   disconnect, expiry, calls and permission loss prevent delayed transfer. System selection is not
   physical output proof; association learning requires positive car absence (PD-009, 2026-11-17).
+- A debug build may refresh BookWave's existing preference once when an identified car-class hands-free
+  link connects before Auto projection. This requires normal audio mode, Lock headset while playing,
+  and fresh playing-track proof of the same live, trusted headset. This app-scoped request does not
+  own focus, start playback, or change system-wide media routing. Existing route-loss safety still applies
+  (PD-009, 2026-11-23).
 
 **Acceptance criteria**
 - Media3 handles focus in the default Pause mode and the Duck mode. Permanent focus loss pauses in both modes.

@@ -81,3 +81,21 @@ selection while waiting; no later automatic transfer may reverse that intent. De
 retain their existing behavior. Record silence and any car audio separately; system callbacks are not
 acoustic measurements. A permanently stale vendor selection may still prevent transfer: this change
 does not force a selected route through a different output or guarantee uninterrupted playback.
+
+## Build 2306 follow-up
+
+The car's hands-free link connected about seven seconds before Android removed the playing headset.
+The same headset reappeared about 0.7 seconds after the pause, and the playing AudioTrack verified it
+about 0.9 seconds after the pause.
+
+Compare build 2306 with the early-preference debug build during ordinary parked car startup. Keep
+the same headset, focus mode, **Lock headset while playing** and automatic system take-back setting
+for both builds. Start with playback audible in the headset and the car disconnected. Repeat each
+run and record any audible gap or output change. The new build should show one
+`early-headset-preference` event after `car-bluetooth-window` and before projection, while the original
+headset is still playing. This event records dispatch to Media3. Compare the subsequent track and
+Bluetooth evidence to see whether Android held the route.
+
+Also connect the car while playback is paused and disconnect while playing in the car. Expect no
+early refresh from paused playback and no automatic fallback after losing the playing Car route.
+An identical preference may be coalesced by Android, so the comparison must measure the heard gap.

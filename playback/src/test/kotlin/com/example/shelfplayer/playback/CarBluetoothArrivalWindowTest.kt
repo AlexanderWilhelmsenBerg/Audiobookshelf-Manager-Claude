@@ -99,6 +99,23 @@ class CarBluetoothArrivalWindowTest {
     }
 
     @Test
+    fun `a duplicate refreshes neither the early preference allowance nor its deadline`() {
+        window.onCarHandsFreeConnected(null)
+        assertNull(window.claimPreferenceRefresh())
+        window.onCarHandsFreeConnected("car")
+        val refresh = requireNotNull(window.claimPreferenceRefresh())
+        now = 10.seconds
+        window.onCarHandsFreeConnected("car")
+
+        assertNull(window.claimPreferenceRefresh())
+        assertTrue(refresh())
+        assertTrue(window.consume())
+        assertTrue(window.claimTakeBack())
+        now = CarBluetoothArrivalWindow.LIFETIME
+        assertFalse(refresh())
+    }
+
+    @Test
     fun `a clock that moved backwards cannot reopen the window`() {
         now = 10.seconds
         window.onCarHandsFreeConnected("car")

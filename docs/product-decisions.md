@@ -454,6 +454,16 @@ muted AudioTrack verification owns unmute. A healthy playing headset stays undis
 Media3 continues to own focus. Pause and newer listener intent retain precedence.
 [Implementation and hardware comparison](testing/2026-11-16-car-bluetooth-inferred-arrival.md#faster-route-checks-2026-11-18).
 
+**2026-11-23 owner refinement (early BookWave headset preference).** Build 2306 showed that the
+car's hands-free connection preceded the headset's removal from Android's active outputs by
+about seven seconds. The owner selected a debug experiment that refreshes the app's existing
+headset preference once on this early signal. It requires positive Auto absence, normal audio
+mode, the enabled playing-headset lock and fresh exact proof of the still-playing headset.
+The existing app preference is applied directly without clearing it first. Listener or content changes
+and departure revoke queued work. The request does not change focus, playback intent or the system
+media route. Route loss still uses the existing pause and verified recovery policy.
+[Parked comparison](testing/2026-11-17-system-route-take-back.md#build-2306-follow-up).
+
 **2026-11-17 owner refinement (diagnostic comparison).** The owner approved a diagnostic follow-up
 on the build-2280 baseline. A debug-only setting, default on, permits ordinary parked connections with
 automatic system headset take-back disabled for comparison. Changing it never initiates a transfer;

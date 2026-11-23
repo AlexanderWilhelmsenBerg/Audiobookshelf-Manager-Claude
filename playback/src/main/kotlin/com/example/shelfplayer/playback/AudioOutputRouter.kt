@@ -153,7 +153,7 @@ class AudioOutputRouter @Inject constructor(
     /** Bound by the service after attachment; absent evidence fails closed. Retired on detach/replacement. */
     internal var currentTrackObservation: () -> AudioTrackObservation? = { null }
     private val collidingOutputIds: Set<String> get() = localOutputs.collidingOutputIds
-    private val measuredHeadsetProtection = MeasuredHeadsetProtection(
+    internal val measuredHeadsetProtection = MeasuredHeadsetProtection(
         applicationScope, preferenceEffects, localOutputs, headsetGuard, outputIntentOwner, _selectedId,
         player = { player }, routes = { currentTrackRoutes() }, publish = ::refreshRouteEvidence,
     )

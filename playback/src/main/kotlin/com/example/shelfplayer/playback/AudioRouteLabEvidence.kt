@@ -28,6 +28,7 @@ internal object AudioRouteLabEvidence {
         "Car inferred arrival settle finished" to "arrival-settle",
         "Car Bluetooth arrival inference" to "car-bluetooth-inference",
         "Headset take-back experiment" to "headset-take-back",
+        "Early car arrival headset preference requested" to "early-headset-preference",
         "Playback stopped on an error" to "playback-error",
         "Playback hit an error and will retry" to "playback-error",
         "Car-class hands-free link connected; arrival window opened" to "car-bluetooth-window",
