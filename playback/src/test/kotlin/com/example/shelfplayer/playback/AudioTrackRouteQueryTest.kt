@@ -217,6 +217,26 @@ class AudioTrackRouteQueryTest {
     }
 
     @Test
+    fun `confirmed departure samples the current track even inside the old timing cooldown`() = runTest {
+        val fixture = fixture()
+        val track = fixture.track()
+        fixture.observe(track)
+        val looper = shadowOf(Looper.getMainLooper())
+        fixture.lab.start()
+        looper.idleFor(java.time.Duration.ofSeconds(31))
+        assertEquals(120, track.queryShadow.timestampReads)
+
+        fixture.monitor.sampleBoundary(AudioTimingBoundary.ProjectionDeparture)
+        looper.idleFor(java.time.Duration.ofMillis(500))
+        assertEquals(123, track.queryShadow.timestampReads)
+
+        fixture.lab.stop()
+        fixture.monitor.sampleBoundary(AudioTimingBoundary.RouteSafetyPause)
+        looper.idleFor(java.time.Duration.ofSeconds(1))
+        assertEquals(123, track.queryShadow.timestampReads)
+    }
+
+    @Test
     fun `inventory gap makes a still reported playing track unresolved rather than proving disconnection`() = runTest {
         val fixture = fixture()
         val track = fixture.track()

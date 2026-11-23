@@ -201,9 +201,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         val track = active ?: return
         val token = epoch.nextSnapshot()
         if (!lab.state.value.recording) return
-        timing.request(token, { isCurrent(track, token) }) {
-            AudioTrackTimingSample.read(track, token, clock.elapsed().inWholeNanoseconds)
-        }
+        requestTiming(track, token)
         val result = runCatching { routeEvidence(track) }.getOrElse { "route-query-unavailable" }
         // A query can race with another track's release. Never publish it against the successor.
         if (!isCurrent(track, token)) return
@@ -213,6 +211,22 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         if (lastEvidence != result) {
             lastEvidence = result
             lab.actualTrackEvidence(result)
+        }
+    }
+
+    /** Reuse the one timing sampler even after its normal burst or cooldown, with capture enabled only. */
+    fun sampleBoundary(boundary: AudioTimingBoundary) {
+        if (!lab.state.value.recording) return
+        lab.trackTimingBoundary(boundary, playbackSnapshot())
+        val token = epoch.nextSnapshot()
+        val track = active ?: return
+        timing.retire(token)
+        requestTiming(track, token)
+    }
+
+    private fun requestTiming(track: AudioTrack, token: Long) {
+        timing.request(token, { isCurrent(track, token) }) {
+            AudioTrackTimingSample.read(track, token, clock.elapsed().inWholeNanoseconds)
         }
     }
 

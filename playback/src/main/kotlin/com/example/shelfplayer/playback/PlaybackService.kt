@@ -1796,6 +1796,9 @@ class PlaybackService : MediaLibraryService() {
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
             // Record transport intent, not buffer or route changes, and never invent a physical key origin.
             val routeSafetyPause = !playWhenReady && audioOutputs.isRouteSafetyPause(player)
+            if (routeSafetyPause && audioRouteLab.state.value.recording) {
+                audioTrackRouteMonitor.sampleBoundary(AudioTimingBoundary.RouteSafetyPause)
+            }
             val input = PlaybackTransportInput.interpret(
                 playWhenReady,
                 reason,
@@ -1872,6 +1875,15 @@ class PlaybackService : MediaLibraryService() {
             newPosition: Player.PositionInfo,
             reason: Int,
         ) {
+            if (audioRouteLab.state.value.recording) {
+                audioRouteLab.playerDiscontinuity(
+                    reason,
+                    oldPosition.positionMs,
+                    newPosition.positionMs,
+                    oldPosition.mediaItemIndex == newPosition.mediaItemIndex &&
+                        oldPosition.mediaItem?.mediaId == newPosition.mediaItem?.mediaId,
+                )
+            }
             if (reason == Player.DISCONTINUITY_REASON_SEEK ||
                 reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
             ) {
@@ -2137,6 +2149,7 @@ class PlaybackService : MediaLibraryService() {
                     volumeEffects.isRouteMuted(target), target.currentPosition, target.totalBufferedDuration,
                     target.isLoading, routeOwnership.currentGeneration, currentExplicitSelectionSequence(),
                     headsetTakeBack.automaticTransferEnabled,
+                    itemIndex = target.currentMediaItemIndex,
                 )
             }
         }
@@ -2528,6 +2541,9 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun completeProjectionDeparture() {
+        if (audioRouteLab.state.value.recording) {
+            audioTrackRouteMonitor.sampleBoundary(AudioTimingBoundary.ProjectionDeparture)
+        }
         val selection = audioOutputs.explicitSelection.value
         pauseLostCarOutput(projectionDeparted = true)
         val decision = completeCarDeparture("projection-disconnect", physicalProjection = true)

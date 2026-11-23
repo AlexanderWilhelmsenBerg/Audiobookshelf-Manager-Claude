@@ -4,6 +4,11 @@ import android.media.AudioTimestamp
 import android.media.AudioTrack
 import android.os.Handler
 
+internal enum class AudioTimingBoundary {
+    RouteSafetyPause,
+    ProjectionDeparture,
+}
+
 /** Numeric output evidence only. Missing native timestamps/parameters remain unknown. */
 internal data class AudioTrackTimingSample(
     val observerEpoch: Long,

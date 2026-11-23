@@ -474,6 +474,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Opt-in output-stall diagnostics may record bounded numeric frame-progress observations and fixed Media3
   stuck reasons, retaining a privacy-safe first incident separately from the rolling trace until Clear or
   per-row expiry. No-frame-progress evidence does not authorize recovery or establish acoustic audibility.
+- Opt-in route diagnostics pair Media3 position and transport state with native AudioTrack timing.
+  Route-safety pauses and confirmed Android Auto departures start a short period of denser recording.
+  Position discontinuities record the public reason code and numeric positions without media identifiers.
 - Reconnecting a route follows the configured per-device policy.
 - The player output chooser can explicitly keep audio on the current output only while a loaded book is
   playing through one fresh, exact mapped AudioTrack route; predicted, missing, conflicting and duplicate

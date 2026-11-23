@@ -14,7 +14,7 @@ internal object AudioStallIncidentEvidence {
         "track-progress", "playback-error", "headset-take-back", "car-bluetooth-window",
         "continuity-decision", "recovery-step", "arrival-settle", "output-proof", "playback-intent", "transport-intent",
         "focus-observation", "preferred-output-request", "output-observation", "transfer-stage",
-        "projection-change", "car-controller-bound", "car-controller-unbound",
+        "projection-change", "route-boundary", "player-discontinuity", "car-controller-bound", "car-controller-unbound",
         "observer-audio-track-attached", "observer-audio-track-released-or-replaced",
     )
 

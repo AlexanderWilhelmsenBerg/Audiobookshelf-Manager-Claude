@@ -15,7 +15,12 @@ internal data class AudioTrackPlaybackSnapshot(
     val generation: Long?,
     val selection: Long,
     val automaticTakeBack: Boolean? = null,
-)
+    val itemIndex: Int? = null,
+) {
+    fun timingEvidence(): String = "playerState=$state playWhenReady=$playWhenReady " +
+        "suppression=$suppression muted=$muted positionMs=$positionMs bufferedMs=$bufferedMs loading=$loading " +
+        "itemIndex=${itemIndex ?: "unknown"} generation=${generation ?: "unknown"} selectionSequence=$selection"
+}
 
 /** Frame consumption is separate from route identity and is still not proof of acoustic audibility. */
 internal class AudioTrackProgressEvidence {
