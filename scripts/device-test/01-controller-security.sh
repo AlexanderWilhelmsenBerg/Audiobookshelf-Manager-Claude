@@ -24,5 +24,5 @@ done
 
 dump_app_log 120
 step "Now read the in-app log"
-note "Settings → About → Diagnostics → Open the event log → Copy."
+note "Settings → About → Advanced & diagnostics → Open the event log → Copy."
 note "§1.3 expects:  A controller connected without library access   controller=<package>"

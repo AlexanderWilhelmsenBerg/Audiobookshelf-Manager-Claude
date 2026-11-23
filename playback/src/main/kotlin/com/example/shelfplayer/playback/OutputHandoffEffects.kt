@@ -132,13 +132,13 @@ internal class OutputHandoffEffects(private val source: Source) {
     }
 
     /** Confirmed departure may expire an unlocked paused Car choice, without release suppression or Play. */
-    fun retirePausedCar(expected: OutputIntentOwner.Selection?): Boolean {
-        val origin = pausedCarOrigin(expected) ?: return false
+    fun retirePausedCar(expected: OutputIntentOwner.Selection?, stillDeparted: () -> Boolean = { true }): Boolean {
+        val origin = pausedCarOrigin(expected)?.takeIf { stillDeparted() } ?: return false
         val active = source.guard.currentProbe
         val epoch = source.preferences.supersede()
         source.guard.clearOwnership()
         if (active != null) source.guard.cancelProbe(active)
-        if (!canRetireCar(expected) || !selectionScope(origin, expected, epoch)) return false
+        if (!stillDeparted() || !canRetireCar(expected) || !selectionScope(origin, expected, epoch)) return false
         val selection = source.owner.select(null, OutputIntentOwner.Destination.Automatic)
         if (!selectionScope(origin, selection, epoch)) return false
         source.selected(selection)

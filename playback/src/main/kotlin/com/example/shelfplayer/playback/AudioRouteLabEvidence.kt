@@ -44,6 +44,7 @@ internal object AudioRouteLabEvidence {
         "Output transfer stage" to "transfer-stage",
         "Media3 playback parameters changed" to "playback-parameters",
         "A paused Car destination expired after projection disconnection" to "car-intent-retired",
+        "Paused after losing the playing car output" to "car-output-loss",
         "Muted output verification refused excessive post-seek clock movement" to "position-refusal",
     )
     private val safeFields = setOf(

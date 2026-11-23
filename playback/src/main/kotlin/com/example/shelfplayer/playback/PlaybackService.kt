@@ -430,6 +430,7 @@ class PlaybackService : MediaLibraryService() {
      * and the physical AudioTrack. Lazy because Android injects CarConnections before onCreate.
      */
     internal val carLifecycle by lazy { CarLifecycleAuthority(carConnections) }
+    private var departedCarSelection: OutputIntentOwner.Selection? = null
 
     /** One owner for correlation, bounded reuse and privacy-safe Android Auto diagnostics. */
     private val autoTraces by lazy {
@@ -529,6 +530,7 @@ class PlaybackService : MediaLibraryService() {
 
     private fun attachRouteSafetyMonitor(exoPlayer: ExoPlayer) {
         audioTrackRouteMonitor.onRouteChanged = {
+            pauseLostCarOutput(projectionDeparted = false)
             audioOutputs.onActualTrackRouteChanged()
             autoCapture?.trackRoute(audioTrackRouteMonitor::currentRouteDiagnostic)
         }
@@ -966,7 +968,7 @@ class PlaybackService : MediaLibraryService() {
             val freshPlay = requestedPlay && !current.playWhenReady
             prepareFocusForTransport(requestedPlay, current)
             val accepted = routeExplicitCarPlay(requestedPlay, current) && buttonRouting.apply(destination) &&
-                followSystemForControllerPlay(freshPlay, destination)
+                prepareFreshPlayOutput(freshPlay, destination)
             if (accepted && freshPlay) authorizeManualFocusPlay(command)
             if (destination != null) {
                 autoTraces.log(
@@ -998,8 +1000,9 @@ class PlaybackService : MediaLibraryService() {
         if (appliedFocus == FocusBehaviour.Ignore && controllerCommandGeneration == command) focusPlayCommand = command
     }
 
-    private fun followSystemForControllerPlay(freshPlay: Boolean, destination: ButtonDestination?): Boolean {
+    private fun prepareFreshPlayOutput(freshPlay: Boolean, destination: ButtonDestination?): Boolean {
         if (!freshPlay || destination != null) return true
+        if (retireDepartedCarIfPaused("listener-play")) syncExplicitOutputIntent()
         if (!currentPlayerSettings.lockPlayingHeadset || !currentPlayerSettings.headsetButtonRouting) return true
         return audioOutputs.followSystemHeadsetForPlay().also { if (it) syncExplicitOutputIntent() }
     }
@@ -2497,6 +2500,7 @@ class PlaybackService : MediaLibraryService() {
         }
         when (edge) {
             CarLifecycleAuthority.ProjectionEdge.Arrival -> {
+                departedCarSelection = null
                 // Focus may precede the stronger physical arrival; the service remains the Play owner.
                 val decision = carRecovery.carArrival(
                     at = clock.elapsed(),
@@ -2525,18 +2529,49 @@ class PlaybackService : MediaLibraryService() {
 
     private fun completeProjectionDeparture() {
         val selection = audioOutputs.explicitSelection.value
+        pauseLostCarOutput(projectionDeparted = true)
         val decision = completeCarDeparture("projection-disconnect", physicalProjection = true)
         if (decision.status == CarArrivalResumeGate.Status.Rejected &&
-            decision.reason == CarArrivalResumeGate.Reason.NoPlayingCarHeadset &&
-            audioOutputs.handoffs.retirePausedCar(selection)
+            decision.reason == CarArrivalResumeGate.Reason.NoPlayingCarHeadset
         ) {
+            departedCarSelection = selection?.takeIf { it.destination == OutputIntentOwner.Destination.Car }
+            retireDepartedCarIfPaused("projection-disconnect")
+        }
+    }
+
+    private fun pauseLostCarOutput(projectionDeparted: Boolean) {
+        val current = player ?: return
+        if (audioOutputs.pauseIfCarOutputLost(current, projectionDeparted, beforePause = ::clearCarContinuity)) {
             logger.info(
                 LogCategory.Playback,
-                "A paused Car destination expired after projection disconnection",
-                LogField.Public("requestSelection", selection?.sequence?.toString() ?: "none"),
-                LogField.Public("selectionSequence", currentExplicitSelectionSequence()),
+                "Paused after losing the playing car output",
+                LogField.Public("source", if (projectionDeparted) "projection-disconnect" else "track-reroute"),
             )
         }
+    }
+
+    /** Playback may survive projection. Retire only its departed choice when a later Play starts from paused. */
+    private fun retireDepartedCarIfPaused(source: String): Boolean {
+        val selection = departedCarSelection ?: return false
+        if (audioOutputs.explicitSelection.value != selection) {
+            departedCarSelection = null
+            return false
+        }
+        if (!carLifecycle.definitelyAbsent || !audioOutputs.handoffs.retirePausedCar(selection) {
+                carLifecycle.definitelyAbsent && departedCarSelection == selection
+            }
+        ) {
+            return false
+        }
+        if (departedCarSelection == selection) departedCarSelection = null
+        logger.info(
+            LogCategory.Playback,
+            "A paused Car destination expired after projection disconnection",
+            LogField.Public("source", source),
+            LogField.Public("requestSelection", selection.sequence),
+            LogField.Public("selectionSequence", currentExplicitSelectionSequence()),
+        )
+        return true
     }
 
     private fun completeCarDeparture(

@@ -169,6 +169,23 @@ def write_status_description(description: str) -> None:
         output.write("status_description=" + description[:220] + "\n")
 
 
+def classify_failed_tasks(tasks: list[str]) -> set[str]:
+    prefixes = {
+        "ktlint": ("ktlint", "runktlint"),
+        "tests": ("test",),
+        "detekt": ("detekt",),
+        "Android Lint": ("lint", "updatelintbaseline"),
+        "compile": ("compile",),
+    }
+    # A Gradle project name provides no evidence about the check that failed.
+    names = [task.rsplit(":", 1)[-1].strip().lower() for task in tasks]
+    return {
+        label
+        for label, task_prefixes in prefixes.items()
+        if any(name.startswith(task_prefixes) for name in names)
+    }
+
+
 def main() -> int:
     DIAG.mkdir(parents=True, exist_ok=True)
     gradle_log = "\n".join(
@@ -179,7 +196,7 @@ def main() -> int:
     failed_task_lines = unique(
         re.findall(r"^> Task (.+?) FAILED$", gradle_log, flags=re.MULTILINE)
     )
-    failed_task_text = " ".join(failed_tasks + failed_task_lines).lower()
+    task_failures = classify_failed_tasks(failed_tasks + failed_task_lines)
 
     compile_errors = unique(
         [
@@ -207,7 +224,7 @@ def main() -> int:
     target_label = os.environ.get("TARGET_LABEL") or "branch verification"
     workflow_source = os.environ.get("WORKFLOW_SOURCE") or "unknown"
 
-    compile_failed = bool(compile_errors or "compile" in failed_task_text)
+    compile_failed = bool(compile_errors or "compile" in task_failures)
 
     test_state = state_for_reports(
         failures=bool(failed_tests or test_failures or test_errors),
@@ -237,15 +254,15 @@ def main() -> int:
         failed_labels.append("environment setup")
     if quick != "success":
         failed_labels.append("Quick KtLint")
-    if ktlint_findings or "ktlint" in failed_task_text:
+    if ktlint_findings or "ktlint" in task_failures:
         failed_labels.append("ktlint")
 
     if depth != "quick":
-        if failed_tests or test_failures or test_errors or re.search(r":test\w*", failed_task_text):
+        if failed_tests or test_failures or test_errors or "tests" in task_failures:
             failed_labels.append("tests")
-        if detekt_findings or "detekt" in failed_task_text:
+        if detekt_findings or "detekt" in task_failures:
             failed_labels.append("detekt")
-        if lint_errors or "lint" in failed_task_text:
+        if lint_errors or "Android Lint" in task_failures:
             failed_labels.append("Android Lint")
         if compile_failed:
             failed_labels.append("compile")

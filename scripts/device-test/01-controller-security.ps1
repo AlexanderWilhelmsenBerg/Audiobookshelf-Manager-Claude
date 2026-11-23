@@ -28,5 +28,5 @@ foreach ($entry in @(
 
 Show-AppLog -Last 120
 Write-Step 'Manual untrusted-controller check'
-Write-Note 'Settings -> About -> Diagnostics -> Open the event log -> Copy.'
+Write-Note 'Settings -> About -> Advanced & diagnostics -> Open the event log -> Copy.'
 Write-Note 'Expected: A controller connected without library access; controller=<package>.'

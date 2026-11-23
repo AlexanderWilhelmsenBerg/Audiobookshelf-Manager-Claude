@@ -10,7 +10,7 @@ Write-Note 'Switch to Norsk bokmal and confirm both changes are localized.'
 Wait-ForTester 'Complete the About checks.'
 
 Write-Step 'Section 12.2 - Event log'
-Write-Note 'Play something first, then open Settings -> About -> Diagnostics -> Event log.'
+Write-Note 'Play something first, then open Settings -> About -> Advanced & diagnostics -> Event log.'
 Write-Note 'Search message and area; filter Level and Area; combine all three with AND behavior.'
 Write-Note "Expect 'Showing X of N' and the filtered empty state 'No events match...'."
 Write-Note 'Area chips must retain first-seen order while new playback lines arrive.'

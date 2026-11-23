@@ -45,7 +45,7 @@ if ($asked.Count -eq 0) {
     }
     else {
         Write-Bad 'No selection line found, and logcat is not carrying this app - so this locates nothing.'
-        Write-Note 'Read Settings > About > Diagnostics > the event log and search "asked to set" first.'
+        Write-Note 'Read Settings > About > Advanced & diagnostics > the event log and search "asked to set" first.'
     }
 } else {
     $asked | ForEach-Object { Write-Output $_ }
@@ -117,5 +117,5 @@ if ($openFailures.Count -eq 0) {
 
 Write-Step 'Section 2.8 step 7 - And the same lines from the in-app log'
 Write-Note 'If logcat carried nothing above, this is not optional - it is the only record (R-70):'
-Write-Note '  Settings > About > Diagnostics > Open the event log > search "asked to set"'
+Write-Note '  Settings > About > Advanced & diagnostics > Open the event log > search "asked to set"'
 Write-Note 'Then search "player changed state". Copy both into the report.'

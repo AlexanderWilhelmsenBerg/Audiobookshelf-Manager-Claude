@@ -135,6 +135,53 @@ class AndroidAutoDiagnosticsCaptureTest {
     }
 
     @Test
+    fun `projection departure before the observation deadline leaves headset recovery unverified`() = runTest {
+        val f = Fixture(this)
+        f.capture.setEnabled(true)
+        for (observedMs in listOf(306L, 500L)) {
+            f.capture.confirmed("projection", true, "held-headset")
+            f.capture.interrupted("audioFocusLoss")
+            f.clock.advanceBy(observedMs.milliseconds)
+            f.capture.disconnected("projection-disconnect")
+        }
+        f.capture.confirmed("media-session", true, "held-headset")
+        f.capture.interrupted("audioFocusLoss")
+        f.clock.advanceBy(30.seconds)
+        f.capture.disconnected("final-car-disconnect")
+
+        val report = f.report()
+        val attempts = report.getJSONArray("attempts")
+        val outcomes = (0 until attempts.length()).map { index ->
+            attempts.getJSONObject(index).getJSONArray("headsetReconnects").getJSONObject(0).getString("outcome")
+        }
+        assertEquals(listOf("unverified", "unverified", "not-recovered"), outcomes)
+        val failures = report.getJSONArray("failedHeadsetReconnects")
+        assertEquals(1, failures.length())
+        assertEquals(3L, failures.getJSONObject(0).getLong("attempt"))
+    }
+
+    @Test
+    fun `export corrects a retained premature v2 failure without losing an earlier verified return`() {
+        val at = Instant.parse("2026-11-21T13:29:45Z")
+        val attempt = AndroidAutoCaptureAttempt(11, at, 0.seconds, "projection", true, "headset")
+        attempt.confirm(at, "projection")
+        attempt.interrupted(at, 0.seconds, "routeSafety")
+        attempt.verified(at.plusMillis(593), 593.milliseconds, "headset")
+        attempt.interrupted(at.plusSeconds(1), 1.seconds, "audioFocusLoss")
+        attempt.end(at.plusMillis(1_306), 1_306.milliseconds, "projection-disconnect")
+        val retained = attempt.snapshot(1_306.milliseconds)
+        val retainedRows = retained.getJSONArray("headsetReconnects")
+        retainedRows.getJSONObject(1).put("outcome", "not-recovered")
+
+        val report = JSONObject(AndroidAutoCaptureReport.format("build test", 34, at, listOf(retained)))
+        assertEquals(0, report.getJSONArray("failedHeadsetReconnects").length())
+        val exported = report.getJSONArray("attempts").getJSONObject(0).getJSONArray("headsetReconnects")
+        assertEquals("unverified", exported.getJSONObject(1).getString("outcome"))
+        assertEquals(593, report.getJSONObject("headsetRecoveryMs").getJSONObject("automatic").getInt("minMs"))
+        assertEquals("not-recovered", retainedRows.getJSONObject(1).getString("outcome"))
+    }
+
+    @Test
     fun `unconfirmed car link times out and remains distinguishable from Android Auto`() = runTest {
         val f = Fixture(this)
         f.capture.setEnabled(true)
