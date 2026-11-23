@@ -50,9 +50,10 @@ names, descriptors, credentials and media metadata by default.
 
 To investigate the build 2308 startup pause and disconnect skip, clear the capture immediately before
 the parked run. Play the same downloaded chapter through the headset throughout one ordinary car
-startup and shutdown. Mark **Silence** or **Skipping** where heard. An unexpected jump in position on
-the same queue item or a seek points to player transport. Steady player progress with a native frame
-or timestamp step points toward the rendering path. A frame step alone does not establish lost audio.
+startup and shutdown. Mark **Silence** or **Skipping** where heard. A seek reason with a matching
+position jump shows a Media3 transport discontinuity. Steady player progress with a native frame or
+timestamp step points toward the rendering path. If both clocks jump together, examine the reason code
+and buffer state before attributing the jump. A frame step alone does not establish lost audio.
 An optional second run with **Automatic headset take-back** off isolates the existing system-wide
 recovery request. Keep the headset lock and focus settings fixed between runs.
 
