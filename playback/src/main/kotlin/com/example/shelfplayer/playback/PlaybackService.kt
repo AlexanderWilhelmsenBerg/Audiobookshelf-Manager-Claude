@@ -530,6 +530,7 @@ class PlaybackService : MediaLibraryService() {
 
     private fun attachRouteSafetyMonitor(exoPlayer: ExoPlayer) {
         audioTrackRouteMonitor.onRouteChanged = {
+            pauseLostCarOutput(projectionDeparted = false)
             audioOutputs.onActualTrackRouteChanged()
             autoCapture?.trackRoute(audioTrackRouteMonitor::currentRouteDiagnostic)
         }
@@ -2528,12 +2529,24 @@ class PlaybackService : MediaLibraryService() {
 
     private fun completeProjectionDeparture() {
         val selection = audioOutputs.explicitSelection.value
+        pauseLostCarOutput(projectionDeparted = true)
         val decision = completeCarDeparture("projection-disconnect", physicalProjection = true)
         if (decision.status == CarArrivalResumeGate.Status.Rejected &&
             decision.reason == CarArrivalResumeGate.Reason.NoPlayingCarHeadset
         ) {
             departedCarSelection = selection?.takeIf { it.destination == OutputIntentOwner.Destination.Car }
             retireDepartedCarIfPaused("projection-disconnect")
+        }
+    }
+
+    private fun pauseLostCarOutput(projectionDeparted: Boolean) {
+        val current = player ?: return
+        if (audioOutputs.pauseIfCarOutputLost(current, projectionDeparted, beforePause = ::clearCarContinuity)) {
+            logger.info(
+                LogCategory.Playback,
+                "Paused after losing the playing car output",
+                LogField.Public("source", if (projectionDeparted) "projection-disconnect" else "track-reroute"),
+            )
         }
     }
 
