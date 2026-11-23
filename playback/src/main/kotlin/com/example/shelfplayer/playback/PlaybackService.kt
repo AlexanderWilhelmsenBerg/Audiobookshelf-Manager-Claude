@@ -502,9 +502,7 @@ class PlaybackService : MediaLibraryService() {
         observeSkipIntervals()
         observeAudioOutputs()
         carProjection.start(scope, ::onCarProjectionUpdate)
-        carBluetoothMonitor = CarBluetoothArrivalMonitor(applicationContext, carBluetoothWindow, logger) {
-            recordAutoConnection("car-bluetooth", confirmed = false)
-        }.also(CarBluetoothArrivalMonitor::start)
+        carBluetoothMonitor = createCarBluetoothMonitor(applicationContext).also(CarBluetoothArrivalMonitor::start)
         headsetTakeBack = createHeadsetTakeBack(applicationContext, clock) { message, fields ->
             autoTraces.log(message, fields = fields + carSnapshotFields())
         }
@@ -520,6 +518,24 @@ class PlaybackService : MediaLibraryService() {
                 autoTraces.log("Playback focus observation", fields = fields + carSnapshotFields())
             },
         )
+    }
+
+    internal fun createCarBluetoothMonitor(context: Context) =
+        CarBluetoothArrivalMonitor(context, carBluetoothWindow, logger) {
+            if (EARLY_HEADSET_PREFERENCE_REFRESH) refreshHeadsetBeforeCarProjection()
+            recordAutoConnection("car-bluetooth", confirmed = false)
+        }
+
+    private fun refreshHeadsetBeforeCarProjection() {
+        val expectedLink = carBluetoothWindow.claimPreferenceRefresh() ?: return
+        val current = player ?: return
+        val generation = routeOwnership.currentGeneration ?: return
+        val authority = positionEffects.authority()
+        audioOutputs.refreshPlayingHeadsetPreference(generation, currentExplicitSelectionSequence()) {
+            expectedLink() && governor.acceptingCommands && positionEffects.authority() == authority &&
+                currentPlayerSettings.lockPlayingHeadset && carLifecycle.definitelyAbsent &&
+                audioMode() == AudioManager.MODE_NORMAL && routeObservationEffects.isAudible(current)
+        }
     }
 
     private fun attachSessionSyncAndAutoRewind(exoPlayer: ExoPlayer) {

@@ -95,6 +95,7 @@ internal class PlaybackServiceCommandContinuityFixture(
         private set
     var rawPrepareCalls = 0
         private set
+    val preferredOutputHandles = mutableListOf<Int?>()
     private val selectionSupport by lazy {
         PlaybackServiceSelectionFixtureSupport(
             context,
@@ -140,6 +141,11 @@ internal class PlaybackServiceCommandContinuityFixture(
         }
         if (method.name == "play") rawPlayCalls += 1
         if (method.name == "prepare") rawPrepareCalls += 1
+        if (method.name ==
+            "setPreferredAudioDevice"
+        ) {
+            preferredOutputHandles += (args?.firstOrNull() as? AudioDeviceInfo)?.id
+        }
         if (method.name == "setPlayWhenReady" && args?.firstOrNull() == false) rawPauseRequests++
         if (method.name == "seekTo" && reportedPositionMs != null) {
             reportedPositionMs = args?.lastOrNull() as? Long

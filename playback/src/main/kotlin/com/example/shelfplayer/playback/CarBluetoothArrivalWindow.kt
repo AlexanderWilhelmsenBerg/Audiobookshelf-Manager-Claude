@@ -14,16 +14,33 @@ import kotlin.time.Duration.Companion.seconds
  * Not thread-safe by design: the receiver and the service both run on the main thread.
  */
 internal class CarBluetoothArrivalWindow(private val now: () -> Duration) {
-    private class Link(val openedAt: Duration, val peer: String?) {
+    private class Link(val openedAt: Duration, val peer: String?, val preferenceRefresh: PreferenceRefresh?) {
         var consumed = false
         var takeBackClaimed = false
+    }
+
+    private class PreferenceRefresh {
+        var claimed = false
     }
 
     private var link: Link? = null
 
     /** [peerKey] is a process-private correlation token; it is compared, never logged or stored elsewhere. */
     fun onCarHandsFreeConnected(peerKey: String?) {
-        link = Link(now(), peerKey)
+        val refresh = peerKey?.let { peer ->
+            link?.takeIf { it.peer == peer }?.preferenceRefresh ?: PreferenceRefresh()
+        }
+        link = Link(now(), peerKey, refresh)
+    }
+
+    /** One early request per identified car connection, even if a duplicate opens another inference window. */
+    fun claimPreferenceRefresh(): (() -> Boolean)? {
+        val opened = current() ?: return null
+        val refresh = opened.preferenceRefresh?.takeUnless { it.claimed } ?: return null
+        refresh.claimed = true
+        return {
+            current()?.preferenceRefresh === refresh && now() - opened.openedAt in Duration.ZERO..<LIFETIME
+        }
     }
 
     /** The same car leaving ends its window; an unrelated or unreadable peer does not. */

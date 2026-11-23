@@ -400,6 +400,19 @@ class AudioOutputRouter @Inject constructor(
         isCurrentClaim: () -> Boolean,
     ): Boolean = measuredHeadsetProtection.protect(id, generation, selectionSequence, isCurrentClaim)
 
+    internal fun refreshPlayingHeadsetPreference(
+        generation: Long,
+        selectionSequence: Long,
+        stillEligible: () -> Boolean,
+    ) {
+        measuredHeadsetProtection.refresh(
+            generation,
+            selectionSequence,
+            stillEligible = { id -> stillEligible() && isMeasuredHeadset(id) },
+            onRequested = { logger.info(LogCategory.Playback, "Early car arrival headset preference requested") },
+        )
+    }
+
     /** Drops only the transient Automatic-route claim when its owning book/queue generation ends. */
     internal fun clearMeasuredPlayingHeadsetProtection() {
         val active = measuredHeadsetProtection.claim ?: return

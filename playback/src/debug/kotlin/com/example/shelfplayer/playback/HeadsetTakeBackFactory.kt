@@ -5,6 +5,8 @@ import android.os.Build
 import com.example.shelfplayer.core.common.log.LogField
 import com.example.shelfplayer.core.common.time.AppClock
 
+internal const val EARLY_HEADSET_PREFERENCE_REFRESH = true
+
 /** Debug builds run the automatic take-back experiment where the platform router exposes system routes. */
 internal fun createHeadsetTakeBack(
     context: Context,

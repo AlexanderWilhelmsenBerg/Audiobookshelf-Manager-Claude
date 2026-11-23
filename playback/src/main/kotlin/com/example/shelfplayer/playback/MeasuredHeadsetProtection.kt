@@ -68,8 +68,31 @@ internal class MeasuredHeadsetProtection(
         }
     }
 
-    /** One native request, with checks on both sides of route reads that may synchronously deliver callbacks. */
-    private fun requestPreference(expected: Claim, attached: ExoPlayer, isCurrentClaim: () -> Boolean) {
+    /** Renew a preference already owned by this guard while the exact headset is still playing. */
+    fun refresh(generation: Long, sequence: Long, stillEligible: (String) -> Boolean, onRequested: () -> Unit) {
+        val expected = claim?.takeIf { it.preferredDeviceRequested } ?: return
+        val attached = player() ?: return
+        val id = expected.outputId
+        if (!expected.matches(id, generation, sequence, outputs.nativeHandle(id)) || !stillEligible(id)) return
+        requestPreference(
+            expected,
+            attached,
+            isCurrentClaim = {
+                selected.value == id && guard.endpointId == id && guard.currentProbe == null &&
+                    owner.state.value.activeBookGeneration == generation &&
+                    canProtect(id, sequence) && outputs.retainsIdentity(id) && stillEligible(id)
+            },
+            onRequested = onRequested,
+        )
+    }
+
+    /** Run on the player dispatcher and recheck ownership after any platform route read. */
+    private fun requestPreference(
+        expected: Claim,
+        attached: ExoPlayer,
+        isCurrentClaim: () -> Boolean,
+        onRequested: () -> Unit = {},
+    ) {
         val isCurrent = { player() === attached && claim === expected && isCurrentClaim() }
         scope.launch {
             effects.run(expected.preferenceEpoch) {
@@ -77,8 +100,8 @@ internal class MeasuredHeadsetProtection(
                 val sameHandle = outputs.nativeHandle(expected.outputId) == expected.nativeHandle
                 if (!effects.isCurrent(expected.preferenceEpoch) || !isCurrent() || !sameHandle) return@run
                 // Set before the native call so reentrant book/selection cleanup releases this request.
-                claim = expected.copy(preferredDeviceRequested = true)
-                outputs.requestPreference(attached, expected.outputId)
+                if (!expected.preferredDeviceRequested) claim = expected.copy(preferredDeviceRequested = true)
+                if (outputs.requestPreference(attached, expected.outputId)) onRequested()
             }
         }
     }
