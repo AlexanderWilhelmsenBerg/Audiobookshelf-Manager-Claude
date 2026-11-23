@@ -13,6 +13,7 @@ internal object AudioRouteLabEvidence {
     private val allowed = mapOf(
         "Manual system route experiment" to "system-route-experiment",
         "Playback focus observation" to "focus-observation",
+        "Manual audio focus changed" to "focus-observation",
         "Android Auto connection entry observed" to "connection-entry",
         "Android Auto trace started" to "auto-trace-start",
         "Muted output route observation requested" to "output-observation",
@@ -43,6 +44,7 @@ internal object AudioRouteLabEvidence {
         "Output transfer stage" to "transfer-stage",
         "Media3 playback parameters changed" to "playback-parameters",
         "A paused Car destination expired after projection disconnection" to "car-intent-retired",
+        "Paused after losing the playing car output" to "car-output-loss",
         "Muted output verification refused excessive post-seek clock movement" to "position-refusal",
     )
     private val safeFields = setOf(

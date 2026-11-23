@@ -41,6 +41,8 @@ interface PlaybackSettingsRepository {
     /** ROUTE-001 / SET-002: request an eligible headset output from its Play command. */
     suspend fun setHeadsetButtonRouting(enabled: Boolean): AppResult<Unit>
 
+    suspend fun setLockPlayingHeadset(enabled: Boolean): AppResult<Unit>
+
     /** Direct WF-1000XM6 taps require Sound Connect to be uninstalled or disabled. */
     suspend fun setSonyTapDetection(enabled: Boolean): AppResult<Unit>
 
@@ -68,11 +70,7 @@ interface PlaybackSettingsRepository {
      */
 
     /**
-     * PRODUCT_SPEC PLAY-002 — pause or duck when something interrupts briefly.
-     *
-     * Applied to the **next** player, like the buffer preset and for the same reason: it is expressed as the
-     * audio attributes the player is built with, and Media3 fixes those at construction. Changing it does
-     * not disturb a book that is already playing, which is the right way round.
+     * PRODUCT_SPEC PLAY-002 — how focus changes affect playback. Applied while playback is paused.
      */
     suspend fun setFocusBehaviour(behaviour: FocusBehaviour): AppResult<Unit>
 

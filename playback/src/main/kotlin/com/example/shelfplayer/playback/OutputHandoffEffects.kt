@@ -64,12 +64,18 @@ internal class OutputHandoffEffects(private val source: Source) {
         }
     }
 
-    fun select(id: String?, destination: OutputIntentOwner.Destination): Boolean {
+    fun select(id: String?, destination: OutputIntentOwner.Destination, followsSystem: Boolean = false): Boolean {
         if (destination == OutputIntentOwner.Destination.Automatic) return releaseAutomatic()
         val origin = prepareOrigin() ?: return false
         val path = source.observation()?.path
         if (!unchanged(origin)) return false
-        val prepared = source.owner.prepareTransfer(id, destination, source.preferences.supersede(), path)
+        val prepared = source.owner.prepareTransfer(
+            id,
+            destination,
+            source.preferences.supersede(),
+            path,
+            followsSystem,
+        )
         return start(prepared, origin, forPlay = false)
     }
 
@@ -126,13 +132,13 @@ internal class OutputHandoffEffects(private val source: Source) {
     }
 
     /** Confirmed departure may expire an unlocked paused Car choice, without release suppression or Play. */
-    fun retirePausedCar(expected: OutputIntentOwner.Selection?): Boolean {
-        val origin = pausedCarOrigin(expected) ?: return false
+    fun retirePausedCar(expected: OutputIntentOwner.Selection?, stillDeparted: () -> Boolean = { true }): Boolean {
+        val origin = pausedCarOrigin(expected)?.takeIf { stillDeparted() } ?: return false
         val active = source.guard.currentProbe
         val epoch = source.preferences.supersede()
         source.guard.clearOwnership()
         if (active != null) source.guard.cancelProbe(active)
-        if (!canRetireCar(expected) || !selectionScope(origin, expected, epoch)) return false
+        if (!stillDeparted() || !canRetireCar(expected) || !selectionScope(origin, expected, epoch)) return false
         val selection = source.owner.select(null, OutputIntentOwner.Destination.Automatic)
         if (!selectionScope(origin, selection, epoch)) return false
         source.selected(selection)

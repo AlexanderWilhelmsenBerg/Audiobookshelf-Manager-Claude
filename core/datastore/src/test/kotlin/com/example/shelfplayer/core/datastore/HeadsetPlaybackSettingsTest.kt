@@ -3,6 +3,7 @@ package com.example.shelfplayer.core.datastore
 import androidx.datastore.core.DataStore
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
+import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.model.playback.PlaybackEqualizer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +23,8 @@ class HeadsetPlaybackSettingsTest {
             val older = AppSettings.parseFrom(byteArrayOf(0x80.toByte(), 0x03, retiredValue))
             val settings = source(MemoryStore(older)).playback.first()
             assertTrue(settings.headsetButtonRouting)
+            assertTrue(settings.lockPlayingHeadset)
+            assertEquals(FocusBehaviour.Pause, settings.focusBehaviour)
             assertFalse(settings.sonyTapDetection)
         }
     }
@@ -42,6 +45,22 @@ class HeadsetPlaybackSettingsTest {
         assertTrue(writer.playback.first().headsetButtonRouting)
         assertFalse(writer.playback.first().sonyTapDetection)
         assertTrue(writer.current().dynamicColor)
+    }
+
+    @Test
+    fun `headset lock and manual focus persist independently`() = runTest {
+        val writer = source(MemoryStore(AppSettings.getDefaultInstance()))
+        writer.setLockPlayingHeadset(false)
+        writer.setFocusBehaviour(FocusBehaviour.Ignore)
+
+        val restored = source(MemoryStore(AppSettings.parseFrom(writer.current().toByteArray())))
+        val afterRestart = restored.playback.first()
+        assertFalse(afterRestart.lockPlayingHeadset)
+        assertTrue(afterRestart.headsetButtonRouting)
+        assertEquals(FocusBehaviour.Ignore, afterRestart.focusBehaviour)
+        restored.setLockPlayingHeadset(true)
+        assertTrue(restored.playback.first().lockPlayingHeadset)
+        assertEquals(FocusBehaviour.Ignore, restored.playback.first().focusBehaviour)
     }
 
     @Test

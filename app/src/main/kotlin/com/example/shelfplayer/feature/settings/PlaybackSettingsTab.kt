@@ -139,20 +139,13 @@ private fun LazyListScope.behaviourCard(settings: PlaybackSettings, actions: Pla
                 checked = settings.autoAdvanceSeries,
                 onCheckedChange = actions.onAutoAdvanceSeriesChanged,
             )
-            InlineChoiceRow(
-                label = stringResource(R.string.settings_section_interruptions),
-                options = FocusBehaviour.entries,
-                selected = settings.focusBehaviour,
-                labelOf = { option ->
-                    stringResource(
-                        when (option) {
-                            FocusBehaviour.Pause -> R.string.settings_focus_pause
-                            FocusBehaviour.Duck -> R.string.settings_focus_duck
-                        },
-                    )
-                },
-                onSelected = actions.onFocusBehaviourChanged,
+            SwitchRow(
+                label = stringResource(R.string.settings_lock_playing_headset),
+                summary = stringResource(R.string.settings_lock_playing_headset_hint),
+                checked = settings.lockPlayingHeadset,
+                onCheckedChange = actions.onLockPlayingHeadsetChanged,
             )
+            AudioFocusChoice(settings.focusBehaviour, actions.onFocusBehaviourChanged)
             InlineChoiceRow(
                 label = stringResource(R.string.settings_section_startup),
                 options = StartupMode.entries,
@@ -169,6 +162,28 @@ private fun LazyListScope.behaviourCard(settings: PlaybackSettings, actions: Pla
                 onSelected = actions.onStartupModeChanged,
             )
         }
+    }
+}
+
+@Composable
+private fun AudioFocusChoice(selected: FocusBehaviour, onSelected: (FocusBehaviour) -> Unit) {
+    InlineChoiceRow(
+        label = stringResource(R.string.settings_section_interruptions),
+        options = FocusBehaviour.entries,
+        selected = selected,
+        labelOf = { option ->
+            stringResource(
+                when (option) {
+                    FocusBehaviour.Pause -> R.string.settings_focus_pause
+                    FocusBehaviour.Duck -> R.string.settings_focus_duck
+                    FocusBehaviour.Ignore -> R.string.settings_focus_ignore
+                },
+            )
+        },
+        onSelected = onSelected,
+    )
+    if (selected == FocusBehaviour.Ignore) {
+        Hint(stringResource(R.string.settings_focus_ignore_hint))
     }
 }
 
@@ -285,6 +300,7 @@ data class PlaybackSettingsActions(
     val onEqualizerChanged: (PlaybackEqualizer) -> Unit = {},
     val onAutoAdvanceSeriesChanged: (Boolean) -> Unit = {},
     val onHeadsetButtonRoutingChanged: (Boolean) -> Unit = {},
+    val onLockPlayingHeadsetChanged: (Boolean) -> Unit = {},
     val onSonyTapDetectionChanged: (Boolean) -> Unit = {},
     val onFocusBehaviourChanged: (FocusBehaviour) -> Unit = {},
     val onStartupModeChanged: (StartupMode) -> Unit = {},

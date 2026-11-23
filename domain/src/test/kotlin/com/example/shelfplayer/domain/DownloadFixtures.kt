@@ -224,6 +224,8 @@ internal class FakeSettingsRepository(
 
     override suspend fun setHeadsetButtonRouting(enabled: Boolean): AppResult<Unit> = notUsed()
 
+    override suspend fun setLockPlayingHeadset(enabled: Boolean): AppResult<Unit> = notUsed()
+
     override suspend fun setSonyTapDetection(enabled: Boolean): AppResult<Unit> = notUsed()
 
     override fun observeNetworkPolicy(): Flow<NetworkPolicy> = flowOf(NetworkPolicy.Default)
