@@ -531,11 +531,17 @@ class PlaybackService : MediaLibraryService() {
         val current = player ?: return
         val generation = routeOwnership.currentGeneration ?: return
         val authority = positionEffects.authority()
-        audioOutputs.refreshPlayingHeadsetPreference(generation, currentExplicitSelectionSequence()) {
-            expectedLink() && governor.acceptingCommands && positionEffects.authority() == authority &&
-                currentPlayerSettings.lockPlayingHeadset && carLifecycle.definitelyAbsent &&
-                audioMode() == AudioManager.MODE_NORMAL && routeObservationEffects.isAudible(current)
-        }
+        audioOutputs.measuredHeadsetProtection.refresh(
+            generation,
+            currentExplicitSelectionSequence(),
+            stillEligible = { id ->
+                expectedLink() && governor.acceptingCommands && positionEffects.authority() == authority &&
+                    currentPlayerSettings.lockPlayingHeadset && carLifecycle.definitelyAbsent &&
+                    audioMode() == AudioManager.MODE_NORMAL && routeObservationEffects.isAudible(current) &&
+                    audioOutputs.isMeasuredHeadset(id)
+            },
+            onRequested = { logger.info(LogCategory.Playback, "Early car arrival headset preference requested") },
+        )
     }
 
     private fun attachSessionSyncAndAutoRewind(exoPlayer: ExoPlayer) {

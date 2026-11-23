@@ -153,7 +153,7 @@ class AudioOutputRouter @Inject constructor(
     /** Bound by the service after attachment; absent evidence fails closed. Retired on detach/replacement. */
     internal var currentTrackObservation: () -> AudioTrackObservation? = { null }
     private val collidingOutputIds: Set<String> get() = localOutputs.collidingOutputIds
-    private val measuredHeadsetProtection = MeasuredHeadsetProtection(
+    internal val measuredHeadsetProtection = MeasuredHeadsetProtection(
         applicationScope, preferenceEffects, localOutputs, headsetGuard, outputIntentOwner, _selectedId,
         player = { player }, routes = { currentTrackRoutes() }, publish = ::refreshRouteEvidence,
     )
@@ -399,19 +399,6 @@ class AudioOutputRouter @Inject constructor(
         selectionSequence: Long,
         isCurrentClaim: () -> Boolean,
     ): Boolean = measuredHeadsetProtection.protect(id, generation, selectionSequence, isCurrentClaim)
-
-    internal fun refreshPlayingHeadsetPreference(
-        generation: Long,
-        selectionSequence: Long,
-        stillEligible: () -> Boolean,
-    ) {
-        measuredHeadsetProtection.refresh(
-            generation,
-            selectionSequence,
-            stillEligible = { id -> stillEligible() && isMeasuredHeadset(id) },
-            onRequested = { logger.info(LogCategory.Playback, "Early car arrival headset preference requested") },
-        )
-    }
 
     /** Drops only the transient Automatic-route claim when its owning book/queue generation ends. */
     internal fun clearMeasuredPlayingHeadsetProtection() {
