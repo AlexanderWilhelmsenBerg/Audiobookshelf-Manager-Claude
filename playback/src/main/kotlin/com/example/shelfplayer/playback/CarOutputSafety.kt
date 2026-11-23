@@ -35,7 +35,11 @@ private fun AudioOutputRouter.carOutputLost(intent: OutputIntentOwner.Snapshot, 
 
         AudioTrackPath.Multiple -> true
 
-        else -> false
+        is AudioTrackPath.RetainedEndpoint,
+        AudioTrackPath.RemoteSubmix,
+        AudioTrackPath.Unresolved,
+        null,
+        -> false
     }
 }
 
