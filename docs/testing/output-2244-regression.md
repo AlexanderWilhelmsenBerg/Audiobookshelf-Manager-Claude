@@ -77,3 +77,25 @@ should continue through departure, and the next Play should retire the departed 
 before verifying the new playback route. Check for one Play, no Car proof refusal, audio on the
 headset and stable book position. The `car-intent-retired` diagnostic uses `source=listener-play`
 for this case. A new output choice and any positive or unresolved projection retain precedence.
+
+## Build 2304 active output loss
+
+The owner heard the phone speaker after leaving Android Auto with the book playing in the car.
+The trace shows a playing track delegated to Car through RemoteSubmix, then confirmed projection
+departure with playback still active. The track switched to Speaker about a second later. The
+focus-loss callback was logged under Ignore focus loss and did not pause playback.
+
+BookWave now pauses on confirmed loss of the playing Car route. A measured fallback away from a
+committed Car route can also trigger the pause when the track callback arrives first. The
+`car-output-loss` event records which callback triggered the pause. A deliberate Play can then use
+the normal output policy from the retained position.
+
+| Playing output | Change | Expected result |
+| --- | --- | --- |
+| Car | Disconnect Android Auto with no headset connected | Playback pauses. The phone speaker stays silent. |
+| Car | Disconnect Android Auto with a headset connected | Playback pauses. The headset and phone speaker stay silent. |
+| Headset | Disconnect Android Auto while the headset keeps its route | Playback continues on the headset without a pause. |
+| Headset | Disconnect the playing headset | Playback pauses. The phone speaker stays silent. |
+
+For the pause cases, resume deliberately after choosing an available output and check that the book
+continues from where it stopped. Verify the heard output as well as the trace.

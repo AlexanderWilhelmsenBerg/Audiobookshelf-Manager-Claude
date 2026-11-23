@@ -9,7 +9,7 @@ note "Expect the old 'Testing' section to read 'This device'."
 note "Then switch to Norsk bokmål and look again: both changes are in that locale too."
 
 step "§12.2  The event log"
-note "Play something first so there are a few hundred lines. Settings → About → Diagnostics → Open the"
+note "Play something first so there are a few hundred lines. Settings → About → Advanced & diagnostics → Open the"
 note "event log. Search the message and the area; filter by Level and by Area; combine all three (AND)."
 note "Expect 'Showing 12 of 400' while narrowed, and 'No events match…' rather than 'Nothing recorded yet'."
 note "Watch the Area chips while playback logs: they must NOT re-sort as new lines arrive."

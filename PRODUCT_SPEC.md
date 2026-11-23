@@ -440,6 +440,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   protection. Explicit output choices, explicit locks and route-loss safety remain available.
 - Disconnecting headphones while playing pauses immediately.
 - Playback never unexpectedly moves from headphones to the phone speaker.
+- Loss of the active output pauses playback and preserves the book position. When confirmed Android Auto
+  departure removes the playing Car route, BookWave pauses to prevent automatic playback on the
+  phone speaker or another headset. Losing an unused output leaves the current output playing.
 - A unique verified Bluetooth identity retains its in-process route when Android reassigns device
   handles in one inventory update. Current track proof is still required before unmute.
 - Android Auto discovery must preserve an already verified, healthy headset route without a preference
@@ -502,7 +505,7 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   Newer command/selection/book/profile/attachment wins; rollback requires fresh unique original-route proof.
 - A confirmed physical car-projection departure with no recoverable Car playback may retire only the exact
   unlocked Car choice while PlayWhenReady is false. It leaves playback paused and sets no output-release
-  suppression. If playback continues through the departure, preserve it and check that exact choice again
+  suppression. If playback continues on another output, preserve it and check that exact choice again
   before the next deliberate Play from paused. This check requires confirmed car absence and uses normal
   Automatic routing after retirement. Unknown projection, controller churn, pending Play, accepted recovery,
   newer choices and retained explicit output locks are preserved.

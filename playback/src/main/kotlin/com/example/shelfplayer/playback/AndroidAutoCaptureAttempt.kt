@@ -89,8 +89,9 @@ internal class AndroidAutoCaptureAttempt(
     fun end(at: Instant, elapsed: Duration, reason: String) {
         ended = at
         ending = reason
-        val outcome = if (reason in CONNECTION_ENDS) "not-recovered" else "capture-ended"
-        pending?.finish(at, elapsed, outcome)
+        pending?.let { reconnect ->
+            reconnect.finish(at, elapsed, recoveryOutcomeAtEnd(reason, elapsed - reconnect.elapsed))
+        }
         pending = null
         event(at, "ended", reason)
     }
@@ -157,5 +158,11 @@ internal class AndroidAutoCaptureAttempt(
         private const val MAX_RECONNECTS = 64
         private val RECOVERY_OBSERVATION_LIMIT = 30.seconds
         private val CONNECTION_ENDS = setOf("projection-disconnect", "final-car-disconnect", "connection-unconfirmed")
+
+        internal fun recoveryOutcomeAtEnd(reason: String, observed: Duration): String = when {
+            reason !in CONNECTION_ENDS -> "capture-ended"
+            observed >= RECOVERY_OBSERVATION_LIMIT -> "not-recovered"
+            else -> "unverified"
+        }
     }
 }

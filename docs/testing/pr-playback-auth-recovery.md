@@ -17,7 +17,7 @@ cached tree, but a selected book could not open a server session and the media s
    audio focus returns. If it does not, capture the `Playback was asked to change` line and its `reason`.
 3. Reproduce an expired access token while retaining a valid refresh token.
 
-   **Settings → About → Authentication recovery (debug) → Expire the access token.** That is exactly this
+   **Settings → About → Advanced & diagnostics → Expire the access token.** That is exactly this
    state: the stored and cached access token become a string the server will refuse, and the refresh token
    is left alone. The row exists in debug builds only.
 
