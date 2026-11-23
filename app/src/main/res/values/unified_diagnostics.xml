@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="about_section_debug">Debug</string>
+    <string name="about_advanced_diagnostics">Advanced &amp; diagnostics</string>
     <string name="unified_diag_open">Playback diagnostics</string>
     <string name="unified_diag_title">Playback diagnostics</string>
     <string name="unified_diag_description">Record playback, headset and Android Auto events. Clear all removes saved diagnostics and the last crash report. An active recording continues.</string>

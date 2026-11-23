@@ -77,7 +77,7 @@ items in this project and left one defect open. That defect is what the next run
 a step says *capture the log*, do it even if the step passed — several of these tests are measurements
 rather than assertions, and the log is the whole result.
 
-**How to get the log, every time it is asked for:** Settings → About → Diagnostics → **Open the event log** →
+**How to get the log, every time it is asked for:** Settings → About → Advanced & diagnostics → **Open the event log** →
 **Copy**. It now has search and filters (§12.2), so where a section quotes a log line you can paste part of
 it into the search box instead of scrolling. The buffer is cleared when the app closes, so copy before you
 kill the app.
@@ -394,7 +394,7 @@ must still.
    ```
 
    **Expect: one `children=` line for each node the car asked for**, with a non-zero count for any node that
-   has contents. If logcat is empty, use Settings → About → Diagnostics → **Open the event log** and search
+   has contents. If logcat is empty, use Settings → About → Advanced & diagnostics → **Open the event log** and search
    for `node's children`; the 2026-08-28 hardware run showed that these diagnostics reached the in-app log
    but not logcat. Absence from both logs is the failure shape.
 
@@ -506,7 +506,7 @@ which is the confusion this logging exists to end.
 `passthrough` for the app's own pre-resolved items.
 
 3. **If logcat came back empty, the script will say so and it is not a failure of the app** — that happened
-   on your last run (R-70). Use Settings → About → Diagnostics → **Open the event log**, search
+   on your last run (R-70). Use Settings → About → Advanced & diagnostics → **Open the event log**, search
    `asked to set`, then `player changed state`, and copy both.
 
 **Result (did the book open?):**
@@ -1386,7 +1386,7 @@ the section read **"This device"**, and no raw string identifier was reported.
 
 ### 12.2 The event log's search and filters
 
-3. Play something first so there are a few hundred lines to work with. Then Settings → About → Diagnostics →
+3. Play something first so there are a few hundred lines to work with. Then Settings → About → Advanced & diagnostics →
    **Open the event log**.
 
 4. **Search.** Type part of a message — `position`, or `download`. Search covers the message *and* the area.

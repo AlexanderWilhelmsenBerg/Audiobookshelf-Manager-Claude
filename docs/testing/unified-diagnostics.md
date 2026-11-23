@@ -1,6 +1,6 @@
 # Playback diagnostics
 
-Open **Settings → About → Playback diagnostics**. Start recording with the current player in
+Open **Settings → About → Advanced & diagnostics → Playback diagnostics**. Start recording with the current player in
 place, including while audio is playing. BookWave attaches the passive AudioTrack observer when the
 player is created. Starting or clearing a capture samples the current track without recreating it
 or changing playback. Detailed recording is opt-in and the choice survives ordinary process recreation.
@@ -56,7 +56,7 @@ against API 37. A measured frame counter provides timing evidence without changi
 
 ## Daily Android Auto capture
 
-In a debug build, open **Settings → About → Debug → Android Auto diagnostics** and enable
+In a debug build, open **Settings → About → Advanced & diagnostics → Android Auto diagnostics** and enable
 **Record car connections** once. BookWave records when its playback service observes a car-class
 hands-free connection, an Android Auto controller, or projection. A hands-free-only candidate that
 never reaches a controller or projection is marked `connection-unconfirmed`. Projection departure
@@ -67,8 +67,10 @@ Playback diagnostics alongside it when a test needs AudioTrack timing bursts or 
 **Save JSON file** exports the retained attempt history. `attemptIndex` lists attempt numbers, connection
 times, headset presence and failure counts. A verified held headset or an identified wearable output
 counts as present. An ambiguous Bluetooth output or enabling mid-connection can yield unknown.
-`failedHeadsetReconnects` lists
-attempt and reconnect numbers for returns that needed a subsequent Play or never verified an output.
+`failedHeadsetReconnects` lists attempt and reconnect numbers for returns that needed a subsequent Play
+or went 30 seconds without verified output. Attempts that close at a connection boundary before those
+30 seconds show `unverified` in their reconnect details. Exports apply this distinction to retained v2
+records as well, while keeping their earlier verified recoveries.
 Look up those numbers under `attempts` for the full events. The button caller identifies software and
 does not identify a physical device. `headsetRecoveryMs` reports count, average, minimum and maximum
 separately for automatic returns and returns after an observed Play. Timing starts at the interruption

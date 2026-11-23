@@ -3,16 +3,22 @@ package com.example.shelfplayer.feature.settings
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
+import com.example.shelfplayer.BuildConfig
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -163,6 +169,50 @@ class SettingsScreenTest {
 
         composeRule.onRoot().performTouchInput { swipeLeft() }
         tab("About").assertIsSelected()
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h720dp", fontScale = 2.0f)
+    fun `about groups diagnostics at narrow width and double text`() = verifyAdvancedDiagnostics()
+
+    @Test
+    @Config(qualifiers = "w375dp-h812dp")
+    fun `about groups diagnostics at 375 dp`() = verifyAdvancedDiagnostics()
+
+    @Test
+    @Config(qualifiers = "w414dp-h896dp")
+    fun `about groups diagnostics at 414 dp`() = verifyAdvancedDiagnostics()
+
+    @Test
+    @Config(qualifiers = "w768dp-h1024dp")
+    fun `about groups diagnostics on a wide screen`() = verifyAdvancedDiagnostics()
+
+    private fun verifyAdvancedDiagnostics() {
+        render()
+        tab("About").performClick()
+        val advanced = "Advanced & diagnostics"
+        val list = composeRule.onNode(
+            hasScrollAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
+        )
+        list.performScrollToNode(hasContentDescription(advanced))
+        composeRule.onNodeWithText("Playback diagnostics").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription(advanced).assertIsDisplayed().performClick()
+
+        val labels = buildList {
+            addAll(listOf("Playback diagnostics", "Open the event log", "Open the debug console"))
+            if (BuildConfig.DEBUG) addAll(listOf("Android Auto diagnostics", "Expire the access token"))
+        }
+        for (label in labels) {
+            list.performScrollToNode(hasText(label))
+            composeRule.onNodeWithText(label).assertIsDisplayed()
+        }
+        if (!BuildConfig.DEBUG) {
+            composeRule.onNodeWithText("Android Auto diagnostics").assertDoesNotExist()
+            composeRule.onNodeWithText("Expire the access token").assertDoesNotExist()
+        }
+        list.performScrollToNode(hasContentDescription(advanced))
+        composeRule.onNodeWithContentDescription(advanced).performClick()
+        composeRule.onNodeWithText("Playback diagnostics").assertDoesNotExist()
     }
 
     /*

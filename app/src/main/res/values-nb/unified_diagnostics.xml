@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="about_section_debug">Feilsøking</string>
+    <string name="about_advanced_diagnostics">Avansert og diagnostikk</string>
     <string name="unified_diag_open">Avspillingsdiagnostikk</string>
     <string name="unified_diag_title">Avspillingsdiagnostikk</string>
     <string name="unified_diag_description">Registrer hendelser fra avspilling, hodesett og Android Auto. Tøm alle fjerner lagret diagnostikk og siste krasjrapport. Aktiv registrering fortsetter.</string>

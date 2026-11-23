@@ -77,7 +77,7 @@ logcat_clear() {
     LOGCAT_CARRIES_APP=no
     bad "logcat holds NO $APP_TAG lines before clearing, so it is not carrying this app at all."
     note "A rolled buffer, or a vendor filter. Nothing this script dumps afterwards will be evidence."
-    note "Read Settings → About → Diagnostics → Open the event log instead (R-70)."
+    note "Read Settings → About → Advanced & diagnostics → Open the event log instead (R-70)."
   else
     LOGCAT_CARRIES_APP=yes
     ok "logcat is carrying the app ($carried lines), so an empty result after the step is a real absence"
@@ -141,7 +141,7 @@ step_verdict() {
 
   if [[ "${LOGCAT_CARRIES_APP:-unknown}" != "yes" ]]; then
     bad "No verdict: logcat holds no $APP_TAG lines at all, so an empty result is not a result."
-    note "This is a broken measurement, not a finding. Read Settings → About → Diagnostics → the"
+    note "This is a broken measurement, not a finding. Read Settings → About → Advanced & diagnostics → the"
     note "event log for this step instead — it was complete when logcat was empty before (R-70)."
   elif (( n == 0 )); then
     bad "$fail_msg"
@@ -182,7 +182,7 @@ logcat_grep() {
     note "logcat carried the app before the clear, so nothing above is a real absence, not a lost log."
   else
     bad "logcat holds NO $APP_TAG lines at all, so nothing above is evidence either way."
-    note "A rolled buffer, or a vendor filter. Read Settings → About → Diagnostics → the event log."
+    note "A rolled buffer, or a vendor filter. Read Settings → About → Advanced & diagnostics → the event log."
     note "Seen on an SM-S928B on 2026-08-28: logcat empty, the in-app log complete (R-70)."
   fi
 }
