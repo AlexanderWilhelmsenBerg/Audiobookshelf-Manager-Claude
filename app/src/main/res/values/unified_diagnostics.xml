@@ -14,6 +14,7 @@
     <string name="unified_diag_save_json">Save JSON file</string>
     <string name="unified_diag_save_success">Diagnostic JSON file saved</string>
     <string name="unified_diag_save_failed">Could not save the diagnostic JSON file</string>
+    <string name="unified_diag_copy_too_large">This report is too large to copy. Use Save JSON file.</string>
     <string name="unified_diag_advanced">Route comparison tools</string>
     <string name="unified_diag_hide_advanced">Hide route comparison tools</string>
     <string name="unified_diag_skipping">Skipping audio</string>

@@ -81,7 +81,7 @@ class UnifiedDiagnosticsViewModel @Inject constructor(
         ),
         snapshot = UnifiedDiagnosticsJson.Snapshot(
             recording = capture.active.value,
-            lab = lab.state.value,
+            lab = lab.exportSnapshot(),
             classifier = classifier.state.value,
             events = logs.events.value,
             previousCrash = crashes.report.value,

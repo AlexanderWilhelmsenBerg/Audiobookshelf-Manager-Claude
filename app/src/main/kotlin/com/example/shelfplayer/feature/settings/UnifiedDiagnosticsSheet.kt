@@ -43,6 +43,9 @@ internal const val UNIFIED_DIAGNOSTICS_START = "unified-diagnostics-start"
 internal const val UNIFIED_DIAGNOSTICS_COPY = "unified-diagnostics-json"
 internal const val UNIFIED_DIAGNOSTICS_SAVE = "unified-diagnostics-save-json"
 
+// Clipboard text uses UTF-16 inside Android's shared Binder transaction buffer.
+private const val MAX_CLIPBOARD_CHARS = 300_000
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UnifiedDiagnosticsSheet(
@@ -115,9 +118,13 @@ fun UnifiedDiagnosticsSheet(
                 },
                 onCopy = {
                     val report = capture.jsonReport(build)
-                    scope.launch {
-                        val text = AnnotatedString(report)
-                        clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("BookWave diagnostics JSON", text)))
+                    if (report.length > MAX_CLIPBOARD_CHARS) {
+                        Toast.makeText(context, R.string.unified_diag_copy_too_large, Toast.LENGTH_LONG).show()
+                    } else {
+                        scope.launch {
+                            val text = AnnotatedString(report)
+                            clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("BookWave diagnostics JSON", text)))
+                        }
                     }
                 },
             )

@@ -38,6 +38,19 @@ exports with a different shape.
   four samples per second.
   `player-discontinuity` records the public reason code and the numeric positions on either side.
   Use the item index and book generation before comparing position deltas across rows.
+- The audio-write probe keeps up to six in-memory windows with up to six seconds before and two
+  seconds after a measured route change, route safety pause, confirmed Auto departure, or
+  **Skipping** or **Silence** marker. Busy windows also have a row cap. Export while BookWave is
+  still running. These windows join the same timeline and survive stopping the capture until
+  Clear all or process exit. Use **Save JSON file** for reports that are too large to copy.
+- In those windows, `audio-write` reports `ptsUs`, the offset into the buffer, the bytes accepted
+  by Media3's output, and the corresponding whole PCM frames when known. Retries of a partially
+  accepted buffer reuse its presentation timestamp. Encoded output reports bytes, and a missing
+  timestamp is reported as null. One zero-byte row marks a run of writes that accepted no data.
+  `audio-output-flush`, `audio-output-open`, `audio-output-release` and
+  `audio-output-route-callback` use the same monotonic clock and track epoch as the timing rows.
+  Compare accepted audio with the native playback head and measured sink before attributing an
+  audible skip to a playback clock, buffer clear or output transition.
 - `firstIncident` retains the first frame stall, Media3 stuck reason, or listener-marked silence
   or skipping and its context. The retained recorder rows are app private and expire after 24 hours.
 - `problems` contains up to forty recent redacted warnings and errors. A sanitized `previousCrash`
