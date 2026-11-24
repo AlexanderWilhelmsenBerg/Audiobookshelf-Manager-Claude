@@ -9,7 +9,7 @@ import androidx.media3.session.MediaSession
 import com.example.shelfplayer.core.common.time.AppClock
 import com.example.shelfplayer.core.model.playback.PlaybackSettings
 
-/** Bridges Media3's key callback to the existing Play boundary. Nothing here sends Play or changes focus. */
+/** Bridges Media3's key callback to the existing transport boundary. */
 @OptIn(UnstableApi::class)
 internal class ServiceButtonRouting(
     private val outputs: AudioOutputRouter,
@@ -18,7 +18,10 @@ internal class ServiceButtonRouting(
     private val carPresent: () -> Boolean,
     private val carPackages: Set<String>,
 ) {
+    private class PauseRelay(val session: MediaSession, val player: Player)
+
     private val requests = ButtonPlayRequests()
+    private var pauseRelay: PauseRelay? = null
     private var enabled = true
     private var sonyEnabled = false
     var sony: SonyTapMonitor? = null
@@ -35,22 +38,26 @@ internal class ServiceButtonRouting(
         sony?.update(listen, if (listen) outputs.localOutputs.buttonCandidates() else emptySet())
     }
 
-    fun clear() = requests.clear()
+    fun clear() {
+        requests.clear()
+        pauseRelay = null
+    }
 
     fun sonyTap(id: String) {
         if (enabled && sonyEnabled && carPresent()) requests.sonyTap(id, currentScope(), now())
     }
 
     fun key(session: MediaSession, controller: MediaSession.ControllerInfo, event: KeyEvent?) {
+        observePauseRelay(session, controller, event)
         if (event?.action == KeyEvent.ACTION_UP && !event.isCanceled) return
         val trusted = controller.isPackageNameVerified && carPresent()
         if (event == null || !trusted || !event.isInitialDown()) {
-            clear()
+            requests.clear()
             return
         }
         val car = controller.packageName in carPackages
         if (!enabled && !car) {
-            clear()
+            requests.clear()
             return
         }
         val ids = outputs.localOutputs.buttonCandidates()
@@ -68,6 +75,26 @@ internal class ServiceButtonRouting(
         // Media3 1.11 can deliver an explicit Play as its own notification controller, inline in this
         // dispatch. Expire relay permission on the next looper turn. Delayed toggles need the original caller.
         Handler(session.player.applicationLooper).post { requests.endDispatch(claim) }
+    }
+
+    private fun observePauseRelay(session: MediaSession, controller: MediaSession.ControllerInfo, event: KeyEvent?) {
+        pauseRelay = null
+        val explicitPause = event?.keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE && event.isInitialDown()
+        if (!explicitPause || !controller.isPackageNameVerified || controller.packageName !in carPackages) return
+        val relay = PauseRelay(session, session.player)
+        pauseRelay = relay
+        // Media3 1.11 dispatches explicit Pause inline through its notification controller. Never
+        // correlate delayed keys or ordinary app commands, even when the key has no event timestamp.
+        Handler(relay.player.applicationLooper).post { if (pauseRelay === relay) pauseRelay = null }
+    }
+
+    fun consumeCarPauseRelay(play: Boolean, session: MediaSession?): Boolean {
+        val relay = pauseRelay ?: return false
+        pauseRelay = null
+        if (play || session == null) return false
+        if (session !== relay.session || session.player !== relay.player) return false
+        val controller = session.controllerForCurrentRequest
+        return controller?.isPackageNameVerified == true && session.isMediaNotificationController(controller)
     }
 
     fun transport(play: Boolean, session: MediaSession?, player: Player): ButtonDestination? {

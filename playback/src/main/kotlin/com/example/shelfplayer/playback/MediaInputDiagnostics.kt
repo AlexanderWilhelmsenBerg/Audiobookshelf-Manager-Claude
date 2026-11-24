@@ -87,12 +87,13 @@ internal class MediaInputDiagnostics(
     }
 
     @Synchronized
-    fun transport(play: Boolean, controller: MediaInputController) {
+    fun transport(play: Boolean, controller: MediaInputController, relayedCarPause: Boolean = false) {
         val capture = active ?: return
+        val relay = if (relayedCarPause) " relayedKeyCaller=AndroidAuto" else ""
         record(
             capture,
             "input-transport requested=${if (play) "Play" else "Pause"} ${capture.timing.transport()} " +
-                "${controller.fields()} association=Unproven",
+                "${controller.fields()}$relay association=Unproven",
         )
     }
 

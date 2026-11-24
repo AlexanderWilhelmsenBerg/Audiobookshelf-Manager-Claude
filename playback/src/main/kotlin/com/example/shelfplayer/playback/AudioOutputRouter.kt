@@ -115,6 +115,7 @@ class AudioOutputRouter @Inject constructor(
     /** Positive absence evidence from the existing lifecycle owner; Unknown must retain protection. */
     internal var confirmedCarAbsent: () -> Boolean = { false }
     internal var retainsInterruptedHeadset: (String) -> Boolean = { false }
+    internal var isRecoveringHeadset: (String) -> Boolean = { false }
     internal var routeSafetyEvidence: () -> String = { "observer-unavailable" }
 
     /** Projection lifecycle edges can change presentation even when the device inventory is unchanged. */
@@ -555,13 +556,13 @@ class AudioOutputRouter @Inject constructor(
         _selectedId.value == id && headsetGuard.endpointId == id && id !in live
 
     private fun onGuardedHeadsetReappeared(chosen: String) {
-        // Exact identity returned. Preserve a freshly measured healthy route; otherwise reassert
-        // without issuing Play. A newer listener selection still supersedes this work.
+        // Publish the return for recovery to handle. Outside recovery, restore the guarded preference
+        // for a future Play. A newer listener selection supersedes queued work.
         headsetGuard.endpointReturned()
         val attached = player ?: return
         val epoch = preferenceEffects.snapshot()
         applicationScope.launch(mainDispatcher) {
-            if (isCurrentGuard(epoch, attached, chosen) && chosen in live) {
+            if (isCurrentGuard(epoch, attached, chosen) && chosen in live && !isRecoveringHeadset(chosen)) {
                 reassert(chosen)
             }
         }

@@ -57,6 +57,16 @@ and buffer state before attributing the jump. A frame step alone does not establ
 An optional second run with **Automatic headset take-back** off isolates the existing system-wide
 recovery request. Keep the headset lock and focus settings fixed between runs.
 
+For the disconnect Pause, record two parked runs through the same headset and leave **Automatic
+headset take-back** off. In the first, shut the car off without touching playback controls. In the
+second, deliberately press Pause on the dashboard while still connected. In both runs, check the
+`input-transport` row for `caller` and `relayedKeyCaller=AndroidAuto`, then compare its order with
+projection and Bluetooth disconnect events. `relayedKeyCaller` carries the explicit Pause key's
+verified software source into the matching notification-controller request in the same looper turn.
+The marker cannot identify who initiated the key or settle cases with interleaved transport. A direct
+dashboard command can report `caller=AndroidAuto` without the relay field. Also verify Pause on the
+headset and phone, which should leave the relay field absent.
+
 Android 17 can block playback, volume and focus through background audio hardening. The app records
 the OS and target API for context but Android's raw focus owner, focus result and hardening decision
 are unavailable through the normal app diagnostic path. The optional private

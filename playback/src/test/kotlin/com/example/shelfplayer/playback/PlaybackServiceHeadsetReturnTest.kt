@@ -25,6 +25,25 @@ import kotlin.time.Duration.Companion.seconds
 @Config(sdk = [34])
 class PlaybackServiceHeadsetReturnTest {
     @Test
+    fun `inventory reappearance delegates its preference request to pending recovery`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { f ->
+            startGap(f)
+            runCurrent()
+            val before = f.headsetPreferenceRequests
+
+            f.publishReturningHeadsetFromAndroid()
+            runCurrent()
+
+            assertEquals(1, f.headsetPreferenceRequests - before)
+            assertEquals(1, f.rawPlayCalls)
+            assertTrue(f.isRouteMuted())
+            f.returnMeasuredHeadset()
+            f.observeAudibleServiceRoute()
+            assertTrue(f.player.playWhenReady)
+        }
+    }
+
+    @Test
     fun `exact headset return resumes once and only verified route unmutes`() = runTest {
         PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { f ->
             startGap(f)

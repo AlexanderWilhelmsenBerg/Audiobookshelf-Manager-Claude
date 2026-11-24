@@ -637,11 +637,19 @@ class PlaybackService : MediaLibraryService() {
      * The controller identity is available only during Media3's request callback. Observe it here, never
      * infer its origin from ExoPlayer's later USER_REQUEST reason. This records intent without changing it.
      */
-    private fun logControllerTransportRequest(requestedPlay: Boolean, mediaPlayer: ExoPlayer) {
+    private fun logControllerTransportRequest(
+        requestedPlay: Boolean,
+        mediaPlayer: ExoPlayer,
+        relayedCarPause: Boolean,
+    ) {
         val requestingController = session?.controllerForCurrentRequest
         autoCapture?.transport(requestedPlay)
         if (audioRouteLab.state.value.recording) {
-            audioRouteLab.controllerTransport(requestedPlay, mediaInputController(requestingController))
+            audioRouteLab.controllerTransport(
+                requestedPlay,
+                mediaInputController(requestingController),
+                relayedCarPause,
+            )
         }
         autoTraces.log(
             "MediaSession transport request observed",
@@ -661,6 +669,7 @@ class PlaybackService : MediaLibraryService() {
                 requestingController?.let {
                     add(LogField.Identifier("controllerPackage", it.packageName))
                 }
+                if (relayedCarPause) add(LogField.Public("relayedKeyCaller", "AndroidAuto"))
                 add(LogField.Public("commandGeneration", controllerCommandGeneration))
                 addAll(AndroidAutoDiagnostics.playerFields(mediaPlayer))
                 addAll(carSnapshotFields())
@@ -959,11 +968,12 @@ class PlaybackService : MediaLibraryService() {
     private fun onControllerTransportRequest(requestedPlay: Boolean, current: ExoPlayer): Boolean =
         governor.transport(requestedPlay, current)
 
-    /** Capture physical-input evidence before advancing the existing command generation. */
+    /** Capture media-input evidence before advancing the existing command generation. */
     private fun prepareControllerRoute(requestedPlay: Boolean, current: ExoPlayer): () -> Boolean {
+        val relayedCarPause = buttonRouting.consumeCarPauseRelay(requestedPlay, session)
         val destination = buttonRouting.transport(requestedPlay, session, current)
         return {
-            logControllerTransportRequest(requestedPlay, current)
+            logControllerTransportRequest(requestedPlay, current, relayedCarPause)
             val command = controllerCommandGeneration
             val freshPlay = requestedPlay && !current.playWhenReady
             prepareFocusForTransport(requestedPlay, current)
@@ -1138,6 +1148,7 @@ class PlaybackService : MediaLibraryService() {
         audioOutputs.currentProjection = { false }
         audioOutputs.confirmedCarAbsent = { false }
         audioOutputs.retainsInterruptedHeadset = { false }
+        audioOutputs.isRecoveringHeadset = { false }
         audioOutputs.routeSafetyEvidence = { "observer-unavailable" }
         audioTrackRouteMonitor.playbackSnapshot = { null }
         resumeFreshness.attach(null)
@@ -2188,6 +2199,7 @@ class PlaybackService : MediaLibraryService() {
                 currentExplicitSelectionSequence(),
             )
         }
+        audioOutputs.isRecoveringHeadset = { id -> carResumeEffects.isRecoveringHeadset(id) }
         audioOutputs.routeSafetyEvidence = audioTrackRouteMonitor::currentRouteDiagnostic
     }
 

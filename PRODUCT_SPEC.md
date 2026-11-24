@@ -464,6 +464,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   needs a matching departure before any departure recovery can play.
   Duplicate callbacks and unproven attempts cannot rearm recovery. Listener Pause and newer
   selection/book/profile/player context still invalidate recovery.
+- While the current recovery owns a returning headset, that recovery applies its preference. The
+  inventory callback publishes the return and clears the missing-route flag without issuing a second
+  request. A return outside recovery may still restore the guarded preference while paused.
 - Exact unique A2DP addresses may correlate endpoint handle changes in process memory only. Missing,
   placeholder or ambiguous identity never falls back to a device name. A real gap invalidates live proof;
   return requires current inventory and fresh actual-track verification, not automatic unmute.
@@ -471,6 +474,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   events with exact endpoint identity, audio mode and anonymous playback-usage counts. Media-command
   sequence and delivery timing are temporal evidence only. These observations cannot grant playback/focus ownership or
   infer button origin. Exports use temporary aliases, never device names, addresses or private identity keys.
+- A verified Android Auto `MEDIA_PAUSE` key may be attributed to the Media3 notification-controller
+  Pause it relays during the same session dispatch. This records the software source, leaves Pause
+  handling intact and does not distinguish an automatic car shutdown from a deliberate button press.
 - Opt-in output-stall diagnostics may record bounded numeric frame-progress observations and fixed Media3
   stuck reasons, retaining a privacy-safe first incident separately from the rolling trace until Clear or
   per-row expiry. No-frame-progress evidence does not authorize recovery or establish acoustic audibility.
