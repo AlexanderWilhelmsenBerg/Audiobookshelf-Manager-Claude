@@ -77,6 +77,7 @@ class AudioRouteLab @Inject constructor(
     private var eventChannel: Channel<LoggedEvent>? = null
     private var unsubscribe: (() -> Unit)? = null
     private val recordingGeneration = AtomicLong(0)
+    internal val outputWrites = AudioOutputWriteTrace(clock)
     private val frameProgress = AudioTrackProgressEvidence()
     private data class TimingRow(val capture: Long, val track: Long, val atNs: Long)
     private var lastTimingRow: TimingRow? = null
@@ -244,6 +245,7 @@ class AudioRouteLab @Inject constructor(
         if (_state.value.recording) return
         val currentGeneration = recordingGeneration.incrementAndGet()
         _state.update { it.copy(recording = true) }
+        outputWrites.start()
         record("diagnostic-start", currentGeneration)
         startDeviceObserver()
         mediaInput.start()
@@ -300,6 +302,7 @@ class AudioRouteLab @Inject constructor(
 
     fun stop() {
         if (!_state.value.recording) return
+        outputWrites.stop()
         closeEventObserver()
         stopDeviceObserver()
         mediaInput.stop()
@@ -323,6 +326,7 @@ class AudioRouteLab @Inject constructor(
     fun heardAt(destination: String) {
         if (!_state.value.recording) return
         if (destination !in OBSERVATIONS) return
+        if (destination == "Silence" || destination == "Skipping") outputWrites.mark(destination, null)
         record("user-heard=$destination")
     }
 
@@ -340,6 +344,7 @@ class AudioRouteLab @Inject constructor(
     /** Drop queued old rows and delete the stored trace while keeping an active capture and its probes attached. */
     suspend fun clearAndAwait() {
         recordingGeneration.incrementAndGet()
+        outputWrites.clear(keepRecording = _state.value.recording)
         closeEventObserver(discard = true)
         _state.update { it.copy(entries = emptyList(), stallIncident = emptyList()) }
         if (_state.value.recording) startEventObserver(recordingGeneration.get())
@@ -349,6 +354,10 @@ class AudioRouteLab @Inject constructor(
         // Fresh rows may have arrived while the old file was being deleted.
         requestWrite()
         if (_state.value.recording) onCaptureStarted()
+    }
+
+    fun exportSnapshot(): AudioRouteLabState = state.value.let {
+        it.copy(entries = it.entries + outputWrites.entries())
     }
 
     fun report(version: String): String = buildString {
@@ -363,7 +372,7 @@ class AudioRouteLab @Inject constructor(
         appendLine("evidence: track-route when available is platform-reported; not human-heard sound")
         appendLine("retention: private no-backup file, at most 24h; opt-in recording")
         appendLine("[incident]")
-        state.value.entries.forEach { appendLine(it) }
+        exportSnapshot().entries.forEach { appendLine(it) }
         appendLine("[first-suspected-output-stall]")
         state.value.stallIncident.forEach { appendLine(it) }
     }

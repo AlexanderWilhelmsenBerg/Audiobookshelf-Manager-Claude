@@ -42,6 +42,18 @@ import kotlin.time.Duration
 @LooperMode(LooperMode.Mode.PAUSED)
 class MutedPositionMedia3IntegrationTest {
     @Test
+    fun `real Media3 output publishes accepted writes through the diagnostic export`() {
+        val fixture = Fixture(Handler(Looper.getMainLooper()).asCoroutineDispatcher().immediate)
+        try {
+            fixture.prepareAndPlay()
+            fixture.sampleOutputBoundary()
+            fixture.await("accepted PCM writes through the production provider") { fixture.hasAcceptedOutputWrites() }
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
     fun `settling refusal captures measured delta before fixture teardown`() {
         val fixture = Fixture(Handler(Looper.getMainLooper()).asCoroutineDispatcher().immediate)
         try {
@@ -284,6 +296,12 @@ class MutedPositionMedia3IntegrationTest {
             }
             assertTrue(lab.state.value.entries.any { "observer-audio-track-attached" in it })
             assertTrue(lab.state.value.entries.none { "provider-fallback" in it || "attach-failed" in it })
+        }
+
+        fun sampleOutputBoundary() = monitor.sampleBoundary(AudioTimingBoundary.ProjectionDeparture)
+
+        fun hasAcceptedOutputWrites(): Boolean = lab.exportSnapshot().entries.any {
+            " audio-write " in it && Regex("""acceptedFrames=[1-9][0-9]*""").containsMatchIn(it)
         }
 
         fun beginProbe(): HeadsetRouteGuard.Probe {

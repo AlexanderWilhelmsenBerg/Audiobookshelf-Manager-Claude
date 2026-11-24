@@ -489,6 +489,11 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   native track's anonymized sink and playback head. These boundaries start a short period of denser
   route and timing recording.
   Position discontinuities record the public reason code and numeric positions without media identifiers.
+- Opt-in playback diagnostics retain bounded windows of Media3 audio writes around measured route
+  changes, route safety pauses, projection departures and listener reports of skipping or silence.
+  Use the route trace's monotonic clock and output epoch for presentation timestamps, accepted
+  byte and PCM frame counts, and output flush or replacement events. Keep these windows in memory
+  until export and remove them on Clear all.
 - Reconnecting a route follows the configured per-device policy.
 - The player output chooser can explicitly keep audio on the current output only while a loaded book is
   playing through one fresh, exact mapped AudioTrack route; predicted, missing, conflicting and duplicate
