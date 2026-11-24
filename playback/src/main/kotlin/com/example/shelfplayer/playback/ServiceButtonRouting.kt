@@ -79,11 +79,8 @@ internal class ServiceButtonRouting(
 
     private fun observePauseRelay(session: MediaSession, controller: MediaSession.ControllerInfo, event: KeyEvent?) {
         pauseRelay = null
-        if (event?.keyCode != KeyEvent.KEYCODE_MEDIA_PAUSE || !event.isInitialDown() ||
-            !controller.isPackageNameVerified || controller.packageName !in carPackages
-        ) {
-            return
-        }
+        val explicitPause = event?.keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE && event.isInitialDown()
+        if (!explicitPause || !controller.isPackageNameVerified || controller.packageName !in carPackages) return
         val relay = PauseRelay(session, session.player)
         pauseRelay = relay
         // Media3 1.11 dispatches explicit Pause inline through its notification controller. Never
@@ -94,10 +91,10 @@ internal class ServiceButtonRouting(
     fun consumeCarPauseRelay(play: Boolean, session: MediaSession?): Boolean {
         val relay = pauseRelay ?: return false
         pauseRelay = null
-        val currentSession = session ?: return false
-        if (play || currentSession !== relay.session || currentSession.player !== relay.player) return false
-        val controller = currentSession.controllerForCurrentRequest ?: return false
-        return controller.isPackageNameVerified && currentSession.isMediaNotificationController(controller)
+        if (play || session == null) return false
+        if (session !== relay.session || session.player !== relay.player) return false
+        val controller = session.controllerForCurrentRequest
+        return controller?.isPackageNameVerified == true && session.isMediaNotificationController(controller)
     }
 
     fun transport(play: Boolean, session: MediaSession?, player: Player): ButtonDestination? {
