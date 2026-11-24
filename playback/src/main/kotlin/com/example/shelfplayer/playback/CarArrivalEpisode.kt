@@ -44,6 +44,9 @@ internal data class CarArrivalEpisode(
 
     val blocksNoisyRetry: Boolean get() = attempts.hasUnconfirmedPlay || unconfirmedTarget?.retryAfterFocusLoss == true
 
+    fun retainsHeadset(id: String, generation: Long?, sequence: Long, at: Duration): Boolean =
+        !closed && identity.matches(id, generation, sequence) && withinLifetime(at)
+
     fun rearm(
         at: Duration,
         headsetId: String?,

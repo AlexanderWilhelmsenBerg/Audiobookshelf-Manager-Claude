@@ -11,7 +11,7 @@ import kotlin.time.Duration.Companion.seconds
  *
  * - an arrival focus loss is paired with a car-specific arrival boundary;
  * - a departure focus loss is paired with a car-specific departure boundary.
- * - an app safety pause may recover its exact headset within two seconds without a car boundary.
+ * - a safety pause waits up to two seconds, or five with recent car arrival evidence.
  *
  * The exact headset is captured only from route-heard evidence while playback was real. [observePlayingHeadset]
  * keeps the last positively proven headset as stable transition evidence before and during a car session, so
@@ -123,6 +123,7 @@ internal class CarArrivalResumeGate private constructor(
         currentGeneration: Long? = null,
         explicitSelectionSequence: Long = 0,
         carConnected: Boolean = false,
+        carBluetoothArrival: Boolean = false,
     ): Decision? {
         settleDisplacement(at, interruption = true)
         val previous = safetyPausedAt
@@ -143,20 +144,16 @@ internal class CarArrivalResumeGate private constructor(
         if (previous != null || qualifiedEpisode?.issuedTarget != null) return null
         val identity = currentPlayingHeadset(currentGeneration, explicitSelectionSequence)
             ?.takeIf { it.matches(headsetId, currentGeneration, explicitSelectionSequence) } ?: return null
-        return headsetReturn.issue(identity, at)?.also { activeRecovery = it }?.let {
+        val carArrival = carBluetoothArrival || firstArrival?.isRecentFor(identity, at, pairingWindow) == true
+        return headsetReturn.issue(identity, at, carArrival)?.also { activeRecovery = it }?.let {
             Decision(Phase.HeadsetReturn, Status.Ready, Reason.SafetyPausedHeadsetReturn, it)
         }
     }
 
     /** Inventory cleanup is not listener intent. Retain only this already qualified, bounded episode. */
-    fun retainsInterruptedHeadset(id: String, generation: Long?, selectionSequence: Long): Boolean {
-        val episode = qualifiedEpisode ?: return false
-        val identity = episode.identity
-        val at = now()
-        return !episode.closed && !requiresFreshPlaybackEvidence && identity.outputId == id &&
-            identity.generation == generation && identity.explicitSelectionSequence == selectionSequence &&
-            at >= episode.startedAt && at < episode.deadline && trustedIdentity(id)
-    }
+    fun retainsInterruptedHeadset(id: String, generation: Long?, selectionSequence: Long): Boolean =
+        !requiresFreshPlaybackEvidence &&
+            qualifiedEpisode?.retainsHeadset(id, generation, selectionSequence, now()) == true && trustedIdentity(id)
 
     private fun expireSafetyPause(at: Duration): Boolean {
         val qualified = qualifiedEpisode?.takeUnless { it.closed }

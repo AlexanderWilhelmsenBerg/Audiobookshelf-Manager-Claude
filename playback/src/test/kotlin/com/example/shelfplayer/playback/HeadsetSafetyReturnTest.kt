@@ -74,6 +74,31 @@ class HeadsetSafetyReturnTest {
     }
 
     @Test
+    fun `recent Auto arrival fixes a five second deadline for one exact headset return`() {
+        val f = Fixture()
+        f.coordinator.carArrival(f.now, 1, 0, physicalProjection = true)
+        f.now = 500.milliseconds
+        val target = assertNotNull(f.pause()?.target)
+        assertEquals(5500.milliseconds, target.deadline)
+
+        f.now = 4300.milliseconds
+        assertNull(f.pause())
+        assertTrue(f.claim(target))
+        assertFalse(f.claim(target))
+        f.now = 5500.milliseconds
+        assertFalse(f.coordinator.episodeValid(target))
+    }
+
+    @Test
+    fun `an established car session does not extend an unrelated headset loss`() {
+        val f = Fixture()
+        f.coordinator.carArrival(f.now, 1, 0, physicalProjection = true)
+        f.now = 8.seconds
+        val target = assertNotNull(f.pause()?.target)
+        assertEquals(10.seconds, target.deadline)
+    }
+
+    @Test
     fun `new intent book identity and wrong destination invalidate recovery`() {
         for (scenario in 0..4) {
             val f = Fixture()

@@ -15,6 +15,9 @@ internal class CarContinuityEvidence(
         val deadline: Duration?,
         val projectionAt: Duration? = null,
     ) {
+        fun isRecentFor(expected: CarContinuityIdentity, now: Duration, window: Duration): Boolean =
+            identity == expected && now - (projectionAt ?: at) in Duration.ZERO..window
+
         fun confirmProjection(at: Duration): ArrivalBoundary = if (projectionAt ==
             null
         ) {

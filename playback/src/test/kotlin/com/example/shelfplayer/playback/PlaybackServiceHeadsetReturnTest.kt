@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import android.media.AudioManager
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -78,9 +79,53 @@ class PlaybackServiceHeadsetReturnTest {
     }
 
     @Test
-    fun `listener Pause cancels while waiting for the headset`() = runTest {
+    fun `car Bluetooth arrival recovers the exact headset at 3900ms before Auto binds`() = runTest {
         PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { f ->
-            startGap(f)
+            f.service.audioMode = { AudioManager.MODE_NORMAL }
+            startGap(f, carBluetooth = true)
+            runCurrent()
+            val before = f.headsetPreferenceRequests
+            f.advanceElapsedClock(2300.milliseconds)
+            advanceTimeBy(2300)
+            f.reportPlatformInterruption(Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY)
+            f.advanceElapsedClock(1600.milliseconds)
+            advanceTimeBy(1600)
+            f.publishReturningHeadsetFromAndroid()
+            runCurrent()
+
+            assertEquals(1, f.headsetPreferenceRequests - before)
+            assertEquals(1, f.rawPlayCalls)
+            assertTrue(f.isRouteMuted(), "the late return still needs proof on the playing track")
+            f.returnMeasuredHeadset()
+            f.observeAudibleServiceRoute()
+            assertFalse(f.isRouteMuted())
+            assertTrue(f.player.playWhenReady)
+        }
+    }
+
+    @Test
+    fun `recent car Bluetooth during a call keeps the ordinary headset return deadline`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { f ->
+            f.service.audioMode = { AudioManager.MODE_IN_COMMUNICATION }
+            startGap(f, carBluetooth = true)
+            runCurrent()
+            f.advanceElapsedClock(3900.milliseconds)
+            advanceTimeBy(3900)
+            f.returnMeasuredHeadset()
+            runCurrent()
+            assertEquals(0, f.rawPlayCalls)
+            assertFalse(f.player.playWhenReady)
+        }
+    }
+
+    @Test
+    fun `listener Pause cancels even during the longer car arrival wait`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { f ->
+            f.service.audioMode = { AudioManager.MODE_NORMAL }
+            startGap(f, carBluetooth = true)
+            runCurrent()
+            f.advanceElapsedClock(3.seconds)
+            advanceTimeBy(3000)
             assertNull(f.forwarding.handleSetPlayWhenReady(false).get())
             f.returnMeasuredHeadset()
             runCurrent()
@@ -167,9 +212,10 @@ class PlaybackServiceHeadsetReturnTest {
         }
     }
 
-    private fun startGap(f: PlaybackServiceCommandContinuityFixture) {
+    private fun startGap(f: PlaybackServiceCommandContinuityFixture, carBluetooth: Boolean = false) {
         f.installServiceContinuityCallbacks()
         f.startHealthyHeadsetWithoutCar()
+        if (carBluetooth) f.service.carBluetoothWindow.onCarHandsFreeConnected("car-fixture")
         f.removeHeadsetFromInventory()
         assertTrue(f.pauseForSafetyThroughService())
         // The caller's runCurrent starts the asynchronous recovery on the production service scope.

@@ -450,9 +450,12 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Android Auto discovery must preserve an already verified, healthy headset route without a preference
   reset or artificial waiting delay. Unavailable actual output still pauses safely in every focus mode.
 - An internal route-safety pause of verified active headset playback may authorize one silent recovery
-  of that exact trusted headset within two seconds, without waiting for an Auto boundary. Current inventory
-  and fresh actual-track proof are required before unmute. The absolute deadline is not restarted by
-  callbacks. A noisy notification during the same gap may retain only the unconsumed claim; focus loss,
+  of that exact trusted headset. Allow up to five seconds when the pause follows a recent trusted Auto
+  arrival for that headset or a recent car-class hands-free connection in normal audio mode. Use two
+  seconds for an ordinary loss. Choose one absolute deadline at the pause. Current inventory and fresh
+  actual-track proof are required before unmute. If the headset is still listed at the pause, allow a
+  brief wait for its removal before attempting the muted return. A noisy notification during the same gap
+  may retain only the unconsumed claim. Focus loss,
   listener cancellation and lost identity revoke the short attempt.
   Otherwise it retains prior heard intent for the existing bounded car-continuity decision; it is not
   listener Pause. Within a qualified car-arrival episode, including an inferred arrival whose exact headset

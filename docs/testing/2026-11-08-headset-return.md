@@ -41,6 +41,15 @@ late return and missing/wrong route proof stay paused. No replacement headset is
 The service fixture uses a real pinned Media3 player with controlled inventory, clock and route evidence.
 It proves command ordering and protection, not physical audibility. No hardware result is claimed.
 
+## Five-second car-arrival return, 2026-11-24
+
+Build 2312 measured the original headset returning about 3.9 seconds after a route-safety pause. A
+recent trusted Auto boundary for that headset or a recent car-class hands-free connection in normal
+audio mode now gives the same recovery up to five seconds. The gate sets the deadline at the safety
+pause. If the headset is already absent, the recovery waits directly for it. If it is still listed,
+the short inventory settle watches for removal of that headset. Muted current-track proof is required
+before unmute.
+
 ## Stationary device acceptance
 
 1. Clear diagnostics; enable route recording. Play a book on one identified headset.
@@ -48,7 +57,8 @@ It proves command ordering and protection, not physical audibility. No hardware 
    the two-second deadline, expect one recovery; inspect `phase=HeadsetReturn`,
    `reason=SafetyPausedHeadsetReturn`, route events and the final verification outcome.
 3. Repeat while deliberately pressing Pause during the interruption: expect no automatic resume.
-4. Leave the output absent longer than two seconds: expect paused playback until deliberate Play or
+4. Leave the output absent longer than two seconds outside car arrival, or five seconds during a
+   qualified arrival. Expect paused playback until deliberate Play or
    separately qualified Auto recovery. A similarly named/different headset must not inherit recovery.
 5. Connect/disconnect Android Auto, then verify dashboard Play, headset Play, phone Play and explicit
    Headset/Car choices retain their routing behavior. Initially paused playback must remain paused.
