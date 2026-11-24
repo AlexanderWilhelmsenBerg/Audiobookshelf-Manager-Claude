@@ -131,9 +131,7 @@ class AudioRouteLab @Inject constructor(
             it.capture == generation && it.track == sample.observerEpoch &&
                 sample.monotonicNs - it.atNs in 0 until TIMING_ROW_INTERVAL_NS
         } ?: false
-        val nearBoundary = timingBoundary?.let { (capture, atNs) ->
-            capture == generation && sample.monotonicNs - atNs in 0 until BOUNDARY_TIMING_NS
-        } ?: false
+        val nearBoundary = isNearTimingBoundary(generation, sample.monotonicNs)
         if (observation != null || !withinSampleWindow || nearBoundary) {
             lastTimingRow = TimingRow(generation, sample.observerEpoch, sample.monotonicNs)
             val state = playback?.let { " ${it.timingEvidence()}" }.orEmpty()
@@ -142,6 +140,11 @@ class AudioRouteLab @Inject constructor(
         }
         observation?.let { record(it.evidence(), generation) }
     }
+
+    private fun isNearTimingBoundary(generation: Long, sampleAtNs: Long): Boolean =
+        timingBoundary?.let { (capture, atNs) ->
+            capture == generation && sampleAtNs - atNs in 0 until BOUNDARY_TIMING_NS
+        } ?: false
 
     internal fun trackTimingBoundary(
         boundary: AudioTimingBoundary,
