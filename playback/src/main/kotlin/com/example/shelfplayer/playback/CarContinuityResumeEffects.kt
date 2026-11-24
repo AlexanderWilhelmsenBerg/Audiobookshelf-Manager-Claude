@@ -333,7 +333,7 @@ internal class CarContinuityResumeEffects(
             resumeAfterCarContinuity(target, heldHeadset) { current ->
                 recoveryJob.isActive && owner.currentGeneration == target.generation &&
                     selectionSequence() == target.explicitSelectionSequence &&
-                    currentPlayer() === current && current.mediaItemCount > 0
+                    currentPlayer() === current && current.mediaItemCount > 0 && recovery.episodeValid(target)
             }
         } finally {
             recovery.discard(target)

@@ -9,17 +9,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * PLAY-002 / ROUTE-002 — owns the temporary headset-continuity lifetime: its exact endpoint, bounded disappearance
- * observation, and any muted verification tied to one attached player. Endpoint discovery and
+ * PLAY-002 / ROUTE-002 — owns the guarded headset endpoint, its inventory status,
+ * and any muted verification tied to one attached player. Endpoint discovery and
  * listener selection remain in [AudioOutputRouter].
  */
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -169,13 +167,9 @@ internal class HeadsetRouteGuard(
     var endpointMissing: Boolean = false
         private set
 
-    var disappearanceGrace: Job? = null
-        private set
-
     private var probe: Probe? = null
 
     fun protect(id: String) {
-        cancelGrace()
         endpointId = id
         endpointMissing = false
     }
@@ -186,22 +180,7 @@ internal class HeadsetRouteGuard(
         return alreadyMissing
     }
 
-    fun startGrace(block: suspend () -> Unit): Boolean {
-        if (disappearanceGrace != null) return false
-        disappearanceGrace = scope.launch {
-            val owner = currentCoroutineContext().job
-            try {
-                delay(MISSING_HEADSET_GRACE)
-                block()
-            } finally {
-                if (disappearanceGrace === owner) disappearanceGrace = null
-            }
-        }
-        return true
-    }
-
     fun endpointReturned() {
-        cancelGrace()
         endpointMissing = false
     }
 
@@ -211,7 +190,6 @@ internal class HeadsetRouteGuard(
     }
 
     fun clearOwnership() {
-        cancelGrace()
         endpointId = null
         endpointMissing = false
     }
@@ -548,11 +526,6 @@ internal class HeadsetRouteGuard(
         return true
     }
 
-    private fun cancelGrace() {
-        disappearanceGrace?.cancel()
-        disappearanceGrace = null
-    }
-
     private fun cancelProbeJobs(active: Probe) {
         active.observationJob?.cancel()
         active.eligibilityTimeout?.cancel()
@@ -570,7 +543,6 @@ internal class HeadsetRouteGuard(
     }
 
     private companion object {
-        val MISSING_HEADSET_GRACE = 2.seconds
         val PROBE_STARTUP_TIMEOUT = 4.seconds
         val PROBE_PLAYING_ROUTE_TIMEOUT = 500.milliseconds
     }

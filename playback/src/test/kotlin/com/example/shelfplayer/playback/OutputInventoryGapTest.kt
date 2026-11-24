@@ -34,12 +34,10 @@ class OutputInventoryGapTest {
             assertTrue(fixture.guardOwner().endpointMissing, "retained proof is not endpoint reappearance")
         }
         val published = fixture.router.outputs.value
-        val grace = fixture.guardOwner().disappearanceGrace
         fixture.router.playbackCall("refresh")
         runCurrent()
         assertEquals(published, fixture.router.outputs.value, "equal rows cannot wake the service collector")
         assertEquals(OutputIntentOwner.LockPhase.Active, fixture.router.outputLock.value?.phase)
-        assertEquals(grace, fixture.guardOwner().disappearanceGrace, "repeated callbacks must not restart grace")
         assertTrue(fixture.pauseThreads.isEmpty())
         assertTrue(fixture.preferredRequests.isEmpty())
         assertTrue(fixture.volumeChanges.isEmpty())

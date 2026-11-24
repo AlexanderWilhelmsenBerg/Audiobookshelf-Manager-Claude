@@ -50,17 +50,6 @@ internal object AudioOutputRoles {
     fun car(outputs: List<AudioOutput>): AudioOutput? = outputs.firstOrNull { it.kind == DeviceKind.Car }
 
     /**
-     * Car always means *release BookWave's preferred output*.
-     *
-     * `null` is ExoPlayer's Automatic route. Android Auto/AAOS already owns normal car routing, so clearing
-     * the app-specific preference is more robust than guessing which A2DP device is the dashboard.
-     */
-    // Constant by design, and a function so the decision has a name, a call site and a test. Inlining the
-    // `null` would leave `audioOutputs.select(null)` in PlaybackService with nothing saying why.
-    @Suppress("UNUSED_PARAMETER", "FunctionOnlyReturningConstant")
-    fun carTarget(outputs: List<AudioOutput>): String? = null
-
-    /**
      * The next headset candidate, or `null` when there is nothing useful to target.
      *
      * When Android Auto is active and the framework has moved media onto an ambiguous A2DP route, that

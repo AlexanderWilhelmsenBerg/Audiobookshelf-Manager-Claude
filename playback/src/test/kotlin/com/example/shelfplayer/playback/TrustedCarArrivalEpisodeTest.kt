@@ -79,6 +79,29 @@ class TrustedCarArrivalEpisodeTest {
     }
 
     @Test
+    fun `earlier safety evidence shortens an already queued arrival without discarding its claim`() {
+        var now = 5.seconds
+        val gate = gate(now = { now }, trusted = { true })
+        val focus = gate.onAudioFocusLoss(now, null, headset.id, 1, 0, false)
+        assertEquals(CarArrivalResumeGate.Status.Armed, focus.status)
+        now = 6.seconds
+        val target = assertNotNull(gate.onCarArrival(now, 1, 0).target)
+        assertEquals(35.seconds, target.deadline)
+        assertTrue(gate.isCurrent(target, 1, 0))
+
+        now = 7.seconds
+        gate.onRouteSafetyPause(4.seconds, headset.id, 1, 0, carConnected = true)
+        assertTrue(gate.isCurrent(target, 1, 0), "earlier evidence must not discard the queued Play")
+        assertSame(target, gate.onCarArrival(now, 1, 0, physicalProjection = true).target)
+        assertEquals(27.seconds, gate.remainingWindow(target))
+        now = 33.seconds
+        assertTrue(gate.consumeRecovery(target, 1, headset.id, 0).accepted)
+        assertTrue(gate.episodeValid(target))
+        now = 34.seconds
+        assertFalse(gate.episodeValid(target), "muted proof must use the tightened absolute deadline")
+    }
+
+    @Test
     fun `legacy or untrusted focus keeps the six-second arrival bound`() {
         var now = Duration.ZERO
         val gate = gate(now = { now }, trusted = { false })

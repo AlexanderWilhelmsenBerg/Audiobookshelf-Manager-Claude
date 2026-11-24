@@ -68,7 +68,8 @@ An expired or cancelled short attempt does not consume the separately qualified 
 An arrival episode retains the exact previously measured headset and its book/selection scope. Its
 absolute deadline is 30 seconds from the earliest qualifying interruption; this is not a waiting delay.
 The initial trusted-arrival allowance is preserved. A successful route recovery does not reset the
-deadline or attempt count.
+deadline or attempt count. If qualifying evidence arrives with an earlier timestamp after a claim
+has been queued, the live episode supplies the shortened deadline to Play and muted verification.
 
 At most three automatic Play claims are permitted: the initial claim and two further interruptions.
 Rearming requires the same headset to have been measured while actually playing after the preceding
@@ -93,6 +94,10 @@ Healthy verified headset playback is preserved without preference resets, seeks 
 If actual routing becomes unavailable or wrong, safety still pauses. Recovery uses the existing player,
 muted probe, position checkpoint and actual AudioTrack proof before unmute. Registry availability is
 not physical output proof. No extra AudioTrack, second player or zero-silence guarantee is introduced.
+In Automatic, audible projected playback supplies a car-output observation scoped to that player,
+book and selection. On fallback to a known local device or confirmed departure, that observation
+lets the service pause even if the track has already switched away from projection. A paused player
+or a newer output choice retires the observation.
 
 Inferred arrival observes the router's existing output flow during the focus settle wait. A fresh
 exclusive headset prediction can shorten that wait after a short stability interval. The router

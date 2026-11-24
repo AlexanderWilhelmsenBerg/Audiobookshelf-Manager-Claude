@@ -197,13 +197,12 @@ on behalf of a previous headset listener.
 reasserting the healthy AudioTrack at initial car bind. While that policy preference
 is held, framework route changes to unknown, competing or multiple outputs suspend
 an actively playing track rather than let it become audible in a car or phone speaker.
-A temporary device-list disappearance pauses before OS fallback, preserves the same
-preference for two seconds, and reapplies it only if that exact device returns and no
-newer user output selection superseded it. The grace never automatically plays a
-previously paused item. After the two-second reconnection window expires, the selection remains guarded and
-the player stays fail-closed until that exact output returns or a newer explicit listener
-destination (including Car) supersedes it. The expiry timer never silently switches to
-Automatic: doing so allowed a later unattributed headset media key to play in the car.
+A temporary device-list disappearance retains the guard while the router checks actual track evidence.
+If the track no longer proves the protected headset, the router pauses playback. The separate
+two-second recovery claim can resume the exact headset after a safety pause with fresh track proof.
+If the claim expires, the destination remains guarded until the exact output returns or a newer
+listener destination supersedes it. Retaining the guard prevents an unattributed headset media key
+from playing through the car after the output has been lost.
 A stale disconnected preference may remain visible until the listener selects another
 output; it cannot automatically choose a new ambiguous A2DP device.
 The physical Android route APIs expose media routing *policy*, not incontrovertible

@@ -534,7 +534,7 @@ class AudioOutputRouterThreadTest {
     }
 
     @Test
-    fun `after grace expires unattributed Play still cannot escape to default car route`() = runTest {
+    fun `unattributed Play with a persistently absent headset cannot escape to the car`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original", connected = false)
 
@@ -553,26 +553,18 @@ class AudioOutputRouterThreadTest {
         assertEquals(
             "bluetooth:original",
             fixture.router.selectedId.value,
-            "an expired grace period is not consent for automatic car routing",
+            "an absent headset remains guarded even after waiting",
         )
         assertEquals("bluetooth:original", fixture.guardId())
 
-        // A later unrelated device callback must not restart the expired two-second grace.
+        // A later unrelated device callback must also keep the missing destination.
         AudioOutputRouter::class.java.getDeclaredMethod(
             "onDisconnectedSelection",
             String::class.java,
             Set::class.java,
         ).apply { isAccessible = true }.invoke(fixture.router, "bluetooth:original", emptySet<String>())
         runCurrent()
-        val owner = AudioOutputRouter::class.java.getDeclaredField("headsetGuard").run {
-            isAccessible = true
-            get(fixture.router)
-        }
-        val missingWait = HeadsetRouteGuard::class.java.getDeclaredField("disappearanceGrace").run {
-            isAccessible = true
-            get(owner)
-        }
-        assertEquals(null, missingWait, "later device churn must not rearm the elapsed timeout")
+        assertEquals("bluetooth:original", fixture.guardId())
 
         // Physical headset media keys typically appear as virtual/system input (-1). The route
         // guard must still be active when Media3 moves back into its playing state.
@@ -580,12 +572,12 @@ class AudioOutputRouterThreadTest {
         fixture.player.play()
         safety.onIsPlayingChanged(true)
         runCurrent()
-        assertTrue(fixture.pauseThreads.size >= 2, "post-expiry Play must be paused on an unknown route")
+        assertTrue(fixture.pauseThreads.size >= 2, "unattributed Play must be paused on an unknown route")
         assertTrue(fixture.pauseThreads.all { it == Thread.currentThread() })
     }
 
     @Test
-    fun `explicit car Play after grace removes headset ownership without restoring it`() = runTest {
+    fun `explicit Car choice releases a persistently absent headset`() = runTest {
         val fixture = fixture()
         fixture.guard("bluetooth:original")
         AudioOutputRouter::class.java.getDeclaredMethod(
