@@ -50,7 +50,7 @@ internal data class AudioTrackTimingSample(
                 runCatching { track.channelCount }.getOrNull(),
                 runCatching { track.audioFormat }.getOrNull(),
                 runCatching { track.bufferSizeInFrames }.getOrNull(),
-                runCatching { track.playbackHeadPosition.toLong() and UNSIGNED_HEAD_MASK }.getOrNull(),
+                headFrames(track),
                 timestamp?.framePosition,
                 timestamp?.nanoTime,
                 runCatching { track.underrunCount }.getOrNull(),
@@ -58,6 +58,9 @@ internal data class AudioTrackTimingSample(
                 runCatching { parameters?.pitch?.times(PARAMETER_SCALE)?.toInt() }.getOrNull(),
             )
         }
+
+        fun headFrames(track: AudioTrack): Long? =
+            runCatching { track.playbackHeadPosition.toLong() and UNSIGNED_HEAD_MASK }.getOrNull()
     }
 }
 

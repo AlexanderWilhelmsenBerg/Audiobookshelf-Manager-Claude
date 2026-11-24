@@ -119,7 +119,11 @@ class AudioRouteLab @Inject constructor(
         record("observer-$event")
     }
 
-    internal fun trackTiming(sample: AudioTrackTimingSample, playback: AudioTrackPlaybackSnapshot? = null) {
+    internal fun trackTiming(
+        sample: AudioTrackTimingSample,
+        playback: AudioTrackPlaybackSnapshot? = null,
+        trackRoute: (() -> String)? = null,
+    ) {
         if (!_state.value.recording) return
         val generation = recordingGeneration.get()
         val observation = frameProgress.observe(generation, sample, playback)
@@ -133,18 +137,23 @@ class AudioRouteLab @Inject constructor(
         if (observation != null || !withinSampleWindow || nearBoundary) {
             lastTimingRow = TimingRow(generation, sample.observerEpoch, sample.monotonicNs)
             val state = playback?.let { " ${it.timingEvidence()}" }.orEmpty()
-            record(sample.evidence() + state, generation)
+            val route = if (nearBoundary && trackRoute != null) " trackRoute=${trackRoute()}" else ""
+            record(sample.evidence() + state + route, generation)
         }
         observation?.let { record(it.evidence(), generation) }
     }
 
-    internal fun trackTimingBoundary(boundary: AudioTimingBoundary, playback: AudioTrackPlaybackSnapshot?) {
+    internal fun trackTimingBoundary(
+        boundary: AudioTimingBoundary,
+        atNs: Long,
+        playback: AudioTrackPlaybackSnapshot?,
+        trackEvidence: String,
+    ) {
         if (!_state.value.recording) return
         val generation = recordingGeneration.get()
-        val atNs = clock.elapsed().inWholeNanoseconds
         timingBoundary = generation to atNs
         val state = playback?.let { " ${it.timingEvidence()}" }.orEmpty()
-        record("route-boundary edge=${boundary.name} monotonicNs=$atNs$state", generation)
+        record("route-boundary edge=${boundary.name} monotonicNs=$atNs $trackEvidence$state", generation)
     }
 
     internal fun playerDiscontinuity(reason: Int, previousMs: Long, nextMs: Long, sameItem: Boolean) {

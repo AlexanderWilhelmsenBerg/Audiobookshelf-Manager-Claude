@@ -1150,7 +1150,7 @@ class PlaybackService : MediaLibraryService() {
         audioOutputs.confirmedCarAbsent = { false }
         audioOutputs.retainsInterruptedHeadset = { false }
         audioOutputs.isRecoveringHeadset = { false }
-        audioOutputs.routeSafetyEvidence = { "observer-unavailable" }
+        audioOutputs.onBeforeRouteSafetyPause = {}
         audioTrackRouteMonitor.playbackSnapshot = { null }
         resumeFreshness.attach(null)
         autoRewind.attach(null)
@@ -1809,9 +1809,6 @@ class PlaybackService : MediaLibraryService() {
             if (!playWhenReady) carOutputSafety.clear()
             // Record transport intent, not buffer or route changes, and never invent a physical key origin.
             val routeSafetyPause = !playWhenReady && audioOutputs.isRouteSafetyPause(player)
-            if (routeSafetyPause && audioRouteLab.state.value.recording) {
-                audioTrackRouteMonitor.sampleBoundary(AudioTimingBoundary.RouteSafetyPause)
-            }
             val input = PlaybackTransportInput.interpret(
                 playWhenReady,
                 reason,
@@ -2202,7 +2199,9 @@ class PlaybackService : MediaLibraryService() {
             )
         }
         audioOutputs.isRecoveringHeadset = { id -> carResumeEffects.isRecoveringHeadset(id) }
-        audioOutputs.routeSafetyEvidence = audioTrackRouteMonitor::currentRouteDiagnostic
+        audioOutputs.onBeforeRouteSafetyPause = {
+            audioTrackRouteMonitor.sampleBoundary(AudioTimingBoundary.RouteSafetyPause)
+        }
     }
 
     private fun syncExplicitOutputIntent() {

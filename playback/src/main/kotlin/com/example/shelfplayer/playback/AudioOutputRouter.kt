@@ -116,7 +116,7 @@ class AudioOutputRouter @Inject constructor(
     internal var confirmedCarAbsent: () -> Boolean = { false }
     internal var retainsInterruptedHeadset: (String) -> Boolean = { false }
     internal var isRecoveringHeadset: (String) -> Boolean = { false }
-    internal var routeSafetyEvidence: () -> String = { "observer-unavailable" }
+    internal var onBeforeRouteSafetyPause: () -> Unit = {}
 
     /** Projection lifecycle edges can change presentation even when the device inventory is unchanged. */
     internal val refreshPresentationForLifecycle: () -> Unit get() = presentationPublisher::refresh
@@ -132,6 +132,7 @@ class AudioOutputRouter @Inject constructor(
             if (verified) verifyOutputLock()
         },
         onPlaying = ::pauseUnsafeGuardedPlayback,
+        beforeSafetyPause = { onBeforeRouteSafetyPause() },
     ).also { guard ->
         guard.captureCheckpoint = { probe -> positions.handlers?.capture(probe) }
         guard.completeVerifiedProbe = { probe, verified ->
@@ -520,11 +521,6 @@ class AudioOutputRouter @Inject constructor(
                 }
                 return@launch
             }
-            logger.info(
-                LogCategory.Playback,
-                "Missing headset before route-safety handling",
-                LogField.Public("trackBeforePause", routeSafetyEvidence()),
-            )
             if (_selectedId.value == chosen && handoffs.retireDisconnectedOutput(chosen, preserveContinuity = true)) {
                 return@launch
             }

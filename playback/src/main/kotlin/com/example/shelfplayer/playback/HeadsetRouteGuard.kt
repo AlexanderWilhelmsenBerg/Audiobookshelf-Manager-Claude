@@ -29,6 +29,7 @@ internal class HeadsetRouteGuard(
     private val onProbeInvalidated: (Probe) -> Boolean,
     private val onProbeFinished: (Boolean) -> Unit,
     private val onPlaying: () -> Unit,
+    private val beforeSafetyPause: () -> Unit = {},
 ) {
     private var attachedPlayer: ExoPlayer? = null
     private var attachedListener: Player.Listener? = null
@@ -42,6 +43,8 @@ internal class HeadsetRouteGuard(
         val previous = safetyPausePlayer
         safetyPausePlayer = target
         try {
+            // Diagnostics must sample the still-playing AudioTrack and cannot prevent the safety pause.
+            if (target.playWhenReady) runCatching(beforeSafetyPause)
             target.pause()
         } finally {
             safetyPausePlayer = previous

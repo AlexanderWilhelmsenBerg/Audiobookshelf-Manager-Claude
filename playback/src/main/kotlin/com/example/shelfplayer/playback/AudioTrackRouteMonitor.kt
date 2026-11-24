@@ -81,7 +81,9 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     private val timing = AudioTrackTimingCapture(
         mainHandler,
         { lab.state.value.recording },
-        { sample -> lab.trackTiming(sample, playbackSnapshot()) },
+        { sample ->
+            lab.trackTiming(sample, playbackSnapshot()) { trackRouteField(active, sample.observerEpoch) }
+        },
         { clock.elapsed().inWholeMilliseconds },
     )
     private var lastEvidence: String? = null
@@ -105,12 +107,17 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     var playbackSnapshot: () -> AudioTrackPlaybackSnapshot? = { null }
 
     /** Diagnostic only: raw sink aliases survive inventory gaps but never authorize playback. */
-    fun currentRouteDiagnostic(): String {
-        val token = epoch.nextSnapshot()
-        val track = active ?: return "no-current-track"
+    fun currentRouteDiagnostic(): String = currentRouteDiagnostic(active, epoch.nextSnapshot())
+
+    private fun currentRouteDiagnostic(track: AudioTrack?, token: Long): String {
+        if (track == null) return "no-current-track"
+        if (!isCurrent(track, token)) return "track-replaced-during-query"
         val evidence = runCatching { routeEvidence(track) }.getOrDefault("route-query-failed")
         return if (isCurrent(track, token)) evidence else "track-replaced-during-query"
     }
+
+    private fun trackRouteField(track: AudioTrack?, token: Long): String =
+        currentRouteDiagnostic(track, token).substringBefore(' ').removePrefix("playing-to=")
 
     /** Mapped sinks only; an unregistered path is never turned into an endpoint identity. */
     fun currentRouteIds(): Set<String>? = currentRouteObservation()?.path?.let { path ->
@@ -214,14 +221,22 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         }
     }
 
-    /** Reuse the one timing sampler even after its normal burst or cooldown, with capture enabled only. */
+    /** Measure the current sink before the caller changes playback, then start the usual timing burst. */
     fun sampleBoundary(boundary: AudioTimingBoundary) {
         if (!lab.state.value.recording) return
-        lab.trackTimingBoundary(boundary, playbackSnapshot())
+        val playback = playbackSnapshot()
+        val atNs = clock.elapsed().inWholeNanoseconds
         val token = epoch.nextSnapshot()
-        val track = active ?: return
+        val track = active
+        val head = track?.let { AudioTrackTimingSample.headFrames(it) }
+        val route = trackRouteField(track, token)
+        val current = track?.takeIf { isCurrent(it, token) }
+        val trackEpoch = current?.let { token }
+        val frames = head.takeIf { current != null }
+        lab.trackTimingBoundary(boundary, atNs, playback, "trackEpoch=$trackEpoch headFrames=$frames trackRoute=$route")
+        if (current == null) return
         timing.retire(token)
-        requestTiming(track, token)
+        requestTiming(current, token)
     }
 
     private fun requestTiming(track: AudioTrack, token: Long) {
