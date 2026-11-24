@@ -333,7 +333,7 @@ internal class CarContinuityResumeEffects(
             resumeAfterCarContinuity(target, heldHeadset) { current ->
                 recoveryJob.isActive && owner.currentGeneration == target.generation &&
                     selectionSequence() == target.explicitSelectionSequence &&
-                    currentPlayer() === current && current.mediaItemCount > 0
+                    currentPlayer() === current && current.mediaItemCount > 0 && recovery.episodeValid(target)
             }
         } finally {
             recovery.discard(target)
@@ -401,8 +401,7 @@ internal class CarContinuityResumeEffects(
             log("Car lifecycle refused unverified headset probe")
             return
         }
-        val authorized = { stillAuthorized(current) && recovery.episodeValid(target) }
-        if (!resumePlayer(current, authorized) { recovery.notePlayIssued(target) }) {
+        if (!resumePlayer(current, { stillAuthorized(current) }) { recovery.notePlayIssued(target) }) {
             recovery.clearAwaiting(target)
             return
         }
