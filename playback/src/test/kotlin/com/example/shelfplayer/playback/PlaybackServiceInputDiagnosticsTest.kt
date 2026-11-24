@@ -21,6 +21,7 @@ import org.robolectric.annotation.Config
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -101,7 +102,7 @@ class PlaybackServiceInputDiagnosticsTest {
                 fun observeKey() = assertFalse(callbacks.onMediaButtonEvent(session, car, intent))
                 fun pause(caller: MediaSession.ControllerInfo) {
                     f.setRequestController(session, caller)
-                    f.forwarding.handleSetPlayWhenReady(false).get()
+                    assertNull(f.forwarding.handleSetPlayWhenReady(false).get())
                 }
 
                 f.player.playWhenReady = true
