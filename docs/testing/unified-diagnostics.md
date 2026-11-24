@@ -42,7 +42,7 @@ exports with a different shape.
   seconds after a measured route change, route safety pause, confirmed Auto departure, or
   **Skipping** or **Silence** marker. Busy windows also have a row cap. Export while BookWave is
   still running. These windows join the same timeline and survive stopping the capture until
-  Clear all or process exit.
+  Clear all or process exit. Use **Save JSON file** for reports that are too large to copy.
 - In those windows, `audio-write` reports `ptsUs`, the offset into the buffer, the bytes accepted
   by Media3's output, and the corresponding whole PCM frames when known. Retries of a partially
   accepted buffer reuse its presentation timestamp. Encoded output reports bytes, and a missing

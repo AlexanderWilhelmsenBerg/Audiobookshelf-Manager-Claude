@@ -14,6 +14,7 @@
     <string name="unified_diag_save_json">Lagre JSON-fil</string>
     <string name="unified_diag_save_success">Diagnostikkfilen er lagret</string>
     <string name="unified_diag_save_failed">Kunne ikke lagre diagnostikkfilen</string>
+    <string name="unified_diag_copy_too_large">Rapporten er for stor til å kopiere. Bruk Lagre JSON-fil.</string>
     <string name="unified_diag_advanced">Verktøy for rutesammenligning</string>
     <string name="unified_diag_hide_advanced">Skjul verktøy for rutesammenligning</string>
     <string name="unified_diag_skipping">Hoppende lyd</string>
