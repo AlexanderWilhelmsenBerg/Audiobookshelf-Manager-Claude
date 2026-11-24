@@ -123,12 +123,14 @@ class AudioRouteLabStallIncidentTest {
     @Test
     fun `transition retains denser samples briefly and pins the seek reason with listener marking`() = runTest {
         val f = Fixture(this)
-        f.lab.trackTimingBoundary(AudioTimingBoundary.ProjectionDeparture, f.snapshot)
+        val atNs = f.clock.elapsed().inWholeNanoseconds
+        val evidence = "trackEpoch=1 headFrames=100 trackRoute=d1:Ambiguous"
+        f.lab.trackTimingBoundary(AudioTimingBoundary.ProjectionDeparture, atNs, f.snapshot, evidence)
         f.lab.playerDiscontinuity(Player.DISCONTINUITY_REASON_SEEK, 10, 20, true)
         assertTrue(f.lab.state.value.entries.isEmpty())
 
         f.lab.start()
-        f.lab.trackTimingBoundary(AudioTimingBoundary.ProjectionDeparture, f.snapshot)
+        f.lab.trackTimingBoundary(AudioTimingBoundary.ProjectionDeparture, atNs, f.snapshot, evidence)
         f.lab.trackTiming(f.sample(100), f.snapshot)
         f.clock.advanceBy(250.milliseconds)
         f.lab.trackTiming(f.sample(5_612), f.snapshot)
@@ -143,7 +145,7 @@ class AudioRouteLabStallIncidentTest {
 
         val state = f.lab.state.value
         assertEquals(4, state.entries.count { "track-timing" in it })
-        assertTrue(state.stallIncident.any { "route-boundary edge=ProjectionDeparture" in it })
+        assertTrue(state.stallIncident.any { "route-boundary edge=ProjectionDeparture" in it && evidence in it })
         assertTrue(
             state.stallIncident.any {
                 "player-discontinuity" in it && "previousMs=3500 nextMs=4000 sameItem=true" in it

@@ -291,9 +291,12 @@ internal class PlaybackServiceCommandContinuityFixture(
         val beforeSafetyPause = recordedEvents
         service.autoRewind.onPaused(wasUserInitiated = true)
 
+        val snapshotsBeforeSafetyPause = mutableListOf<Boolean>()
+        router.onBeforeRouteSafetyPause = { snapshotsBeforeSafetyPause += player.playWhenReady }
         router.playbackField<HeadsetRouteGuard>("headsetGuard").pauseForSafety(player)
         scope.runCurrent()
 
+        assertEquals(listOf(true), snapshotsBeforeSafetyPause, "capture must run before transport changes")
         assertTrue(callbackWasSafetyPause, "pinned Media3 must deliver the pause callback in its effect scope")
         assertNull(service.autoRewind.playbackField<Any?>("pausedAt"), "a safety pause must not prime auto-rewind")
         assertFalse(router.isRouteSafetyPause(player), "effect provenance must not outlive the pause call")
@@ -307,6 +310,7 @@ internal class PlaybackServiceCommandContinuityFixture(
             "a later listener pause still primes auto-rewind",
         )
         assertFalse(callbackWasSafetyPause, "the later listener pause must have no safety-effect provenance")
+        assertEquals(listOf(true), snapshotsBeforeSafetyPause, "listener Pause must not start the safety probe")
         assertEquals(beforeSafetyPause + 2, recordedEvents, "the later real Play and Pause remain in history")
         afterListenerPause()
         player.removeListener(originListener)

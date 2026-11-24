@@ -485,7 +485,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   stuck reasons, retaining a privacy-safe first incident separately from the rolling trace until Clear or
   per-row expiry. No-frame-progress evidence does not authorize recovery or establish acoustic audibility.
 - Opt-in route diagnostics pair Media3 position and transport state with native AudioTrack timing.
-  Route-safety pauses and confirmed Android Auto departures start a short period of denser recording.
+  Immediately before a route-safety pause or Android Auto departure handling, record the current
+  native track's anonymized sink and playback head. These boundaries start a short period of denser
+  route and timing recording.
   Position discontinuities record the public reason code and numeric positions without media identifiers.
 - Reconnecting a route follows the configured per-device policy.
 - The player output chooser can explicitly keep audio on the current output only while a loaded book is

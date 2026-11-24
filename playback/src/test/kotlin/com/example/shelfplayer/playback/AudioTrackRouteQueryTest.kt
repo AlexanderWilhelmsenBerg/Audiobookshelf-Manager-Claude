@@ -29,6 +29,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * PLAY-002 / ROUTE-002 — route proof belongs to the currently playing AudioTrack.
@@ -227,13 +228,43 @@ class AudioTrackRouteQueryTest {
         assertEquals(120, track.queryShadow.timestampReads)
 
         fixture.monitor.sampleBoundary(AudioTimingBoundary.ProjectionDeparture)
+        val alias = fixture.lab.deviceAlias(fixture.device.id)
+        assertTrue(
+            fixture.lab.state.value.entries.any {
+                "edge=ProjectionDeparture" in it && "trackRoute=$alias:" in it
+            },
+        )
         looper.idleFor(java.time.Duration.ofMillis(500))
         assertEquals(123, track.queryShadow.timestampReads)
+        assertTrue(fixture.lab.state.value.entries.any { "track-timing" in it && "trackRoute=$alias:" in it })
 
         fixture.lab.stop()
         fixture.monitor.sampleBoundary(AudioTimingBoundary.RouteSafetyPause)
         looper.idleFor(java.time.Duration.ofSeconds(1))
         assertEquals(123, track.queryShadow.timestampReads)
+    }
+
+    @Test
+    fun `safety boundary records the raw active sink synchronously even after an inventory loss`() = runTest {
+        val fixture = fixture()
+        val track = fixture.track()
+        fixture.observe(track)
+        fixture.lab.start()
+        fixture.registry.reconcile(emptyList())
+
+        val reads = track.queryShadow.routeReads
+        fixture.monitor.sampleBoundary(AudioTimingBoundary.RouteSafetyPause)
+        track.queryShadow.trackPlayState = AudioTrack.PLAYSTATE_PAUSED
+
+        assertEquals(reads + 1, track.queryShadow.routeReads)
+        val alias = fixture.lab.deviceAlias(fixture.device.id)
+        val row = fixture.lab.state.value.entries.single { "edge=RouteSafetyPause" in it }
+        assertTrue("trackRoute=$alias:" in row)
+        assertTrue("trackEpoch=" in row && "headFrames=" in row && "monotonicNs=" in row)
+
+        fixture.lab.stop()
+        fixture.monitor.sampleBoundary(AudioTimingBoundary.RouteSafetyPause)
+        assertEquals(reads + 1, track.queryShadow.routeReads, "stopped capture must not query the sink")
     }
 
     @Test

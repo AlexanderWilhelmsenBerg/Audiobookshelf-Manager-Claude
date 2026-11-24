@@ -119,7 +119,11 @@ class AudioRouteLab @Inject constructor(
         record("observer-$event")
     }
 
-    internal fun trackTiming(sample: AudioTrackTimingSample, playback: AudioTrackPlaybackSnapshot? = null) {
+    internal fun trackTiming(
+        sample: AudioTrackTimingSample,
+        playback: AudioTrackPlaybackSnapshot? = null,
+        trackRouteEvidence: () -> String = { "" },
+    ) {
         if (!_state.value.recording) return
         val generation = recordingGeneration.get()
         val observation = frameProgress.observe(generation, sample, playback)
@@ -127,24 +131,32 @@ class AudioRouteLab @Inject constructor(
             it.capture == generation && it.track == sample.observerEpoch &&
                 sample.monotonicNs - it.atNs in 0 until TIMING_ROW_INTERVAL_NS
         } ?: false
-        val nearBoundary = timingBoundary?.let { (capture, atNs) ->
-            capture == generation && sample.monotonicNs - atNs in 0 until BOUNDARY_TIMING_NS
-        } ?: false
+        val nearBoundary = isNearTimingBoundary(generation, sample.monotonicNs)
         if (observation != null || !withinSampleWindow || nearBoundary) {
             lastTimingRow = TimingRow(generation, sample.observerEpoch, sample.monotonicNs)
             val state = playback?.let { " ${it.timingEvidence()}" }.orEmpty()
-            record(sample.evidence() + state, generation)
+            val route = if (nearBoundary) trackRouteEvidence() else ""
+            record(sample.evidence() + state + route, generation)
         }
         observation?.let { record(it.evidence(), generation) }
     }
 
-    internal fun trackTimingBoundary(boundary: AudioTimingBoundary, playback: AudioTrackPlaybackSnapshot?) {
+    private fun isNearTimingBoundary(generation: Long, sampleAtNs: Long): Boolean =
+        timingBoundary?.let { (capture, atNs) ->
+            capture == generation && sampleAtNs - atNs in 0 until BOUNDARY_TIMING_NS
+        } ?: false
+
+    internal fun trackTimingBoundary(
+        boundary: AudioTimingBoundary,
+        atNs: Long,
+        playback: AudioTrackPlaybackSnapshot?,
+        trackEvidence: String,
+    ) {
         if (!_state.value.recording) return
         val generation = recordingGeneration.get()
-        val atNs = clock.elapsed().inWholeNanoseconds
         timingBoundary = generation to atNs
         val state = playback?.let { " ${it.timingEvidence()}" }.orEmpty()
-        record("route-boundary edge=${boundary.name} monotonicNs=$atNs$state", generation)
+        record("route-boundary edge=${boundary.name} monotonicNs=$atNs $trackEvidence$state", generation)
     }
 
     internal fun playerDiscontinuity(reason: Int, previousMs: Long, nextMs: Long, sameItem: Boolean) {

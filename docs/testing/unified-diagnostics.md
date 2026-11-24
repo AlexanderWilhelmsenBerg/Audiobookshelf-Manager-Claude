@@ -32,8 +32,10 @@ exports with a different shape.
   bounded burst and raw timing rows are recorded at roughly one-second intervals, plus detected
   state changes. Useful native evidence includes frame position, timestamp, speed and underruns.
 - Each `track-timing` row pairs native audio timing with Media3's position within the current queue
-  item, buffer and playback state when a player is attached. `route-boundary` marks a route-safety pause
-  or confirmed Auto departure and retains timing rows up to four times per second for three seconds.
+  item, buffer and playback state when a player is attached. `route-boundary` reads the current
+  native track's sink and playback head immediately before a route-safety pause or departure
+  handling. Timing rows for the next three seconds can also include the measured sink at up to
+  four samples per second.
   `player-discontinuity` records the public reason code and the numeric positions on either side.
   Use the item index and book generation before comparing position deltas across rows.
 - `firstIncident` retains the first frame stall, Media3 stuck reason, or listener-marked silence
@@ -43,6 +45,9 @@ exports with a different shape.
   support.
 
 Match `actual-track` aliases with the system output `trackAlias`. A policy prediction is advisory.
+At a `RouteSafetyPause`, compare `trackRoute` with the headset's last `trackAlias` even if the output
+list already dropped that alias. At departure, compare the sink and advancing `headFrames` on the
+same track epoch across timing rows. An unknown or paused track supplies no measured sink.
 Remote submix and frame movement cannot prove which physical device was heard. Virtual input events
 identify the sending software where available and cannot prove a physical button or headset identity.
 Output and input aliases are local to the process or capture. The report excludes raw addresses,
