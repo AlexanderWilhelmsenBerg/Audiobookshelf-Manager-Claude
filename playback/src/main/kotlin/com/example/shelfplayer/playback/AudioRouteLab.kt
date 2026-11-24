@@ -165,8 +165,8 @@ class AudioRouteLab @Inject constructor(
         mediaInput.mediaKey(event, controller, entry)
     }
 
-    internal fun controllerTransport(play: Boolean, controller: MediaInputController) {
-        mediaInput.transport(play, controller)
+    internal fun controllerTransport(play: Boolean, controller: MediaInputController, relayedCarPause: Boolean) {
+        mediaInput.transport(play, controller, relayedCarPause)
     }
 
     internal fun trackObserverStatus(description: String) {

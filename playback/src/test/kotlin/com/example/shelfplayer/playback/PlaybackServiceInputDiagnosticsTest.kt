@@ -1,8 +1,12 @@
 package com.example.shelfplayer.playback
 
 import android.content.Intent
+import android.os.Bundle
+import android.os.Looper
+import android.os.Process
 import android.view.KeyEvent
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.MediaController
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -11,9 +15,13 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -72,6 +80,64 @@ class PlaybackServiceInputDiagnosticsTest {
             fixture.close()
         }
     }
+
+    @Test
+    fun `only the matching notification relay inherits the verified car Pause key`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this).use { f ->
+            f.configurePostConnectRace()
+            f.service.coldStartToggleGate = ColdStartToggleGate()
+            val lab = f.service.audioRouteLab
+            lab.start()
+            f.fromController("com.google.android.projection.gearhead") { session, car ->
+                val packageName = RuntimeEnvironment.getApplication().packageName
+                val relay = controller(packageName, notification = true)
+                val app = controller(packageName, notification = false)
+                assertTrue(session.isMediaNotificationController(relay))
+                val intent = Intent(Intent.ACTION_MEDIA_BUTTON).putExtra(
+                    Intent.EXTRA_KEY_EVENT,
+                    KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE, 0),
+                )
+                val callbacks = f.libraryCallback()
+                fun observeKey() = assertFalse(callbacks.onMediaButtonEvent(session, car, intent))
+                fun pause(caller: MediaSession.ControllerInfo) {
+                    f.setRequestController(session, caller)
+                    f.forwarding.handleSetPlayWhenReady(false).get()
+                }
+
+                f.player.playWhenReady = true
+                observeKey()
+                pause(relay)
+                assertFalse(f.player.playWhenReady, "attribution must preserve Pause handling")
+                pause(relay)
+                observeKey()
+                pause(app)
+                pause(relay)
+                observeKey()
+                shadowOf(Looper.getMainLooper()).idle()
+                pause(relay)
+
+                val requests = lab.state.value.entries.filter { "input-transport" in it }
+                assertEquals(5, requests.size)
+                assertContains(requests.first(), "caller=SameApp")
+                assertContains(requests.first(), "relayedKeyCaller=AndroidAuto")
+                assertTrue(requests.drop(1).none { "relayedKeyCaller=AndroidAuto" in it })
+            }
+            lab.stop()
+            runCurrent()
+        }
+    }
+
+    private fun controller(packageName: String, notification: Boolean): MediaSession.ControllerInfo =
+        MediaSession.ControllerInfo.createTestOnlyControllerInfo(
+            packageName,
+            Process.myPid(),
+            Process.myUid(),
+            1,
+            1,
+            true,
+            Bundle().apply { putBoolean(MediaController.KEY_MEDIA_NOTIFICATION_CONTROLLER_FLAG, notification) },
+            true,
+        )
 
     private fun callback(service: PlaybackService): MediaLibraryService.MediaLibrarySession.Callback {
         val type = PlaybackService::class.java.declaredClasses.single { it.simpleName == "LibraryCallback" }

@@ -50,11 +50,16 @@ internal class CarContinuityResumeEffects(
     private var pending: Job? = null
     private var pendingTarget: CarArrivalResumeGate.Target? = null
 
+    /** The inventory callback delegates preference changes to a current, exact recovery claim. */
+    fun isRecoveringHeadset(outputId: String): Boolean = currentPendingTarget()?.outputId == outputId
+
     /** A queued retry or inferred-arrival settle belongs to its focus loss; a duplicate callback keeps it. */
-    fun hasPendingFocusRetry(): Boolean = pending?.isActive == true && pendingTarget?.let {
-        (it.retryAfterFocusLoss || it.inferredArrival) &&
-            recovery.isCurrent(it, owner.currentGeneration, selectionSequence())
-    } == true
+    fun hasPendingFocusRetry(): Boolean =
+        currentPendingTarget()?.let { it.retryAfterFocusLoss || it.inferredArrival } == true
+
+    private fun currentPendingTarget(): CarArrivalResumeGate.Target? = pendingTarget?.takeIf {
+        pending?.isActive == true && recovery.isCurrent(it, owner.currentGeneration, selectionSequence())
+    }
 
     fun onArrival(decision: CarArrivalResumeGate.Decision?) = scheduleBoundary(decision, preserveHeadset = true)
 
@@ -91,12 +96,7 @@ internal class CarContinuityResumeEffects(
             return
         }
         // A later controller bind is not permission to replace a Ready focus/projection transaction.
-        if (pending?.isActive == true && pendingTarget?.let {
-                recovery.isCurrent(it, owner.currentGeneration, selectionSequence())
-            } == true
-        ) {
-            return
-        }
+        if (currentPendingTarget() != null) return
         launchWork(null) {
             if (preserveHeadset) holdHeadsetAgainstCar()
         }

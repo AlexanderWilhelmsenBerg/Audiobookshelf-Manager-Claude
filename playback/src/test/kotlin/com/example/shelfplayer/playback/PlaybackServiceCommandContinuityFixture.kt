@@ -93,6 +93,8 @@ internal class PlaybackServiceCommandContinuityFixture(
     val commands: PlaybackCommands get() = service.playbackCommandEffects
     var rawPlayCalls = 0
         private set
+    var headsetPreferenceRequests = 0
+        private set
     var rawPrepareCalls = 0
         private set
     private val selectionSupport by lazy {
@@ -139,6 +141,7 @@ internal class PlaybackServiceCommandContinuityFixture(
             queueMutationIntents += realPlayer.playWhenReady
         }
         if (method.name == "play") rawPlayCalls += 1
+        if (method.name == "setPreferredAudioDevice" && args?.firstOrNull() == device) headsetPreferenceRequests++
         if (method.name == "prepare") rawPrepareCalls += 1
         if (method.name == "setPlayWhenReady" && args?.firstOrNull() == false) rawPauseRequests++
         if (method.name == "seekTo" && reportedPositionMs != null) {
@@ -548,18 +551,19 @@ internal class PlaybackServiceCommandContinuityFixture(
                 verified,
             )
             // Exercise the pinned Media3 request-context seam, rather than bypassing service routing.
-            val impl = MediaSession::class.java.getDeclaredField("impl").run {
-                isAccessible = true
-                get(session)
-            }
-            Class.forName("androidx.media3.session.MediaSessionImpl")
-                .getDeclaredField("controllerForCurrentRequest").apply { isAccessible = true }.set(impl, info)
-            assertEquals(info, session.controllerForCurrentRequest)
+            setRequestController(session, info)
             return request(session, info)
         } finally {
             service.setPlaybackField("session", null)
             session.release()
         }
+    }
+
+    fun setRequestController(session: MediaSession, info: MediaSession.ControllerInfo) {
+        val impl = MediaSession::class.java.getDeclaredField("impl").apply { isAccessible = true }.get(session)
+        Class.forName("androidx.media3.session.MediaSessionImpl")
+            .getDeclaredField("controllerForCurrentRequest").apply { isAccessible = true }.set(impl, info)
+        assertEquals(info, session.controllerForCurrentRequest)
     }
 
     fun beginRecovery() = effects.onRecoveryReady(target)
@@ -611,6 +615,14 @@ internal class PlaybackServiceCommandContinuityFixture(
             { AudioTrackObservation(1, AudioTrackPath.Endpoint(endpointId)) },
         )
         router.setPlaybackField("currentTrackRoutes", { setOf(endpointId) })
+    }
+
+    fun publishReturningHeadsetFromAndroid() {
+        org.robolectric.Shadows.shadowOf(context.getSystemService(android.media.AudioManager::class.java))
+            .setOutputDevices(listOf(device))
+        val guard = router.playbackField<HeadsetRouteGuard>("headsetGuard")
+        guard.markMissing()
+        router.playbackCall("refresh")
     }
 
     fun installServiceContinuityCallbacks() {
