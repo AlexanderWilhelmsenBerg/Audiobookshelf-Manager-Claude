@@ -42,6 +42,7 @@ import java.time.Instant
 internal const val UNIFIED_DIAGNOSTICS_START = "unified-diagnostics-start"
 internal const val UNIFIED_DIAGNOSTICS_COPY = "unified-diagnostics-json"
 internal const val UNIFIED_DIAGNOSTICS_SAVE = "unified-diagnostics-save-json"
+
 // Clipboard text uses UTF-16 inside Android's shared Binder transaction buffer.
 private const val MAX_CLIPBOARD_CHARS = 300_000
 
