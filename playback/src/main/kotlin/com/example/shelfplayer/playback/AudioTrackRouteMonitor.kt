@@ -82,7 +82,9 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         mainHandler,
         { lab.state.value.recording },
         { sample ->
-            lab.trackTiming(sample, playbackSnapshot()) { trackRouteField(active, sample.observerEpoch) }
+            lab.trackTiming(sample, playbackSnapshot()) {
+                " trackRoute=${trackRouteField(active, sample.observerEpoch)}"
+            }
         },
         { clock.elapsed().inWholeMilliseconds },
     )
@@ -231,9 +233,13 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         val head = track?.let { AudioTrackTimingSample.headFrames(it) }
         val route = trackRouteField(track, token)
         val current = track?.takeIf { isCurrent(it, token) }
-        val trackEpoch = current?.let { token }
-        val frames = head.takeIf { current != null }
-        lab.trackTimingBoundary(boundary, atNs, playback, "trackEpoch=$trackEpoch headFrames=$frames trackRoute=$route")
+        val evidence = if (current != null) {
+            "trackEpoch=$token headFrames=${head?.toString() ?: "null"} trackRoute=$route"
+        } else {
+            val unavailable = if (track == null) "no-current-track" else "track-replaced-during-query"
+            "trackEpoch=null headFrames=null trackRoute=$unavailable"
+        }
+        lab.trackTimingBoundary(boundary, atNs, playback, evidence)
         if (current == null) return
         timing.retire(token)
         requestTiming(current, token)

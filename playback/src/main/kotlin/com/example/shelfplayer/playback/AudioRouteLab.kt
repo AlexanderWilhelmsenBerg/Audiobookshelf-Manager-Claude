@@ -122,7 +122,7 @@ class AudioRouteLab @Inject constructor(
     internal fun trackTiming(
         sample: AudioTrackTimingSample,
         playback: AudioTrackPlaybackSnapshot? = null,
-        trackRoute: (() -> String)? = null,
+        trackRouteEvidence: () -> String = { "" },
     ) {
         if (!_state.value.recording) return
         val generation = recordingGeneration.get()
@@ -137,7 +137,7 @@ class AudioRouteLab @Inject constructor(
         if (observation != null || !withinSampleWindow || nearBoundary) {
             lastTimingRow = TimingRow(generation, sample.observerEpoch, sample.monotonicNs)
             val state = playback?.let { " ${it.timingEvidence()}" }.orEmpty()
-            val route = if (nearBoundary && trackRoute != null) " trackRoute=${trackRoute()}" else ""
+            val route = if (nearBoundary) trackRouteEvidence() else ""
             record(sample.evidence() + state + route, generation)
         }
         observation?.let { record(it.evidence(), generation) }
