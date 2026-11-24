@@ -532,23 +532,12 @@ class AudioOutputRouter @Inject constructor(
                 player?.takeIf { it.isPlaying }?.let(headsetGuard::pauseForSafety)
             }
         }
-        if (alreadyMissing || headsetGuard.disappearanceGrace != null) return
-        logger.info(
-            LogCategory.Playback,
-            "Car continuity headset absent from inventory; retaining owned destination",
-            LogField.Public("kind", kindOf(chosen)),
-        )
-        headsetGuard.startGrace {
-            if (isStillMissingGuardedHeadset(chosen)) {
-                // The waiting window ended, not the owner's explicit headset destination.
-                // Clearing the guard here allowed a subsequent virtual/unattributed headset
-                // Play to resume through the car on Android Auto. Stay fail-closed.
-                logger.info(
-                    LogCategory.Playback,
-                    "Car continuity headset still absent after grace; keeping route guarded",
-                    LogField.Public("kind", kindOf(chosen)),
-                )
-            }
+        if (!alreadyMissing && isStillMissingGuardedHeadset(chosen)) {
+            logger.info(
+                LogCategory.Playback,
+                "Headset absent from inventory; retaining guarded destination",
+                LogField.Public("kind", kindOf(chosen)),
+            )
         }
     }
 

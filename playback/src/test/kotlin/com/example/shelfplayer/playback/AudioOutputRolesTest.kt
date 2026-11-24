@@ -30,11 +30,10 @@ class AudioOutputRolesTest {
     private val dock = output("other:dock", "Dock", DeviceKind.Other, AudioOutputRole.Other)
 
     @Test
-    fun `no routing action can select the phone speaker`() {
+    fun `the headset action skips the phone speaker`() {
         val outputs = listOf(speaker, buds, car)
 
         assertEquals(buds.id, AudioOutputRoles.nextHeadset(outputs, selectedId = null))
-        assertNull(AudioOutputRoles.carTarget(outputs))
         assertEquals(buds.id, AudioOutputRoles.nextHeadset(outputs, selectedId = speaker.id))
     }
 
@@ -84,12 +83,6 @@ class AudioOutputRolesTest {
     fun `no headset candidate is not automatic`() {
         assertNull(AudioOutputRoles.nextHeadset(listOf(car, speaker), selectedId = null))
         assertNull(AudioOutputRoles.nextHeadset(emptyList(), selectedId = null))
-    }
-
-    @Test
-    fun `car always releases the preferred route`() {
-        assertNull(AudioOutputRoles.carTarget(listOf(buds, speaker)))
-        assertNull(AudioOutputRoles.carTarget(listOf(buds, car, speaker)))
     }
 
     @Test

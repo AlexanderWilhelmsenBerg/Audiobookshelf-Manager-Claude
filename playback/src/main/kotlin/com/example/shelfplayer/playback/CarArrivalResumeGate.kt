@@ -161,8 +161,7 @@ internal class CarArrivalResumeGate private constructor(
     private fun expireSafetyPause(at: Duration): Boolean {
         val qualified = qualifiedEpisode?.takeUnless { it.closed }
         val expired = if (qualified != null) {
-            val age = at - qualified.startedAt
-            age < Duration.ZERO || age >= QUALIFIED_ARRIVAL_WINDOW ||
+            at < qualified.startedAt || at >= qualified.deadline ||
                 !trustedIdentity(qualified.identity.outputId)
         } else {
             safetyPausedAt?.let { at - it !in Duration.ZERO..pairingWindow } == true
@@ -627,18 +626,21 @@ internal class CarArrivalResumeGate private constructor(
     fun isCurrent(target: Target, currentGeneration: Long?, explicitSelectionSequence: Long): Boolean =
         activeRecovery === target &&
             (target.phase != Phase.HeadsetReturn || headsetReturn.valid(target)) &&
-            evidence.targetReason(target, currentGeneration, explicitSelectionSequence, now()) == null
+            recoveryReason(target, currentGeneration, explicitSelectionSequence) == null
+
+    private fun recoveryReason(target: Target, generation: Long?, sequence: Long): Reason? =
+        evidence.targetReason(target, generation, sequence, now(), qualifiedEpisode.forIssued(target))
 
     /** Remaining time for an eligible qualified arrival route wait; null retains the ordinary route bound. */
-    fun remainingWindow(target: Target): Duration? = target.deadline?.minus(now())?.coerceAtLeast(Duration.ZERO)
+    fun remainingWindow(target: Target): Duration? =
+        (qualifiedEpisode.forIssued(target)?.deadline ?: target.deadline)?.minus(now())?.coerceAtLeast(Duration.ZERO)
 
     /** The deadline/identity half of eligibility for async route probes after the one-shot claim is consumed. */
     fun episodeValid(target: Target): Boolean = if (target.phase == Phase.HeadsetReturn) {
         headsetReturn.valid(target)
     } else {
-        target.deadline == null || qualifiedEpisode?.let { episode ->
-            !episode.closed && episode.issuedTarget === target && episode.deadline == target.deadline &&
-                now() < target.deadline && trustedIdentity(target.outputId)
+        target.deadline == null || qualifiedEpisode.forIssued(target)?.let { episode ->
+            now() < episode.deadline && trustedIdentity(target.outputId)
         } == true
     }
 
@@ -654,7 +656,7 @@ internal class CarArrivalResumeGate private constructor(
         explicitSelectionSequence: Long,
     ): ConsumeResult {
         if (activeRecovery !== target) return ConsumeResult(false, Reason.CandidateInvalidated)
-        val reason = evidence.targetReason(target, currentGeneration, explicitSelectionSequence, now())
+        val reason = recoveryReason(target, currentGeneration, explicitSelectionSequence)
             ?: if (headsetId != target.outputId) Reason.WrongHeadset else null
         activeRecovery = null
         if (reason != null) return ConsumeResult(accepted = false, reason = reason)
@@ -759,10 +761,6 @@ internal class CarArrivalResumeGate private constructor(
         if (arrival != null && arrival.identity == identity) {
             firstArrival = arrival.copy(deadline = episode.deadline)
         }
-        val recovery = activeRecovery
-        if (recovery != null && recovery.phase == Phase.Arrival && recovery.outputId == identity.outputId) {
-            activeRecovery = null
-        }
     }
 
     private fun startQualifiedEpisode(identity: CarContinuityIdentity, at: Duration): CarArrivalEpisode? {
@@ -806,7 +804,7 @@ internal class CarArrivalResumeGate private constructor(
         currentGeneration: Long?,
         explicitSelectionSequence: Long,
     ): Decision {
-        val reason = evidence.targetReason(target, currentGeneration, explicitSelectionSequence, now())
+        val reason = recoveryReason(target, currentGeneration, explicitSelectionSequence)
         return if (activeRecovery === target && reason == null) {
             Decision(target.phase, Status.Ready, Reason.BoundaryMatchedFocusLoss, target)
         } else {

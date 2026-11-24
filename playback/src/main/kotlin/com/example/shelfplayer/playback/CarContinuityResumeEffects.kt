@@ -401,7 +401,8 @@ internal class CarContinuityResumeEffects(
             log("Car lifecycle refused unverified headset probe")
             return
         }
-        if (!resumePlayer(current, { stillAuthorized(current) }) { recovery.notePlayIssued(target) }) {
+        val authorized = { stillAuthorized(current) && recovery.episodeValid(target) }
+        if (!resumePlayer(current, authorized) { recovery.notePlayIssued(target) }) {
             recovery.clearAwaiting(target)
             return
         }

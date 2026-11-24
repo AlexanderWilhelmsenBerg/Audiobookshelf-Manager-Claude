@@ -96,12 +96,17 @@ internal class CarContinuityEvidence(
         currentGeneration: Long?,
         explicitSelectionSequence: Long,
         at: Duration,
-    ): Reason? = when {
-        target.generation != currentGeneration -> Reason.GenerationChanged
-        target.explicitSelectionSequence != explicitSelectionSequence -> Reason.ExplicitSelectionChanged
-        target.deadline != null && at >= target.deadline -> Reason.RecoveryExpired
-        target.deadline != null && !trustedIdentity(target.outputId) -> Reason.IdentityUntrusted
-        else -> null
+        issuedEpisode: CarArrivalEpisode?,
+    ): Reason? {
+        val deadline = issuedEpisode?.deadline ?: target.deadline
+        return when {
+            target.episodeId != 0L && issuedEpisode == null -> Reason.CandidateInvalidated
+            target.generation != currentGeneration -> Reason.GenerationChanged
+            target.explicitSelectionSequence != explicitSelectionSequence -> Reason.ExplicitSelectionChanged
+            deadline != null && at >= deadline -> Reason.RecoveryExpired
+            deadline != null && !trustedIdentity(target.outputId) -> Reason.IdentityUntrusted
+            else -> null
+        }
     }
 
     private fun maxPairInterval(interval: Duration, eventAt: Duration?, deadline: Duration?): Duration =

@@ -5,31 +5,66 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.model.playback.AudioOutputRole
 
-/** The service calls this on the player dispatcher before scheduling any departure recovery. */
+/** Retains current playback's projected route through Android's fallback and departure callback. */
 @OptIn(UnstableApi::class)
-internal fun AudioOutputRouter.pauseIfCarOutputLost(
-    player: ExoPlayer,
-    projectionDeparted: Boolean,
-    beforePause: () -> Unit,
-): Boolean {
-    val intent = outputIntentOwner.state.value
-    val stillCurrent = {
-        isAttachedPlayer(player) && player.playWhenReady && outputIntentOwner.state.value === intent
+internal class CarOutputSafety(private val outputs: AudioOutputRouter, private val isAudible: (ExoPlayer) -> Boolean) {
+    private data class ProjectedPlayback(
+        val player: ExoPlayer,
+        val bookGeneration: Long,
+        val selection: OutputIntentOwner.Selection?,
+    ) {
+        fun matches(player: ExoPlayer, intent: OutputIntentOwner.Snapshot): Boolean =
+            this.player === player && bookGeneration == intent.activeBookGeneration && selection == intent.selection
     }
-    if (!stillCurrent() || !carOutputLost(intent, projectionDeparted) || !stillCurrent()) return false
-    beforePause()
-    return stillCurrent() && positions.guard.pauseForSafety(player)
-}
 
-private fun AudioOutputRouter.carOutputLost(intent: OutputIntentOwner.Snapshot, projectionDeparted: Boolean): Boolean {
-    // A newer explicit endpoint owns its own output checks, including muted in-progress transfers.
-    if (intent.selection?.destination == OutputIntentOwner.Destination.Output) return false
-    val actual = currentTrackObservation()?.path
-    val committedCar = intent.hasCommittedCarRoute()
-    if (projectionDeparted) return committedCar || actual == AudioTrackPath.RemoteSubmix
-    if (!committedCar) return false
-    return when (actual) {
-        is AudioTrackPath.Endpoint -> localOutputs.outputs().any {
+    private var projectedPlayback: ProjectedPlayback? = null
+
+    fun clear() {
+        projectedPlayback = null
+    }
+
+    /** Called on the player dispatcher for track changes and before scheduling departure recovery. */
+    fun pauseIfLost(
+        player: ExoPlayer,
+        projectionActive: Boolean,
+        projectionDeparted: Boolean,
+        beforePause: () -> Unit,
+    ): Boolean {
+        val intent = outputs.outputIntentOwner.state.value
+        val stillCurrent = {
+            outputs.isAttachedPlayer(player) && player.playWhenReady && outputs.outputIntentOwner.state.value === intent
+        }
+        // An explicit endpoint owns its own safety checks, including a muted in-progress transfer.
+        if (!stillCurrent() || intent.selection?.destination == OutputIntentOwner.Destination.Output) return false
+        projectedPlayback = projectedPlayback?.takeIf { it.matches(player, intent) }
+        val observation = outputs.currentTrackObservation()
+        val committedCar = intent.hasCommittedCarRoute()
+        val verifiedProjection = projectionActive && !committedCar && isVerifiedProjection(player, observation)
+        if (!stillCurrent()) return false
+        if (verifiedProjection) {
+            intent.activeBookGeneration?.let { projectedPlayback = ProjectedPlayback(player, it, intent.selection) }
+        }
+        val lost = lostOutput(observation?.path, committedCar || projectedPlayback != null, projectionDeparted)
+        if (!lost) return false
+        clear()
+        beforePause()
+        return stillCurrent() && outputs.positions.guard.pauseForSafety(player)
+    }
+
+    private fun isVerifiedProjection(player: ExoPlayer, first: AudioTrackObservation?): Boolean =
+        first?.path == AudioTrackPath.RemoteSubmix && outputs.selectedId.value == null &&
+            isAudible(player) && outputs.currentTrackObservation() == first
+
+    private fun lostOutput(actual: AudioTrackPath?, playingCar: Boolean, projectionDeparted: Boolean): Boolean =
+        if (projectionDeparted) {
+            playingCar || actual == AudioTrackPath.RemoteSubmix
+        } else {
+            playingCar &&
+                hasLocalFallback(actual)
+        }
+
+    private fun hasLocalFallback(actual: AudioTrackPath?): Boolean = when (actual) {
+        is AudioTrackPath.Endpoint -> outputs.localOutputs.outputs().any {
             it.id == actual.id && it.role != AudioOutputRole.Car
         }
 

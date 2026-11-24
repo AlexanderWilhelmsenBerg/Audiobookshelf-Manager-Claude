@@ -443,6 +443,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - Loss of the active output pauses playback and preserves the book position. When confirmed Android Auto
   departure removes the playing Car route, BookWave pauses to prevent automatic playback on the
   phone speaker or another headset. Losing an unused output leaves the current output playing.
+  In Automatic, a measured projected stream is protected across route and departure callbacks in either
+  order. That evidence belongs to the current player, book and output selection and expires on pause.
 - A unique verified Bluetooth identity retains its in-process route when Android reassigns device
   handles in one inventory update. Current track proof is still required before unmute.
 - Android Auto discovery must preserve an already verified, healthy headset route without a preference
@@ -464,6 +466,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   needs a matching departure before any departure recovery can play.
   Duplicate callbacks and unproven attempts cannot rearm recovery. Listener Pause and newer
   selection/book/profile/player context still invalidate recovery.
+  Earlier qualifying evidence can shorten an issued arrival claim's deadline. Pending Play and muted
+  verification use the revised deadline and the same attempt allowance.
 - While the current recovery owns a returning headset, that recovery applies its preference. The
   inventory callback publishes the return and clears the missing-route flag without issuing a second
   request. A return outside recovery may still restore the guarded preference while paused.

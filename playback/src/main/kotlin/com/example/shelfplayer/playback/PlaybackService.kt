@@ -529,6 +529,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun attachRouteSafetyMonitor(exoPlayer: ExoPlayer) {
+        carOutputSafety.clear()
         audioTrackRouteMonitor.onRouteChanged = {
             pauseLostCarOutput(projectionDeparted = false)
             audioOutputs.onActualTrackRouteChanged()
@@ -1805,6 +1806,7 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            if (!playWhenReady) carOutputSafety.clear()
             // Record transport intent, not buffer or route changes, and never invent a physical key origin.
             val routeSafetyPause = !playWhenReady && audioOutputs.isRouteSafetyPause(player)
             if (routeSafetyPause && audioRouteLab.state.value.recording) {
@@ -2223,6 +2225,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun onRouteAudible() {
+        if (pauseLostCarOutput(projectionDeparted = false)) return
         val outputs = audioOutputs.outputs.value
         routeOwnership.onPlaybackObserved(outputs)
         observeCarContinuityHeadset(outputs)
@@ -2517,6 +2520,7 @@ class PlaybackService : MediaLibraryService() {
         )
 
         val edge = carLifecycle.onProjectionBoundary(update)
+        if (update.current.carConnected) pauseLostCarOutput(projectionDeparted = false)
         if (previous != update.current) buttonRouting.clear()
         buttonRouting.updateMonitor()
         if (update.initial) {
@@ -2567,15 +2571,25 @@ class PlaybackService : MediaLibraryService() {
         }
     }
 
-    private fun pauseLostCarOutput(projectionDeparted: Boolean) {
-        val current = player ?: return
-        if (audioOutputs.pauseIfCarOutputLost(current, projectionDeparted, beforePause = ::clearCarContinuity)) {
-            logger.info(
-                LogCategory.Playback,
-                "Paused after losing the playing car output",
-                LogField.Public("source", if (projectionDeparted) "projection-disconnect" else "track-reroute"),
-            )
-        }
+    private val carOutputSafety by lazy(LazyThreadSafetyMode.NONE) {
+        CarOutputSafety(audioOutputs) { routeObservationEffects.isAudible(it) }
+    }
+
+    private fun pauseLostCarOutput(projectionDeparted: Boolean): Boolean {
+        val current = player ?: return false
+        val paused = carOutputSafety.pauseIfLost(
+            current,
+            projectionActive = carLifecycle.projectionOwnsCarLifecycle,
+            projectionDeparted = projectionDeparted,
+            beforePause = ::clearCarContinuity,
+        )
+        if (!paused) return false
+        logger.info(
+            LogCategory.Playback,
+            "Paused after losing the playing car output",
+            LogField.Public("source", if (projectionDeparted) "projection-disconnect" else "track-reroute"),
+        )
+        return true
     }
 
     /** Playback may survive projection. Retire only its departed choice when a later Play starts from paused. */

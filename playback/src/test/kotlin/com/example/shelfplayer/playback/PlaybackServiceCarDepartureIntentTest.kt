@@ -96,6 +96,45 @@ class PlaybackServiceCarDepartureIntentTest {
     }
 
     @Test
+    fun `Automatic pauses a measured projected stream when it falls back to the speaker`() = runTest {
+        for (routeCallbackFirst in listOf(true, false)) {
+            PlaybackServiceCommandContinuityFixture(this).use { fixture ->
+                val manager = shadowOf(RuntimeEnvironment.getApplication().getSystemService(AudioManager::class.java))
+                val speaker = AudioDeviceInfoBuilder.newBuilder().setType(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER).build()
+                manager.setOutputDevices(listOf(speaker))
+                fixture.projection(null, AndroidAutoProjectionMonitor.State.Projection)
+                fixture.attachCarOutputObserver()
+                assertNull(fixture.explicitDestination())
+
+                val router = fixture.service.audioOutputs
+                val observe = requireNotNull(fixture.service.audioTrackRouteMonitor.onRouteChanged)
+                fixture.player.playWhenReady = true
+                fixture.reportedIsPlaying = true
+                router.currentTrackObservation = { AudioTrackObservation(1L, AudioTrackPath.RemoteSubmix) }
+                observe()
+                assertTrue(fixture.player.playWhenReady)
+                val position = fixture.player.currentPosition
+
+                val speakerId = router.localOutputs.outputs().single().id
+                router.currentTrackObservation = { AudioTrackObservation(2L, AudioTrackPath.Unresolved) }
+                observe()
+                router.currentTrackObservation = { AudioTrackObservation(2L, AudioTrackPath.Endpoint(speakerId)) }
+                if (routeCallbackFirst) {
+                    observe()
+                    assertFalse(fixture.player.playWhenReady, "the route callback must stop the fallback")
+                }
+                fixture.projection(
+                    AndroidAutoProjectionMonitor.State.Projection,
+                    AndroidAutoProjectionMonitor.State.NotConnected,
+                )
+                assertFalse(fixture.player.playWhenReady, "the projection callback must also stop the fallback")
+                assertEquals(position, fixture.player.currentPosition)
+                assertEquals(0, fixture.rawPlayCalls)
+            }
+        }
+    }
+
+    @Test
     fun `losing the inactive car leaves the playing headset alone`() = runTest {
         PlaybackServiceCommandContinuityFixture(this).use { fixture ->
             fixture.projection(null, AndroidAutoProjectionMonitor.State.Projection)

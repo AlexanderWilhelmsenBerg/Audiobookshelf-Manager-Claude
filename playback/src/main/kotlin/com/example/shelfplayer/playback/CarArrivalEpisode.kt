@@ -22,6 +22,10 @@ internal data class CarContinuityIdentity(
             explicitSelectionSequence == sequence
 }
 
+/** An issued target retains its identity when the episode's absolute deadline is tightened. */
+internal fun CarArrivalEpisode?.forIssued(target: CarArrivalResumeGate.Target): CarArrivalEpisode? =
+    this?.takeIf { !it.closed && it.issuedTarget === target }
+
 /** Immutable episode lifetime with one bounded attempt owner; owned exclusively by the recovery gate. */
 internal data class CarArrivalEpisode(
     val identity: CarContinuityIdentity,
