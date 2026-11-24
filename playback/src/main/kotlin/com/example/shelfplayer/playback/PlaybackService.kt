@@ -1070,7 +1070,12 @@ class PlaybackService : MediaLibraryService() {
                 override fun paused(userInitiated: Boolean) = autoRewind.onPaused(wasUserInitiated = userInitiated)
                 override fun platformInterruption(reason: Int) = onCarPlatformInterruption(reason)
                 override fun safetyInterruption() {
-                    val decision = carRecovery.routeSafetyPause(clock.elapsed(), continuityInputs())
+                    val decision = carRecovery.routeSafetyPause(
+                        clock.elapsed(),
+                        continuityInputs(),
+                        carBluetoothArrival =
+                        carBluetoothWindow.age() != null && audioMode() == AudioManager.MODE_NORMAL,
+                    )
                     if (decision != null) {
                         logCarContinuityDecision("route-safety-repeat", decision)
                         val ready = decision.target?.takeIf { decision.status == CarArrivalResumeGate.Status.Ready }

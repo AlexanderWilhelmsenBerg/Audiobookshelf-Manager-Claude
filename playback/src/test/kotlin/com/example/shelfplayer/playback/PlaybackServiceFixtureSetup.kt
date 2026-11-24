@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import android.media.AudioManager
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.Logger
@@ -45,6 +46,7 @@ internal class PlaybackServiceFixtureSetup(
             mainDispatcher = dispatcher,
         )
         service.clock = clock
+        service.audioMode = { context.getSystemService(AudioManager::class.java)?.mode }
         service.carProjection = AndroidAutoProjectionMonitor(context, dispatcher, logger, clock)
         service.coldStartToggleGate = ColdStartToggleGate()
         service.logger = logger

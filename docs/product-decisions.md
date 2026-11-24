@@ -438,6 +438,12 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-24 owner refinement (same-headset return during car arrival).** A safety pause of previously
+verified headset playback may wait up to five seconds from the pause when a recent trusted Auto boundary
+matches that headset or a recent car-class hands-free connection is observed in normal audio mode.
+The ordinary gap has a two-second limit. One claim owns the wait and the muted proof through the
+original deadline. Pause, route selection and other newer playback intent cancel it.
+
 **2026-11-22 owner refinement (headset lock and manual focus).** Enable **Lock headset while playing**
 by default and expose the switch in Playback settings. An explicit Play from paused may follow Android's
 uniquely selected headset, using the same muted route proof as an explicit transfer. This is routing

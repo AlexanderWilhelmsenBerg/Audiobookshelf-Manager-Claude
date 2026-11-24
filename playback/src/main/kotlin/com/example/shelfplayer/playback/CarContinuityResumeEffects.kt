@@ -72,8 +72,9 @@ internal class CarContinuityResumeEffects(
             return
         }
         if (pending?.isActive == true && pendingTarget === target) return
-        val inventory = inventoryIds()
-        launchWork(target) { recoverAndResume(target, inventory) }
+        val headsetWasListed = target.phase == CarArrivalResumeGate.Phase.HeadsetReturn &&
+            outputs.outputs.value.any { it.id == target.outputId }
+        launchWork(target) { recoverAndResume(target, headsetWasListed) }
     }
 
     /** New listener/book/session intent stops suspended work immediately, without clearing a successor's claim. */
@@ -235,16 +236,14 @@ internal class CarContinuityResumeEffects(
             selectionSequence(),
         )
 
-    private fun inventoryIds(): Set<String> = outputs.outputs.value.mapTo(mutableSetOf()) { it.id }
-
     /**
      * APK 2277 issued the short return Play 32 ms after the safety pause, while the displaced headset was
-     * still listed, and the muted track went to the car's Bluetooth output. Let the inventory catch up with
-     * the route change first: proceed on its next membership change, or after a short bound when none comes.
+     * still listed, and the muted track went to the car. Give this exact headset a brief chance to drop out
+     * before probing it. If already absent, the route wait handles its return directly.
      */
-    private suspend fun awaitInventoryAfterSafetyPause(claimed: Set<String>) {
+    private suspend fun awaitHeadsetRemoval(outputId: String) {
         withTimeoutOrNull(HEADSET_RETURN_INVENTORY_SETTLE) {
-            outputs.outputs.first { rows -> rows.mapTo(mutableSetOf()) { it.id } != claimed }
+            outputs.outputs.first { rows -> rows.none { it.id == outputId } }
         }
     }
 
@@ -291,10 +290,7 @@ internal class CarContinuityResumeEffects(
             outputs.localOutputs.predictsOnly(id)
     }
 
-    private suspend fun awaitRecoveryTiming(
-        target: CarArrivalResumeGate.Target,
-        claimedInventory: Set<String>?,
-    ): Boolean {
+    private suspend fun awaitRecoveryTiming(target: CarArrivalResumeGate.Target, headsetWasListed: Boolean): Boolean {
         if (target.retryAfterFocusLoss) {
             val backoff = if (target.attemptOrdinal == 2) 1500.milliseconds else 3000.milliseconds
             log(
@@ -308,21 +304,21 @@ internal class CarContinuityResumeEffects(
             delay(backoff)
             if (!recovery.isCurrent(target, owner.currentGeneration, selectionSequence())) return false
         }
-        if (target.phase == CarArrivalResumeGate.Phase.HeadsetReturn && claimedInventory != null) {
-            awaitInventoryAfterSafetyPause(claimedInventory)
+        if (headsetWasListed) {
+            awaitHeadsetRemoval(target.outputId)
             if (!recovery.isCurrent(target, owner.currentGeneration, selectionSequence())) return false
         }
         return !target.inferredArrival || settleInferredArrival(target)
     }
 
-    suspend fun recoverAndResume(target: CarArrivalResumeGate.Target, claimedInventory: Set<String>? = null) {
+    suspend fun recoverAndResume(target: CarArrivalResumeGate.Target, headsetWasListed: Boolean = false) {
         // Media3 can hold playWhenReady=true while temporarily suppressing audible playback.
         // It owns focus restoration in that state; issuing another Play or reasserting the output
         // would only disturb a player that is already committed to continuing.
         try {
             val recoveryJob = currentCoroutineContext().job
             currentCoroutineContext().ensureActive()
-            if (!awaitRecoveryTiming(target, claimedInventory)) return
+            if (!awaitRecoveryTiming(target, headsetWasListed)) return
             if (currentPlayer()?.playWhenReady == true) {
                 log("Car lifecycle left active playback intent with Media3")
                 return

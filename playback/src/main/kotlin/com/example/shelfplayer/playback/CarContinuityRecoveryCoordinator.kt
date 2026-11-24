@@ -142,13 +142,18 @@ internal class CarContinuityRecoveryCoordinator(
         }
     }
 
-    fun routeSafetyPause(at: Duration, inputs: Inputs): CarArrivalResumeGate.Decision? {
+    fun routeSafetyPause(
+        at: Duration,
+        inputs: Inputs,
+        carBluetoothArrival: Boolean = false,
+    ): CarArrivalResumeGate.Decision? {
         val rearmed = gate.onRouteSafetyPause(
             at = at,
             headsetId = inputs.headsetId,
             currentGeneration = inputs.generation,
             explicitSelectionSequence = inputs.selectionSequence,
             carConnected = inputs.carConnected,
+            carBluetoothArrival = carBluetoothArrival,
         )
         awaiting = null
         return rearmed
