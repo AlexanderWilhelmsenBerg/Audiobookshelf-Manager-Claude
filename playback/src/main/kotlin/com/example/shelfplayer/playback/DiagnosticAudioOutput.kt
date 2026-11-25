@@ -14,9 +14,17 @@ internal class DiagnosticAudioOutput(
     private val format: AudioOutputWriteTrace.Format,
 ) : ForwardingAudioOutput(delegate) {
     private var blockedCapture: AudioOutputWriteTrace.Capture? = null
+    private val position = trace.ClockSampler(AudioOutputWriteTrace.ClockStage.AudioOutput, epoch)
 
     init {
         event("audio-output-open")
+    }
+
+    override fun getPositionUs(): Long {
+        val capture = trace.active
+        val positionUs = super.getPositionUs()
+        capture?.let { position.sample(it, positionUs) }
+        return positionUs
     }
 
     override fun write(buffer: ByteBuffer, encodedAccessUnitCount: Int, presentationTimeUs: Long): Boolean {

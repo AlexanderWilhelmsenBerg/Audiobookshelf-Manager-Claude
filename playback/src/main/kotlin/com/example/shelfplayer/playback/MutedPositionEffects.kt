@@ -55,6 +55,8 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         fun onCompensated(advance: Duration) = Unit
 
         fun onPrepared(probe: HeadsetRouteGuard.Probe, bufferedSeek: Boolean) = Unit
+
+        fun onCheckpointSeek(targetMs: Long) = Unit
     }
 
     private var compensation: HeadsetRouteGuard.Probe? = null
@@ -248,7 +250,9 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         probe.requiresPlaybackBarrier = true
         compensation = probe
         try {
-            probe.player.seekTo(target.inWholeMilliseconds.coerceAtLeast(0L))
+            val targetMs = target.inWholeMilliseconds.coerceAtLeast(0L)
+            source.onCheckpointSeek(targetMs)
+            probe.player.seekTo(targetMs)
         } finally {
             compensation = previous
         }

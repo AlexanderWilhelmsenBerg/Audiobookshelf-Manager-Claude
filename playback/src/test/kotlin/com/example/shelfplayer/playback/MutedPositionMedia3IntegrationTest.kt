@@ -6,6 +6,8 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSourceBitmapLoader
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.PlayerMessage
 import androidx.media3.exoplayer.source.SilenceMediaSource
@@ -13,6 +15,8 @@ import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.LogEvent
 import com.example.shelfplayer.core.common.log.Logger
 import com.example.shelfplayer.core.common.time.SystemAppClock
+import com.example.shelfplayer.core.model.playback.BufferPreset
+import com.example.shelfplayer.core.model.playback.FocusBehaviour
 import com.example.shelfplayer.core.testing.TestAppClock
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -42,12 +46,12 @@ import kotlin.time.Duration
 @LooperMode(LooperMode.Mode.PAUSED)
 class MutedPositionMedia3IntegrationTest {
     @Test
-    fun `real Media3 output publishes accepted writes through the diagnostic export`() {
+    fun `real Media3 publishes accepted writes and both audio clocks through the diagnostic export`() {
         val fixture = Fixture(Handler(Looper.getMainLooper()).asCoroutineDispatcher().immediate)
         try {
             fixture.prepareAndPlay()
             fixture.sampleOutputBoundary()
-            fixture.await("accepted PCM writes through the production provider") { fixture.hasAcceptedOutputWrites() }
+            fixture.await("accepted PCM writes and both audio clocks") { fixture.hasOutputTiming() }
         } finally {
             fixture.close()
         }
@@ -150,9 +154,13 @@ class MutedPositionMedia3IntegrationTest {
         private val context = RuntimeEnvironment.getApplication()
         private val scope = CoroutineScope(SupervisorJob() + dispatcher)
         private val realPlayer by lazy {
-            ExoPlayer.Builder(context).setLooper(Looper.getMainLooper())
-                .setAudioOutputProvider(requireNotNull(monitor.providerForPlayer()))
-                .build()
+            DefaultPlayerFactory(
+                context,
+                DefaultDataSource.Factory(context),
+                DataSourceBitmapLoader.Builder(context).build(),
+                playbackLogger,
+                monitor,
+            ).create(BufferPreset.Automatic, FocusBehaviour.Ignore)
         }
         private var insideSeekTo = false
 
@@ -169,18 +177,19 @@ class MutedPositionMedia3IntegrationTest {
             listOf(LiveOutputEndpointRegistry.Observation(headset.id, headset.type, "fixture")),
         ).single().id
         private val volumeEffects = PlaybackVolumeEffects(TestAppClock())
+        private val playbackLogger = object : Logger {
+            override fun log(event: LogEvent) = trace.log(event)
+        }
         private val router = AudioOutputRouter(
             context,
-            object : Logger {
-                override fun log(event: LogEvent) = trace.log(event)
-            },
+            playbackLogger,
             scope,
             dispatcher,
             outputRegistry,
             volumeEffects = volumeEffects,
         )
-        private val lab = AudioRouteLab(context, EventLog(TestAppClock()), TestAppClock(), router, scope, dispatcher)
-        private val monitor = AudioTrackRouteMonitor(context, lab, TestAppClock(), outputRegistry)
+        private val lab = AudioRouteLab(context, EventLog(wallClock), wallClock, router, scope, dispatcher)
+        private val monitor = AudioTrackRouteMonitor(context, lab, wallClock, outputRegistry)
         val seekReasons = mutableListOf<Int>()
         val seekCallbacksDuringSeekTo = mutableListOf<Boolean>()
         val compensationSeekResults = mutableListOf<Boolean>()
@@ -300,8 +309,13 @@ class MutedPositionMedia3IntegrationTest {
 
         fun sampleOutputBoundary() = monitor.sampleBoundary(AudioTimingBoundary.ProjectionDeparture)
 
-        fun hasAcceptedOutputWrites(): Boolean = lab.exportSnapshot().entries.any {
-            " audio-write " in it && Regex("""acceptedFrames=[1-9][0-9]*""").containsMatchIn(it)
+        fun hasOutputTiming(): Boolean {
+            val entries = lab.exportSnapshot().entries
+            return entries.any {
+                " audio-write " in it && Regex("""acceptedFrames=[1-9][0-9]*""").containsMatchIn(it)
+            } &&
+                entries.any { Regex(""" audio-clock .* stage=AudioOutput positionUs=[0-9]+$""").containsMatchIn(it) } &&
+                entries.any { Regex(""" audio-clock .* stage=Media3Sink positionUs=[0-9]+$""").containsMatchIn(it) }
         }
 
         fun beginProbe(): HeadsetRouteGuard.Probe {

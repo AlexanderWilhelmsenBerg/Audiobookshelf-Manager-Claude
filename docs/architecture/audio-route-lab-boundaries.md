@@ -33,12 +33,30 @@ No section should silently substitute one evidence class for another. Route-
 identity equality cannot be inferred from a MediaSession controller package,
 `KeyEvent.deviceId` or raw Bluetooth A2DP product name.
 
-Opt-in Media3 track observer: `PlayerFactory` asks `AudioTrackRouteMonitor`
-for a provider only when recording is already enabled at construction.
-It forwards to Media3's default AudioTrack provider, observes Android route
-callbacks and releases listeners when the provider ends. For normal playback,
-there is no builder provider override at all. Track evidence is advisory and
-must never feed `AudioOutputRouter` or the playback resume gates.
+`PlayerFactory` uses a forwarding provider to observe Media3's standard AudioTrack.
+Track identity is available to route safety during normal playback. The provider
+removes the Android routing listener when the track is replaced or released.
+The diagnostic recorder can be started while that player is already running.
+
+While recording, exported skip windows retain up to six seconds of pre-roll and
+two seconds of post-roll near a route boundary or a listener's Skipping audio or
+Silence marker. Sort the rows by `monotonicNs` to compare them across threads.
+
+- `position-action` identifies the BookWave call site and its requested target.
+  `player-discontinuity` records the position change reported by Media3.
+- `audio-clock` at `AudioOutput` shows the clock returned to the sink for the
+  observed track epoch. At `Media3Sink`, it shows the media position returned to
+  the renderer. These clocks use different offsets. Compare advances between
+  samples and look for the first stage that diverges.
+- `audio-sink-discontinuity`, `audio-sink-flush` and output lifecycle rows
+  identify resets near the clock change. `audio-write` records buffer
+  timestamps and accepted bytes, and `track-timing` provides Android
+  timestamp and head-position evidence.
+
+The clock probes reuse values Media3 already queries and sample each boundary at
+100 ms intervals, with immediate samples when its clock becomes available or
+unavailable. These probes record numbers and fixed stage names in memory. They
+cannot establish what arrived at a Bluetooth headset's speakers.
 
 Physical output timeline maintains `AudioDeviceInfo.id` only in process RAM,
 never the incident/export file. Only aliases d1/d2 and semantic roles are

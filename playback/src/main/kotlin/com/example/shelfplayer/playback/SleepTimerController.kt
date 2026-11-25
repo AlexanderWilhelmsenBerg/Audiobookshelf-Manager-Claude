@@ -103,6 +103,7 @@ class SleepTimerController @Inject constructor(
 
     private var player: Player? = null
     private var resumeOwner: SleepTimerResumeOwner? = null
+    private var onRewind: ((Long) -> Unit)? = null
     private var chapters: List<Chapter> = emptyList()
     private var ticker: Job? = null
     private var scheduleBoundary: Job? = null
@@ -200,7 +201,11 @@ class SleepTimerController @Inject constructor(
      * with no player cannot fire, so releasing the player ends any running timer as
      * [SleepTimerOutcome.PlaybackStopped] rather than leaving one counting down against nothing.
      */
-    internal fun attach(player: Player?, resumeOwner: SleepTimerResumeOwner? = null) {
+    internal fun attach(
+        player: Player?,
+        resumeOwner: SleepTimerResumeOwner? = null,
+        onRewind: ((Long) -> Unit)? = null,
+    ) {
         val changed = this.player !== player
         val detachedRun = if (changed) running else null
         if (changed) {
@@ -219,6 +224,7 @@ class SleepTimerController @Inject constructor(
         player?.let(volumeEffects::attach)
         routeMuted = volumeEffects.isRouteMuted(player)
         this.resumeOwner = if (player == null) null else resumeOwner
+        this.onRewind = if (player == null) null else onRewind
         if (changed && detachedRun != null) {
             applicationScope.launch(mainDispatcher) {
                 finalizeTimer(detachedRun, SleepTimerOutcome.PlaybackStopped)
@@ -832,6 +838,7 @@ class SleepTimerController @Inject constructor(
         val from = media.bookPosition()
         val to = (from - amount).coerceAtLeast(Duration.ZERO)
         if (to >= from) return
+        onRewind?.invoke(to.inWholeMilliseconds)
         media.seekTo(to.inWholeMilliseconds)
         logger.info(
             LogCategory.Playback,
