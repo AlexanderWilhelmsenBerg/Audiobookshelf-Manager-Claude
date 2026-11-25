@@ -148,7 +148,18 @@ class AudioOutputRouter @Inject constructor(
         guard.onProbeSettled = { probe, proof ->
             handoffs.settled(probe, proof)
             MutedRouteDiagnostics.settled(logger, probe, proof)
+            if (probe.returnedToInventory != null) bookComparison.settled(proof)
         }
+    }
+    internal val bookComparison: BookHeadsetComparison by lazy(LazyThreadSafetyMode.NONE) {
+        BookHeadsetComparison(
+            headsetGuard,
+            localOutputs,
+            outputIntentOwner,
+            preferenceEffects,
+            ::isCurrentGuard,
+            ::observeGuardedEndpoint,
+        )
     }
     private var currentTrackRoutes: () -> Set<String>? = { null }
 
@@ -332,6 +343,7 @@ class AudioOutputRouter @Inject constructor(
      * it intentionally does not emit through [explicitSelection].
      */
     internal suspend fun reassert(id: String): Boolean {
+        if (bookComparison.holding(id)) return true
         val selection = explicitSelection.value
         if (!selection.allowsRecoveryTo(id)) return false
         if (id !in live) {
@@ -514,11 +526,11 @@ class AudioOutputRouter @Inject constructor(
                 // Equal inventory rows do not wake the service collector; renew proof at this event boundary.
                 verifyOutputLock()
                 if (!alreadyMissing) {
-                    logger.info(
-                        LogCategory.Playback,
-                        "Preserved playing headset through inventory gap",
-                    )
+                    logger.info(LogCategory.Playback, "Preserved playing headset through inventory gap")
                 }
+                return@launch
+            }
+            if (isStillMissingGuardedHeadset(chosen) && bookComparison.hold(chosen, player)) {
                 return@launch
             }
             if (_selectedId.value == chosen && handoffs.retireDisconnectedOutput(chosen, preserveContinuity = true)) {
@@ -547,7 +559,8 @@ class AudioOutputRouter @Inject constructor(
         val attached = player ?: return
         val epoch = preferenceEffects.snapshot()
         applicationScope.launch(mainDispatcher) {
-            if (isCurrentGuard(epoch, attached, chosen) && chosen in live && !isRecoveringHeadset(chosen)) {
+            if (!isCurrentGuard(epoch, attached, chosen) || chosen !in live) return@launch
+            if (!bookComparison.onEndpointReturn(chosen, attached) && !isRecoveringHeadset(chosen)) {
                 reassert(chosen)
             }
         }
@@ -724,7 +737,9 @@ class AudioOutputRouter @Inject constructor(
             if (!isCurrentOutputLock(lock, context)) return@launch
             if (preservesMissingHeadset(lock.outputId) || !isCurrentOutputLock(lock, context)) return@launch
             if (finalRoute != setOf(lock.outputId) || !isEligibleLockOutput(lock.outputId)) {
-                headsetGuard.pauseForSafety(context.player)
+                if (!bookComparison.hold(lock.outputId, context.player)) {
+                    headsetGuard.pauseForSafety(context.player)
+                }
             }
         }
     }
@@ -796,6 +811,7 @@ class AudioOutputRouter @Inject constructor(
             if (!isCurrentGuard(epoch, target, guarded)) return@launch
             val isPlaying = current.isPlaying
             if (headsetGuard.verifyProbeIfActive(actualRoute, collidingOutputIds, isPlaying)) return@launch
+            bookComparison.observe(current, guarded, actualRoute, isPlaying)
             if (guarded !in collidingOutputIds && !shouldSuspendGuardedPlayback(
                     headsetGuard.endpointId,
                     _selectedId.value,
@@ -805,8 +821,9 @@ class AudioOutputRouter @Inject constructor(
             ) {
                 return@launch
             }
+            if (bookComparison.hold(guarded, current)) return@launch
             headsetGuard.pauseForSafety(current)
-            logUnverifiedRoute(actualRoute, guarded)
+            MutedRouteDiagnostics.unverified(logger, actualRoute, guarded)
         }
     }
 
@@ -840,25 +857,9 @@ class AudioOutputRouter @Inject constructor(
         val currentGuardIsMeasured = actualRoute == setOf(currentGuard) && currentGuard !in collidingOutputIds
         if (!currentGuardIsMeasured && probePlayer.isPlaying) {
             headsetGuard.pauseForSafety(probePlayer)
-            logUnverifiedRoute(actualRoute, currentGuard)
+            MutedRouteDiagnostics.unverified(logger, actualRoute, currentGuard)
         }
         return true
-    }
-
-    /** Reports route categories from the decision snapshot without exposing endpoint identity. */
-    private fun logUnverifiedRoute(actualRoute: Set<String>?, guarded: String) {
-        logger.info(
-            LogCategory.Playback,
-            "Car continuity paused because the headset route is not verified",
-            LogField.Public(
-                "route",
-                when {
-                    actualRoute.isNullOrEmpty() -> "unknown"
-                    guarded !in actualRoute -> "other"
-                    else -> "multiple"
-                },
-            ),
-        )
     }
 
     /** Framework-reported devices are prediction, never actual-track proof. */

@@ -1166,6 +1166,7 @@ class PlaybackService : MediaLibraryService() {
         sessionSync.detach()
         audioOutputs.positions.clear()
         audioOutputs.currentProjection = { false }
+        audioOutputs.bookComparison.carSession = { false }
         audioOutputs.confirmedCarAbsent = { false }
         audioOutputs.retainsInterruptedHeadset = { false }
         audioOutputs.isRecoveringHeadset = { false }
@@ -1848,7 +1849,9 @@ class PlaybackService : MediaLibraryService() {
                 LogField.Public("playWhenReady", playWhenReady.toString()),
                 LogField.Public("reason", input.reasonName),
             )
-            governor.observeTransport(input, routeSafetyPause)
+            val failedBookHold =
+                routeSafetyPause && audioOutputs.positions.guard.currentProbe?.returnedToInventory != null
+            governor.observeTransport(input, routeSafetyPause && !failedBookHold)
             if (!playWhenReady) player?.let(::applyFocusWhilePaused)
         }
 
@@ -2213,6 +2216,8 @@ class PlaybackService : MediaLibraryService() {
             )
         }
         audioOutputs.currentProjection = { carLifecycle.projectionState.carConnected }
+        audioOutputs.bookComparison.carSession =
+            { carConnections.isConnected() || carLifecycle.projectionState.carConnected }
         audioOutputs.confirmedCarAbsent = { carLifecycle.definitelyAbsent }
         audioOutputs.retainsInterruptedHeadset = { id ->
             carRecovery.gate.retainsInterruptedHeadset(

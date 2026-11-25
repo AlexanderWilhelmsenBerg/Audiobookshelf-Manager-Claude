@@ -47,6 +47,8 @@ class CarLabService : Service() {
 
     @Inject lateinit var capture: UnifiedDiagnosticsCapture
 
+    @Inject lateinit var outputs: AudioOutputRouter
+
     @Inject lateinit var logger: Logger
 
     @Inject lateinit var clock: AppClock
@@ -92,7 +94,10 @@ class CarLabService : Service() {
             if (owns(id)) journal.record("projection", JSONObject().put("state", update.current.name))
         }
         observing = true
-        if (case != CarLabCase.Book) {
+        if (case == CarLabCase.BookHold) {
+            outputs.bookComparison.select(BookHeadsetHoldRun { event -> if (owns(id)) journal.headsetEvent(event) })
+        }
+        if (!case.usesBook) {
             if (BookPlayObservation.current?.invoke()?.playWhenReady == true) {
                 end(this, "pause-book-first")
                 return
@@ -110,7 +115,7 @@ class CarLabService : Service() {
 
     private suspend fun monitorRun(id: Int, case: CarLabCase) {
         try {
-            if (case != CarLabCase.Book) startSample(id, case)
+            if (!case.usesBook) startSample(id, case)
             if (owns(id)) observePlayback(id, case)
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -169,7 +174,7 @@ class CarLabService : Service() {
             CarLabCase.Platform, CarLabCase.Preferred, CarLabCase.Cooperate ->
                 LabMediaPlayer(file, target.takeIf { case.pin }, failed)
 
-            CarLabCase.Book -> error("Book uses the production session")
+            CarLabCase.Book, CarLabCase.BookHold -> error("Book uses the production session")
         }
         if (!targetPresent()) {
             stopSample("starting-headset-removed")
@@ -230,7 +235,7 @@ class CarLabService : Service() {
     }
 
     private fun sample(case: CarLabCase): LabPositionSample {
-        val book = if (case == CarLabCase.Book) BookPlayObservation.current?.invoke() else null
+        val book = if (case.usesBook) BookPlayObservation.current?.invoke() else null
         val device = engine?.routed
         val route = when {
             device == null -> "unreported"
@@ -275,6 +280,7 @@ class CarLabService : Service() {
     private fun owns(id: Int) = run == id && journal.status.value.run == id && journal.status.value.case != null
 
     private fun retire() {
+        outputs.bookComparison.select(null)
         run = 0
         job?.cancel()
         job = null

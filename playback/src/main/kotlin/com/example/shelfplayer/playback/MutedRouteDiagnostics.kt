@@ -7,6 +7,19 @@ import com.example.shelfplayer.core.common.log.info
 
 /** Privacy-safe formatting only; probe and transaction owners supply all evidence. */
 internal object MutedRouteDiagnostics {
+    fun unverified(logger: Logger, actualRoute: Set<String>?, guarded: String) {
+        val route = when {
+            actualRoute.isNullOrEmpty() -> "unknown"
+            guarded !in actualRoute -> "other"
+            else -> "multiple"
+        }
+        logger.info(
+            LogCategory.Playback,
+            "Car continuity paused because the headset route is not verified",
+            LogField.Public("route", route),
+        )
+    }
+
     fun observation(logger: Logger, probe: HeadsetRouteGuard.Probe, ordinal: Int) {
         logger.info(
             LogCategory.Playback,

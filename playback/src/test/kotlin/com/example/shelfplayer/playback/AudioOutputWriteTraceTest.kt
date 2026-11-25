@@ -124,6 +124,29 @@ class AudioOutputWriteTraceTest {
         assertTrue(trace.entries().none { "positionUs=900000" in it })
     }
 
+    @Test
+    fun `write gap separates time in the delegate and time between calls including retries`() {
+        val clock = TestAppClock()
+        val trace = AudioOutputWriteTrace(clock)
+        var accept = true
+        val output = output(trace, pcm) { buffer ->
+            clock.advanceBy(5.milliseconds)
+            accept && consume(buffer)
+        }
+        trace.start()
+        output.write(ByteBuffer.allocateDirect(4), 1, 10)
+        accept = false
+        clock.advanceBy(200.milliseconds)
+        val next = ByteBuffer.allocateDirect(4)
+        repeat(2) { output.write(next, 1, 20) }
+        clock.advanceBy(300.milliseconds)
+        accept = true
+        output.write(next, 1, 20)
+        trace.mark("ProjectionDeparture", 7)
+        val row = trace.entries().last { " audio-write " in it }
+        assertTrue("gapUs=515000 delegateUs=15000 outsideWriteUs=500000 zeroWrites=2" in row, row)
+    }
+
     private fun output(
         trace: AudioOutputWriteTrace,
         format: AudioOutputWriteTrace.Format,
