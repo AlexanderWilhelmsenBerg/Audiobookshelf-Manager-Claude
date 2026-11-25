@@ -1,6 +1,7 @@
 package com.example.shelfplayer.feature.settings
 
 import android.content.Context
+import android.os.Build
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -41,7 +42,10 @@ internal fun CarLabControls(enabled: Boolean, initiallyExpanded: Boolean) {
                 "For the numbered samples, pause your book first. Once you hear audio, start and stop the car.",
         )
         CarLabCase.entries.forEach { case ->
-            TextButton(enabled = enabled, onClick = { CarLabService.begin(context, case) }) { Text(case.label) }
+            val supported = case != CarLabCase.Preferred || Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+            TextButton(enabled = enabled && supported, onClick = { CarLabService.begin(context, case) }) {
+                Text(if (supported) case.label else case.label + " (Android 9+)")
+            }
         }
         if (state.run > 0) {
             Text(

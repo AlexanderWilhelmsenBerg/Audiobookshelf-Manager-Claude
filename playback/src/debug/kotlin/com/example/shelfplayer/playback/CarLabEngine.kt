@@ -5,6 +5,7 @@ import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Build
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -61,7 +62,9 @@ internal class LabMediaPlayer(file: File, preferred: AudioDeviceInfo?, failure: 
             player.setDataSource(file.path)
             player.prepare()
             player.isLooping = true
-            if (preferred != null) check(player.setPreferredDevice(preferred))
+            if (preferred != null) {
+                check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && player.setPreferredDevice(preferred))
+            }
             player.setOnErrorListener { _, _, _ ->
                 failure()
                 true
@@ -72,7 +75,8 @@ internal class LabMediaPlayer(file: File, preferred: AudioDeviceInfo?, failure: 
         }
     }
 
-    override val routed: AudioDeviceInfo? get() = player.routedDevice
+    override val routed: AudioDeviceInfo?
+        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) player.routedDevice else null
     override val playing get() = player.isPlaying
     override val positionMs get() = player.currentPosition.toLong()
     override fun play() = player.start()
