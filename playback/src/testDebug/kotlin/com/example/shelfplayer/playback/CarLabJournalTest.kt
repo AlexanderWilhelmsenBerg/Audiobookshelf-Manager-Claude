@@ -62,6 +62,21 @@ class CarLabJournalTest {
     }
 
     @Test
+    fun aLateTriggerResultCannotMoveIntoTheNextRun() {
+        val lab = CarLabJournal(context)
+        val first = lab.begin(CarLabCase.Book)
+        val second = lab.begin(CarLabCase.Book)
+        lab.triggerResult(first, true)
+        lab.triggerResult(second, false)
+        val runs = JSONObject(lab.attach("{}")).getJSONObject("playbackTestSuite").getJSONArray("runs")
+        assertFalse(runs.getJSONObject(0).has("systemTraceTrigger"))
+        val current = runs.getJSONObject(1)
+        assertEquals("trace-trigger-unavailable", current.getString("systemTraceTrigger"))
+        assertEquals(1, current.getJSONArray("events").length())
+        assertTrue(current.getJSONArray("events").getJSONObject(0).has("elapsedRealtimeNs"))
+    }
+
+    @Test
     fun stoppingTheSampleKeepsTheDisconnectInTheSameRun() {
         val journal = CarLabJournal(context)
         val id = journal.begin(CarLabCase.Preferred)

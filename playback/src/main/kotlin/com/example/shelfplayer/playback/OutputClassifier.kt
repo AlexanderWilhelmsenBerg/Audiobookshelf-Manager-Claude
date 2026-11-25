@@ -227,7 +227,8 @@ class OutputClassifier @Inject constructor(
     }
 
     private fun append(line: String) {
-        val at = Instant.now().toString()
+        val at = Instant.now()
+        routeLab.onSystemTraceRow?.invoke(line, at)
         stateMutable.value = stateMutable.value.copy(
             entries = (stateMutable.value.entries + "$at $line").takeLast(MAX_ROWS),
         )

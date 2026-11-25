@@ -16,6 +16,7 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.example.shelfplayer.core.common.dispatcher.ApplicationScope
 import com.example.shelfplayer.core.common.dispatcher.Dispatcher
 import com.example.shelfplayer.core.common.dispatcher.ShelfDispatcher
 import com.example.shelfplayer.core.common.log.Logger
@@ -47,11 +48,17 @@ class CarLabService : Service() {
 
     @Inject lateinit var capture: UnifiedDiagnosticsCapture
 
+    @Inject lateinit var routeLab: AudioRouteLab
+
     @Inject lateinit var outputs: AudioOutputRouter
 
     @Inject lateinit var logger: Logger
 
     @Inject lateinit var clock: AppClock
+
+    @Inject
+    @ApplicationScope
+    lateinit var applicationScope: CoroutineScope
 
     private val scope by lazy { CoroutineScope(SupervisorJob() + main) }
     private val journal by lazy { CarLabJournal.get(this) }
@@ -88,6 +95,17 @@ class CarLabService : Service() {
         closeRun = {
             retire()
             stopSelf()
+        }
+        routeLab.onSystemTraceRow = { row, at -> journal.playbackMarker(row, at) }
+        val runJournal = journal
+        journal.onTraceIncident = { eventRun, cause ->
+            applicationScope.launch(io) {
+                runJournal.incidentResult(eventRun, cause, CarLabSystemTrace.signal(incident = true))
+            }
+        }
+        scope.launch {
+            val sent = withContext(io) { CarLabSystemTrace.signal() }
+            journal.triggerResult(id, sent)
         }
         capture.start()
         projection.start(scope) { update ->
@@ -280,6 +298,8 @@ class CarLabService : Service() {
     private fun owns(id: Int) = run == id && journal.status.value.run == id && journal.status.value.case != null
 
     private fun retire() {
+        routeLab.onSystemTraceRow = null
+        journal.onTraceIncident = null
         outputs.bookComparison.select(null)
         run = 0
         job?.cancel()
