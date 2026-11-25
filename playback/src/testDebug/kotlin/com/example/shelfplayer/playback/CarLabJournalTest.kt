@@ -22,17 +22,21 @@ class CarLabJournalTest {
         val lab = CarLabJournal(context)
         val first = lab.begin(CarLabCase.Platform, origin)
         val second = lab.begin(CarLabCase.Platform, origin.plusSeconds(2))
-        lab.finish("finished", origin.plusSeconds(4))
+        lab.finish("finished", origin.plusSeconds(GAP_START.toLong()))
         lab.heard(second, CarLabPhase.Disconnect, CarLabHeard.Skip)
-        val third = lab.begin(CarLabCase.Pcm, origin.plusSeconds(6))
-        val rows = JSONArray((0..6).map { JSONObject().put("atUtc", origin.plusSeconds(it.toLong()).toString()) })
+        val third = lab.begin(CarLabCase.Pcm, origin.plusSeconds(THIRD_START.toLong()))
+        val rows = JSONArray(
+            (0..THIRD_START).map { second ->
+                JSONObject().put("atUtc", origin.plusSeconds(second.toLong()).toString())
+            },
+        )
         val report = JSONObject(lab.attach(JSONObject().put("timeline", rows).put("firstIncident", rows).toString()))
         for (key in listOf("timeline", "firstIncident")) {
             val timeline = report.getJSONArray(key)
             assertEquals(first, timeline.getJSONObject(1).getInt("runId"))
             assertEquals(second, timeline.getJSONObject(2).getInt("runId"))
-            assertFalse(timeline.getJSONObject(4).has("runId"))
-            assertEquals("Pcm", timeline.getJSONObject(6).getString("caseId"))
+            assertFalse(timeline.getJSONObject(GAP_START).has("runId"))
+            assertEquals("Pcm", timeline.getJSONObject(THIRD_START).getString("caseId"))
         }
         val suite = report.getJSONObject("playbackTestSuite")
         assertEquals(third, suite.getInt("activeRunId"))
@@ -55,5 +59,23 @@ class CarLabJournalTest {
         assertEquals("process-interrupted", restored.status.value.message)
         restored.clear()
         assertEquals("{}", CarLabJournal(context).attach("{}"))
+    }
+
+    @Test
+    fun stoppingTheSampleKeepsTheDisconnectInTheSameRun() {
+        val journal = CarLabJournal(context)
+        val id = journal.begin(CarLabCase.Preferred)
+        journal.sampleStopped("output-moved")
+        journal.record("projection", JSONObject().put("state", "NotConnected"))
+        val suite = JSONObject(journal.attach("{}")).getJSONObject("playbackTestSuite")
+        assertEquals(id, suite.getInt("activeRunId"))
+        val run = suite.getJSONArray("runs").getJSONObject(0)
+        assertEquals("output-moved", run.getString("sampleStopReason"))
+        assertEquals("projection", run.getJSONArray("events").getJSONObject(1).getString("event"))
+    }
+
+    private companion object {
+        const val GAP_START = 4
+        const val THIRD_START = 6
     }
 }
