@@ -85,7 +85,8 @@ internal class LabMediaPlayer(file: File, preferred: AudioDeviceInfo?, failure: 
 }
 
 internal class LabVlc(context: Context, file: File, failure: () -> Unit) : CarLabEngine {
-    private val library = LibVLC(context, listOf("--no-video"))
+    // LibVLC appends its platform defaults to the caller's option list.
+    private val library = LibVLC(context, mutableListOf("--no-video"))
     private val player = VlcPlayer(library)
     private val media = Media(library, Uri.fromFile(file))
 

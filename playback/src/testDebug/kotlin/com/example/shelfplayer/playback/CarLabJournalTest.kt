@@ -26,8 +26,8 @@ class CarLabJournalTest {
         lab.heard(second, CarLabPhase.Disconnect, CarLabHeard.Skip)
         val third = lab.begin(CarLabCase.Pcm, origin.plusSeconds(THIRD_START.toLong()))
         val rows = JSONArray(
-            (0..THIRD_START).map { second ->
-                JSONObject().put("atUtc", origin.plusSeconds(second.toLong()).toString())
+            (0..THIRD_START).map { offsetSeconds ->
+                JSONObject().put("atUtc", origin.plusSeconds(offsetSeconds.toLong()).toString())
             },
         )
         val report = JSONObject(lab.attach(JSONObject().put("timeline", rows).put("firstIncident", rows).toString()))

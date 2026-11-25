@@ -105,21 +105,27 @@ class CarLabService : Service() {
             watchDevices(id)
             BookPlayObservation.onPlay = { if (owns(id)) stopSample("book-play-requested") }
         }
-        job = scope.launch {
-            try {
-                if (case != CarLabCase.Book) startSample(id, case)
-                if (owns(id)) observePlayback(id, case)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: java.io.IOException) {
-                engineFailed(id, error)
-            } catch (error: IllegalStateException) {
-                engineFailed(id, error)
-            } catch (error: IllegalArgumentException) {
-                engineFailed(id, error)
-            } catch (error: LinkageError) {
-                engineFailed(id, error)
-            }
+        job = scope.launch { monitorRun(id, case) }
+    }
+
+    private suspend fun monitorRun(id: Int, case: CarLabCase) {
+        try {
+            if (case != CarLabCase.Book) startSample(id, case)
+            if (owns(id)) observePlayback(id, case)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: java.io.IOException) {
+            engineFailed(id, error)
+        } catch (error: IllegalStateException) {
+            engineFailed(id, error)
+        } catch (error: IllegalArgumentException) {
+            engineFailed(id, error)
+        } catch (error: UnsupportedOperationException) {
+            engineFailed(id, error)
+        } catch (error: SecurityException) {
+            engineFailed(id, error)
+        } catch (error: LinkageError) {
+            engineFailed(id, error)
         }
     }
 
