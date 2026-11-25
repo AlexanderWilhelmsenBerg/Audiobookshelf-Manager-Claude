@@ -331,6 +331,7 @@ class PlaybackService : MediaLibraryService() {
                     manualFocus.play(focusPlayCommand == controllerCommandGeneration)
                         .also { focusPlayCommand = null }
             },
+            onQueueInstall = { recordPositionWrite(PlaybackPositionWrite.QueueInstall, it) },
         )
     }
 
@@ -525,7 +526,9 @@ class PlaybackService : MediaLibraryService() {
     private fun attachSessionSyncAndAutoRewind(exoPlayer: ExoPlayer) {
         // PRODUCT_SPEC PLAY-004 — the remote cadence reads the same player the journal does.
         sessionSync.attach(exoPlayer, ::effectiveBookPosition)
-        autoRewind.attach(exoPlayer) { resumeFreshness.invalidate(ResumeInvalidation.AutoRewind) }
+        autoRewind.attach(exoPlayer, onSeek = { recordPositionWrite(PlaybackPositionWrite.AutoRewind, it) }) {
+            resumeFreshness.invalidate(ResumeInvalidation.AutoRewind)
+        }
     }
 
     private fun attachRouteSafetyMonitor(exoPlayer: ExoPlayer) {
@@ -555,6 +558,9 @@ class PlaybackService : MediaLibraryService() {
                     mediaItemGeneration,
                     activeProfileGeneration(),
                 )
+
+                override fun onCheckpointSeek(targetMs: Long) =
+                    recordPositionWrite(PlaybackPositionWrite.RouteCheckpoint, targetMs)
 
                 override fun onSettlingRefused(advance: Duration) {
                     logger.info(
@@ -687,6 +693,7 @@ class PlaybackService : MediaLibraryService() {
                 override suspend fun resume(stillAuthorized: () -> Boolean): Boolean =
                     performFreshnessPlay(explicit = true, stillAuthorized = stillAuthorized)
             },
+            onRewind = { recordPositionWrite(PlaybackPositionWrite.SleepTimerRewind, it) },
         )
     }
 
@@ -955,7 +962,12 @@ class PlaybackService : MediaLibraryService() {
         onPlayWhenReadyRequest = { requestedPlay -> onControllerTransportRequest(requestedPlay, exoPlayer) },
         skipIntervals = { skips },
         allowEffects = { player === exoPlayer && callbackFutures.playerEffectsAllowed() },
+        onPositionWrite = ::recordPositionWrite,
     )
+
+    private fun recordPositionWrite(stage: PlaybackPositionWrite, targetMs: Long) {
+        if (::audioRouteLab.isInitialized) audioRouteLab.outputWrites.positionWrite(stage, targetMs)
+    }
 
     /** All controller entry paths share the governor's synchronous arbitration. */
     private fun onControllerCommand(origin: ResumeInvalidation): Boolean = governor.invalidate(origin)
@@ -1445,6 +1457,7 @@ class PlaybackService : MediaLibraryService() {
         try {
             replacement.playbackParameters = failed.playbackParameters
             // Install before attaching observers so the same queue is not counted as a new book.
+            recordPositionWrite(PlaybackPositionWrite.DecoderRecovery, position)
             replacement.setMediaItems(queue, index, position)
             if (!authorized()) return false
             mediaSession.setPlayer(createSessionPlayer(replacement))
@@ -1716,7 +1729,9 @@ class PlaybackService : MediaLibraryService() {
             }
             media.addListener(listener)
             return try {
-                media.seekTo(position.inWholeMilliseconds.coerceAtLeast(0))
+                val targetMs = position.inWholeMilliseconds.coerceAtLeast(0)
+                recordPositionWrite(PlaybackPositionWrite.ResumeFreshness, targetMs)
+                media.seekTo(targetMs)
                 val reported = withTimeoutOrNull(timeout) { landed.await() }
                 (reported ?: media.bookPosition()).also { where ->
                     logger.debug(
@@ -2524,6 +2539,9 @@ class PlaybackService : MediaLibraryService() {
         )
 
         val edge = carLifecycle.onProjectionBoundary(update)
+        if (edge == CarLifecycleAuthority.ProjectionEdge.Arrival && ::audioRouteLab.isInitialized) {
+            audioRouteLab.outputWrites.mark("ProjectionArrival", null)
+        }
         if (update.current.carConnected) pauseLostCarOutput(projectionDeparted = false)
         if (previous != update.current) buttonRouting.clear()
         buttonRouting.updateMonitor()
@@ -3141,7 +3159,9 @@ class PlaybackService : MediaLibraryService() {
         val finished = positionEffects.before(PlaybackMovement.Seek) ?: return
         try {
             if (!onControllerCommand(ResumeInvalidation.NotificationSkip)) return
-            current.seekTo(target.inWholeMilliseconds.coerceAtLeast(0))
+            val targetMs = target.inWholeMilliseconds.coerceAtLeast(0)
+            recordPositionWrite(PlaybackPositionWrite.NotificationSkip, targetMs)
+            current.seekTo(targetMs)
         } finally {
             finished()
         }

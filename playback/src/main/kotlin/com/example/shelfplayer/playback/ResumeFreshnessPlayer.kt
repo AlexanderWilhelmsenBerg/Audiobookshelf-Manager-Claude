@@ -42,6 +42,7 @@ internal class ResumeFreshnessPlayer(
     private val prepareCurrentOutput: () -> ListenableFuture<*>,
     private val movementEffects: PlaybackMovementEffects,
     private val allowEffects: () -> Boolean = { true },
+    private val onPositionWrite: (PlaybackPositionWrite, Long) -> Unit = { _, _ -> },
 ) : ForwardingSimpleBasePlayer(delegate) {
 
     /**
@@ -83,6 +84,7 @@ internal class ResumeFreshnessPlayer(
         val target = relativeTarget(seekCommand)
         return movement(PlaybackMovement.Seek) {
             if (!invalidate(ResumeInvalidation.Seek)) return@movement Futures.immediateFuture(false)
+            onPositionWrite(PlaybackPositionWrite.SessionSeek, target ?: positionMs)
             if (target == null) {
                 super.handleSeek(mediaItemIndex, positionMs, seekCommand)
             } else {
@@ -106,6 +108,7 @@ internal class ResumeFreshnessPlayer(
         if (!allowEffects()) return Futures.immediateVoidFuture()
         return movement(PlaybackMovement.ReplaceCurrent) {
             if (!invalidate(ResumeInvalidation.MediaChanged)) return@movement Futures.immediateFuture(false)
+            onPositionWrite(PlaybackPositionWrite.SessionQueue, startPositionMs)
             super.handleSetMediaItems(mediaItems, startIndex, startPositionMs)
         }
     }

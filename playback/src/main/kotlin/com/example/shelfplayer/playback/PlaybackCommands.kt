@@ -37,6 +37,7 @@ internal class PlaybackCommandEffects(
     private val protectOutput: (Player, Boolean, Boolean) -> ManualPlayProtection,
     private val canRunDecoder: (Player) -> Boolean = { true },
     private val allowPlayWithFocus: () -> Boolean = { true },
+    private val onQueueInstall: (Long) -> Unit = {},
 ) : PlaybackCommands {
     override fun prepare(current: Player, stillAuthorized: () -> Boolean, holdForSeek: Boolean): Boolean {
         val expectedItemGeneration = itemGeneration()
@@ -85,6 +86,7 @@ internal class PlaybackCommandEffects(
         if (!isCurrent(current, beforeInstall, authorizedBeforeInstall) || shouldRefuseInheritedPlayback(current)) {
             return false
         }
+        onQueueInstall(startPositionMs)
         current.setMediaItem(item, startPositionMs)
         val installedGeneration = itemGeneration()
         val installed = {

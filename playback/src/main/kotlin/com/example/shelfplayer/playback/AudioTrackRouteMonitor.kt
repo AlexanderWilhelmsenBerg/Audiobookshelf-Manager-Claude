@@ -13,6 +13,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.exoplayer.audio.AudioOutput
 import androidx.media3.exoplayer.audio.AudioOutputProvider
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.AudioTrackAudioOutput
 import androidx.media3.exoplayer.audio.AudioTrackAudioOutputProvider
 import androidx.media3.exoplayer.audio.ForwardingAudioOutputProvider
@@ -166,6 +167,8 @@ internal class AudioTrackRouteMonitor @Inject constructor(
                 ?: AudioTrackPath.Unresolved
         }
     }
+
+    fun diagnosticSink(sink: AudioSink): AudioSink = DiagnosticAudioSink(sink, lab.outputWrites)
 
     fun providerForPlayer(): AudioOutputProvider? {
         // Observe route identity in normal playback; diagnostics stay strictly opt-in.

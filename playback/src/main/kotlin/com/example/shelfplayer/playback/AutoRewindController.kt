@@ -64,6 +64,7 @@ class AutoRewindController @Inject constructor(
 ) {
     private var player: Player? = null
     private var beforeSeek: (() -> Unit)? = null
+    private var onSeek: ((Long) -> Unit)? = null
     private var chapters: List<Chapter> = emptyList()
 
     /**
@@ -95,8 +96,13 @@ class AutoRewindController @Inject constructor(
      * forcing auto-rewind through a MediaController and losing its synchronous pre-audio seek semantics.
      */
     fun attach(player: Player?, beforeSeek: (() -> Unit)? = null) {
+        attach(player, onSeek = null, beforeSeek = beforeSeek)
+    }
+
+    internal fun attach(player: Player?, onSeek: ((Long) -> Unit)?, beforeSeek: (() -> Unit)?) {
         this.player = player
         this.beforeSeek = if (player == null) null else beforeSeek
+        this.onSeek = if (player == null) null else onSeek
         if (player == null) pausedAt = null
     }
 
@@ -188,7 +194,9 @@ class AutoRewindController @Inject constructor(
     // ADR-0016 — a book position is a player position, so there is nothing left to convert.
     private fun seekTo(media: Player, position: Duration) {
         beforeSeek?.invoke()
-        media.seekTo(position.inWholeMilliseconds.coerceAtLeast(0))
+        val targetMs = position.inWholeMilliseconds.coerceAtLeast(0)
+        onSeek?.invoke(targetMs)
+        media.seekTo(targetMs)
     }
 
     /**

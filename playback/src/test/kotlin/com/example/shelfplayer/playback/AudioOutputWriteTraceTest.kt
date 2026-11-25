@@ -10,6 +10,7 @@ import java.nio.ByteBuffer
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -82,6 +83,45 @@ class AudioOutputWriteTraceTest {
         assertTrue(writes.single().contains("ptsUs=30"))
         trace.clear(keepRecording = false)
         assertTrue(trace.entries().isEmpty())
+    }
+
+    @Test
+    fun `position events are opt-in and clocks are sampled on the same timeline`() {
+        val clock = TestAppClock()
+        val trace = AudioOutputWriteTrace(clock)
+        val output = trace.ClockSampler(AudioOutputWriteTrace.ClockStage.AudioOutput, 7)
+        val sink = trace.ClockSampler(AudioOutputWriteTrace.ClockStage.Media3Sink)
+        trace.positionWrite(PlaybackPositionWrite.SessionSeek, 10)
+        trace.start()
+        val capture = requireNotNull(trace.active)
+        output.sample(capture, 100_000)
+        sink.sample(capture, 3_500_000)
+        clock.advanceBy(50.milliseconds)
+        output.sample(capture, 150_000)
+        trace.positionWrite(PlaybackPositionWrite.RouteCheckpoint, 3_400)
+        clock.advanceBy(50.milliseconds)
+        sink.sample(capture, Long.MIN_VALUE)
+        trace.mark("ProjectionDeparture", 7)
+        output.sample(capture, 200_000)
+        trace.stop()
+
+        val events = trace.entries().filter { " audio-clock " in it || " position-action " in it }
+        assertEquals(
+            listOf(
+                "trackEpoch=7 stage=AudioOutput positionUs=100000",
+                "trackEpoch=null stage=Media3Sink positionUs=3500000",
+                "trackEpoch=null stage=RouteCheckpoint targetMs=3400",
+                "trackEpoch=null stage=Media3Sink positionUs=null",
+                "trackEpoch=7 stage=AudioOutput positionUs=200000",
+            ),
+            events.map { it.substring(it.indexOf("trackEpoch=")) },
+        )
+        trace.clear(keepRecording = true)
+        output.sample(capture, 900_000)
+        output.sample(requireNotNull(trace.active), 200_000)
+        trace.mark("Skipping", 7)
+        assertTrue(trace.entries().any { "positionUs=200000" in it })
+        assertTrue(trace.entries().none { "positionUs=900000" in it })
     }
 
     private fun output(

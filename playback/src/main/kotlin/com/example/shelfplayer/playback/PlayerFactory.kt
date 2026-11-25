@@ -97,6 +97,7 @@ internal class DefaultPlayerFactory @Inject constructor(
             .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParameters)
             .setAudioProcessors(arrayOf(BookWaveEqualizer { equalizer }))
             .build()
+            .let(audioTrackRouteMonitor::diagnosticSink)
     }
 
     /**

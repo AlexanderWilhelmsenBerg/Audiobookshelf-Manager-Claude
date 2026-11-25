@@ -4,11 +4,46 @@ import androidx.media3.common.C
 import com.example.shelfplayer.core.common.time.AppClock
 import java.time.Instant
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
-/** In-memory pre-roll and bounded post-roll. Playback never formats rows or writes diagnostic files. */
+internal enum class PlaybackPositionWrite {
+    RouteCheckpoint,
+    SessionSeek,
+    SessionQueue,
+    QueueInstall,
+    ResumeFreshness,
+    DecoderRecovery,
+    NotificationSkip,
+    AutoRewind,
+    SleepTimerRewind,
+}
+
+/** In-memory pre-roll and bounded post-roll. Playback never writes diagnostic files. */
 internal class AudioOutputWriteTrace(private val clock: AppClock) {
     class Capture(val at: Instant, val atNs: Long)
+
+    enum class ClockStage { AudioOutput, Media3Sink }
+
+    /** One sampler per audio boundary, called by its Media3 playback thread. */
+    inner class ClockSampler(private val stage: ClockStage, private val epoch: Long? = null) {
+        private var previousCapture: Capture? = null
+        private var lastNs = 0L
+        private var hadPosition = false
+
+        fun sample(capture: Capture, positionUs: Long) {
+            val atNs = nowNs()
+            val position = positionUs.takeUnless { it == Long.MIN_VALUE || it == C.TIME_UNSET }
+            val hasPosition = position != null
+            if (capture === previousCapture && hasPosition == hadPosition && atNs - lastNs < CLOCK_INTERVAL_NS) {
+                return
+            }
+            previousCapture = capture
+            lastNs = atNs
+            hadPosition = hasPosition
+            clockSample(capture, epoch, atNs, stage, position)
+        }
+    }
 
     data class Format(val encoding: Int, val sampleRate: Int, val pcmFrameBytes: Int?)
 
@@ -21,7 +56,7 @@ internal class AudioOutputWriteTrace(private val clock: AppClock) {
     ) {
         fun fields(): String {
             val frames = format.pcmFrameBytes?.takeIf { acceptedBytes % it == 0 }?.let { acceptedBytes / it }
-            val pts = ptsUs.takeUnless { it == C.TIME_UNSET }?.toString() ?: "null"
+            val pts = ptsUs.takeUnless { it == C.TIME_UNSET || it == C.TIME_END_OF_SOURCE }?.toString() ?: "null"
             return "ptsUs=$pts offsetBytes=$offsetBytes acceptedBytes=$acceptedBytes " +
                 "acceptedFrames=${frames?.toString() ?: "null"} complete=$completed " +
                 "encoding=${format.encoding} sampleRate=${format.sampleRate} " +
@@ -81,9 +116,27 @@ internal class AudioOutputWriteTrace(private val clock: AppClock) {
     }
 
     @Synchronized
-    fun outputEvent(capture: Capture, epoch: Long, kind: String) {
+    fun outputEvent(capture: Capture, epoch: Long?, kind: String) {
         if (active !== capture) return
         add(Row(capture, nowNs(), epoch, kind))
+    }
+
+    @Synchronized
+    private fun clockSample(capture: Capture, epoch: Long?, atNs: Long, stage: ClockStage, positionUs: Long?) {
+        if (active !== capture) return
+        add(Row(capture, atNs, epoch, "audio-clock", fields = "stage=$stage positionUs=$positionUs"))
+    }
+
+    fun positionWrite(stage: PlaybackPositionWrite, targetMs: Long) {
+        val capture = active ?: return
+        positionWrite(capture, stage, targetMs)
+    }
+
+    @Synchronized
+    private fun positionWrite(capture: Capture, stage: PlaybackPositionWrite, targetMs: Long) {
+        if (active !== capture) return
+        val target = targetMs.takeUnless { it == C.TIME_UNSET }
+        add(Row(capture, nowNs(), null, "position-action", fields = "stage=$stage targetMs=$target"))
     }
 
     @Synchronized
@@ -129,6 +182,7 @@ internal class AudioOutputWriteTrace(private val clock: AppClock) {
     private fun nowNs(): Long = clock.elapsed().inWholeNanoseconds
 
     private companion object {
+        val CLOCK_INTERVAL_NS = 100.milliseconds.inWholeNanoseconds
         val PRE_ROLL_NS = 6.seconds.inWholeNanoseconds
         val POST_ROLL_NS = 2.seconds.inWholeNanoseconds
         const val MAX_PRE_ROWS = 768
