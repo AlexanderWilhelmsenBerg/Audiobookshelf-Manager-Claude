@@ -124,7 +124,8 @@ internal class AudioOutputWriteTrace(private val clock: AppClock) {
     @Synchronized
     private fun clockSample(capture: Capture, epoch: Long?, atNs: Long, stage: ClockStage, positionUs: Long?) {
         if (active !== capture) return
-        add(Row(capture, atNs, epoch, "audio-clock", fields = "stage=$stage positionUs=$positionUs"))
+        val position = positionUs?.toString() ?: "null"
+        add(Row(capture, atNs, epoch, "audio-clock", fields = "stage=$stage positionUs=$position"))
     }
 
     fun positionWrite(stage: PlaybackPositionWrite, targetMs: Long) {
@@ -135,7 +136,7 @@ internal class AudioOutputWriteTrace(private val clock: AppClock) {
     @Synchronized
     private fun positionWrite(capture: Capture, stage: PlaybackPositionWrite, targetMs: Long) {
         if (active !== capture) return
-        val target = targetMs.takeUnless { it == C.TIME_UNSET }
+        val target = targetMs.takeUnless { it == C.TIME_UNSET }?.toString() ?: "null"
         add(Row(capture, nowNs(), null, "position-action", fields = "stage=$stage targetMs=$target"))
     }
 
