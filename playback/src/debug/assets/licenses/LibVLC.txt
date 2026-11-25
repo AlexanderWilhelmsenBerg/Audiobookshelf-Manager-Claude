@@ -1,0 +1,7 @@
+BookWave debug car playback suite uses LibVLC for Android 3.7.8 by VideoLAN and contributors.
+The bundled upstream library is distributed under the GNU Lesser General Public License version 2.1.
+The license is included alongside this notice.
+
+Android sources: https://code.videolan.org/videolan/libvlcjni
+VLC sources: https://code.videolan.org/videolan/vlc
+Published Android artifacts and matching Java sources: https://repo.maven.apache.org/maven2/org/videolan/android/libvlc-all/3.7.8/

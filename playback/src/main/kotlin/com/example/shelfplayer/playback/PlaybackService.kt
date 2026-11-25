@@ -465,6 +465,7 @@ class PlaybackService : MediaLibraryService() {
         currentPlayerSettings = settings
         appliedFocus = settings.focusBehaviour
         val exoPlayer = createPlayerFromSettings(settings).also { player = it }
+        BookPlayObservation.current = { player }
         attachPlayerListeners(exoPlayer)
         resumeFreshness.attach(exoPlayer)
         val sessionPlayer = createSessionPlayer(exoPlayer)
@@ -1146,6 +1147,7 @@ class PlaybackService : MediaLibraryService() {
     private val outputDispatch: (() -> Boolean) -> Boolean = { effect -> governor.output(effect) }
 
     override fun onDestroy() {
+        BookPlayObservation.current = null
         mediaButtonForeground?.close()
         autoCapture?.disconnected("service-stopped")
         governor.close()
@@ -1826,6 +1828,7 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            if (playWhenReady) BookPlayObservation.onPlay?.invoke()
             if (!playWhenReady) carOutputSafety.clear()
             // Record transport intent, not buffer or route changes, and never invent a physical key origin.
             val routeSafetyPause = !playWhenReady && audioOutputs.isRouteSafetyPause(player)
