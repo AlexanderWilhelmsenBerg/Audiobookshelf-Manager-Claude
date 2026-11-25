@@ -22,11 +22,11 @@ class CarLabSystemTraceTest {
     fun delayedAndUnknownEventsAreExcludedAndDetailsStayInThePrivateJournal() {
         val start = Instant.parse("2026-11-25T18:54:00Z")
         val markers = mutableListOf<String>()
-        val trace = CarLabSystemTrace(11, CarLabCase.BookHold, start, markers::add)
+        val trace = CarLabSystemTrace(1, CarLabCase.BookHold, start, markers::add)
         trace.playback("playback-intent reason=old-run", start.minusNanos(1))
         trace.playback("unrecognized sensitive data", start)
         trace.playback("route-boundary edge=RouteSafetyPause trackRoute=private", start)
         trace.playback("actual-track playing-to=private", start)
-        assertEquals(listOf("BookWave/11/BookHold/RouteSafetyPause", "BookWave/11/BookHold/actual-track"), markers)
+        assertEquals(listOf("BookWave/1/BookHold/RouteSafetyPause", "BookWave/1/BookHold/actual-track"), markers)
     }
 }
