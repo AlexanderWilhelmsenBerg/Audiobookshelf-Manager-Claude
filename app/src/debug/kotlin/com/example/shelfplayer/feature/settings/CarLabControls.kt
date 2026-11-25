@@ -38,21 +38,17 @@ internal fun CarLabControls(enabled: Boolean, initiallyExpanded: Boolean) {
     if (!expanded) return
     Column {
         Text(
-            "With the car off and one headset connected, tap a case. For the BookWave reference, play a book. " +
-                "For the numbered samples, pause your book first. Once you hear audio, start and stop the car.",
+            "With the car off, tap A and play your book in the headset. Start and stop the car. " +
+                "Finish the run, then repeat with B using the same book, headset and focus settings.",
         )
-        CarLabCase.entries.forEach { case ->
-            val supported = case != CarLabCase.Preferred || Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
-            TextButton(enabled = enabled && supported, onClick = { CarLabService.begin(context, case) }) {
-                Text(if (supported) case.label else case.label + " (Android 9+)")
-            }
-        }
+        CarLabCases(enabled) { case -> CarLabService.begin(context, case) }
         if (state.run > 0) {
             Text(
                 "Run #" + state.run + " · " + (state.case?.label ?: state.message.replace('-', ' ')),
                 style = MaterialTheme.typography.titleMedium,
             )
             if (state.case != null) {
+                if (state.case == CarLabCase.BookHold) Text(headsetStatus(state.headset))
                 if (state.message != "running") {
                     Text("Sample stopped · " + state.message.replace('-', ' ') + ". Still recording the car cycle.")
                 }
@@ -72,4 +68,30 @@ internal fun CarLabControls(enabled: Boolean, initiallyExpanded: Boolean) {
         }
         Text("Tap the same case again to repeat it. After the last run, finish and use Save JSON.")
     }
+}
+
+@Composable
+private fun CarLabCases(enabled: Boolean, begin: (CarLabCase) -> Unit) {
+    CarLabCase.entries.filter(CarLabCase::usesBook).forEach { case ->
+        TextButton(enabled = enabled, onClick = { begin(case) }) { Text(case.label) }
+    }
+    var samples by rememberSaveable { mutableStateOf(false) }
+    TextButton(onClick = { samples = !samples }) { Text("Other player samples") }
+    if (!samples) return
+    Text("Pause your book before starting a sample.")
+    CarLabCase.entries.filterNot(CarLabCase::usesBook).forEach { case ->
+        val supported = case != CarLabCase.Preferred || Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+        TextButton(enabled = enabled && supported, onClick = { begin(case) }) {
+            Text(if (supported) case.label else case.label + " (Android 9+)")
+        }
+    }
+}
+
+private fun headsetStatus(event: String): String = when (event) {
+    "headset-armed" -> "Headset verified. Start the car when ready."
+    "hold-started" -> "Waiting for the original headset. Playback is muted."
+    "hold-Verified" -> "Original headset verified again."
+    "hold-Refused", "hold-unavailable" -> "Headset hold failed. Check where you hear audio."
+    "hold-Superseded" -> "Headset hold ended after playback changed."
+    else -> "Play in your headset with “Lock headset while playing” enabled and Nearby devices access allowed."
 }

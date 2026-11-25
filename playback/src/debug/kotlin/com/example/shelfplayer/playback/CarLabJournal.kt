@@ -14,16 +14,25 @@ enum class CarLabCase(
     internal val focus: String,
     internal val pin: Boolean = false,
 ) {
-    Book("Current BookWave player", "BookWave", "user-settings"),
+    Book("A · Current BookWave player", "BookWave", "user-settings"),
+    BookHold("B · Hold the playing headset", "BookWave", "user-settings"),
     Exo("ExoPlayer", "ExoPlayer", "observe"),
     Platform("Android MediaPlayer", "MediaPlayer", "observe"),
     Vlc("LibVLC", "LibVLC", "observe"),
     Pcm("MediaCodec + AudioTrack", "MediaCodec-AudioTrack", "observe"),
     Preferred("MediaPlayer · prefer starting headset", "MediaPlayer", "observe", true),
     Cooperate("MediaPlayer · pause for focus loss", "MediaPlayer", "pause"),
+    ;
+
+    val usesBook: Boolean get() = this == Book || this == BookHold
 }
 
-data class CarLabStatus(val run: Int = 0, val case: CarLabCase? = null, val message: String = "")
+data class CarLabStatus(
+    val run: Int = 0,
+    val case: CarLabCase? = null,
+    val message: String = "",
+    val headset: String = "",
+)
 
 /** Bounded, app-private run history. UTC intervals also identify late-arriving recorder events. */
 class CarLabJournal internal constructor(context: Context) {
@@ -70,6 +79,13 @@ class CarLabJournal internal constructor(context: Context) {
         events.put(JSONObject().put("atUtc", now.toString()).put("event", kind).put("details", details))
         run.put("lastObservedUtc", now.toString())
         persist()
+    }
+
+    @Synchronized
+    internal fun headsetEvent(kind: String) {
+        active?.put("headsetState", kind) ?: return
+        record(kind)
+        publish()
     }
 
     @Synchronized
@@ -143,6 +159,7 @@ class CarLabJournal internal constructor(context: Context) {
                 row.getInt("runId"),
                 active?.let { CarLabCase.valueOf(it.getString("caseId")) },
                 row.optString("endReason", row.optString("sampleStopReason", "running")),
+                row.optString("headsetState"),
             )
         }
     }

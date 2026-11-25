@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.common.time.AppClock
 import java.time.Instant
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.nanoseconds
 import kotlin.time.Duration.Companion.seconds
 
 internal enum class PlaybackPositionWrite {
@@ -53,6 +54,9 @@ internal class AudioOutputWriteTrace(private val clock: AppClock) {
         val offsetBytes: Int,
         val acceptedBytes: Int,
         val completed: Boolean,
+        val gapNs: Long? = null,
+        val delegateNs: Long = 0,
+        val zeroWrites: Int = 0,
     ) {
         fun fields(): String {
             val frames = format.pcmFrameBytes?.takeIf { acceptedBytes % it == 0 }?.let { acceptedBytes / it }
@@ -60,8 +64,12 @@ internal class AudioOutputWriteTrace(private val clock: AppClock) {
             return "ptsUs=$pts offsetBytes=$offsetBytes acceptedBytes=$acceptedBytes " +
                 "acceptedFrames=${frames?.toString() ?: "null"} complete=$completed " +
                 "encoding=${format.encoding} sampleRate=${format.sampleRate} " +
-                "pcmFrameBytes=${format.pcmFrameBytes?.toString() ?: "null"}"
+                "pcmFrameBytes=${format.pcmFrameBytes?.toString() ?: "null"} " +
+                "gapUs=${gapNs.micros()} delegateUs=${delegateNs.micros()} " +
+                "outsideWriteUs=${gapNs?.minus(delegateNs).micros()} zeroWrites=$zeroWrites"
         }
+
+        private fun Long?.micros(): String = this?.nanoseconds?.inWholeMicroseconds?.toString() ?: "null"
     }
 
     private class Row(
@@ -180,7 +188,7 @@ internal class AudioOutputWriteTrace(private val clock: AppClock) {
     @Synchronized
     private fun snapshot(): List<Row> = windows.flatMap(Window::rows)
 
-    private fun nowNs(): Long = clock.elapsed().inWholeNanoseconds
+    internal fun nowNs(): Long = clock.elapsed().inWholeNanoseconds
 
     private companion object {
         val CLOCK_INTERVAL_NS = 100.milliseconds.inWholeNanoseconds

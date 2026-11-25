@@ -97,6 +97,7 @@ internal class HeadsetRouteGuard(
         val preferenceEpoch: Long,
         val transferRequest: OutputIntentOwner.TransferRequest? = null,
         val canCommit: () -> Boolean = { true },
+        val returnedToInventory: (() -> Boolean)? = null,
     ) {
         // The slot is reserved before mute acquisition can invoke synchronous listeners. A null claim exists
         // only during that call; cancellation retires the reservation and its returning owner releases it.
@@ -203,10 +204,12 @@ internal class HeadsetRouteGuard(
         preferenceEpoch: Long,
         remaining: Duration? = null,
         canCommit: () -> Boolean = { true },
+        returnedToInventory: (() -> Boolean)? = null,
     ): Boolean {
         val eligible = canCommit() && remaining?.let { it <= Duration.ZERO } != true
         if (probe != null || attachedPlayer !== player || !eligible) return false
-        val active = Probe(id, player, preferenceEpoch, canCommit = canCommit)
+        val active =
+            Probe(id, player, preferenceEpoch, canCommit = canCommit, returnedToInventory = returnedToInventory)
         probe = active
         if (!captureReservation(active)) {
             if (probe === active) probe = null
@@ -348,8 +351,15 @@ internal class HeadsetRouteGuard(
             endpointId = actualRoute?.singleOrNull(),
         )
         when {
-            active.endpointId != null && evidence.confirms(active.endpointId) && active.endpointId !in collisions ->
+            active.returnedToInventory != null && (!active.canCommit() || active.endpointId in collisions) ->
+                finishProbe(active, verified = false)
+
+            active.endpointId != null && evidence.confirms(active.endpointId) && active.endpointId !in collisions &&
+                active.returnedToInventory?.invoke() != false ->
                 finishProbe(active, verified = true)
+
+            // The book comparison already owns a fixed eligibility deadline, even with repeated measurements.
+            active.returnedToInventory != null -> Unit
 
             !actualRoute.isNullOrEmpty() ->
                 finishProbe(active, verified = false)

@@ -165,6 +165,46 @@ class BluetoothEndpointContinuityTest {
     }
 
     @Test
+    fun `book comparison survives inventory removal and releases mute only on the original reindexed headset`() =
+        runTest {
+            val fixture = fixture()
+            val router = fixture.router
+            val adapter = router.localOutputs
+            val originalAddress = "10:22:33:44:55:66"
+            manager.setOutputDevices(listOf(endpoint(1, originalAddress)))
+            adapter.refresh()
+            val original = adapter.endpointIds.single()
+            fixture.guard(original)
+            var route: Set<String>? = setOf(original)
+            fixture.measuredRoutes { route }
+            val events = mutableListOf<String>()
+            router.bookComparison.select(BookHeadsetHoldRun(events::add))
+            runCurrent()
+            assertEquals(listOf("headset-armed"), events)
+            router.bookComparison.carSession = { true }
+            route = null
+            manager.setOutputDevices(emptyList())
+            router.playbackCall("refresh")
+            runCurrent()
+            assertTrue(fixture.volumeEffects.isRouteMuted(fixture.player))
+            manager.setOutputDevices(listOf(endpoint(2, "20:22:33:44:55:66")))
+            router.playbackCall("refresh")
+            route = adapter.endpointIds
+            router.onActualTrackRouteChanged()
+            runCurrent()
+            assertTrue(fixture.volumeEffects.isRouteMuted(fixture.player))
+            manager.setOutputDevices(listOf(endpoint(3, originalAddress)))
+            router.playbackCall("refresh")
+            route = setOf(original)
+            router.onActualTrackRouteChanged()
+            runCurrent()
+            assertTrue("hold-Verified" in events, events.toString())
+            assertTrue(fixture.pauseThreads.isEmpty())
+            assertTrue(!fixture.volumeEffects.isRouteMuted(fixture.player))
+            router.bookComparison.select(null)
+        }
+
+    @Test
     fun `exact Bluetooth identity survives handle churn without touching healthy playback`() = runTest {
         val fixture = fixture()
         val adapter = fixture.router.localOutputs

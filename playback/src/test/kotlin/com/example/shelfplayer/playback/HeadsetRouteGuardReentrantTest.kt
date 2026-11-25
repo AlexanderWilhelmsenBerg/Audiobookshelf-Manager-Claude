@@ -242,6 +242,46 @@ class HeadsetRouteGuardReentrantTest {
         assertEquals(0, media.pauseCalls)
     }
 
+    @Test
+    fun `book hold stays muted through the wrong route until the original live endpoint is proven`() = runTest {
+        val effects = PlaybackVolumeEffects(TestAppClock())
+        val media = MutableMediaPlayer().apply { playWhenReady = true }
+        val guard = guard(backgroundScope, UnconfinedTestDispatcher(testScheduler), effects, media.player)
+        effects.attach(media.player)
+        guard.attachPlayer(media.player)
+        guard.protect(OUTPUT)
+        var live = false
+        assertTrue(guard.beginProbe(OUTPUT, media.player, EPOCH, remaining = 2.seconds, returnedToInventory = { live }))
+        guard.verifyProbeIfActive(setOf("other-headset"), emptySet(), true)
+        guard.verifyProbeIfActive(setOf(OUTPUT), emptySet(), true)
+        advanceTimeBy(750)
+        assertTrue(effects.isRouteMuted(media.player))
+        assertEquals(0, media.pauseCalls)
+        live = true
+        guard.verifyProbeIfActive(setOf(OUTPUT), emptySet(), true)
+        assertFalse(effects.isRouteMuted(media.player))
+        assertEquals(0, media.pauseCalls)
+    }
+
+    @Test
+    fun `a different headset cannot extend the book hold deadline`() = runTest {
+        val effects = PlaybackVolumeEffects(TestAppClock())
+        val media = MutableMediaPlayer().apply { playWhenReady = true }
+        val guard = guard(backgroundScope, UnconfinedTestDispatcher(testScheduler), effects, media.player)
+        effects.attach(media.player)
+        guard.attachPlayer(media.player)
+        guard.protect(OUTPUT)
+        guard.beginProbe(OUTPUT, media.player, EPOCH, remaining = 2.seconds, returnedToInventory = { true })
+        repeat(4) {
+            guard.verifyProbeIfActive(setOf("different"), emptySet(), true)
+            advanceTimeBy(500)
+        }
+        runCurrent()
+        assertNull(guard.currentProbe)
+        assertEquals(1, media.pauseCalls)
+        assertFalse(media.playWhenReady)
+    }
+
     private fun guard(
         scope: kotlinx.coroutines.CoroutineScope,
         dispatcher: kotlinx.coroutines.CoroutineDispatcher,
