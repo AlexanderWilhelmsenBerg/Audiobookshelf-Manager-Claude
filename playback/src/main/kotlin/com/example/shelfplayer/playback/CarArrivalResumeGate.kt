@@ -150,21 +150,24 @@ internal class CarArrivalResumeGate private constructor(
         }
     }
 
-    /** Inventory cleanup is not listener intent. Retain only this already qualified, bounded episode. */
-    fun retainsInterruptedHeadset(id: String, generation: Long?, selectionSequence: Long): Boolean =
-        !requiresFreshPlaybackEvidence &&
+    /** Inventory cleanup preserves the exact headset while its current return or arrival is eligible. */
+    fun retainsInterruptedHeadset(id: String, generation: Long?, selectionSequence: Long): Boolean {
+        if (pendingHeadsetReturn(generation, selectionSequence)?.outputId == id) return true
+        return !requiresFreshPlaybackEvidence &&
             qualifiedEpisode?.retainsHeadset(id, generation, selectionSequence, now()) == true && trustedIdentity(id)
+    }
 
     private fun expireSafetyPause(at: Duration): Boolean {
         val qualified = qualifiedEpisode?.takeUnless { it.closed }
-        val expired = if (qualified != null) {
-            at < qualified.startedAt || at >= qualified.deadline ||
-                !trustedIdentity(qualified.identity.outputId)
-        } else {
-            safetyPausedAt?.let { at - it !in Duration.ZERO..pairingWindow } == true
-        }
-        if (expired) cancelAll()
-        return expired
+        val trusted = qualified?.let { trustedIdentity(it.identity.outputId) } == true
+        val expired = qualified?.let { !trusted || !it.withinLifetime(at) }
+            ?: (safetyPausedAt?.let { at - it !in Duration.ZERO..pairingWindow } == true)
+        if (!expired) return false
+        // An unused arrival can expire while the same headset is still carrying the book.
+        val keepHeadset = trusted && qualified?.expiredWithoutClaim(at) == true &&
+            focusCandidate == null && safetyPausedAt == null
+        if (keepHeadset) closeQualifiedArrivalEpisode() else cancelAll()
+        return true
     }
 
     /**

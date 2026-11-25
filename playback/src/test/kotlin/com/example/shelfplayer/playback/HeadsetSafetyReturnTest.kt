@@ -12,6 +12,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /** PLAY-002: only an app safety interruption can authorize the short same-headset return. */
@@ -96,6 +97,36 @@ class HeadsetSafetyReturnTest {
         f.now = 8.seconds
         val target = assertNotNull(f.pause()?.target)
         assertEquals(10.seconds, target.deadline)
+    }
+
+    @Test
+    fun `unused arrival expiry preserves headset evidence for the next car connection`() {
+        val f = Fixture()
+        f.coordinator.carArrival(f.now, 1, 0, physicalProjection = true)
+        f.now = 15.minutes
+        val departure = f.coordinator.carDeparture(f.now, 1, 0, physicalProjection = true)
+        assertEquals(CarArrivalResumeGate.Status.Armed, departure.status)
+
+        f.now += 25.seconds
+        val next = assertNotNull(f.coordinator.routeSafetyPause(f.now, f.inputs, carBluetoothArrival = true)?.target)
+        assertEquals(f.now + 5.seconds, next.deadline)
+        f.now += 1700.milliseconds
+        assertTrue(f.claim(next))
+    }
+
+    @Test
+    fun `inventory cleanup honors a current headset return after the car episode closes`() {
+        val f = Fixture()
+        f.coordinator.carArrival(f.now, 1, 0, physicalProjection = true)
+        f.now = 10.seconds
+        f.coordinator.carDeparture(f.now, 1, 0, physicalProjection = true)
+        f.now = 35.seconds
+        val target = assertNotNull(f.coordinator.routeSafetyPause(f.now, f.inputs, carBluetoothArrival = true)?.target)
+        assertTrue(f.coordinator.gate.retainsInterruptedHeadset(target.outputId, 1, 0))
+        assertFalse(f.coordinator.gate.retainsInterruptedHeadset("bluetooth:other", 1, 0))
+        assertFalse(f.coordinator.gate.retainsInterruptedHeadset(target.outputId, 1, 1))
+        f.now += 5.seconds
+        assertFalse(f.coordinator.gate.retainsInterruptedHeadset(target.outputId, 1, 0))
     }
 
     @Test

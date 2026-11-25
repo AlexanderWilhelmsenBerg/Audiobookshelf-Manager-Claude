@@ -471,6 +471,8 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   selection/book/profile/player context still invalidate recovery.
   Earlier qualifying evidence can shorten an issued arrival claim's deadline. Pending Play and muted
   verification use the revised deadline and the same attempt allowance.
+- Expiring an unused car arrival with no interruption retains previously verified playing-headset
+  evidence. While an exact headset return is eligible, inventory cleanup keeps that selection.
 - While the current recovery owns a returning headset, that recovery applies its preference. The
   inventory callback publishes the return and clears the missing-route flag without issuing a second
   request. A return outside recovery may still restore the guarded preference while paused.
