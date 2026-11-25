@@ -47,6 +47,8 @@ internal data class CarArrivalEpisode(
     fun retainsHeadset(id: String, generation: Long?, sequence: Long, at: Duration): Boolean =
         !closed && identity.matches(id, generation, sequence) && withinLifetime(at)
 
+    fun expiredWithoutClaim(at: Duration): Boolean = at >= deadline && issuedTarget == null
+
     fun rearm(
         at: Duration,
         headsetId: String?,
@@ -96,5 +98,5 @@ internal data class CarArrivalEpisode(
         return if (at < startedAt) copy(startedAt = at, deadline = at + window) else this
     }
 
-    private fun withinLifetime(at: Duration): Boolean = at >= startedAt && at < deadline
+    fun withinLifetime(at: Duration): Boolean = at >= startedAt && at < deadline
 }

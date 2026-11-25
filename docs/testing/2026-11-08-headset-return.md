@@ -50,6 +50,17 @@ pause. If the headset is already absent, the recovery waits directly for it. If 
 the short inventory settle watches for removal of that headset. Muted current-track proof is required
 before unmute.
 
+## Consecutive car connections, 2026-11-25
+
+In build 2314, the first car session finished with playback still routed to the headset. The second
+arrival briefly exposed the phone speaker. Playback paused, then inventory cleanup changed the
+headset selection to Automatic before the original headset returned about 1.7 seconds later.
+The unused first-arrival window had already expired. Replaying this order showed that its expiry
+cleared the remembered headset and that inventory cleanup depended on a distinct arrival episode.
+Retire an unused arrival without clearing the playing headset, and retain the selection during a
+current return claim. Repeat a parked connect and disconnect after the first arrival window has
+expired, then reconnect while the same book is still playing in the headset.
+
 ## Stationary device acceptance
 
 1. Clear diagnostics; enable route recording. Play a book on one identified headset.

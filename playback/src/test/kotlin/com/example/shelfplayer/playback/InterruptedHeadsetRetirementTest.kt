@@ -8,8 +8,11 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /** A continuity episode delays inventory cleanup, never deliberate Play or an expired owner. */
@@ -26,6 +29,30 @@ class InterruptedHeadsetRetirementTest {
             assertFalse(fixture.player.playWhenReady)
             assertEquals(0L, fixture.selectionSequence)
             assertEquals(fixture.endpointId, fixture.router.selectedId.value)
+        }
+    }
+
+    @Test
+    fun `real inventory cleanup retains the recovery claim on a second car connection`() = runTest {
+        DelayedCarArrivalFixture(this).use { fixture ->
+            fixture.arrive(Duration.ZERO)
+            fixture.depart(15.minutes)
+            fixture.advanceTo(15.minutes + 25.seconds)
+            fixture.service.carBluetoothWindow.onCarHandsFreeConnected("car-fixture")
+
+            fixture.removeHeadset()
+
+            assertFalse(fixture.player.playWhenReady)
+            assertEquals(0L, fixture.selectionSequence)
+            assertEquals(fixture.endpointId, fixture.router.selectedId.value)
+            val target = assertNotNull(
+                fixture.recovery.gate.pendingHeadsetReturn(
+                    fixture.service.routeOwnership.currentGeneration,
+                    fixture.selectionSequence,
+                ),
+            )
+            assertEquals(fixture.endpointId, target.outputId)
+            assertEquals(15.minutes + 30.seconds, target.deadline)
         }
     }
 
