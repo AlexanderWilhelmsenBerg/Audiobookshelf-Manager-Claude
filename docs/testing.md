@@ -8,6 +8,10 @@ current tiers and how to run them; a green JVM gate is not evidence for an absen
 
 ## Required local commands
 
+The [car playback comparison](car-playback-comparison.md) describes the debug suite for repeated physical
+headset and Android Auto trials. Its instrumented engine smoke test runs with
+`./gradlew :playback:connectedDebugAndroidTest`.
+
 ```bash
 ./scripts/check-local-environment.sh
 ./gradlew ktlintFormat

@@ -60,6 +60,7 @@ robolectric = "4.15.1"
 turbine = "1.2.1"
 
 [libraries]
+videolan-libvlc = { module = "org.videolan.android:libvlc-all", version = "3.7.8" }
 # --- AndroidX core -------------------------------------------------------------------------------
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "androidxActivity" }
 androidx-annotation = { group = "androidx.annotation", name = "annotation", version.ref = "androidxAnnotation" }

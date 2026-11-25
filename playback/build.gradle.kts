@@ -30,6 +30,12 @@ android {
  * second stack this module would otherwise have to build and keep in step.
  */
 dependencies {
+    debugImplementation(libs.videolan.libvlc) {
+        // The optional VLC video UI uses the legacy support library. This lab uses audio playback only.
+        exclude(group = "androidx.legacy", module = "legacy-support-v4")
+        // Use the same Kotlin runtime in every test case as the regular BookWave build.
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
+    }
     api(projects.domain)
     implementation(projects.core.common)
     implementation(projects.core.model)
@@ -53,6 +59,8 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.turbine)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.junit4)
 }
 
 /*

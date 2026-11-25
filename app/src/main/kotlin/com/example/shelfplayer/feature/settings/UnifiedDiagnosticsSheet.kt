@@ -53,6 +53,7 @@ fun UnifiedDiagnosticsSheet(
     modifier: Modifier = Modifier,
     capture: UnifiedDiagnosticsViewModel = hiltViewModel(),
     settings: SettingsViewModel = hiltViewModel(),
+    openCarTests: Boolean = false,
 ) {
     val active by capture.active.collectAsStateWithLifecycle()
     val lab by capture.labState.collectAsStateWithLifecycle()
@@ -133,6 +134,7 @@ fun UnifiedDiagnosticsSheet(
                 AudioRouteLabMarkers(enabled = !clearing, onMark = capture::mark, onHeard = capture::heardAt)
             }
             if (BuildConfig.DEBUG) {
+                CarLabControls(enabled = !clearing, initiallyExpanded = openCarTests)
                 TextButton(onClick = { advanced = !advanced }) {
                     Text(
                         stringResource(

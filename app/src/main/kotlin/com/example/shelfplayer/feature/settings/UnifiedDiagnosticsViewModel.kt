@@ -42,6 +42,7 @@ class UnifiedDiagnosticsViewModel @Inject constructor(
     }
 
     fun stop() {
+        endCarLab(context, clear = false)
         capture.stop()
     }
 
@@ -51,6 +52,7 @@ class UnifiedDiagnosticsViewModel @Inject constructor(
 
     fun clear() {
         if (!capture.beginClear()) return
+        endCarLab(context, clear = true)
         viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 withContext(NonCancellable) {
@@ -73,18 +75,21 @@ class UnifiedDiagnosticsViewModel @Inject constructor(
         }.isSuccess
     }
 
-    fun jsonReport(build: String): String = UnifiedDiagnosticsJson.build(
-        build = build,
-        environment = UnifiedDiagnosticsJson.Environment(
-            Build.VERSION.SDK_INT,
-            context.applicationInfo.targetSdkVersion,
-        ),
-        snapshot = UnifiedDiagnosticsJson.Snapshot(
-            recording = capture.active.value,
-            lab = lab.exportSnapshot(),
-            classifier = classifier.state.value,
-            events = logs.events.value,
-            previousCrash = crashes.report.value,
+    fun jsonReport(build: String): String = carLabReport(
+        context,
+        UnifiedDiagnosticsJson.build(
+            build = build,
+            environment = UnifiedDiagnosticsJson.Environment(
+                Build.VERSION.SDK_INT,
+                context.applicationInfo.targetSdkVersion,
+            ),
+            snapshot = UnifiedDiagnosticsJson.Snapshot(
+                recording = capture.active.value,
+                lab = lab.exportSnapshot(),
+                classifier = classifier.state.value,
+                events = logs.events.value,
+                previousCrash = crashes.report.value,
+            ),
         ),
     )
 }
