@@ -18,8 +18,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
@@ -76,6 +79,11 @@ fun DebugConsoleSheet(
     logs: EventLogViewModel = hiltViewModel(),
     crashes: CrashReportViewModel = hiltViewModel(),
 ) {
+    var carTests by rememberSaveable { mutableStateOf(false) }
+    if (BuildConfig.DEBUG && carTests) {
+        UnifiedDiagnosticsSheet(onDismiss = { carTests = false }, openCarTests = true)
+        return
+    }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val metrics by viewModel.playbackMetrics.collectAsStateWithLifecycle()
     val events by logs.events.collectAsStateWithLifecycle()
@@ -119,6 +127,7 @@ fun DebugConsoleSheet(
                 modifier = Modifier.padding(vertical = 4.dp),
             )
             if (BuildConfig.DEBUG) {
+                TextButton(onClick = { carTests = true }) { Text("Car playback test suite") }
                 Text(
                     text = stringResource(R.string.debug_background_sync_title),
                     style = MaterialTheme.typography.labelLarge,

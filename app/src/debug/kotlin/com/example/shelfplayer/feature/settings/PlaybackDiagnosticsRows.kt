@@ -17,6 +17,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.shelfplayer.R
 import com.example.shelfplayer.playback.ColdResumeDiagnostic
 import com.example.shelfplayer.playback.ColdResumeDiagnosticState
+import com.example.shelfplayer.playback.HeadsetRouteTest
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -64,4 +65,5 @@ private fun ColdResumeDiagnosticState.label(): String = stringResource(
 @InstallIn(SingletonComponent::class)
 interface PlaybackDiagnosticsEntryPoint {
     fun coldResumeDiagnostic(): ColdResumeDiagnostic
+    fun headsetRouteTest(): HeadsetRouteTest
 }

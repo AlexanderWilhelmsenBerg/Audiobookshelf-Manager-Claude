@@ -8,6 +8,9 @@ current tiers and how to run them; a green JVM gate is not evidence for an absen
 
 ## Required local commands
 
+The [headset route test](testing/headset-route-test.md) covers PLAY-002 on a parked car using
+the normal book player. Its native AudioTrack smoke test runs with `./gradlew :playback:connectedDebugAndroidTest`.
+
 ```bash
 ./scripts/check-local-environment.sh
 ./gradlew ktlintFormat

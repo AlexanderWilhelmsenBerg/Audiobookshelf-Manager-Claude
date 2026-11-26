@@ -438,6 +438,10 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-26 owner clarification.** Evaluate wireless Android Auto continuity across phone and
+car models with the listener's usual settings. Measure the real player's preferred and actual
+outputs during an ordinary connection and disconnection. [Headset route test](testing/headset-route-test.md)
+
 **2026-11-24 owner refinement (same-headset return during car arrival).** A safety pause of previously
 verified headset playback may wait up to five seconds from the pause when a recent trusted Auto boundary
 matches that headset or a recent car-class hands-free connection is observed in normal audio mode.

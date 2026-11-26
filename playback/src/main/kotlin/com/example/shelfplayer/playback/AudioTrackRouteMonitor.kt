@@ -107,6 +107,16 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     /** Used only in memory by the route safety guard. Never exported without diagnostic opt-in. */
     var onRouteChanged: (() -> Unit)? = null
 
+    /** Installed only for an active debug headset test. The callback can observe, never select an output. */
+    @Volatile internal var testRouteObserver: ((String, AudioTrack?, Long) -> Unit)? = null
+
+    internal fun sampleTestRoutes(source: String) {
+        val observer = testRouteObserver ?: return
+        val token = epoch.nextSnapshot()
+        val track = active
+        if (isCurrent(track, token)) observer(source, track, token)
+    }
+
     /** Read only on the existing main-handler timing callback, and only during diagnostic opt-in. */
     var playbackSnapshot: () -> AudioTrackPlaybackSnapshot? = { null }
 
@@ -148,7 +158,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         return AudioTrackObservation(token, measured).takeIf { isCurrent(track, token) }
     }
 
-    private fun isCurrent(track: AudioTrack, token: Long): Boolean = epoch.isCurrent(token) && active === track
+    internal fun isCurrent(track: AudioTrack?, token: Long): Boolean = epoch.isCurrent(token) && active === track
 
     private fun observedPath(routes: List<AudioDeviceInfo>): AudioTrackPath = when {
         routes.isEmpty() -> AudioTrackPath.Unresolved
@@ -205,7 +215,9 @@ internal class AudioTrackRouteMonitor @Inject constructor(
                     null
                 }
                 val format = AudioOutputWriteTrace.Format(config.encoding, config.sampleRate, frameBytes)
-                return DiagnosticAudioOutput(output, lab.outputWrites, token, format)
+                return DiagnosticAudioOutput(output, lab.outputWrites, token, format) { source ->
+                    if (isCurrent(output.audioTrack, token)) testRouteObserver?.invoke(source, output.audioTrack, token)
+                }
             }
 
             override fun release() {
@@ -246,6 +258,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     /** Measure the current sink before the caller changes playback, then start the usual timing burst. */
     fun sampleBoundary(boundary: AudioTimingBoundary) {
         if (!lab.state.value.recording) return
+        sampleTestRoutes(boundary.name)
         val playback = playbackSnapshot()
         val atNs = clock.elapsed().inWholeNanoseconds
         val token = epoch.nextSnapshot()
@@ -306,6 +319,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         active = track
         val callback = AudioRouting.OnRoutingChangedListener {
             if (isCurrent(track, token)) {
+                testRouteObserver?.invoke("routing-callback", track, token)
                 if (lab.state.value.recording) {
                     lab.trackLifecycle("audio-track-route-changed")
                     sample(routeCallback = true)
@@ -315,6 +329,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         }
         listener = callback
         track.addOnRoutingChangedListener(callback, mainHandler)
+        sampleTestRoutes("track-attached")
         lab.trackLifecycle("audio-track-attached")
         lab.trackObserverStatus("AudioTrack attached; awaiting a playing route sample")
         sample()
@@ -334,6 +349,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
             runCatching { previous.removeOnRoutingChangedListener(callback) }
         }
         if (previous != null) {
+            sampleTestRoutes("track-retired")
             lab.trackLifecycle("audio-track-released-or-replaced")
             lab.trackObserverStatus("AudioTrack released or replaced; no current route measurement")
         }

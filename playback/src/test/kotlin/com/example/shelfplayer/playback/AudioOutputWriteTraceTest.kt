@@ -124,6 +124,19 @@ class AudioOutputWriteTraceTest {
         assertTrue(trace.entries().none { "positionUs=900000" in it })
     }
 
+    @Test
+    fun `native preference observations bracket exactly one Media3 delegate write`() {
+        val calls = mutableListOf<String>()
+        val type = AudioOutput::class.java
+        val delegate = Proxy.newProxyInstance(type.classLoader, arrayOf(type)) { _, method, _ ->
+            calls.add(method.name)
+            null
+        } as AudioOutput
+        val output = DiagnosticAudioOutput(delegate, AudioOutputWriteTrace(TestAppClock()), 7, pcm, calls::add)
+        output.setPreferredDevice(null)
+        assertEquals(listOf("before-preference-write", "setPreferredDevice", "after-preference-write"), calls)
+    }
+
     private fun output(
         trace: AudioOutputWriteTrace,
         format: AudioOutputWriteTrace.Format,
@@ -137,7 +150,7 @@ class AudioOutputWriteTraceTest {
                 else -> error("Unexpected AudioOutput call: ${method.name}")
             }
         } as AudioOutput
-        return DiagnosticAudioOutput(delegate, trace, 7, format)
+        return DiagnosticAudioOutput(delegate, trace, 7, format) {}
     }
 
     private fun consume(buffer: ByteBuffer): Boolean {
