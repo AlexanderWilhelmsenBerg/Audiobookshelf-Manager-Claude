@@ -504,6 +504,7 @@ class PlaybackService : MediaLibraryService() {
         observeAudioOutputs()
         carProjection.start(scope, ::onCarProjectionUpdate)
         carBluetoothMonitor = CarBluetoothArrivalMonitor(applicationContext, carBluetoothWindow, logger) {
+            audioTrackRouteMonitor.sampleTestRoutes("car-hands-free-connected")
             recordAutoConnection("car-bluetooth", confirmed = false)
         }.also(CarBluetoothArrivalMonitor::start)
         headsetTakeBack = createHeadsetTakeBack(applicationContext, clock) { message, fields ->

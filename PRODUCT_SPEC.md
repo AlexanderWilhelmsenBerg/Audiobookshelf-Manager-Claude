@@ -449,6 +449,10 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   handles in one inventory update. Current track proof is still required before unmute.
 - Android Auto discovery must preserve an already verified, healthy headset route without a preference
   reset or artificial waiting delay. Unavailable actual output still pauses safely in every focus mode.
+- Test ordinary wireless arrival and departure with the listener's existing phone and car settings.
+  Count audible gaps separately from recovery to the original headset and position. An opt-in debug
+  run records the native track's preferred and routed outputs with a shared clock and temporary aliases.
+  Two changes observed together have unknown order.
 - An internal route-safety pause of verified active headset playback may authorize one silent recovery
   of that exact trusted headset. Allow up to five seconds when the pause follows a recent trusted Auto
   arrival for that headset or a recent car-class hands-free connection in normal audio mode. Use two

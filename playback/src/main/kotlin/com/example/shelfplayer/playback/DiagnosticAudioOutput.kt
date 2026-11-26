@@ -1,5 +1,6 @@
 package com.example.shelfplayer.playback
 
+import android.media.AudioDeviceInfo
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.audio.AudioOutput
 import androidx.media3.exoplayer.audio.ForwardingAudioOutput
@@ -12,12 +13,19 @@ internal class DiagnosticAudioOutput(
     private val trace: AudioOutputWriteTrace,
     private val epoch: Long,
     private val format: AudioOutputWriteTrace.Format,
+    private val samplePreference: (String) -> Unit,
 ) : ForwardingAudioOutput(delegate) {
     private var blockedCapture: AudioOutputWriteTrace.Capture? = null
     private val position = trace.ClockSampler(AudioOutputWriteTrace.ClockStage.AudioOutput, epoch)
 
     init {
         event("audio-output-open")
+    }
+
+    override fun setPreferredDevice(device: AudioDeviceInfo?) {
+        samplePreference("before-preference-write")
+        super.setPreferredDevice(device)
+        samplePreference("after-preference-write")
     }
 
     override fun getPositionUs(): Long {
