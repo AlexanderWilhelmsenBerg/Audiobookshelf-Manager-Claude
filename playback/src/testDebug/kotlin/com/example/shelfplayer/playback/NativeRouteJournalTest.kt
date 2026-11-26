@@ -62,6 +62,30 @@ class NativeRouteJournalTest {
     }
 
     @Test
+    fun driveSnapshotsKeepTheOpeningAndTailWhileAdvancingFramesKeepTheSameRoute() {
+        var ns = 0L
+        val samples = NativeRouteSamples(keepOpening = 2) { ++ns }
+        val total = NativeRouteSamples.MAX_ROWS + 2
+        for (frame in 1..total) {
+            samples.observe(
+                "boundary-clock",
+                1,
+                { NativeRoutePair(headset, headset, frame.toLong()) },
+                { true },
+            )
+        }
+        samples.seal()
+        val rows = samples.snapshot()
+        assertEquals(NativeRouteSamples.MAX_ROWS, rows.size)
+        assertEquals(1, rows.first().getInt("sequence"))
+        assertEquals(2, rows[1].getInt("sequence"))
+        assertEquals(total, rows.last().getInt("headFrames"))
+        assertEquals("unchanged", rows.last().getString("change"))
+        assertFalse(samples.observe("late", null, { NativeRoutePair.NoTrack }, { true }))
+        assertEquals(rows.size, samples.snapshot().size)
+    }
+
+    @Test
     fun repeatAndUpgradeKeepOlderRunsAndRejectLateWrites() {
         val prefs = context.getSharedPreferences("car-playback-tests", Context.MODE_PRIVATE)
         val legacy = JSONObject().put("runId", 1).put("caseId", "Vlc").put("startUtc", start.toString())

@@ -26,12 +26,14 @@ internal class AndroidAutoCaptureStore(private val folder: File) {
         }
     }
 
-    fun read(cutoff: Instant): List<JSONObject> = files().mapNotNull { file ->
-        runCatching {
-            val row = JSONObject(AtomicFile(file).readFully().toString(Charsets.UTF_8))
-            row.takeIf { !Instant.parse(row.getString("startedAtUtc")).isBefore(cutoff) }
-        }.getOrNull()
-    }
+    fun <T> read(cutoff: Instant, selected: Set<Long>?, transform: (JSONObject) -> T): List<T> = files()
+        .filter { selected == null || it.nameWithoutExtension.toLong() in selected }
+        .mapNotNull { file ->
+            runCatching {
+                val row = JSONObject(AtomicFile(file).readFully().toString(Charsets.UTF_8))
+                row.takeIf { !Instant.parse(row.getString("startedAtUtc")).isBefore(cutoff) }?.let(transform)
+            }.getOrNull()
+        }
 
     fun prune(cutoff: Instant) {
         files().let { files ->

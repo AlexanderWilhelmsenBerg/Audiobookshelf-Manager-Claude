@@ -1,5 +1,10 @@
 # Headset route test
 
+For automatic daily recording and selective drive sharing, use **Android Auto diagnostics → Record
+car connections**. The [drive-history procedure](unified-diagnostics.md#daily-android-auto-capture)
+includes the native outputs and the disconnect observation. Use the manual test below for numbered
+listener notes and optional Perfetto triggers.
+
 Use the phone, car, headset and BookWave playback settings you normally use. While parked with the
 car off, play a book until you hear it through the headset. Open **Settings → About → Advanced &
 diagnostics → Debug console → Car playback test suite** and tap **Start headset route test**.

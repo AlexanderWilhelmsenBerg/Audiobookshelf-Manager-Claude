@@ -3,4 +3,14 @@
     <!-- Manual system-route experiment only. Never invoke scanning or request location. -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
+    <!-- The media service and its search/browse filters merge from :playback, as in the main app manifest. -->
+    <application tools:ignore="MissingMediaBrowserServiceIntentFilter,MissingIntentFilterForMediaSearch">
+        <provider
+            android:name=".feature.settings.DriveExportProvider"
+            android:authorities="${applicationId}.drive-exports"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/drive_export_paths" />
+        </provider>
+    </application>
 </manifest>

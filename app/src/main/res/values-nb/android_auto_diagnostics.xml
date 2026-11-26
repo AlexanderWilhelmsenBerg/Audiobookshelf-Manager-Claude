@@ -1,9 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="auto_diag_title">Android Auto-diagnostikk</string>
-    <string name="auto_diag_description">Registrer hver biltilkobling ved daglig bruk. Eksporter nummererte forsøk, gjenopprettingstider for hodesett og mediekontroller. BookWave beholder opptil 100 forsøk fra de siste 30 dagene på denne enheten.</string>
+    <string name="auto_diag_description">Registrer kjøreturer automatisk når BookWave oppdager Android Auto. De siste 100 tilkoblingene lagres på denne enheten i opptil 30 dager.</string>
     <string name="auto_diag_enable">Registrer biltilkoblinger</string>
     <string name="auto_diag_waiting">Venter på biltilkobling</string>
-    <string name="auto_diag_recording">Registrerer forsøk %1$d</string>
+    <string name="auto_diag_recording">Registrerer tur nr. %1$d</string>
     <string name="auto_diag_clear">Tøm bilhistorikk</string>
+    <string name="auto_filter_all">Alle</string>
+    <string name="auto_filter_with">Med hodesett</string>
+    <string name="auto_filter_without">Uten hodesett</string>
+    <string name="auto_filter_unknown">Ukjent</string>
+    <string name="auto_headset_unknown">Ukjent hodesettstatus</string>
+    <string name="auto_headset_at_connection">Hodesett ved tilkobling</string>
+    <string name="auto_share_latest">Del siste tur</string>
+    <string name="auto_save_latest">Lagre siste tur som JSON</string>
+    <string name="auto_share_selected">Del valgte (%1$d)</string>
+    <string name="auto_save_selected">Lagre valgte som JSON (%1$d)</string>
+    <string name="auto_drive_label">Tur nr. %1$d · %2$s</string>
+    <string name="auto_drive_summary">%1$s · %2$s</string>
+    <string name="auto_drive_end_time">%1$s · %2$s</string>
+    <string name="auto_drive_active">Tilkoblet</string>
+    <string name="auto_drive_connecting">Venter på Android Auto</string>
+    <string name="auto_drive_unconfirmed">Tilkobling ubekreftet</string>
+    <string name="auto_drive_interrupted">Registreringen ble avbrutt</string>
+    <string name="auto_drive_ended">Frakoblet</string>
+    <string name="auto_drive_observing_departure">Fullfører registrering etter frakobling</string>
+    <string name="auto_select_all">Velg alle som vises</string>
+    <string name="auto_reset_selection">Fjern markering</string>
+    <string name="auto_drive_empty">Ingen turer registrert ennå</string>
+    <string name="auto_drive_no_match">Ingen turer samsvarer med hodesettfilteret</string>
+    <string name="auto_drive_loading">Laster turer…</string>
+    <string name="auto_drive_unavailable">Kunne ikke eksportere de valgte turene</string>
+    <string name="auto_drive_picker_hint">Velg turene du vil eksportere sammen.</string>
 </resources>

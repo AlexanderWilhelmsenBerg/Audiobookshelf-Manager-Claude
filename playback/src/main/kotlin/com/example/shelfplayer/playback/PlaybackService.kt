@@ -504,8 +504,8 @@ class PlaybackService : MediaLibraryService() {
         observeAudioOutputs()
         carProjection.start(scope, ::onCarProjectionUpdate)
         carBluetoothMonitor = CarBluetoothArrivalMonitor(applicationContext, carBluetoothWindow, logger) {
-            audioTrackRouteMonitor.sampleTestRoutes("car-hands-free-connected")
             recordAutoConnection("car-bluetooth", confirmed = false)
+            audioTrackRouteMonitor.sampleRouteObservers("car-hands-free-connected")
         }.also(CarBluetoothArrivalMonitor::start)
         headsetTakeBack = createHeadsetTakeBack(applicationContext, clock) { message, fields ->
             autoTraces.log(message, fields = fields + carSnapshotFields())
@@ -1906,14 +1906,11 @@ class PlaybackService : MediaLibraryService() {
             newPosition: Player.PositionInfo,
             reason: Int,
         ) {
+            val sameItem = oldPosition.mediaItemIndex == newPosition.mediaItemIndex &&
+                oldPosition.mediaItem?.mediaId == newPosition.mediaItem?.mediaId
+            autoCapture?.positionDiscontinuity(reason, oldPosition.positionMs, newPosition.positionMs, sameItem)
             if (audioRouteLab.state.value.recording) {
-                audioRouteLab.playerDiscontinuity(
-                    reason,
-                    oldPosition.positionMs,
-                    newPosition.positionMs,
-                    oldPosition.mediaItemIndex == newPosition.mediaItemIndex &&
-                        oldPosition.mediaItem?.mediaId == newPosition.mediaItem?.mediaId,
-                )
+                audioRouteLab.playerDiscontinuity(reason, oldPosition.positionMs, newPosition.positionMs, sameItem)
             }
             if (reason == Player.DISCONTINUITY_REASON_SEEK ||
                 reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT
@@ -2580,7 +2577,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun completeProjectionDeparture() {
-        if (audioRouteLab.state.value.recording) {
+        if (audioRouteLab.state.value.recording || autoCapture?.state?.value?.recordingAttempt != null) {
             audioTrackRouteMonitor.sampleBoundary(AudioTimingBoundary.ProjectionDeparture)
         }
         val selection = audioOutputs.explicitSelection.value
@@ -2661,7 +2658,7 @@ class PlaybackService : MediaLibraryService() {
     private fun recordAutoConnection(evidence: String, confirmed: Boolean) {
         val capture = autoCapture ?: return
         val status = capture.state.value
-        val snapshot = status.enabled && status.recordingAttempt == null
+        val snapshot = status.enabled && (status.recordingAttempt == null || confirmed)
         if (!confirmed && !snapshot) return
         val playing = if (snapshot && routeObservationEffects.isAudible()) {
             routeOwnership.headsetForCar(audioOutputs.outputs.value)?.takeIf(audioOutputs::isMeasuredHeadset)

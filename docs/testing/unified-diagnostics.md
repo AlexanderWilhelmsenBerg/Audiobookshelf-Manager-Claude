@@ -106,9 +106,30 @@ ends a confirmed attempt, with final controller departure as the fallback when p
 visible. The optional Nearby devices permission enables the earlier car Bluetooth signal. Use general
 Playback diagnostics alongside it when a test needs AudioTrack timing bursts or events before connection.
 
-**Save JSON file** exports the retained attempt history. `attemptIndex` lists attempt numbers, connection
+Drive history is newest first. **With headset**, **Without headset**, and **Unknown** filter the
+available drives. **Share latest drive** and **Save latest JSON** use the first visible record.
+To share the first, third and fourth drives, tick those three rows, then tap **Share selected (3)**
+or **Save selected JSON (3)**. **Select all shown** includes the whole filtered list. Changing the
+filter clears the selection. The Android sharesheet grants read access to the selected JSON. Saving
+uses the Android document picker. Both take a snapshot when tapped. Recording continues during export.
+
+`attemptIndex` lists the exported drive numbers, connection
 times, headset presence and failure counts. A verified held headset or an identified wearable output
 counts as present. An ambiguous Bluetooth output or enabling mid-connection can yield unknown.
+New drives retain separate observations at the first car signal and at Android Auto confirmation. A
+positive headset observation at either boundary keeps the drive in **With headset**. An unconfirmed
+hands-free connection and a recording interrupted by service or process shutdown have distinct states.
+The recorder can observe connections while BookWave's playback service is running or bound by Auto.
+
+Each new drive carries its own `nativeRouteSamples` from the real player. The opening and recent
+samples survive trimming on longer drives. Compare `preferred`, `actual`, the track epoch, and the
+native playback head frames on the same track. Ten-second arrival and five-second departure samples
+complement native callbacks during the drive. A `player-discontinuity` event gives Media3's reason,
+before/after positions and same-item flag. Wait until **Finishing disconnect capture** clears if
+sharing a disconnect incident. An immediate export includes the available tail and labels it in
+`departureObservation`. A new drive cuts the preceding observation short. No manual test, Bluetooth
+settings change or USB connection is required. Older drive files keep the evidence available when
+they were recorded.
 `failedHeadsetReconnects` lists attempt and reconnect numbers for returns that needed a subsequent Play
 or went 30 seconds without verified output. Attempts that close at a connection boundary before those
 30 seconds show `unverified` in their reconnect details. Exports apply this distinction to retained v2

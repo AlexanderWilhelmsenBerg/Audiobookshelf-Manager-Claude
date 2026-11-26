@@ -17,7 +17,12 @@ internal data class RouteReading(val status: String, val outputs: List<RoutePort
     }
 }
 
-internal data class NativeRoutePair(val preferred: RouteReading, val actual: RouteReading) {
+internal data class NativeRoutePair(
+    val preferred: RouteReading,
+    val actual: RouteReading,
+    val headFrames: Long? = null,
+    val sampleRateHz: Int? = null,
+) {
     companion object {
         val NoTrack = NativeRoutePair(RouteReading("no-track"), RouteReading("no-track"))
 
@@ -35,7 +40,14 @@ internal data class NativeRoutePair(val preferred: RouteReading, val actual: Rou
                 }
                 if (devices.isEmpty()) RouteReading("unreported") else RouteReading.devices(devices.map { it.port() })
             }
-            return NativeRoutePair(preferred, actual)
+            return NativeRoutePair(
+                preferred,
+                actual,
+                AudioTrackTimingSample.headFrames(track),
+                runCatching {
+                    track.sampleRate
+                }.getOrNull(),
+            )
         }
 
         private fun AudioDeviceInfo.port() = RoutePort(id, type)
@@ -53,7 +65,10 @@ internal data class NativeRoutePair(val preferred: RouteReading, val actual: Rou
 }
 
 /** Serialize native reads across the renderer and routing callbacks. Draining handles JSON outside those reads. */
-internal class NativeRouteSamples(private val elapsedNs: () -> Long = SystemClock::elapsedRealtimeNanos) {
+internal class NativeRouteSamples(
+    private val keepOpening: Int = 1,
+    private val elapsedNs: () -> Long = SystemClock::elapsedRealtimeNanos,
+) {
     private val aliases = mutableMapOf<RoutePort, Int>()
     private val pending = ArrayDeque<Sample>()
     private var sequence = 0L
@@ -71,26 +86,27 @@ internal class NativeRouteSamples(private val elapsedNs: () -> Long = SystemCloc
     )
 
     @Synchronized
-    fun observe(source: String, epoch: Long?, read: () -> NativeRoutePair, isCurrent: () -> Boolean) {
-        if (closed || !isCurrent()) return
+    fun observe(source: String, epoch: Long?, read: () -> NativeRoutePair, isCurrent: () -> Boolean): Boolean {
+        if (closed || !isCurrent()) return false
         val start = elapsedNs()
         val pair = read()
         val end = elapsedNs()
-        if (!isCurrent()) return
+        if (!isCurrent()) return false
         val previous = last
         val change = when {
             previous == null -> "baseline"
             epoch != previous.epoch -> "track-changed"
-            pair == previous.pair -> "unchanged"
+            pair.preferred == previous.pair.preferred && pair.actual == previous.pair.actual -> "unchanged"
             pair.preferred == previous.pair.preferred -> "actual"
             pair.actual == previous.pair.actual -> "preferred"
             else -> "both"
         }
-        if (source == "poll" && change == "unchanged") return
+        if (source == "poll" && change == "unchanged") return false
         val sample = Sample(++sequence, start, end, epoch, source, pair, change)
         last = sample
-        if (pending.size >= MAX_ROWS) pending.removeAt(1)
+        if (pending.size >= MAX_ROWS) pending.removeAt(keepOpening)
         pending.addLast(sample)
+        return true
     }
 
     /** Drained from the coordinator thread. Sequence gaps expose dropped records even after a restart. */
@@ -99,12 +115,24 @@ internal class NativeRouteSamples(private val elapsedNs: () -> Long = SystemCloc
             if (close) closed = true
             pending.toList().also { pending.clear() }
         }
-        return batch.map { row ->
-            JSONObject().put("sequence", row.sequence).put("elapsedRealtimeNs", row.startNs)
-                .put("readEndElapsedRealtimeNs", row.endNs).put("trackEpoch", row.epoch ?: JSONObject.NULL)
-                .put("source", row.source).put("change", row.change)
-                .put("preferred", outputJson(row.pair.preferred)).put("actual", outputJson(row.pair.actual))
-        }
+        return encode(batch)
+    }
+
+    /** Drive files are checkpointed during playback and keep their opening and most recent samples. */
+    fun snapshot(): List<JSONObject> = encode(synchronized(this) { pending.toList() })
+
+    @Synchronized
+    fun seal() {
+        closed = true
+    }
+
+    private fun encode(batch: List<Sample>) = batch.map { row ->
+        JSONObject().put("sequence", row.sequence).put("elapsedRealtimeNs", row.startNs)
+            .put("readEndElapsedRealtimeNs", row.endNs).put("trackEpoch", row.epoch ?: JSONObject.NULL)
+            .put("source", row.source).put("change", row.change)
+            .put("preferred", outputJson(row.pair.preferred)).put("actual", outputJson(row.pair.actual))
+            .put("headFrames", row.pair.headFrames ?: JSONObject.NULL)
+            .put("sampleRateHz", row.pair.sampleRateHz ?: JSONObject.NULL)
     }
 
     private fun outputJson(reading: RouteReading): JSONObject {
