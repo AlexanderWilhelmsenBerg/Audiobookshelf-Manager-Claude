@@ -438,6 +438,11 @@ with visible physical-key cues and BookWave theming. [Implementation/acceptance 
 
 ## PD-009 — Optional Bluetooth identity and bounded Auto continuity
 
+**2026-11-26 owner clarification (ordinary wireless Android Auto use).** BookWave must protect the
+playing headset with the phone and car configured as the listener uses them. The same requirement
+applies across phone and car models. Evaluate uninterrupted speech and recovery to the original
+headset separately during normal wireless arrival and departure. [Hardware acceptance procedure](car-playback-comparison.md#acceptance-during-ordinary-wireless-android-auto-use)
+
 **2026-11-24 owner refinement (same-headset return during car arrival).** A safety pause of previously
 verified headset playback may wait up to five seconds from the pause when a recent trusted Auto boundary
 matches that headset or a recent car-class hands-free connection is observed in normal audio mode.

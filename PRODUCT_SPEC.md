@@ -438,6 +438,9 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - The default **Lock headset while playing** setting protects a verified automatic headset output on supported
   Android versions. Connection alone cannot select a replacement. Turn the setting off to release that automatic
   protection. Explicit output choices, explicit locks and route-loss safety remain available.
+- During ordinary wireless Android Auto startup and shutdown, headset continuity must work with the listener's
+  existing phone and car settings across supported devices. Acceptance uses normal automatic projection.
+  Record an audible gap even when BookWave recovers the original headset and position.
 - Disconnecting headphones while playing pauses immediately.
 - Playback never unexpectedly moves from headphones to the phone speaker.
 - Loss of the active output pauses playback and preserves the book position. When confirmed Android Auto
