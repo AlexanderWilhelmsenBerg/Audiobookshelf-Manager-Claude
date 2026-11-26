@@ -1636,7 +1636,12 @@ Never show stack traces in ordinary UI.
   attempts and redacted playback events through the observed car departure. Car Bluetooth can open an
   unconfirmed attempt. The report indexes headset presence, failed headset recoveries and time from
   interruption to verified headset playback. Store the latest 100 attempts from up to 30 days on-device.
-  Clearing the car history keeps any active attempt recording.
+  The drive picker lists these records newest first, including active and unconfirmed connections.
+  Filter by headset presence at arrival (present, absent or unknown). Share or save the latest matching
+  drive or any selected drive numbers in a single JSON. All indexes and recovery statistics use the
+  same selection. Daily capture includes native preferred and actual outputs, frame counts and player
+  discontinuities around arrival and for five seconds after departure. Clearing the car history keeps
+  any active attempt recording.
 - No analytics or crash service by default.
 - Any future crash reporting is opt-in and strips private content.
 

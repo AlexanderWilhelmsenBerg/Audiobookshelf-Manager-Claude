@@ -12,10 +12,13 @@ internal class AndroidAutoCaptureAttempt(
     val started: Instant,
     startedElapsed: Duration,
     private val source: String,
-    private val headsetPresent: Boolean?,
+    private var headsetPresent: Boolean?,
     verifiedHeadset: String?,
 ) {
     private val startElapsed = startedElapsed
+    private val initialHeadset = headsetPresent
+    private var confirmedHeadset: Boolean? = null
+    var departureObservation: String? = null
     private val headsetPlayingAtStart = verifiedHeadset != null
     var connected: Instant? = null
         private set
@@ -28,11 +31,15 @@ internal class AndroidAutoCaptureAttempt(
     private val reconnects = ArrayDeque<Reconnect>()
     private var reconnectNumber = 0
     private var pending: Reconnect? = null
+    var nativeTrace: DriveRouteTrace? = null
 
-    fun confirm(at: Instant, evidence: String) {
-        if (connected != null) return
+    fun confirm(at: Instant, evidence: String, headsetAtConfirmation: Boolean? = null): Boolean {
+        if (connected != null) return false
+        confirmedHeadset = headsetAtConfirmation
+        if (headsetPresent != true) headsetPresent = headsetAtConfirmation ?: headsetPresent
         connected = at
         event(at, "connected", evidence)
+        return true
     }
 
     fun event(at: Instant, kind: String, details: String = "") {
@@ -113,11 +120,15 @@ internal class AndroidAutoCaptureAttempt(
         .put("endedAtUtc", ended?.toString() ?: JSONObject.NULL)
         .put("endReason", ending ?: JSONObject.NULL)
         .put("headsetPresentAtConnect", headsetPresent ?: JSONObject.NULL)
+        .put("headsetPresentAtFirstSignal", initialHeadset ?: JSONObject.NULL)
+        .put("headsetPresentAtConfirmation", confirmedHeadset ?: JSONObject.NULL)
+        .put("departureObservation", departureObservation ?: JSONObject.NULL)
         .put("headsetPlayingAtStart", headsetPlayingAtStart)
         .put("recoveryStatsVersion", RECOVERY_STATS_VERSION)
         .put("headsetReconnects", JSONArray(reconnects.map { it.json(elapsed, startElapsed) }))
         .put("droppedEvents", dropped)
         .put("events", JSONArray((opening + tail).map(Event::json)))
+        .also { nativeTrace?.appendTo(it) }
 
     private data class Event(val at: String, val kind: String, val details: String) {
         fun json(): JSONObject = JSONObject().put("atUtc", at).put("event", kind).put("details", details)

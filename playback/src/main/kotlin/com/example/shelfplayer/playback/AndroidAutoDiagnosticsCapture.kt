@@ -18,6 +18,8 @@ import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -25,6 +27,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.time.Duration.Companion.days
@@ -33,12 +36,13 @@ import kotlin.time.Duration.Companion.seconds
 
 /** Independent, opt-in history of observed car boundaries. Never issues player or routing commands. */
 @Singleton
-class AndroidAutoDiagnosticsCapture @Inject constructor(
+class AndroidAutoDiagnosticsCapture @Inject internal constructor(
     @ApplicationContext context: Context,
     private val clock: AppClock,
     events: EventLog,
     @param:ApplicationScope private val scope: CoroutineScope,
     @param:Dispatcher(ShelfDispatcher.Io) private val io: CoroutineDispatcher,
+    private val monitor: AudioTrackRouteMonitor? = null,
 ) {
     data class Status(val enabled: Boolean, val recordingAttempt: Long? = null)
 
@@ -50,10 +54,14 @@ class AndroidAutoDiagnosticsCapture @Inject constructor(
     private var connected = false
     private var active: AndroidAutoCaptureAttempt? = null
     private var awaitingConnection: Job? = null
+    private var departureWindow: Job? = null
+    private var departed: AndroidAutoCaptureAttempt? = null
     private var lastTrack: String? = null
-    private val finished = linkedMapOf<Long, JSONObject>()
+    private val finished = linkedMapOf<Long, AndroidAutoCaptureAttempt>()
     private val writeRequests = Channel<Unit>(Channel.CONFLATED)
     private val storageMutex = Mutex()
+    private val historyRevision = MutableStateFlow(0L)
+    val drives = historyRevision.map { readRows(null, AndroidAutoDrive::from).asReversed() }.flowOn(io)
 
     init {
         events.observeWrites(::readLog)
@@ -70,7 +78,10 @@ class AndroidAutoDiagnosticsCapture @Inject constructor(
         if (state.value.enabled == enabled) return
         prefs.edit { putBoolean("enabled", enabled) }
         stateMutable.value = Status(enabled)
-        if (!enabled) finish("capture-disabled")
+        if (!enabled) {
+            finish("capture-disabled")
+            closeDepartureWindow()
+        }
         if (enabled && connected) confirmed("enabled-during-connection", null, null)
     }
 
@@ -96,7 +107,10 @@ class AndroidAutoDiagnosticsCapture @Inject constructor(
         awaitingConnection?.cancel()
         awaitingConnection = null
         val attempt = active ?: open(evidence, headsetPresent, playingHeadset)
-        attempt.confirm(clock.now(), evidence)
+        if (attempt.confirm(clock.now(), evidence, headsetPresent)) {
+            attempt.nativeTrace?.boundary("car-confirmed", DriveRouteTrace.ARRIVAL_MS)
+            historyRevision.value++
+        }
         enqueueWrite()
     }
 
@@ -104,6 +118,19 @@ class AndroidAutoDiagnosticsCapture @Inject constructor(
     internal fun disconnected(reason: String) {
         connected = false
         finish(reason)
+        if (reason == "service-stopped") closeDepartureWindow("service-stopped")
+    }
+
+    @Synchronized
+    internal fun positionDiscontinuity(reason: Int, fromMs: Long, toMs: Long, sameItem: Boolean) {
+        val attempt = active ?: departed ?: return
+        attempt.event(
+            clock.now(),
+            "player-discontinuity",
+            "reasonCode=$reason previousMs=$fromMs nextMs=$toMs sameItem=$sameItem " +
+                "monotonicNs=${clock.elapsed().inWholeNanoseconds}",
+        )
+        enqueueWrite()
     }
 
     @Synchronized
@@ -151,6 +178,7 @@ class AndroidAutoDiagnosticsCapture @Inject constructor(
     }
 
     private fun open(source: String, headsetPresent: Boolean?, playingHeadset: String?): AndroidAutoCaptureAttempt {
+        closeDepartureWindow()
         val number = ++sequence
         lastTrack = null
         prefs.edit { putLong("attempt", number) }
@@ -158,7 +186,9 @@ class AndroidAutoDiagnosticsCapture @Inject constructor(
         return AndroidAutoCaptureAttempt(number, at, clock.elapsed(), source, headsetPresent, playingHeadset).also {
             active = it
             it.event(at, "started", source)
+            startTrace(it)
             stateMutable.value = Status(true, number)
+            historyRevision.value++
             enqueueWrite()
         }
     }
@@ -169,18 +199,54 @@ class AndroidAutoDiagnosticsCapture @Inject constructor(
         awaitingConnection = null
         active = null
         attempt.end(clock.now(), clock.elapsed(), reason)
-        finished[attempt.number] = attempt.snapshot(clock.elapsed())
-        if (finished.size > MAX_ATTEMPTS) finished.remove(finished.keys.first())
+        if (reason == "projection-disconnect" || reason == "final-car-disconnect") {
+            departed = attempt
+            attempt.departureObservation = "recording"
+            attempt.nativeTrace?.boundary("car-disconnected", DriveRouteTrace.DEPARTURE_MS)
+            departureWindow = scope.launch {
+                delay(DriveRouteTrace.DEPARTURE_MS)
+                synchronized(this@AndroidAutoDiagnosticsCapture) {
+                    if (departed === attempt) closeDepartureWindow("complete")
+                }
+            }
+        } else {
+            archive(attempt)
+        }
         stateMutable.value = Status(state.value.enabled)
+        historyRevision.value++
+        enqueueWrite()
+    }
+
+    private fun startTrace(attempt: AndroidAutoCaptureAttempt) {
+        attempt.nativeTrace = monitor?.let { DriveRouteTrace(it, scope, ::enqueueWrite) }
+        attempt.nativeTrace?.boundary("drive-start", DriveRouteTrace.ARRIVAL_MS)
+    }
+
+    private fun closeDepartureWindow(outcome: String = "ended-early") {
+        departureWindow?.cancel()
+        departureWindow = null
+        departed?.let {
+            it.departureObservation = outcome
+            archive(it)
+            historyRevision.value++
+        }
+        departed = null
+    }
+
+    private fun archive(attempt: AndroidAutoCaptureAttempt) {
+        attempt.nativeTrace?.close()
+        finished[attempt.number] = attempt
+        if (finished.size > MAX_ATTEMPTS) finished.remove(finished.keys.first())
         enqueueWrite()
     }
 
     @Synchronized
     private fun readLog(event: LoggedEvent) {
-        val attempt = active ?: return
+        val attempt = active ?: departed ?: return
         val row = AudioRouteLabEvidence.event(event) ?: return
         val kind = row.substringBefore(' ')
         if (kind !in CAPTURE_EVENTS) return
+        if (active == null && kind !in DEPARTURE_EVENTS) return
         attempt.event(event.at, kind, row.substringAfter(' ', ""))
         enqueueWrite()
     }
@@ -191,10 +257,12 @@ class AndroidAutoDiagnosticsCapture @Inject constructor(
 
     private suspend fun persist() = storageMutex.withLock {
         val (completed, current) = synchronized(this) {
-            finished.toMap() to active?.snapshot(clock.elapsed())
+            finished.toMap() to (active ?: departed)?.snapshot(clock.elapsed())
         }
         for ((number, attempt) in completed) {
-            if (storage.write(attempt)) synchronized(this) { finished.remove(number, attempt) }
+            if (storage.write(attempt.snapshot(clock.elapsed()))) {
+                synchronized(this) { finished.remove(number, attempt) }
+            }
         }
         current?.let(storage::write)
         if (completed.isNotEmpty()) storage.prune(cutoff())
@@ -203,36 +271,49 @@ class AndroidAutoDiagnosticsCapture @Inject constructor(
     suspend fun clearAndAwait() = withContext(io) {
         storageMutex.withLock {
             synchronized(this@AndroidAutoDiagnosticsCapture) {
+                closeDepartureWindow()
                 finished.clear()
                 lastTrack = null
-                active?.clear(clock.now())
+                active?.let {
+                    it.nativeTrace?.close()
+                    it.clear(clock.now())
+                    startTrace(it)
+                }
+                historyRevision.value++
             }
             storage.clear()
         }
         enqueueWrite()
     }
 
-    suspend fun report(build: String): String = withContext(io) {
+    suspend fun report(build: String, selected: Set<Long>? = null): String = withContext(io) {
+        val rows = readRows(selected) { it }
+        if (selected != null && rows.size != selected.size) throw IOException("Selected drive is no longer retained")
+        AndroidAutoCaptureReport.format(build, Build.VERSION.SDK_INT, clock.now(), rows)
+    }
+
+    private suspend fun <T> readRows(selected: Set<Long>?, transform: (JSONObject) -> T): List<T> =
         storageMutex.withLock {
             val cutoff = cutoff()
             storage.prune(cutoff)
-            val (completed, current) = synchronized(this@AndroidAutoDiagnosticsCapture) {
-                finished.values.toList() to active?.snapshot(clock.elapsed())
+            val memory = synchronized(this@AndroidAutoDiagnosticsCapture) {
+                val current = (active ?: departed)?.takeIf { selected == null || it.number in selected }
+                finished.filterKeys { selected == null || it in selected }.values.map { it.snapshot(clock.elapsed()) } +
+                    listOfNotNull(current?.snapshot(clock.elapsed()))
             }
-            val old = storage.read(cutoff).map(::closeInterruptedCapture)
-            val rows = (old + completed + listOfNotNull(current)).associateBy { it.getLong("attempt") }
-            AndroidAutoCaptureReport.format(
-                build,
-                Build.VERSION.SDK_INT,
-                clock.now(),
-                rows.toSortedMap().values.toList().takeLast(MAX_ATTEMPTS),
-            )
+            fun entry(row: JSONObject) = row.getLong("attempt") to transform(row)
+            val old = storage.read(cutoff, selected) { entry(closeInterruptedCapture(it)) }
+            (old + memory.map(::entry)).toMap().toSortedMap().values.toList().takeLast(MAX_ATTEMPTS)
         }
-    }
 
     private fun cutoff() = clock.now().minusSeconds(RETENTION.inWholeSeconds)
 
     private fun closeInterruptedCapture(row: JSONObject): JSONObject {
+        if (row.optString("departureObservation") ==
+            "recording"
+        ) {
+            row.put("departureObservation", "recording-interrupted")
+        }
         if (!row.isNull("endReason")) return row
         row.put("endReason", "recording-interrupted")
         val reconnects = row.optJSONArray("headsetReconnects") ?: JSONArray()
@@ -248,12 +329,23 @@ class AndroidAutoDiagnosticsCapture @Inject constructor(
         private val WRITE_INTERVAL = 500.milliseconds
         private val CONNECTION_WINDOW = 30.seconds
         private val RETENTION = 30.days
+        private val DEPARTURE_EVENTS = setOf(
+            "playback-intent",
+            "media3-playback",
+            "preferred-output-request",
+            "playback-error",
+            "recovery-step",
+            "position-compensation",
+            "position-refusal",
+            "car-output-loss",
+        )
         private val CAPTURE_EVENTS = setOf(
             "arrival-settle", "car-bluetooth-inference", "car-bluetooth-window", "car-controller-bound",
             "car-controller-unbound", "car-recovery-outcome", "car-route-intent", "connection-entry",
             "continuity-decision", "focus-observation", "hardware-button", "headset-take-back", "media3-playback",
             "output-proof", "playback-error", "playback-intent", "playback-parameters", "preferred-output-request",
-            "projection-change", "recovery-step", "route-policy-updated", "transport-intent",
+            "projection-change", "recovery-step", "route-policy-updated", "transport-intent", "car-output-loss",
+            "position-compensation", "position-refusal", "displacement-kept", "transport-batch",
         )
     }
 }

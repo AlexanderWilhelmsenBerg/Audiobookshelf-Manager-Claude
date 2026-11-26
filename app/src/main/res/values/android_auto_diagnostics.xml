@@ -1,9 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="auto_diag_title">Android Auto diagnostics</string>
-    <string name="auto_diag_description">Record each car connection for daily testing. Export numbered attempts, headset recovery times and media controls. BookWave keeps up to 100 attempts from the last 30 days on this device.</string>
+    <string name="auto_diag_description">Record drives automatically while BookWave observes Android Auto. The latest 100 connections are kept on this device for up to 30 days.</string>
     <string name="auto_diag_enable">Record car connections</string>
     <string name="auto_diag_waiting">Waiting for a car connection</string>
-    <string name="auto_diag_recording">Recording attempt %1$d</string>
+    <string name="auto_diag_recording">Recording drive #%1$d</string>
     <string name="auto_diag_clear">Clear car history</string>
+    <string name="auto_filter_all">All</string>
+    <string name="auto_filter_with">With headset</string>
+    <string name="auto_filter_without">Without headset</string>
+    <string name="auto_filter_unknown">Unknown</string>
+    <string name="auto_headset_unknown">Headset unknown</string>
+    <string name="auto_headset_at_connection">Headset at connection</string>
+    <string name="auto_share_latest">Share latest drive</string>
+    <string name="auto_save_latest">Save latest JSON</string>
+    <string name="auto_share_selected">Share selected (%1$d)</string>
+    <string name="auto_save_selected">Save selected JSON (%1$d)</string>
+    <string name="auto_drive_label">Drive #%1$d · %2$s</string>
+    <string name="auto_drive_summary">%1$s · %2$s</string>
+    <string name="auto_drive_end_time">%1$s · %2$s</string>
+    <string name="auto_drive_active">Connected</string>
+    <string name="auto_drive_connecting">Awaiting Android Auto</string>
+    <string name="auto_drive_unconfirmed">Connection unconfirmed</string>
+    <string name="auto_drive_interrupted">Recording interrupted</string>
+    <string name="auto_drive_ended">Disconnected</string>
+    <string name="auto_drive_observing_departure">Finishing disconnect capture</string>
+    <string name="auto_select_all">Select all shown</string>
+    <string name="auto_reset_selection">Clear selection</string>
+    <string name="auto_drive_empty">No drives recorded yet</string>
+    <string name="auto_drive_no_match">No drives match this headset filter</string>
+    <string name="auto_drive_loading">Loading drives…</string>
+    <string name="auto_drive_unavailable">Could not export the selected drives</string>
+    <string name="auto_drive_picker_hint">Choose drives below to export them together.</string>
 </resources>

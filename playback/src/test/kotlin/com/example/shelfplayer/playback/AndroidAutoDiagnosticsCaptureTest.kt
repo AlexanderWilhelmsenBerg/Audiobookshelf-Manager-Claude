@@ -5,6 +5,7 @@ import com.example.shelfplayer.core.common.log.EventLog
 import com.example.shelfplayer.core.common.log.LogLevel
 import com.example.shelfplayer.core.testing.TestAppClock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -54,10 +55,15 @@ class AndroidAutoDiagnosticsCaptureTest {
                 EventLog(clock),
                 backgroundScope,
                 StandardTestDispatcher(testScheduler),
+                player.service.audioTrackRouteMonitor,
             )
             player.service.androidAutoDiagnostics = recorder
             recorder.setEnabled(true)
             recorder.confirmed("projection", true, null)
+            val manual = player.service.audioTrackRouteMonitor.observeRoutes(NativeRouteSamples())
+            manual.sample("manual-only")
+            manual.close()
+            player.service.audioTrackRouteMonitor.sampleBoundary(AudioTimingBoundary.RouteSafetyPause)
             player.service.audioOutputs.outputIntentOwner.select(
                 player.endpointId,
                 OutputIntentOwner.Destination.Output,
@@ -71,6 +77,12 @@ class AndroidAutoDiagnosticsCaptureTest {
             val stats = report.getJSONObject("headsetRecoveryMs").getJSONObject("automatic")
             assertEquals(1, stats.getInt("count"))
             assertEquals(700, stats.getInt("minMs"))
+            val samples = report.getJSONArray("attempts").getJSONObject(0).getJSONArray("nativeRouteSamples")
+            val sources = List(samples.length()) { samples.getJSONObject(it).getString("source") }
+            assertTrue("drive-start" in sources)
+            assertTrue("RouteSafetyPause" in sources)
+            assertFalse("manual-only" in sources)
+            assertFalse(player.service.audioRouteLab.state.value.recording)
         }
     }
 
@@ -223,6 +235,62 @@ class AndroidAutoDiagnosticsCaptureTest {
         assertFalse(events.contains("keyCode=85"))
         assertTrue(events.contains("keyCode=126"))
     }
+
+    @Test
+    fun `newest first history and nonconsecutive export survive recreation and exclude unrelated statistics`() =
+        runTest {
+            val f = Fixture(this)
+            f.capture.setEnabled(true)
+            for (present in listOf(true, false, null, true)) {
+                f.capture.confirmed("projection", present, "private-headset".takeIf { present == true })
+                f.capture.interrupted("routeSafety")
+                f.clock.advanceBy(32.seconds)
+                f.capture.disconnected("projection-disconnect")
+            }
+            advanceTimeBy(600)
+            runCurrent()
+            val restored = f.open()
+            val drives = restored.drives.first()
+            assertEquals(listOf(4L, 3L, 2L, 1L), drives.map { it.number })
+            assertEquals(listOf(true, null, false, true), drives.map { it.headsetPresent })
+            val report = JSONObject(restored.report("test", setOf(4, 2, 1)))
+            for (key in listOf("attemptIndex", "attempts")) {
+                val rows = report.getJSONArray(key)
+                assertEquals(listOf(1L, 2L, 4L), List(rows.length()) { rows.getJSONObject(it).getLong("attempt") })
+            }
+            val latest = JSONObject(restored.report("test", setOf(4)))
+            assertEquals(1, latest.getJSONArray("failedHeadsetReconnects").length())
+            assertEquals(4, latest.getJSONArray("failedHeadsetReconnects").getJSONObject(0).getInt("attempt"))
+            assertEquals(0, JSONObject(restored.report("test", emptySet())).getJSONArray("attempts").length())
+        }
+
+    @Test
+    fun `departure evidence stays with its drive until the deadline or the next drive and clearing forgets it`() =
+        runTest {
+            val f = Fixture(this)
+            f.capture.setEnabled(true)
+            f.capture.carBluetoothLink(null, null)
+            f.capture.confirmed("projection", true, "private-headset")
+            f.capture.confirmed("media-session", false, null)
+            f.capture.disconnected("projection-disconnect")
+            f.capture.positionDiscontinuity(1, 10, 20, true)
+            assertEquals(true, f.capture.drives.first().single().headsetPresent)
+            f.capture.confirmed("projection", false, null)
+            f.capture.positionDiscontinuity(1, 30, 40, true)
+            f.capture.disconnected("projection-disconnect")
+            advanceTimeBy(6.seconds)
+            runCurrent()
+            f.capture.positionDiscontinuity(1, 50, 60, true)
+            val rows = f.report().getJSONArray("attempts")
+            val first = rows.getJSONObject(0).getJSONArray("events").toString()
+            val second = rows.getJSONObject(1).getJSONArray("events").toString()
+            assertTrue(first.contains("nextMs=20"))
+            assertFalse(first.contains("nextMs=40"))
+            assertTrue(second.contains("nextMs=40"))
+            assertFalse(second.contains("nextMs=60"))
+            f.capture.clearAndAwait()
+            assertTrue(f.capture.drives.first().isEmpty())
+        }
 
     private class Fixture(scope: TestScope) {
         private val context: Context = RuntimeEnvironment.getApplication()

@@ -31,6 +31,7 @@ internal class AndroidLocalOutputAdapter(
     private val dispatcher: CoroutineDispatcher,
 ) {
     private var live: Map<String, AudioDeviceInfo> = emptyMap()
+    private var inventoryObserved = false
     private val buttonInventory = ButtonOutputInventory(context, registry)
     fun buttonCandidates(): Set<String> = buttonInventory.candidates(live, collidingOutputIds)
     fun soleButtonHeadset(ids: Set<String>): String? = buttonInventory.soleHeadset(ids, live)
@@ -39,6 +40,7 @@ internal class AndroidLocalOutputAdapter(
 
     /** A car-class Bluetooth endpoint alone must not count as a headset in diagnostic summaries. */
     fun headsetPresence(): Boolean? {
+        if (!inventoryObserved) return null
         if (live.values.any(buttonInventory::isWearable)) return true
         return if (collidingOutputIds.isEmpty() && buttonCandidates().isEmpty()) false else null
     }
@@ -91,6 +93,7 @@ internal class AndroidLocalOutputAdapter(
         _identityCapability.value = identityCapability(observations)
         val byHandle = devices.associateBy(AudioDeviceInfo::getId)
         live = entries.mapNotNull { endpoint -> byHandle[endpoint.platformId]?.let { endpoint.id to it } }.toMap()
+        inventoryObserved = true
         collidingOutputIds = entries.groupBy { it.knownDeviceId }.values.filter { it.size > 1 }
             .flatMap { group -> group.map { it.id } }.toSet()
     }

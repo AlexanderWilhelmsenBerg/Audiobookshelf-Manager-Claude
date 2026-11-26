@@ -30,6 +30,7 @@ class HeadsetRouteTest @Inject internal constructor(
 ) {
     val journal = CarLabJournal.get(context)
     private var samples: NativeRouteSamples? = null
+    private var observation: AudioTrackRouteMonitor.RouteObservation? = null
     private var poll: Job? = null
 
     @MainThread
@@ -40,12 +41,9 @@ class HeadsetRouteTest @Inject internal constructor(
         val id = journal.begin(clock.now())
         val run = NativeRouteSamples()
         samples = run
-        monitor.testRouteObserver = { source, track, epoch ->
-            run.observe(source, epoch.takeIf { track != null }, { NativeRoutePair.read(track) }, {
-                monitor.isCurrent(track, epoch)
-            })
-        }
-        monitor.sampleTestRoutes("run-start")
+        val recorder = monitor.observeRoutes(run)
+        observation = recorder
+        recorder.sample("run-start")
         flush()
         lab.onSystemTraceRow = { row, at -> journal.playbackMarker(row, at) }
         journal.onTraceIncident = { eventRun, cause ->
@@ -58,7 +56,7 @@ class HeadsetRouteTest @Inject internal constructor(
                 delay(POLL_MS)
                 val now = clock.elapsed()
                 val heartbeat = (now - lastHeartbeat).inWholeMilliseconds >= HEARTBEAT_MS
-                monitor.sampleTestRoutes(if (heartbeat) "heartbeat" else "poll")
+                recorder.sample(if (heartbeat) "heartbeat" else "poll")
                 if (heartbeat) lastHeartbeat = now
                 flush()
             }
@@ -76,8 +74,9 @@ class HeadsetRouteTest @Inject internal constructor(
         if (samples == null) return
         poll?.cancel()
         poll = null
-        monitor.sampleTestRoutes("run-end")
-        monitor.testRouteObserver = null
+        observation?.sample("run-end")
+        observation?.close()
+        observation = null
         flush(close = true)
         samples = null
         lab.onSystemTraceRow = null

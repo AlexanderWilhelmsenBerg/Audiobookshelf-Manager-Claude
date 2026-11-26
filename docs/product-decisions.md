@@ -602,6 +602,11 @@ their authority. Direct WF-1000XM6 tap evidence is optional, defaults off and is
 Connect is installed and enabled. The app uses the existing Nearby devices grant and never changes the
 companion app's state. See the [hardware test procedure](testing/2026-11-03-headset-button-routing.md).
 
+**2026-11-26 daily testing.** The opt-in Android Auto diagnostics history lists each observed car
+connection with its headset evidence. The listener can filter drives and share or save one or several
+nonconsecutive drives in one JSON. Day-to-day collection uses the normal player and its existing
+settings. The manual headset test remains available for explicitly annotated runs.
+
 ## PD-010 — Edit series order from the series screen
 
 **Status** Accepted
