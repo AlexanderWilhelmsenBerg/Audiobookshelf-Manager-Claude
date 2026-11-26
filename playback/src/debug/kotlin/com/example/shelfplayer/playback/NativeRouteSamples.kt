@@ -4,6 +4,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioTrack
 import android.os.Build
 import android.os.SystemClock
+import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -39,15 +40,19 @@ internal data class NativeRoutePair(val preferred: RouteReading, val actual: Rou
 
         private fun AudioDeviceInfo.port() = RoutePort(id, type)
 
+        // A failed Android route query on a vendor build must never interrupt the real player's preference write.
+        @Suppress("TooGenericExceptionCaught")
         private inline fun reading(query: () -> RouteReading): RouteReading = try {
             query()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: RuntimeException) {
             RouteReading("query-failed")
         }
     }
 }
 
-/** Serialize observations across the renderer and routing callbacks. No JSON or disk work on either thread. */
+/** Serialize native reads across the renderer and routing callbacks. Draining handles JSON outside those reads. */
 internal class NativeRouteSamples(private val elapsedNs: () -> Long = SystemClock::elapsedRealtimeNanos) {
     private val aliases = mutableMapOf<RoutePort, Int>()
     private val pending = ArrayDeque<Sample>()
@@ -55,7 +60,7 @@ internal class NativeRouteSamples(private val elapsedNs: () -> Long = SystemCloc
     private var last: Sample? = null
     private var closed = false
 
-    internal data class Sample(
+    private data class Sample(
         val sequence: Long,
         val startNs: Long,
         val endNs: Long,

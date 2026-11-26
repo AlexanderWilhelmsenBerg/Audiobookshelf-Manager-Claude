@@ -27,6 +27,7 @@ class CarLabSystemTraceTest {
         trace.playback("unrecognized sensitive data", start)
         trace.playback("route-boundary edge=RouteSafetyPause trackRoute=private", start)
         trace.playback("actual-track playing-to=private", start)
-        assertEquals(listOf("BookWave/1/HeadsetRoute/RouteSafetyPause", "BookWave/1/HeadsetRoute/actual-track"), markers)
+        val expected = listOf("BookWave/1/HeadsetRoute/RouteSafetyPause", "BookWave/1/HeadsetRoute/actual-track")
+        assertEquals(expected, markers)
     }
 }
