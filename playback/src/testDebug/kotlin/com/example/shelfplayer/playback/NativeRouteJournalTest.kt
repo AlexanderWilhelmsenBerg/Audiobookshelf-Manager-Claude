@@ -2,6 +2,7 @@ package com.example.shelfplayer.playback
 
 import android.content.Context
 import android.media.AudioDeviceInfo
+import androidx.core.content.edit
 import androidx.test.core.app.ApplicationProvider
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -64,7 +65,10 @@ class NativeRouteJournalTest {
         val prefs = context.getSharedPreferences("car-playback-tests", Context.MODE_PRIVATE)
         val legacy = JSONObject().put("runId", 1).put("caseId", "Vlc").put("startUtc", start.toString())
             .put("lastObservedUtc", start.plusSeconds(1).toString())
-        prefs.edit().putInt("next", 2).putString("run-1", legacy.toString()).commit()
+        prefs.edit {
+            putInt("next", 2)
+            putString("run-1", legacy.toString())
+        }
         val journal = CarLabJournal(context)
         val id = journal.begin(start.plusSeconds(2))
         val samples = NativeRouteSamples { 100L }
