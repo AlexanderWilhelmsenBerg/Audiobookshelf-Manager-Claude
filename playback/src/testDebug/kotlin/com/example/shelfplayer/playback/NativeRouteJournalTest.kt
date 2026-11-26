@@ -24,7 +24,7 @@ class NativeRouteJournalTest {
     fun exportDistinguishesActualFirstBothTogetherAndTrackReplacement() {
         val journal = CarLabJournal(context)
         val run = journal.begin(start)
-        var ns = 100L
+        var ns = 0L
         val samples = NativeRouteSamples { ++ns }
         fun read(epoch: Long, preferred: RouteReading, actual: RouteReading, current: Boolean = true) {
             samples.observe("poll", epoch, { NativeRoutePair(preferred, actual) }, { current })
@@ -37,12 +37,12 @@ class NativeRouteJournalTest {
         read(1, headset, headset)
         read(2, headset, RouteReading("not-playing"))
         journal.routes(run, samples.drain(), start.plusSeconds(1))
-        journal.finish("finished", start.plusSeconds(2))
-        val second = journal.begin(start.plusSeconds(3))
+        val finishedAt = start.plusSeconds(2)
+        journal.finish("finished", finishedAt)
+        val second = journal.begin(finishedAt.plusSeconds(1))
         val json = JSONObject(journal.attach("{}")).getJSONObject("playbackTestSuite")
         assertEquals(second, json.getInt("activeRunId"))
         val rows = json.getJSONArray("runs").getJSONObject(0).getJSONArray("nativeRouteSamples")
-        assertEquals(5, rows.length())
         assertEquals(
             listOf("baseline", "actual", "preferred", "both", "track-changed"),
             (0 until rows.length()).map { rows.getJSONObject(it).getString("change") },
@@ -54,7 +54,8 @@ class NativeRouteJournalTest {
             rows.getJSONObject(1).getJSONObject("preferred").getJSONArray("outputs")
                 .getJSONObject(0).getString("alias"),
         )
-        assertEquals("not-playing", rows.getJSONObject(4).getJSONObject("actual").getString("status"))
+        val replacement = rows.getJSONObject(rows.length() - 1)
+        assertEquals("not-playing", replacement.getJSONObject("actual").getString("status"))
         assertTrue(rows.getJSONObject(1).getLong("elapsedRealtimeNs") > baseline.getLong("readEndElapsedRealtimeNs"))
         assertFalse(rows.toString().contains("7021"))
         assertFalse(rows.toString().contains("8032"))
@@ -70,10 +71,11 @@ class NativeRouteJournalTest {
             putString("run-1", legacy.toString())
         }
         val journal = CarLabJournal(context)
-        val id = journal.begin(start.plusSeconds(2))
-        val samples = NativeRouteSamples { 100L }
+        val resumedAt = start.plusSeconds(2)
+        val id = journal.begin(resumedAt)
+        val samples = NativeRouteSamples { 1L }
         samples.observe("run-start", null, { NativeRoutePair.NoTrack }, { true })
-        journal.routes(1, samples.drain(), start.plusSeconds(3))
+        journal.routes(1, samples.drain(), resumedAt.plusSeconds(1))
         val suite = JSONObject(journal.attach("{}")).getJSONObject("playbackTestSuite")
         val runs = suite.getJSONArray("runs")
         assertEquals("process-interrupted", runs.getJSONObject(0).getString("endReason"))
