@@ -41,6 +41,7 @@ internal fun CarLabControls(enabled: Boolean, initiallyExpanded: Boolean) {
             "With the car off, tap A and play your book in the headset. Start and stop the car. " +
                 "Finish the run, then repeat with B using the same book, headset and focus settings.",
         )
+        Text("For a system trace, arm the phone over USB before the first case. You can unplug for the test.")
         CarLabCases(enabled) { case -> CarLabService.begin(context, case) }
         if (state.run > 0) {
             Text(

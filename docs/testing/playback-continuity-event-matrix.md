@@ -21,3 +21,8 @@ LIMIT: tests inject ordered events into production policy objects, not Android
 service callbacks. They do not prove physical AudioTrack routing, Android Auto OEM
 behavior, or audible output. Service integration and car/headset acceptance remain
 separate requirements before closing playback routing problems.
+
+The [car comparison procedure](../car-playback-comparison.md) adds the hardware checks for wireless
+arrival with an already playing headset. Compare profile connectivity, available outputs, actual
+AudioTrack routing and heard speech. Run-labelled Perfetto captures cover full cycles or the first
+observed incident. A successful tracing test establishes capture capability only.

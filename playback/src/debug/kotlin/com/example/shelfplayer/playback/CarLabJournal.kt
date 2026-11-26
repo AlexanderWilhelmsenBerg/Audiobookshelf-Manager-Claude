@@ -1,6 +1,7 @@
 package com.example.shelfplayer.playback
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.core.content.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,6 +49,12 @@ class CarLabJournal internal constructor(context: Context) {
     private val last get() = runs.optJSONObject(runs.length() - 1)
     private val active get() = last?.takeUnless { it.has("endUtc") }
 
+    @Volatile private var trace: CarLabSystemTrace? = null
+
+    @Volatile internal var onTraceIncident: ((Int, String) -> Unit)? = null
+
+    internal fun playbackMarker(row: String, at: Instant) = trace?.playback(row, at)
+
     init {
         active?.let { finish("process-interrupted", Instant.parse(it.getString("lastObservedUtc")).plusNanos(1)) }
         publish()
@@ -58,10 +65,13 @@ class CarLabJournal internal constructor(context: Context) {
         finish("next-test", now)
         if (runs.length() >= MAX_RUNS) runs.remove(0)
         val id = next++
+        trace = CarLabSystemTrace(id, case, now, onIncident = { onTraceIncident?.invoke(id, it) })
+        trace?.mark("begin")
         runs.put(
             JSONObject().put("runId", id).put("caseId", case.name).put("label", case.label)
                 .put("engine", case.engine).put("focusPolicy", case.focus).put("preferStartingHeadset", case.pin)
-                .put("startUtc", now.toString()).put("lastObservedUtc", now.toString()).put("events", JSONArray()),
+                .put("startUtc", now.toString()).put("startElapsedRealtimeNs", SystemClock.elapsedRealtimeNanos())
+                .put("lastObservedUtc", now.toString()).put("events", JSONArray()),
         )
         persist()
         publish()
@@ -69,14 +79,35 @@ class CarLabJournal internal constructor(context: Context) {
     }
 
     @Synchronized
+    internal fun triggerResult(id: Int, sent: Boolean) {
+        val run = active?.takeIf { it.getInt("runId") == id } ?: return
+        val event = if (sent) "trace-trigger-sent" else "trace-trigger-unavailable"
+        run.put("systemTraceTrigger", event)
+        record(event)
+    }
+
+    @Synchronized
+    internal fun incidentResult(id: Int, cause: String, sent: Boolean) {
+        val run = (runs.length() - 1 downTo 0).firstNotNullOfOrNull { index ->
+            runs.getJSONObject(index).takeIf { it.getInt("runId") == id }
+        } ?: return
+        run.put("systemTraceIncident", JSONObject().put("event", cause).put("signalSent", sent))
+        prefs.edit { putString("run-$id", run.toString()) }
+    }
+
+    @Synchronized
     internal fun record(kind: String, details: JSONObject = JSONObject(), now: Instant = Instant.now()) {
         val run = active ?: return
+        trace?.mark(kind)
         val events = run.getJSONArray("events")
         if (events.length() >= MAX_EVENTS) {
             events.remove(0)
             run.put("discardedEvents", run.optInt("discardedEvents") + 1)
         }
-        events.put(JSONObject().put("atUtc", now.toString()).put("event", kind).put("details", details))
+        events.put(
+            JSONObject().put("atUtc", now.toString()).put("elapsedRealtimeNs", SystemClock.elapsedRealtimeNanos())
+                .put("event", kind).put("details", details),
+        )
         run.put("lastObservedUtc", now.toString())
         persist()
     }
@@ -92,12 +123,16 @@ class CarLabJournal internal constructor(context: Context) {
     internal fun sampleStopped(reason: String) {
         active?.put("sampleStopReason", reason) ?: return
         record("sample-stopped", JSONObject().put("reason", reason))
+        if (reason != "book-play-requested") trace?.incident("sample-stopped")
         publish()
     }
 
     @Synchronized
     internal fun finish(reason: String, now: Instant = Instant.now()) {
         val run = active ?: return
+        trace?.mark("end")
+        if (reason.startsWith("engine-error-")) trace?.incident("engine-error")
+        trace = null
         run.put("endUtc", now.toString()).put("endReason", reason)
         persist()
         publish()
@@ -107,6 +142,11 @@ class CarLabJournal internal constructor(context: Context) {
     @Synchronized
     fun heard(runId: Int, phase: CarLabPhase, result: CarLabHeard) {
         val run = last?.takeIf { it.getInt("runId") == runId } ?: return
+        if (run === active) {
+            val label = "heard-${phase.name}-${result.name}"
+            trace?.mark(label)
+            if (result != CarLabHeard.Continuous) trace?.incident(label)
+        }
         val rows = run.optJSONArray("observations") ?: JSONArray().also { run.put("observations", it) }
         if (rows.length() >= MAX_EVENTS) rows.remove(0)
         rows.put(JSONObject().put("atUtc", Instant.now().toString()).put("phase", phase.name).put("heard", result.name))
@@ -115,6 +155,7 @@ class CarLabJournal internal constructor(context: Context) {
 
     @Synchronized
     fun clear() {
+        trace = null
         while (runs.length() > 0) runs.remove(runs.length() - 1)
         prefs.edit { clear().putInt("next", next) }
         publish()
