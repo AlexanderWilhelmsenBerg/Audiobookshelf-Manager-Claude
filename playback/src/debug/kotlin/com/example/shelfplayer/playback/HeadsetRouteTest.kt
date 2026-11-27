@@ -13,6 +13,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -29,6 +30,11 @@ class HeadsetRouteTest @Inject internal constructor(
     @param:Dispatcher(ShelfDispatcher.Io) private val io: CoroutineDispatcher,
 ) {
     val journal = CarLabJournal.get(context)
+    val outputCase = monitor.headsetTrials.active
+
+    @MainThread
+    fun applyOutputCase(case: HeadsetOutputCase): HeadsetTestResult =
+        monitor.headsetTrials.applyToPausedPlayer?.invoke(case) ?: HeadsetTestResult.PlayHeadsetFirst
     private var samples: NativeRouteSamples? = null
     private var observation: AudioTrackRouteMonitor.RouteObservation? = null
     private var poll: Job? = null
@@ -38,7 +44,7 @@ class HeadsetRouteTest @Inject internal constructor(
         if (capture.clearing.value) return
         finish("next-test")
         capture.start()
-        val id = journal.begin(clock.now())
+        val id = journal.begin(clock.now(), monitor.headsetTrialEvidence())
         val run = NativeRouteSamples()
         samples = run
         val recorder = monitor.observeRoutes(run)
@@ -72,6 +78,7 @@ class HeadsetRouteTest @Inject internal constructor(
     @MainThread
     fun finish(reason: String = "finished") {
         if (samples == null) return
+        journal.record("headset-output-at-end", JSONObject().put("output", monitor.headsetTrialEvidence()), clock.now())
         poll?.cancel()
         poll = null
         observation?.sample("run-end")

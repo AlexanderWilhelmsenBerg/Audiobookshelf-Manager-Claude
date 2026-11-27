@@ -21,3 +21,11 @@ LIMIT: tests inject ordered events into production policy objects, not Android
 service callbacks. They do not prove physical AudioTrack routing, Android Auto OEM
 behavior, or audible output. Service integration and car/headset acceptance remain
 separate requirements before closing playback routing problems.
+
+| Headset comparison | Expected observation |
+| --- | --- |
+| Verified headset, route-safety pause, player clock jumps | Pause-time progress and the same-headset probe retain the earlier book position. |
+| Healthy headset, user seek, stale sample or profile change | Ordinary progress follows the player and the newer command wins. |
+| Normal, capture blocked, short buffer, both | Run and drive exports identify the case. Compare actual PCM buffer duration, underruns and ordered reference audio on hardware. |
+
+The [headset test procedure](headset-route-test.md#compare-headset-output-settings) covers the four cases.

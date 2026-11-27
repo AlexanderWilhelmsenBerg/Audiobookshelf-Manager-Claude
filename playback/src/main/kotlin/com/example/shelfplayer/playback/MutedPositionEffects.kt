@@ -61,11 +61,84 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
 
     private var compensation: HeadsetRouteGuard.Probe? = null
 
+    private data class HeadsetSample(
+        val player: ExoPlayer,
+        val endpoint: String,
+        val at: Duration,
+        val checkpoint: MutedPositionCheckpoint,
+    )
+
+    private var lastHeard: HeadsetSample? = null
+    private var interrupted: HeadsetSample? = null
+    private var settlingPaused: HeadsetSample? = null
+
+    /** Application-thread book position. An inventory entry or a preferred device alone is insufficient. */
+    fun observeGuardedHeadset(now: Duration) {
+        val guard = outputs.positions.guard
+        val endpoint = guard.endpointId ?: return
+        val current = source.player() ?: return
+        if (!current.isPlaying || guard.currentProbe != null || guard.endpointMissing) return
+        val held = snapshot(current) ?: return
+        val sample = HeadsetSample(current, endpoint, now, held)
+        val actualHeadset = outputs.currentTrackObservation()?.path == AudioTrackPath.Endpoint(endpoint)
+        val stillPlaying = current.isPlaying && guard.currentProbe == null
+        if (actualHeadset && stillPlaying && validSample(sample, current)) {
+            lastHeard = sample
+        }
+    }
+
+    /** Runs before pause listeners can journal a cursor that advanced on the projection output. */
+    fun freezeGuardedHeadset(now: Duration) {
+        val sample = lastHeard ?: return
+        lastHeard = null
+        val recent = now - sample.at in Duration.ZERO..MAX_SAMPLE_AGE
+        val stillValid = outputs.positions.guard.currentProbe == null && validSample(sample, sample.player)
+        if (recent && stillValid && sample.checkpoint.position <= sample.player.bookPosition()) {
+            interrupted = sample
+        }
+    }
+
+    fun forgetHeadsetPosition() {
+        lastHeard = null
+        interrupted = null
+    }
+
+    private fun validSample(sample: HeadsetSample, target: Player): Boolean {
+        val held = sample.checkpoint
+        val intent = outputs.positions.intent
+        return target === sample.player && ownsMedia(target, held) &&
+            outputs.positions.guard.endpointId == sample.endpoint &&
+            source.context().command == held.controllerCommandGeneration &&
+            intent.activeBookGeneration == held.bookGeneration &&
+            intent.selection?.sequence == held.selectionSequence
+    }
+
+    /** A deliberate transport command may arrive before the automatic return. Preserve the paused
+     * book cursor, without issuing Play or overruling an explicit seek or a replacement book. */
+    private fun finishInterruptedPosition(command: PlaybackMovement, current: ExoPlayer) {
+        val sample = interrupted
+        forgetHeadsetPosition()
+        if (sample == null || current.playWhenReady || !validSample(sample, current)) return
+        if (command !in setOf(PlaybackMovement.Play, PlaybackMovement.Pause, PlaybackMovement.Stop)) return
+        val position = sample.checkpoint.position
+        if (current.bookPosition() == position) return
+        settlingPaused = sample
+        try {
+            source.onCheckpointSeek(position.inWholeMilliseconds)
+            current.seekTo(position.inWholeMilliseconds)
+        } finally {
+            settlingPaused = null
+        }
+    }
+
     fun install() = outputs.positions.bind(this)
 
     override fun authority(): Context = source.context()
 
-    override fun position(target: Player): Duration = checkpoint(target)?.position ?: target.bookPosition()
+    override fun position(target: Player): Duration = checkpoint(target)?.position
+        ?: interrupted?.takeIf {
+            (!target.playWhenReady || outputs.positions.guard.isPausingForSafety(it.player)) && validSample(it, target)
+        }?.checkpoint?.position ?: target.bookPosition()
 
     override fun positionMs(): Long = source.player()?.let(::position)?.inWholeMilliseconds ?: 0L
 
@@ -90,6 +163,7 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         val current = source.player() ?: return false
         val stamp = source.context()
         val selection = outputs.positions.intent.selection
+        if (interrupted != null) finishInterruptedPosition(PlaybackMovement.Pause, current)
         val active = outputs.positions.guard.currentProbe ?: return unchanged(current, stamp, selection)
         outputs.positions.guard.quiesceProbe(active)
         val held = active.positionCheckpoint ?: return false
@@ -112,12 +186,22 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
     }
 
     override fun capture(probe: HeadsetRouteGuard.Probe): MutedPositionCheckpoint? {
-        val stamp = source.context()
         val current = source.player()?.takeIf { it === probe.player } ?: return null
+        val frozen = interrupted?.takeIf {
+            probe.transferRequest == null && it.endpoint == probe.endpointId && validSample(it, current)
+        }
+        val captured = frozen?.checkpoint ?: snapshot(current) ?: return null
+        if (!authorized(probe, captured)) return null
+        forgetHeadsetPosition()
+        return captured
+    }
+
+    private fun snapshot(current: ExoPlayer): MutedPositionCheckpoint? {
+        val stamp = source.context()
         val item = current.currentMediaItem ?: return null
         if (MediaItems.isResumePlaceholder(item)) return null
         val intent = outputs.outputIntentOwner.state.value
-        val captured = MutedPositionCheckpoint(
+        return MutedPositionCheckpoint(
             item = item,
             position = current.bookPosition(),
             controllerCommandGeneration = stamp.command,
@@ -126,7 +210,6 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
             bookGeneration = intent.activeBookGeneration,
             selectionSequence = intent.selection?.sequence,
         )
-        return captured.takeIf { authorized(probe, it) }
     }
 
     private fun ownsMedia(current: Player, held: MutedPositionCheckpoint): Boolean {
@@ -156,8 +239,24 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
         val stamp = source.context()
         val current = source.player() ?: return {}
         val selection = outputs.positions.intent.selection
+        if (interrupted != null) {
+            finishInterruptedPosition(command, current)
+            if (!unchanged(current, stamp, selection)) return null
+        } else {
+            lastHeard = null
+        }
         val probe = outputs.positions.guard.currentProbe?.takeIf { it.player === current }
             ?: return beforeCurrentReplacement(current, command, stamp, selection)
+        return beforeMutedMovement(probe, command, stamp, selection)
+    }
+
+    private fun beforeMutedMovement(
+        probe: HeadsetRouteGuard.Probe,
+        command: PlaybackMovement,
+        stamp: Context,
+        selection: OutputIntentOwner.Selection?,
+    ): (() -> Unit)? {
+        val current = probe.player
         outputs.positions.guard.quiesceProbe(probe)
         val restored = restoreBeforeMovement(probe, command)
         if (!restored || !unchanged(current, stamp, selection)) {
@@ -208,6 +307,13 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
 
     /** A genuine adopted seek or auto-rewind intentionally changes the held point. */
     fun onSeek(current: ExoPlayer): Boolean {
+        forgetHeadsetPosition()
+        val settling = settlingPaused
+        if (settling != null && validSample(settling, current) &&
+            current.bookPosition() == settling.checkpoint.position
+        ) {
+            return true
+        }
         val correcting = compensation
         val held = correcting?.positionCheckpoint
         if (correcting?.player === current && held != null && source.context() == Context(
@@ -231,6 +337,7 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
     }
 
     fun retireForItemTransition() {
+        forgetHeadsetPosition()
         val current = source.player() ?: return
         val probe = outputs.positions.guard.currentProbe?.takeIf { it.player === current } ?: return
         outputs.positions.guard.quiesceProbe(probe)
@@ -291,6 +398,8 @@ internal class MutedPositionEffects(private val outputs: AudioOutputRouter, priv
     }
 
     private companion object {
+        val MAX_SAMPLE_AGE = 750.milliseconds
+
         // A bound on unheard media, not a wall-clock or route-mismatch tolerance. Target proof stays exact.
         val MAX_SETTLING_ADVANCE = 50.milliseconds
     }

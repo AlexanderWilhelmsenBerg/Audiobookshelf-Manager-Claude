@@ -85,6 +85,24 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     fun latestOutputPosition(): AudioTrackTimingSample? = outputClock?.latest
 
     private var listener: AudioRouting.OnRoutingChangedListener? = null
+    internal val headsetTrials = HeadsetOutputTrials()
+
+    internal fun headsetTrialEvidence(): String {
+        val selected = headsetTrials.active.value
+        val prefix = "case=${selected.name} targetPcmMs=${selected.targetPcmMs}"
+        val track = active ?: return "$prefix track=unavailable"
+        val token = epoch.nextSnapshot()
+        val details = runCatching {
+            val capture = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                track.audioAttributes.allowedCapturePolicy.toString()
+            } else {
+                "unsupported"
+            }
+            "trackEpoch=$token capturePolicy=$capture bufferFrames=${track.bufferSizeInFrames} " +
+                "sampleRate=${track.sampleRate} underruns=${track.underrunCount}"
+        }.getOrNull()
+        return if (details != null && isCurrent(track, token)) "$prefix $details" else "$prefix track=unavailable"
+    }
     private val mainHandler = Handler(Looper.getMainLooper())
     private val epoch = AudioTrackObserverEpoch()
     private val timing = AudioTrackTimingCapture(
@@ -210,7 +228,11 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     fun providerForPlayer(probe: DriveFlushProbe.Player): AudioOutputProvider? {
         // Observe route identity in normal playback; diagnostics stay strictly opt-in.
         if (lab.state.value.recording) lab.trackLifecycle("player-create recording=true")
-        val delegate = runCatching { AudioTrackAudioOutputProvider.Builder(context).build() }
+        val delegate = runCatching {
+            AudioTrackAudioOutputProvider.Builder(
+                context,
+            ).setAudioTrackBufferSizeProvider(headsetTrials.bufferProvider).build()
+        }
             .getOrElse {
                 lab.trackLifecycle("provider-fallback")
                 lab.trackObserverStatus("Provider initialization failed; default Media3 output retained")

@@ -1,0 +1,12 @@
+<resources>
+    <string name="headset_output_test_hint">Spill av boken i hodetelefonene én gang, sett på pause og velg en test før du starter en måling. Blokkering av lydopptak kan slå av direkteteksting for boken.</string>
+    <string name="headset_output_block_capture">Blokker opptak av avspillingen</string>
+    <string name="headset_output_short_buffer">250 ms lydbuffer for hodetelefoner</string>
+    <string name="headset_output_apply">Bruk på boken som er satt på pause</string>
+    <string name="headset_output_pause_first">Sett avspillingen på pause og vent til eventuell gjenoppretting er ferdig.</string>
+    <string name="headset_output_verify_first">Spill av i de valgte hodetelefonene én gang, og sett på pause mens de fortsatt er tilkoblet.</string>
+    <string name="headset_output_unsupported">Blokkering av lydopptak krever Android 10 eller nyere.</string>
+    <string name="headset_output_normal">Vanlig lydopptak og buffer</string>
+    <string name="headset_output_combined">Lydopptak blokkert og 250 ms buffer</string>
+    <string name="headset_output_active">Aktiv lydtest · %1$s</string>
+</resources>

@@ -2,6 +2,7 @@ package com.example.shelfplayer.feature.settings
 
 import android.content.Context
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -12,9 +13,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.shelfplayer.R
 import com.example.shelfplayer.playback.CarLabHeard
 import com.example.shelfplayer.playback.CarLabPhase
+import com.example.shelfplayer.playback.HeadsetOutputCase
+import com.example.shelfplayer.playback.HeadsetRouteTest
+import com.example.shelfplayer.playback.HeadsetTestResult
 import dagger.hilt.android.EntryPointAccessors
 
 private fun routeTest(context: Context) =
@@ -39,6 +45,7 @@ internal fun CarLabControls(enabled: Boolean, initiallyExpanded: Boolean) {
     TextButton(enabled = enabled, onClick = { expanded = !expanded }) { Text("Car playback test suite") }
     if (!expanded) return
     Column {
+        HeadsetOutputControls(test, enabled && !status.running)
         Text("Play your book in the headset, start a run, then start and stop the parked car as usual.")
         TextButton(enabled = enabled, onClick = test::begin) {
             Text(if (status.running) "Start another headset run" else "Start headset route test")
@@ -63,4 +70,49 @@ internal fun CarLabControls(enabled: Boolean, initiallyExpanded: Boolean) {
             Text("After the last run, finish and tap Save JSON.")
         }
     }
+}
+
+@Composable
+private fun HeadsetOutputControls(test: HeadsetRouteTest, enabled: Boolean) {
+    val active by test.outputCase.collectAsStateWithLifecycle()
+    var blockCapture by rememberSaveable(active) { mutableStateOf(active.blockCapture) }
+    var shortBuffer by rememberSaveable(active) { mutableStateOf(active.shortBuffer) }
+    var result by rememberSaveable { mutableStateOf<HeadsetTestResult?>(null) }
+    Text(stringResource(R.string.headset_output_test_hint))
+    FilterChip(
+        selected = blockCapture,
+        onClick = {
+            blockCapture = !blockCapture
+            result = null
+        },
+        enabled = enabled,
+        label = { Text(stringResource(R.string.headset_output_block_capture)) },
+    )
+    FilterChip(
+        selected = shortBuffer,
+        onClick = {
+            shortBuffer = !shortBuffer
+            result = null
+        },
+        enabled = enabled,
+        label = { Text(stringResource(R.string.headset_output_short_buffer)) },
+    )
+    val selected = HeadsetOutputCase.entries.single { it.blockCapture == blockCapture && it.shortBuffer == shortBuffer }
+    TextButton(enabled = enabled && selected != active, onClick = { result = test.applyOutputCase(selected) }) {
+        Text(stringResource(R.string.headset_output_apply))
+    }
+    val message = when (result) {
+        HeadsetTestResult.PauseFirst -> R.string.headset_output_pause_first
+        HeadsetTestResult.PlayHeadsetFirst -> R.string.headset_output_verify_first
+        HeadsetTestResult.CaptureUnsupported -> R.string.headset_output_unsupported
+        HeadsetTestResult.Applied, null -> null
+    }
+    message?.let { Text(stringResource(it)) }
+    val label = when (active) {
+        HeadsetOutputCase.Normal -> R.string.headset_output_normal
+        HeadsetOutputCase.CaptureBlocked -> R.string.headset_output_block_capture
+        HeadsetOutputCase.ShortBuffer -> R.string.headset_output_short_buffer
+        HeadsetOutputCase.Combined -> R.string.headset_output_combined
+    }
+    Text(stringResource(R.string.headset_output_active, stringResource(label)))
 }

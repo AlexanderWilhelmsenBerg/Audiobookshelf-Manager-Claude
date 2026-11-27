@@ -43,7 +43,7 @@ internal class HeadsetRouteGuard(
         val previous = safetyPausePlayer
         safetyPausePlayer = target
         try {
-            // Diagnostics must sample the still-playing AudioTrack and cannot prevent the safety pause.
+            // Capture the pre-pause position and track evidence while the playing route is still observable.
             if (target.playWhenReady) runCatching(beforeSafetyPause)
             target.pause()
         } finally {
