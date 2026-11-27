@@ -105,7 +105,7 @@ private fun HeadsetOutputControls(test: HeadsetRouteTest, enabled: Boolean) {
         HeadsetTestResult.PauseFirst -> R.string.headset_output_pause_first
         HeadsetTestResult.PlayHeadsetFirst -> R.string.headset_output_verify_first
         HeadsetTestResult.CaptureUnsupported -> R.string.headset_output_unsupported
-        else -> null
+        HeadsetTestResult.Applied, null -> null
     }
     message?.let { Text(stringResource(it)) }
     val label = when (active) {
