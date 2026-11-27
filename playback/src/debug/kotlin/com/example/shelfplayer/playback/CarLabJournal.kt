@@ -37,7 +37,7 @@ class CarLabJournal internal constructor(context: Context) {
     }
 
     @Synchronized
-    internal fun begin(now: Instant = Instant.now()): Int {
+    internal fun begin(now: Instant = Instant.now(), outputTest: String = "case=Normal"): Int {
         finish("next-test", now)
         if (runs.length() >= MAX_RUNS) runs.remove(0)
         val id = next++
@@ -45,6 +45,7 @@ class CarLabJournal internal constructor(context: Context) {
         trace?.mark("begin")
         runs.put(
             JSONObject().put("runId", id).put("caseId", CASE_ID).put("label", "Headset route")
+                .put("headsetOutputAtStart", outputTest)
                 .put("engine", "BookWave").put("focusPolicy", "user-settings").put("nativeRouteSamples", JSONArray())
                 .put("startUtc", now.toString()).put("startElapsedRealtimeNs", SystemClock.elapsedRealtimeNanos())
                 .put("lastObservedUtc", now.toString()).put("events", JSONArray()),

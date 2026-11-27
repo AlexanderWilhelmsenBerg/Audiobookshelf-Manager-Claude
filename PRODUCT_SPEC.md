@@ -453,6 +453,11 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   Count audible gaps separately from recovery to the original headset and position. An opt-in debug
   run records the native track's preferred and routed outputs with a shared clock and temporary aliases.
   Two changes observed together have unknown order.
+- A guarded headset safety pause holds a recent book position observed while that exact headset
+  was playing. Pause-time progress and the muted same-headset return share the position. A stale
+  observation or a different command, book, profile, player or selected route cannot supply it.
+  A debug comparison can independently block capture of BookWave audio and request a 250 ms PCM
+  buffer for a paused headset test. Daily playback defaults to normal capture and Media3 buffering.
 - An internal route-safety pause of verified active headset playback may authorize one silent recovery
   of that exact trusted headset. Allow up to five seconds when the pause follows a recent trusted Auto
   arrival for that headset or a recent car-class hands-free connection in normal audio mode. Use two

@@ -179,6 +179,17 @@ class AndroidAutoDiagnosticsCapture @Inject internal constructor(
         }
     }
 
+    @Synchronized
+    internal fun outputTestChanged() {
+        val attempt = active ?: departed ?: return
+        recordOutputTest(attempt, "changed")
+        enqueueWrite()
+    }
+
+    private fun recordOutputTest(attempt: AndroidAutoCaptureAttempt, phase: String) {
+        monitor?.let { attempt.event(clock.now(), "headset-output-test", "phase=$phase ${it.headsetTrialEvidence()}") }
+    }
+
     private fun open(source: String, headsetPresent: Boolean?, playingHeadset: String?): AndroidAutoCaptureAttempt {
         closeDepartureWindow()
         val number = ++sequence
@@ -188,6 +199,7 @@ class AndroidAutoDiagnosticsCapture @Inject internal constructor(
         return AndroidAutoCaptureAttempt(number, at, clock.elapsed(), source, headsetPresent, playingHeadset).also {
             active = it
             it.event(at, "started", source)
+            recordOutputTest(it, "start")
             startTrace(it)
             stateMutable.value = Status(true, number)
             historyRevision.value++
@@ -200,6 +212,7 @@ class AndroidAutoDiagnosticsCapture @Inject internal constructor(
         awaitingConnection?.cancel()
         awaitingConnection = null
         active = null
+        recordOutputTest(attempt, "departure")
         attempt.end(clock.now(), clock.elapsed(), reason)
         if (reason == "projection-disconnect" || reason == "final-car-disconnect") {
             departed = attempt
@@ -229,6 +242,7 @@ class AndroidAutoDiagnosticsCapture @Inject internal constructor(
         departureWindow = null
         departed?.let {
             it.departureObservation = outcome
+            recordOutputTest(it, "after-departure")
             archive(it)
             historyRevision.value++
         }

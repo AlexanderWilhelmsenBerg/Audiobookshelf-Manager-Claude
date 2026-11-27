@@ -1,0 +1,12 @@
+<resources>
+    <string name="headset_output_test_hint">Play your book through the headset once, pause, then apply a test before starting a run. Capture blocking can disable live captions for this book.</string>
+    <string name="headset_output_block_capture">Block playback capture</string>
+    <string name="headset_output_short_buffer">250 ms headset buffer</string>
+    <string name="headset_output_apply">Apply to paused book</string>
+    <string name="headset_output_pause_first">Pause playback and finish any active recovery first.</string>
+    <string name="headset_output_verify_first">Play through the selected headset once, then pause with it still connected.</string>
+    <string name="headset_output_unsupported">Capture blocking requires Android 10 or newer.</string>
+    <string name="headset_output_normal">Normal capture and buffer</string>
+    <string name="headset_output_combined">Capture blocked and 250 ms buffer</string>
+    <string name="headset_output_active">Active output test · %1$s</string>
+</resources>

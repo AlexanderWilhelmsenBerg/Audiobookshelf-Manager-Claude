@@ -39,9 +39,14 @@ class NativeRouteJournalTest {
         journal.routes(run, samples.drain(), start.plusSeconds(1))
         val finishedAt = start.plusSeconds(2)
         journal.finish("finished", finishedAt)
-        val second = journal.begin(finishedAt.plusSeconds(1))
+        val second = journal.begin(finishedAt.plusSeconds(1), "case=Combined targetPcmMs=250")
         val json = JSONObject(journal.attach("{}")).getJSONObject("playbackTestSuite")
         assertEquals(second, json.getInt("activeRunId"))
+        assertEquals("case=Normal", json.getJSONArray("runs").getJSONObject(0).getString("headsetOutputAtStart"))
+        assertEquals(
+            "case=Combined targetPcmMs=250",
+            json.getJSONArray("runs").getJSONObject(1).getString("headsetOutputAtStart"),
+        )
         val rows = json.getJSONArray("runs").getJSONObject(0).getJSONArray("nativeRouteSamples")
         assertEquals(
             listOf("baseline", "actual", "preferred", "both", "track-changed"),

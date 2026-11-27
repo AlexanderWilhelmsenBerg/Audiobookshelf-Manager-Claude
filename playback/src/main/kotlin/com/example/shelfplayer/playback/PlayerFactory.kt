@@ -75,7 +75,10 @@ internal class DefaultPlayerFactory @Inject constructor(
             // PRODUCT_SPEC PLAY-006 — Automatic leaves Media3's own load control alone, which is a different
             // thing from any particular pair of numbers and is why the enum carries no override for it.
             .apply { loadControlFor(buffer)?.let(::setLoadControl) }
-            .setAudioAttributes(playbackAudioAttributes(focus), focus != FocusBehaviour.Ignore)
+            .setAudioAttributes(
+                playbackAudioAttributes(focus, audioTrackRouteMonitor.headsetTrials.active.value),
+                focus != FocusBehaviour.Ignore,
+            )
             // Standard Media3 AudioTrack provider, observed in memory for route safety even without
             // diagnostic capture. Null fallback retains Media3's original output provider.
             .apply { audioTrackRouteMonitor.providerForPlayer(probe)?.let(::setAudioOutputProvider) }
@@ -125,7 +128,11 @@ internal class DefaultPlayerFactory @Inject constructor(
 }
 
 /** Media3 uses the declared content type to decide whether to duck a duckable interruption. */
-internal fun playbackAudioAttributes(focus: FocusBehaviour): AudioAttributes = AudioAttributes.Builder()
+internal fun playbackAudioAttributes(
+    focus: FocusBehaviour,
+    test: HeadsetOutputCase = HeadsetOutputCase.Normal,
+): AudioAttributes = AudioAttributes.Builder()
     .setUsage(C.USAGE_MEDIA)
     .setContentType(if (focus == FocusBehaviour.Duck) C.AUDIO_CONTENT_TYPE_MUSIC else C.AUDIO_CONTENT_TYPE_SPEECH)
+    .apply { if (test.blockCapture) setAllowedCapturePolicy(C.ALLOW_CAPTURE_BY_NONE) }
     .build()

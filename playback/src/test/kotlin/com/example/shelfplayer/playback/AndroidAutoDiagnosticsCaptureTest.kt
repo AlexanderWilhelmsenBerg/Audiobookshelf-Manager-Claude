@@ -87,6 +87,10 @@ class AndroidAutoDiagnosticsCaptureTest {
             assertEquals(700, stats.getInt("minMs"))
             val drive = report.getJSONArray("attempts").getJSONObject(0)
             assertTrue(drive.has("media3OutputClockSamples"))
+            val events = drive.getJSONArray("events")
+            val output = (0 until events.length()).map(events::getJSONObject)
+                .single { it.getString("event") == "headset-output-test" }
+            assertTrue(output.getString("details").contains("phase=start case=Normal targetPcmMs=500"))
             assertEquals(0, drive.getJSONArray("audioSinkFlushes").length())
             val samples = drive.getJSONArray("nativeRouteSamples")
             val sources = List(samples.length()) { samples.getJSONObject(it).getString("source") }

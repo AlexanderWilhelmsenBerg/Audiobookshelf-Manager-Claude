@@ -12,8 +12,29 @@ or audio heard in the car. Share the drive after **Finishing disconnect capture*
 
 Use the phone, car, headset and BookWave playback settings you normally use. While parked with the
 car off, play a book until you hear it through the headset. Open **Settings → About → Advanced &
-diagnostics → Debug console → Car playback test suite** and tap **Start headset route test**.
-Playback diagnostics also contains the same control.
+diagnostics → Debug console → Car playback test suite**. Playback diagnostics also contains the
+same controls.
+
+### Compare headset output settings
+
+Start with **Normal capture and buffer**. While the headset is playing, tap **Start headset route
+test**. For subsequent runs, finish the previous run and pause the book with the headset connected.
+Choose **Block playback capture**, **250 ms headset buffer**, or both, and tap **Apply to paused
+book**. Check the active test label. Press Play, confirm you hear the headset, then start the next
+run. Clear both choices and apply to return to normal. A new service starts in normal mode.
+Blocking capture can disable internal-audio recording and live captions for BookWave.
+
+Repeat the same connection and disconnect for each case. Listen with the screen off for several
+minutes before connecting, using your usual speed and EQ. Try a known spoken sequence to identify
+a missing or repeated number. Also check deliberate **Play in car**, a real Pause, and unplugging
+the playing headset. Wireless projection alone must leave a healthy headset playing. The position
+correction is active in all four cases.
+
+Each manual run saves its starting output settings and a final sample. Each recorded drive includes
+`headset-output-test` events on opening, on a test change, at departure and after the observation
+window. Compare native buffer frames divided by sample rate to obtain the effective buffer duration.
+The 250 ms target respects Android’s device minimum. Compare underrun counts only within the same
+track epoch. Missing track readings are marked unavailable.
 
 1. Start the car normally and let wireless Android Auto connect. Turn off the car and listen through
    disconnection. Mark what you heard for **Connect** and **Disconnect**. A recovery after a gap

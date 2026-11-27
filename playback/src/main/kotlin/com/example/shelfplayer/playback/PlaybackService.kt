@@ -297,6 +297,7 @@ class PlaybackService : MediaLibraryService() {
     private lateinit var activeProfileGeneration: () -> Long
     private var session: MediaLibrarySession? = null
     private var journal: Job? = null
+    private var headsetPositionSamples: Job? = null
     private var sleepTimerWatch: Job? = null
     private var skipWatch: Job? = null
     private var outputWatch: Job? = null
@@ -534,6 +535,7 @@ class PlaybackService : MediaLibraryService() {
 
     private fun attachRouteSafetyMonitor(exoPlayer: ExoPlayer) {
         carOutputSafety.clear()
+        audioTrackRouteMonitor.headsetTrials.applyToPausedPlayer = ::applyHeadsetOutputTest
         audioTrackRouteMonitor.onRouteChanged = {
             pauseLostCarOutput(projectionDeparted = false)
             audioOutputs.onActualTrackRouteChanged()
@@ -993,7 +995,11 @@ class PlaybackService : MediaLibraryService() {
             prepareFocusForTransport(requestedPlay, current)
             val accepted = routeExplicitCarPlay(requestedPlay, current) && buttonRouting.apply(destination) &&
                 prepareFreshPlayOutput(freshPlay, destination)
-            if (accepted && freshPlay) authorizeManualFocusPlay(command)
+            if (accepted && freshPlay) {
+                val selected = audioOutputs.selectedId.value?.takeIf { it in audioOutputs.localOutputs.endpointIds }
+                clearOutputTestOnTransfer(current, selected)
+                authorizeManualFocusPlay(command)
+            }
             if (destination != null) {
                 autoTraces.log(
                     "Media-button output request",
@@ -1037,6 +1043,7 @@ class PlaybackService : MediaLibraryService() {
                 override fun player() = this@PlaybackService.player
                 override fun authority() = positionEffects.authority()
                 override fun advanceCommand() {
+                    positionEffects.forgetHeadsetPosition()
                     controllerCommandGeneration += 1
                 }
                 override fun finishMovement(movement: PlaybackMovement): Boolean {
@@ -1108,6 +1115,7 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun onCarPlatformInterruption(reason: Int) {
         val focusLoss = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
+        if (focusLoss) positionEffects.forgetHeadsetPosition()
         val source = if (focusLoss) "audio-focus-loss" else "becoming-noisy"
         val trace = autoTraces.ensure(source)
         autoTraces.log(
@@ -1163,6 +1171,8 @@ class PlaybackService : MediaLibraryService() {
         // coordinator, because `scope` is cancelled two lines below.
         sessionSync.onShutdown()
         sessionSync.detach()
+        audioTrackRouteMonitor.headsetTrials.applyToPausedPlayer = null
+        audioTrackRouteMonitor.headsetTrials.select(HeadsetOutputCase.Normal, null)
         audioOutputs.positions.clear()
         audioOutputs.currentProjection = { false }
         audioOutputs.confirmedCarAbsent = { false }
@@ -1775,6 +1785,7 @@ class PlaybackService : MediaLibraryService() {
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (!isPlaying) headsetPositionSamples?.cancel()
             if (isPlaying) autoRewind.onResumed()
             audioTrackRouteMonitor.sample()
             audioOutputs.verifyOutputLock()
@@ -2096,7 +2107,56 @@ class PlaybackService : MediaLibraryService() {
         if (current.playWhenReady || appliedFocus == focus) return
         if (appliedFocus == FocusBehaviour.Ignore) manualFocus.release()
         appliedFocus = focus
-        current.setAudioAttributes(playbackAudioAttributes(focus), focus != FocusBehaviour.Ignore)
+        val test = if (::audioTrackRouteMonitor.isInitialized) {
+            audioTrackRouteMonitor.headsetTrials.active.value
+        } else {
+            HeadsetOutputCase.Normal
+        }
+        current.setAudioAttributes(playbackAudioAttributes(focus, test), focus != FocusBehaviour.Ignore)
+    }
+
+    /** The debug screen can prepare the loaded book while paused. Only the listener can start it. */
+    private fun applyHeadsetOutputTest(test: HeadsetOutputCase): HeadsetTestResult {
+        val current = player ?: return HeadsetTestResult.PlayHeadsetFirst
+        val guard = audioOutputs.positions.guard
+        val headset = guard.endpointId?.takeIf {
+            it == audioOutputs.selectedId.value && it in audioOutputs.localOutputs.endpointIds
+        }
+        val hasHeadsetBook = current.currentMediaItem != null && headset != null
+        return when {
+            current.playWhenReady || guard.currentProbe != null -> HeadsetTestResult.PauseFirst
+
+            test.blockCapture && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> HeadsetTestResult.CaptureUnsupported
+
+            test != HeadsetOutputCase.Normal && !hasHeadsetBook -> HeadsetTestResult.PlayHeadsetFirst
+
+            else -> {
+                setHeadsetOutputTest(current, test, headset)
+                HeadsetTestResult.Applied
+            }
+        }
+    }
+
+    private fun clearOutputTestOnTransfer(current: ExoPlayer?, outputId: String?) {
+        if (current == null || !::audioTrackRouteMonitor.isInitialized) return
+        val bound = audioTrackRouteMonitor.headsetTrials.endpoint ?: return
+        if (bound != outputId) setHeadsetOutputTest(current, HeadsetOutputCase.Normal, null)
+    }
+
+    private fun setHeadsetOutputTest(current: ExoPlayer, test: HeadsetOutputCase, endpoint: String?) {
+        val trials = audioTrackRouteMonitor.headsetTrials
+        if (trials.active.value == test &&
+            trials.endpoint == endpoint.takeUnless { test == HeadsetOutputCase.Normal }
+        ) {
+            return
+        }
+        val prepare =
+            !current.playWhenReady && current.playbackState != Player.STATE_IDLE && current.currentMediaItem != null
+        if (prepare) current.stop()
+        trials.select(test, endpoint)
+        current.setAudioAttributes(playbackAudioAttributes(appliedFocus, test), appliedFocus != FocusBehaviour.Ignore)
+        if (prepare) current.prepare()
+        autoCapture?.outputTestChanged()
     }
 
     private fun observeSkipIntervals() {
@@ -2218,6 +2278,7 @@ class PlaybackService : MediaLibraryService() {
         }
         audioOutputs.isRecoveringHeadset = { id -> carResumeEffects.isRecoveringHeadset(id) }
         audioOutputs.onBeforeRouteSafetyPause = {
+            positionEffects.freezeGuardedHeadset(clock.elapsed())
             audioTrackRouteMonitor.sampleBoundary(AudioTimingBoundary.RouteSafetyPause)
         }
     }
@@ -2230,6 +2291,8 @@ class PlaybackService : MediaLibraryService() {
             isAudible = routeObservationEffects.isAudible(),
         )
         if (changed) {
+            positionEffects.forgetHeadsetPosition()
+            clearOutputTestOnTransfer(player, selection.outputId)
             clearCarContinuity()
             sleepTimer.onControllerTransportIntent()
         }
@@ -2298,8 +2361,21 @@ class PlaybackService : MediaLibraryService() {
             headsetTakeBack.onHeadsetVerified(headset) {
                 !carBluetoothWindow.isOpen() && carLifecycle.definitelyAbsent
             }
+            startHeadsetPositionSamples()
         }
         carRecovery.observePlayingHeadset(continuityInputs(outputs))
+    }
+
+    private fun startHeadsetPositionSamples() {
+        if (!::scope.isInitialized || headsetPositionSamples?.isActive == true) return
+        val target = player ?: return
+        if (audioOutputs.positions.guard.endpointId == null) return
+        headsetPositionSamples = scope.launch {
+            while (player === target && target.isPlaying && audioOutputs.positions.guard.endpointId != null) {
+                if (!volumeEffects.isRouteMuted(target)) positionEffects.observeGuardedHeadset(clock.elapsed())
+                delay(HEADSET_POSITION_INTERVAL_MS)
+            }
+        }
     }
 
     private fun requestHeadsetTakeBack(target: CarArrivalResumeGate.Target) {
@@ -4019,6 +4095,7 @@ class PlaybackService : MediaLibraryService() {
 
         /** PRODUCT_SPEC PLAY-004 — "at least every five seconds". */
         const val JOURNAL_INTERVAL_MS = 5_000L
+        const val HEADSET_POSITION_INTERVAL_MS = 250L
 
         /**
          * PRODUCT_SPEC SYNC-002 — how far from the adopted position the player may land and still count.
