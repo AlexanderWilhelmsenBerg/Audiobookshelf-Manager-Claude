@@ -132,7 +132,15 @@ class AudioOutputWriteTraceTest {
             calls.add(method.name)
             null
         } as AudioOutput
-        val output = DiagnosticAudioOutput(delegate, AudioOutputWriteTrace(TestAppClock()), 7, pcm, calls::add)
+        val output =
+            DiagnosticAudioOutput(
+                delegate,
+                AudioOutputWriteTrace(TestAppClock()),
+                7,
+                pcm,
+                DriveFlushProbe().Player(),
+                calls::add,
+            )
         output.setPreferredDevice(null)
         assertEquals(listOf("before-preference-write", "setPreferredDevice", "after-preference-write"), calls)
     }
@@ -150,7 +158,7 @@ class AudioOutputWriteTraceTest {
                 else -> error("Unexpected AudioOutput call: ${method.name}")
             }
         } as AudioOutput
-        return DiagnosticAudioOutput(delegate, trace, 7, format) {}
+        return DiagnosticAudioOutput(delegate, trace, 7, format, DriveFlushProbe().Player()) {}
     }
 
     private fun consume(buffer: ByteBuffer): Boolean {

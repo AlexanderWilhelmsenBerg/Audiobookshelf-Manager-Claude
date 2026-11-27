@@ -40,6 +40,7 @@ class AndroidAutoDiagnosticsCaptureTest {
         val report = JSONObject(AndroidAutoCaptureReport.format("build test", 34, at, listOf(oldRow)))
         assertEquals(1, report.getInt("legacyAttemptsExcludedFromRecoveryStats"))
         assertEquals(0, report.getJSONArray("failedHeadsetReconnects").length())
+        assertFalse(report.getJSONArray("attempts").getJSONObject(0).has("audioSinkFlushes"))
         assertEquals(1, report.getJSONArray("attempts").getJSONObject(0).getJSONArray("headsetReconnects").length())
     }
 
@@ -77,7 +78,9 @@ class AndroidAutoDiagnosticsCaptureTest {
             val stats = report.getJSONObject("headsetRecoveryMs").getJSONObject("automatic")
             assertEquals(1, stats.getInt("count"))
             assertEquals(700, stats.getInt("minMs"))
-            val samples = report.getJSONArray("attempts").getJSONObject(0).getJSONArray("nativeRouteSamples")
+            val drive = report.getJSONArray("attempts").getJSONObject(0)
+            assertEquals(0, drive.getJSONArray("audioSinkFlushes").length())
+            val samples = drive.getJSONArray("nativeRouteSamples")
             val sources = List(samples.length()) { samples.getJSONObject(it).getString("source") }
             assertTrue("drive-start" in sources)
             assertTrue("RouteSafetyPause" in sources)

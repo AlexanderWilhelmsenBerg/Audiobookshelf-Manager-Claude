@@ -199,9 +199,12 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         }
     }
 
-    fun diagnosticSink(sink: AudioSink): AudioSink = DiagnosticAudioSink(sink, lab.outputWrites)
+    val driveFlush = DriveFlushProbe()
 
-    fun providerForPlayer(): AudioOutputProvider? {
+    fun diagnosticSink(sink: AudioSink, probe: DriveFlushProbe.Player): AudioSink =
+        DiagnosticAudioSink(sink, lab.outputWrites, probe)
+
+    fun providerForPlayer(probe: DriveFlushProbe.Player): AudioOutputProvider? {
         // Observe route identity in normal playback; diagnostics stay strictly opt-in.
         if (lab.state.value.recording) lab.trackLifecycle("player-create recording=true")
         val delegate = runCatching { AudioTrackAudioOutputProvider.Builder(context).build() }
@@ -216,6 +219,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
             override fun getAudioOutput(config: AudioOutputProvider.OutputConfig): AudioOutput {
                 // Media3 retains ownership of output creation and its errors.
                 val output = super.getAudioOutput(config)
+                probe.trackEpoch = null
                 if (output !is AudioTrackAudioOutput) {
                     // A new non-track output invalidates any previous track measurement.
                     forget()
@@ -236,7 +240,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
                     null
                 }
                 val format = AudioOutputWriteTrace.Format(config.encoding, config.sampleRate, frameBytes)
-                return DiagnosticAudioOutput(output, lab.outputWrites, token, format) { source ->
+                return DiagnosticAudioOutput(output, lab.outputWrites, token, format, probe) { source ->
                     routeObservers.forEach { it.observe(source, output.audioTrack, token) }
                 }
             }

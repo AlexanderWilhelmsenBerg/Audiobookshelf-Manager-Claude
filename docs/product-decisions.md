@@ -607,6 +607,10 @@ connection with its headset evidence. The listener can filter drives and share o
 nonconsecutive drives in one JSON. Day-to-day collection uses the normal player and its existing
 settings. The manual headset test remains available for explicitly annotated runs.
 
+**2026-11-27 disconnect diagnosis.** A recorded drive includes the first observed audio sink flush
+and its preceding output levels. The disconnect observation also preserves its first flush when an
+earlier flush occurred during the drive. The capture stores code symbols and amplitude summaries.
+
 ## PD-010 — Edit series order from the series screen
 
 **Status** Accepted

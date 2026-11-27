@@ -130,6 +130,22 @@ sharing a disconnect incident. An immediate export includes the available tail a
 `departureObservation`. A new drive cuts the preceding observation short. No manual test, Bluetooth
 settings change or USB connection is required. Older drive files keep the evidence available when
 they were recorded.
+
+In drives recorded with the flush probe, `audioSinkFlushes` lists the first call to Media3's
+`AudioSink.flush()` and the first call during the five seconds after disconnect. If the first call
+occurs after disconnect, it appears once with `phase = departure`. An empty array means the
+recorder observed no call. Drives from older builds omit the field.
+
+Each entry gives the caller's BookWave or Media3 class and method in `callerStack`, nearest first.
+Match `elapsedRealtimeNs` and `trackEpoch` against the native route samples. `precedingWrites`
+contains up to eight writes accepted by that player's AudioTrack output, oldest first. While recording
+is enabled, up to one second of recent pre-connection levels can carry into a drive that starts
+mid-playback. Each write reports its age at the flush, accepted bytes, and RMS and peak in dBFS
+across all channels for its final 20 ms of PCM or the whole write if shorter. Zero dBFS is full scale.
+`digital-silence` means every measured sample was zero. Encoded output and incomplete or invalid
+PCM have explicit statuses. An empty write list means there was no eligible measurement. The probe
+stores numerical levels and code symbols. Headset audibility still requires a listening observation.
+
 `failedHeadsetReconnects` lists attempt and reconnect numbers for returns that needed a subsequent Play
 or went 30 seconds without verified output. Attempts that close at a connection boundary before those
 30 seconds show `unverified` in their reconnect details. Exports apply this distinction to retained v2

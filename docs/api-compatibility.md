@@ -1,5 +1,9 @@
 # Audiobookshelf API compatibility
 
+The 2026-11-27 Android Auto drive export adds optional `attempts[].audioSinkFlushes` to the local
+JSON. Retained drives from earlier builds keep their original fields. The existing recorder and
+selected-drive sharing support both formats. See [drive diagnostics](testing/unified-diagnostics.md#daily-android-auto-capture).
+
 The 2026-11-18 playback diagnostic export moves to schema version 2. Readers of new reports use
 `timeline`, `firstIncident`, `current` and `problems`; version 1 files retain their original shape.
 Both are local diagnostic files and there is no ABS endpoint, database schema or permission change.

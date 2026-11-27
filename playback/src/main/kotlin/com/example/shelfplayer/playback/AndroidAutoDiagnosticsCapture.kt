@@ -64,6 +64,7 @@ class AndroidAutoDiagnosticsCapture @Inject internal constructor(
     val drives = historyRevision.map { readRows(null, AndroidAutoDrive::from).asReversed() }.flowOn(io)
 
     init {
+        monitor?.driveFlush?.setEnabled(state.value.enabled)
         events.observeWrites(::readLog)
         scope.launch(io) {
             writeRequests.consumeEach {
@@ -78,6 +79,7 @@ class AndroidAutoDiagnosticsCapture @Inject internal constructor(
         if (state.value.enabled == enabled) return
         prefs.edit { putBoolean("enabled", enabled) }
         stateMutable.value = Status(enabled)
+        monitor?.driveFlush?.setEnabled(enabled)
         if (!enabled) {
             finish("capture-disabled")
             closeDepartureWindow()
@@ -202,7 +204,7 @@ class AndroidAutoDiagnosticsCapture @Inject internal constructor(
         if (reason == "projection-disconnect" || reason == "final-car-disconnect") {
             departed = attempt
             attempt.departureObservation = "recording"
-            attempt.nativeTrace?.boundary("car-disconnected", DriveRouteTrace.DEPARTURE_MS)
+            attempt.nativeTrace?.departure()
             departureWindow = scope.launch {
                 delay(DriveRouteTrace.DEPARTURE_MS)
                 synchronized(this@AndroidAutoDiagnosticsCapture) {
@@ -274,6 +276,7 @@ class AndroidAutoDiagnosticsCapture @Inject internal constructor(
                 closeDepartureWindow()
                 finished.clear()
                 lastTrack = null
+                monitor?.driveFlush?.setEnabled(state.value.enabled)
                 active?.let {
                     it.nativeTrace?.close()
                     it.clear(clock.now())
