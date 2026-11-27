@@ -66,8 +66,9 @@ internal class DefaultPlayerFactory @Inject constructor(
         this.equalizer = equalizer
     }
 
-    override fun create(buffer: BufferPreset, focus: FocusBehaviour): ExoPlayer =
-        ExoPlayer.Builder(context, renderers())
+    override fun create(buffer: BufferPreset, focus: FocusBehaviour): ExoPlayer {
+        val probe = audioTrackRouteMonitor.driveFlush.Player()
+        return ExoPlayer.Builder(context, renderers(probe))
             // ADR-0016 — a book is one timeline window, so its item becomes a concatenated source rather
             // than a playlist. Everything that is not one of our book items falls through to the default.
             .setMediaSourceFactory(BookMediaSourceFactory(dataSourceFactory, logger))
@@ -77,28 +78,30 @@ internal class DefaultPlayerFactory @Inject constructor(
             .setAudioAttributes(playbackAudioAttributes(focus), focus != FocusBehaviour.Ignore)
             // Standard Media3 AudioTrack provider, observed in memory for route safety even without
             // diagnostic capture. Null fallback retains Media3's original output provider.
-            .apply { audioTrackRouteMonitor.providerForPlayer()?.let(::setAudioOutputProvider) }
+            .apply { audioTrackRouteMonitor.providerForPlayer(probe)?.let(::setAudioOutputProvider) }
             // PRODUCT_SPEC PLAY-002 — headphones out pauses, and audio never moves to the phone speaker.
             .setHandleAudioBecomingNoisy(true)
             // The stream keeps arriving with the screen off. `WAKE_MODE_NETWORK` also holds a WifiLock,
             // which is what stops a doze-happy device dropping the connection mid-chapter.
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
+    }
 
     override fun bitmapLoader(): BitmapLoader = artwork
 
-    private fun renderers(): DefaultRenderersFactory = object : DefaultRenderersFactory(context) {
-        override fun buildAudioSink(
-            context: Context,
-            enableFloatOutput: Boolean,
-            enableAudioOutputPlaybackParameters: Boolean,
-        ): AudioSink = DefaultAudioSink.Builder(context)
-            .setEnableFloatOutput(enableFloatOutput)
-            .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParameters)
-            .setAudioProcessors(arrayOf(BookWaveEqualizer { equalizer }))
-            .build()
-            .let(audioTrackRouteMonitor::diagnosticSink)
-    }
+    private fun renderers(probe: DriveFlushProbe.Player): DefaultRenderersFactory =
+        object : DefaultRenderersFactory(context) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioOutputPlaybackParameters: Boolean,
+            ): AudioSink = DefaultAudioSink.Builder(context)
+                .setEnableFloatOutput(enableFloatOutput)
+                .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParameters)
+                .setAudioProcessors(arrayOf(BookWaveEqualizer { equalizer }))
+                .build()
+                .let { audioTrackRouteMonitor.diagnosticSink(it, probe) }
+        }
 
     /**
      * PRODUCT_SPEC PLAY-006 — the preset as a `DefaultLoadControl`, or `null` for Automatic.

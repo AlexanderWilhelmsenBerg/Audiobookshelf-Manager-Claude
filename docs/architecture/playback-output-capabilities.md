@@ -27,7 +27,7 @@ recovery. See the [implementation and acceptance record](../testing/output-adapt
 | Virtual/system media key, including input ID -1 | Transport command and its order | Which headset, car or system surface physically produced it |
 | Matching input/output display names | A diagnostic candidate | Physical identity or authority to transfer playback |
 
-The route observer is installed through `providerForPlayer()` in normal playback. Its route callback
+The route observer is installed through `AudioTrackRouteMonitor.providerForPlayer` in normal playback. Its route callback
 and in-memory route query are available when diagnostic recording is off. Recording controls export
 and logging, rather than authorizing route-safety behavior. Media3's provider still creates the output;
 the observer creates no extra AudioTrack or player and requests no audio focus.

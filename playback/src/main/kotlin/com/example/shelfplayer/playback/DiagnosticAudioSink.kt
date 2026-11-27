@@ -6,8 +6,11 @@ import androidx.media3.exoplayer.audio.ForwardingAudioSink
 
 /** Observes the media clock returned to the renderer, after the sink's output-to-media time mapping. */
 @androidx.annotation.OptIn(UnstableApi::class)
-internal class DiagnosticAudioSink(delegate: AudioSink, private val trace: AudioOutputWriteTrace) :
-    ForwardingAudioSink(delegate) {
+internal class DiagnosticAudioSink(
+    delegate: AudioSink,
+    private val trace: AudioOutputWriteTrace,
+    private val playerProbe: DriveFlushProbe.Player,
+) : ForwardingAudioSink(delegate) {
     private val position = trace.ClockSampler(AudioOutputWriteTrace.ClockStage.Media3Sink)
 
     override fun getCurrentPositionUs(sourceEnded: Boolean): Long {
@@ -23,6 +26,7 @@ internal class DiagnosticAudioSink(delegate: AudioSink, private val trace: Audio
     }
 
     override fun flush() {
+        playerProbe.recording?.flush(playerProbe)
         event("audio-sink-flush")
         super.flush()
     }

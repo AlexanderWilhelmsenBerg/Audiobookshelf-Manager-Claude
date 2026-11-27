@@ -39,6 +39,8 @@ internal class DriveRouteTrace(
 ) {
     private val samples = NativeRouteSamples(keepOpening = OPENING_ROWS)
     private val observation = monitor.observeRoutes(samples, changed)
+    private val flushProbe = monitor.driveFlush
+    private val flushes = flushProbe.open(changed)
     private var burst: Job? = null
 
     fun boundary(source: String, durationMs: Long) {
@@ -53,11 +55,18 @@ internal class DriveRouteTrace(
     }
 
     fun close() {
+        flushProbe.close(flushes)
         burst?.cancel()
         observation.close()
     }
 
+    fun departure() {
+        flushes.departure()
+        boundary("car-disconnected", DEPARTURE_MS)
+    }
+
     fun appendTo(row: JSONObject) {
+        row.put("audioSinkFlushes", flushes.snapshot())
         val reads = samples.snapshot()
         row.put("nativeRouteSamples", JSONArray(reads))
         row.put("discardedNativeRouteSamples", (reads.lastOrNull()?.getLong("sequence") ?: 0L) - reads.size)

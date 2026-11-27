@@ -13,12 +13,14 @@ internal class DiagnosticAudioOutput(
     private val trace: AudioOutputWriteTrace,
     private val epoch: Long,
     private val format: AudioOutputWriteTrace.Format,
+    private val playerProbe: DriveFlushProbe.Player,
     private val samplePreference: (String) -> Unit,
 ) : ForwardingAudioOutput(delegate) {
     private var blockedCapture: AudioOutputWriteTrace.Capture? = null
     private val position = trace.ClockSampler(AudioOutputWriteTrace.ClockStage.AudioOutput, epoch)
 
     init {
+        playerProbe.trackEpoch = epoch
         event("audio-output-open")
     }
 
@@ -36,12 +38,15 @@ internal class DiagnosticAudioOutput(
     }
 
     override fun write(buffer: ByteBuffer, encodedAccessUnitCount: Int, presentationTimeUs: Long): Boolean {
-        val capture = trace.active ?: return super.write(buffer, encodedAccessUnitCount, presentationTimeUs)
+        val capture = trace.active
+        val drive = playerProbe.recording
+        if (capture == null && drive == null) return super.write(buffer, encodedAccessUnitCount, presentationTimeUs)
         val offset = buffer.position()
         val completed = super.write(buffer, encodedAccessUnitCount, presentationTimeUs)
         val accepted = buffer.position() - offset
+        drive?.accepted(playerProbe, epoch, format, buffer, offset, accepted)
         // A retry loop with no accepted data must not hide the preceding progress in the rolling buffer.
-        if (accepted > 0 || blockedCapture !== capture) {
+        if (capture != null && (accepted > 0 || blockedCapture !== capture)) {
             trace.write(
                 capture,
                 epoch,
