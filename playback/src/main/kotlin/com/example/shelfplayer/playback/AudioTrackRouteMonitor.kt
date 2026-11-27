@@ -78,17 +78,19 @@ internal class AudioTrackRouteMonitor @Inject constructor(
 ) {
     @Volatile
     private var active: AudioTrack? = null
+
+    @Volatile
+    private var outputClock: ObservedOutputClock? = null
+
+    fun latestOutputPosition(): AudioTrackTimingSample? = outputClock?.latest
+
     private var listener: AudioRouting.OnRoutingChangedListener? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val epoch = AudioTrackObserverEpoch()
     private val timing = AudioTrackTimingCapture(
         mainHandler,
         { lab.state.value.recording },
-        { sample ->
-            lab.trackTiming(sample, playbackSnapshot()) {
-                " trackRoute=${trackRouteField(active, sample.observerEpoch)}"
-            }
-        },
+        { sample -> lab.trackTiming(sample, playbackSnapshot()) },
         { clock.elapsed().inWholeMilliseconds },
     )
     private var lastEvidence: String? = null
@@ -96,6 +98,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
 
     init {
         lab.onCaptureStarted = {
+            outputClock?.observe(null)
             mainHandler.post {
                 lastEvidence = null
                 lastPlaying = false
@@ -227,7 +230,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
                     lab.trackObserverStatus("Media3 output is not an observable AudioTrack")
                     return output
                 }
-                val token = runCatching { observe(output.audioTrack) }.getOrElse {
+                val observed = runCatching { observe(output.audioTrack) }.getOrElse {
                     forget()
                     lab.trackLifecycle("audio-track-attach-failed")
                     lab.trackObserverStatus("Routing listener could not attach; audio remains Media3-owned")
@@ -240,8 +243,15 @@ internal class AudioTrackRouteMonitor @Inject constructor(
                     null
                 }
                 val format = AudioOutputWriteTrace.Format(config.encoding, config.sampleRate, frameBytes)
-                return DiagnosticAudioOutput(output, lab.outputWrites, token, format, probe) { source ->
-                    routeObservers.forEach { it.observe(source, output.audioTrack, token) }
+                return DiagnosticAudioOutput(
+                    output,
+                    lab.outputWrites,
+                    observed.epoch,
+                    format,
+                    probe,
+                    observed::observe,
+                ) { source ->
+                    routeObservers.forEach { it.observe(source, output.audioTrack, observed.epoch) }
                 }
             }
 
@@ -289,14 +299,15 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         val token = epoch.nextSnapshot()
         val track = active
         lab.outputWrites.mark(boundary.name, token.takeIf { track != null }, atNs)
-        val head = track?.let { AudioTrackTimingSample.headFrames(it) }
         val route = trackRouteField(track, token)
         val current = track?.takeIf { isCurrent(it, token) }
         val evidence = if (current != null) {
-            "trackEpoch=$token headFrames=${head?.toString() ?: "null"} trackRoute=$route"
+            val last = capturePosition(token)
+            "trackEpoch=$token trackRoute=$route outputPositionUs=${last?.outputPositionUs ?: "null"} " +
+                "outputPositionMonotonicNs=${last?.monotonicNs ?: "null"}"
         } else {
             val unavailable = if (track == null) "no-current-track" else "track-replaced-during-query"
-            "trackEpoch=null headFrames=null trackRoute=$unavailable"
+            "trackEpoch=null trackRoute=$unavailable outputPositionUs=null outputPositionMonotonicNs=null"
         }
         lab.trackTimingBoundary(boundary, atNs, playback, evidence)
         if (current == null) return
@@ -305,9 +316,12 @@ internal class AudioTrackRouteMonitor @Inject constructor(
     }
 
     private fun requestTiming(track: AudioTrack, token: Long) {
-        timing.request(token, { isCurrent(track, token) }) {
-            AudioTrackTimingSample.read(track, token, clock.elapsed().inWholeNanoseconds)
-        }
+        timing.request(token, { isCurrent(track, token) }) { capturePosition(token) }
+    }
+
+    private fun capturePosition(token: Long): AudioTrackTimingSample? {
+        val start = lab.outputWrites.active?.atNs ?: return null
+        return latestOutputPosition()?.takeIf { it.observerEpoch == token && it.monotonicNs >= start }
     }
 
     private fun routeEvidence(track: AudioTrack): String = when {
@@ -338,9 +352,14 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         return "playing-to=${values.joinToString("+")} measured=AudioTrack"
     }
 
-    private fun observe(track: AudioTrack): Long {
+    private fun observe(track: AudioTrack): ObservedOutputClock {
         forget()
         val token = epoch.next()
+        val observed = ObservedOutputClock(token, clock) {
+            lab.outputWrites.active != null ||
+                routeObservers.isNotEmpty()
+        }
+        outputClock = observed
         active = track
         val callback = AudioRouting.OnRoutingChangedListener {
             if (isCurrent(track, token)) {
@@ -358,7 +377,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         lab.trackLifecycle("audio-track-attached")
         lab.trackObserverStatus("AudioTrack attached; awaiting a playing route sample")
         sample()
-        return token
+        return observed
     }
 
     private fun forget() {
@@ -366,6 +385,7 @@ internal class AudioTrackRouteMonitor @Inject constructor(
         timing.retire(epoch.nextSnapshot())
         val callback = listener
         active = null
+        outputClock = null
         listener = null
         epoch.next()
         lastEvidence = null

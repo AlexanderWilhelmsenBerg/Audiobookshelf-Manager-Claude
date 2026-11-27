@@ -5,6 +5,11 @@ car connections**. The [drive-history procedure](unified-diagnostics.md#daily-an
 includes the native outputs and the disconnect observation. Use the manual test below for numbered
 listener notes and optional Perfetto triggers.
 
+To compare the passive recorder with build 2321, use the same headset and settings. A recording
+with spoken numbers makes a missing or repeated passage easier to identify. While parked, listen
+through a normal connection and disconnect. Note any silence, repeated number, missing number
+or audio heard in the car. Share the drive after **Finishing disconnect capture** clears.
+
 Use the phone, car, headset and BookWave playback settings you normally use. While parked with the
 car off, play a book until you hear it through the headset. Open **Settings → About → Advanced &
 diagnostics → Debug console → Car playback test suite** and tap **Start headset route test**.

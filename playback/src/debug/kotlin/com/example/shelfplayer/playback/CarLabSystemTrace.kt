@@ -25,7 +25,7 @@ internal class CarLabSystemTrace(
         val event = when {
             row.startsWith("route-boundary edge=RouteSafetyPause ") -> "RouteSafetyPause"
             row.startsWith("route-boundary edge=ProjectionDeparture ") -> "ProjectionDeparture"
-            row.startsWith("track-progress event=NoFrameProgress ") -> "NoFrameProgress"
+            row.startsWith("track-progress event=NoOutputProgress ") -> "NoOutputProgress"
             row.startsWith("actual-track ") && ":Speaker " in row -> "actual-speaker"
             row.startsWith("actual-track ") && ":RemoteSubmix " in row -> "actual-projection-mix"
             kind in playbackEvents -> kind
@@ -45,7 +45,7 @@ internal class CarLabSystemTrace(
     companion object {
         private val incidentEvents = setOf(
             "RouteSafetyPause",
-            "NoFrameProgress",
+            "NoOutputProgress",
             "playback-error",
             "position-compensation",
         )

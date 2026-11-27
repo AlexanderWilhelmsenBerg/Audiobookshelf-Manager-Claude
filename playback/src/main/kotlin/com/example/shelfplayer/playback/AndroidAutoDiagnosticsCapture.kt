@@ -220,7 +220,7 @@ class AndroidAutoDiagnosticsCapture @Inject internal constructor(
     }
 
     private fun startTrace(attempt: AndroidAutoCaptureAttempt) {
-        attempt.nativeTrace = monitor?.let { DriveRouteTrace(it, scope, ::enqueueWrite) }
+        attempt.nativeTrace = monitor?.let { DriveRouteTrace(it, scope, clock, ::enqueueWrite) }
         attempt.nativeTrace?.boundary("drive-start", DriveRouteTrace.ARRIVAL_MS)
     }
 

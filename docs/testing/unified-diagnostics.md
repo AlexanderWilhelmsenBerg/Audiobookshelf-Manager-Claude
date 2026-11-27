@@ -28,14 +28,11 @@ exports with a different shape.
 - Build, device Android API, app target API, export time and recording state identify the capture.
 - `current` holds the latest track, route, input and classified output observations.
 - `timeline` combines playback and system changes, sorted by UTC with a source and event name.
-  Stable inventory callbacks do not produce repeated summary rows. Native timing is sampled in a
-  bounded burst and raw timing rows are recorded at roughly one-second intervals, plus detected
-  state changes. Useful native evidence includes frame position, timestamp, speed and underruns.
-- Each `track-timing` row pairs native audio timing with Media3's position within the current queue
-  item, buffer and playback state when a player is attached. `route-boundary` reads the current
-  native track's sink and playback head immediately before a route-safety pause or departure
-  handling. Timing rows for the next three seconds can also include the measured sink at up to
-  four samples per second.
+  Stable inventory callbacks do not produce repeated summary rows.
+- Each `track-timing` row gives an output position already returned to Media3 and its original
+  monotonic observation time. The recorder adds the current queue position, buffer and playback state.
+  `route-boundary` records the measured sink and the last available output position and its time.
+  Missing observations are null. A new `track-timing` row requires a fresh playback observation.
   `player-discontinuity` records the public reason code and the numeric positions on either side.
   Use the item index and book generation before comparing position deltas across rows.
 - The audio-write probe keeps up to six in-memory windows with up to six seconds before and two
@@ -49,9 +46,9 @@ exports with a different shape.
   timestamp is reported as null. One zero-byte row marks a run of writes that accepted no data.
   `audio-output-flush`, `audio-output-open`, `audio-output-release` and
   `audio-output-route-callback` use the same monotonic clock and track epoch as the timing rows.
-  Compare accepted audio with the native playback head and measured sink before attributing an
+  Compare accepted audio with the observed output position and measured sink before attributing an
   audible skip to a playback clock, buffer clear or output transition.
-- `firstIncident` retains the first frame stall, Media3 stuck reason, or listener-marked silence
+- `firstIncident` retains the first stationary output clock, Media3 stuck reason, or listener-marked silence
   or skipping and its context. The retained recorder rows are app private and expire after 24 hours.
 - `problems` contains up to forty recent redacted warnings and errors. A sanitized `previousCrash`
   is included when present. The ordinary Event Log and Debug Console remain available for non-playback
@@ -59,9 +56,8 @@ exports with a different shape.
 
 Match `actual-track` aliases with the system output `trackAlias`. A policy prediction is advisory.
 At a `RouteSafetyPause`, compare `trackRoute` with the headset's last `trackAlias` even if the output
-list already dropped that alias. At departure, compare the sink and advancing `headFrames` on the
-same track epoch across timing rows. An unknown or paused track supplies no measured sink.
-Remote submix and frame movement cannot prove which physical device was heard. Virtual input events
+list already dropped that alias. At departure, compare `outputPositionUs` across observations on
+the same track epoch. The output clock estimates playout. Listener notes establish what was audible. Virtual input events
 identify the sending software where available and cannot prove a physical button or headset identity.
 Output and input aliases are local to the process or capture. The report excludes raw addresses,
 names, descriptors, credentials and media metadata by default.
@@ -69,9 +65,8 @@ names, descriptors, credentials and media metadata by default.
 To investigate the build 2308 startup pause and disconnect skip, clear the capture immediately before
 the parked run. Play the same downloaded chapter through the headset throughout one ordinary car
 startup and shutdown. Mark **Silence** or **Skipping** where heard. A seek reason with a matching
-position jump shows a Media3 transport discontinuity. Steady player progress with a native frame or
-timestamp step points toward the rendering path. If both clocks jump together, examine the reason code
-and buffer state before attributing the jump. A frame step alone does not establish lost audio.
+position jump shows a Media3 transport discontinuity. Compare the output clock, accepted writes,
+reason code and buffer state when either clock jumps.
 An optional second run with **Automatic headset take-back** off isolates the existing system-wide
 recovery request. Keep the headset lock and focus settings fixed between runs.
 
@@ -92,10 +87,6 @@ are unavailable through the normal app diagnostic path. The optional private
 `dumpsys audio`, AudioFlinger and the `AudioHardening` logcat tag. Start it before testing with the
 screen locked when ADB is available. Raw system captures stay local.
 
-Android 17's public written-frame counter could distinguish data submitted to AudioTrack from
-the measured playback head. It is a candidate for a later diagnostic revision when BookWave compiles
-against API 37. A measured frame counter provides timing evidence without changing playback or routing.
-
 ## Daily Android Auto capture
 
 In a debug build, open **Settings → About → Advanced & diagnostics → Android Auto diagnostics** and enable
@@ -104,7 +95,7 @@ hands-free connection, an Android Auto controller, or projection. A hands-free-o
 never reaches a controller or projection is marked `connection-unconfirmed`. Projection departure
 ends a confirmed attempt, with final controller departure as the fallback when projection was never
 visible. The optional Nearby devices permission enables the earlier car Bluetooth signal. Use general
-Playback diagnostics alongside it when a test needs AudioTrack timing bursts or events before connection.
+Playback diagnostics alongside it when a test needs audio-write evidence or events before connection.
 
 Drive history is newest first. **With headset**, **Without headset**, and **Unknown** filter the
 available drives. **Share latest drive** and **Save latest JSON** use the first visible record.
@@ -122,9 +113,12 @@ hands-free connection and a recording interrupted by service or process shutdown
 The recorder can observe connections while BookWave's playback service is running or bound by Auto.
 
 Each new drive carries its own `nativeRouteSamples` from the real player. The opening and recent
-samples survive trimming on longer drives. Compare `preferred`, `actual`, the track epoch, and the
-native playback head frames on the same track. Ten-second arrival and five-second departure samples
-complement native callbacks during the drive. A `player-discontinuity` event gives Media3's reason,
+samples survive trimming on longer drives. Compare `preferred` and `actual` on the same track epoch.
+`media3OutputClockSamples` records fresh output positions for ten seconds around arrival and five
+seconds after departure. Each sample carries `trackEpoch`, `outputPositionUs`, and `monotonicNs`
+from the original Media3 call. These timestamps use the audio-write clock. Native route rows use
+elapsed real time, which also counts time in deep sleep. An empty array means no new clock was
+observed in those windows. A `player-discontinuity` event gives Media3's reason,
 before/after positions and same-item flag. Wait until **Finishing disconnect capture** clears if
 sharing a disconnect incident. An immediate export includes the available tail and labels it in
 `departureObservation`. A new drive cuts the preceding observation short. No manual test, Bluetooth

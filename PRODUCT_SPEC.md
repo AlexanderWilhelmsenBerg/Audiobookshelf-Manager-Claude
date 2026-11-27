@@ -490,13 +490,11 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
 - A verified Android Auto `MEDIA_PAUSE` key may be attributed to the Media3 notification-controller
   Pause it relays during the same session dispatch. This records the software source, leaves Pause
   handling intact and does not distinguish an automatic car shutdown from a deliberate button press.
-- Opt-in output-stall diagnostics may record bounded numeric frame-progress observations and fixed Media3
-  stuck reasons, retaining a privacy-safe first incident separately from the rolling trace until Clear or
-  per-row expiry. No-frame-progress evidence does not authorize recovery or establish acoustic audibility.
-- Opt-in route diagnostics pair Media3 position and transport state with native AudioTrack timing.
-  Immediately before a route-safety pause or Android Auto departure handling, record the current
-  native track's anonymized sink and playback head. These boundaries start a short period of denser
-  route and timing recording.
+- Opt-in output-stall diagnostics compare positions returned to Media3 during playback and record
+  Media3 stuck reasons. Retain the first incident separately from the rolling trace until Clear or expiry.
+- At a route-safety pause or Android Auto departure, record the current native track's anonymized sink
+  and the last observed Media3 output position with its original measurement time, when available.
+  Diagnostics must never request an extra native playback-head position or audio timestamp.
   Position discontinuities record the public reason code and numeric positions without media identifiers.
 - Opt-in playback diagnostics retain bounded windows of Media3 audio writes around measured route
   changes, route safety pauses, projection departures and listener reports of skipping or silence.
@@ -1639,8 +1637,8 @@ Never show stack traces in ordinary UI.
   The drive picker lists these records newest first, including active and unconfirmed connections.
   Filter by headset presence at arrival (present, absent or unknown). Share or save the latest matching
   drive or any selected drive numbers in a single JSON. All indexes and recovery statistics use the
-  same selection. Daily capture includes native preferred and actual outputs, frame counts and player
-  discontinuities around arrival and for five seconds after departure. Clearing the car history keeps
+  same selection. Daily capture includes native preferred and actual outputs, positions already returned to
+  Media3 and player discontinuities around arrival and for five seconds after departure. Clearing the car history keeps
   any active attempt recording.
 - No analytics or crash service by default.
 - Any future crash reporting is opt-in and strips private content.

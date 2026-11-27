@@ -62,15 +62,15 @@ class NativeRouteJournalTest {
     }
 
     @Test
-    fun driveSnapshotsKeepTheOpeningAndTailWhileAdvancingFramesKeepTheSameRoute() {
+    fun driveSnapshotsKeepTheOpeningAndTailOnAnUnchangedRoute() {
         var ns = 0L
         val samples = NativeRouteSamples(keepOpening = 2) { ++ns }
         val total = NativeRouteSamples.MAX_ROWS + 2
-        for (frame in 1..total) {
+        repeat(total) {
             samples.observe(
-                "boundary-clock",
+                "routing-callback",
                 1,
-                { NativeRoutePair(headset, headset, frame.toLong()) },
+                { NativeRoutePair(headset, headset) },
                 { true },
             )
         }
@@ -79,7 +79,8 @@ class NativeRouteJournalTest {
         assertEquals(NativeRouteSamples.MAX_ROWS, rows.size)
         assertEquals(1, rows.first().getInt("sequence"))
         assertEquals(2, rows[1].getInt("sequence"))
-        assertEquals(total, rows.last().getInt("headFrames"))
+        assertEquals(total, rows.last().getInt("sequence"))
+        assertFalse(rows.last().has("headFrames"))
         assertEquals("unchanged", rows.last().getString("change"))
         assertFalse(samples.observe("late", null, { NativeRoutePair.NoTrack }, { true }))
         assertEquals(rows.size, samples.snapshot().size)

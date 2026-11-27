@@ -14,7 +14,10 @@ import com.example.shelfplayer.core.testing.TestAppClock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import org.json.JSONObject
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -30,6 +33,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * PLAY-002 / ROUTE-002 — route proof belongs to the currently playing AudioTrack.
@@ -192,56 +196,86 @@ class AudioTrackRouteQueryTest {
     }
 
     @Test
-    fun `starting and clearing resample the existing track while recording off does not`() = runTest {
+    fun `drive samples general capture and both car boundaries never poll native playback clocks`() = runTest {
         val fixture = fixture()
-        fixture.lab.stop()
         val track = fixture.track()
         fixture.observe(track)
-        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1))
-        assertEquals(0, track.queryShadow.timestampReads)
+        val samples = NativeRouteSamples()
+        val observation = fixture.monitor.observeRoutes(samples)
+        observation.sample("drive-start")
         fixture.lab.start()
-        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(500))
-        assertEquals(3, track.queryShadow.timestampReads)
-        kotlin.test.assertTrue(
-            fixture.lab.state.value.entries.any {
-                "track-timing" in it && "timestampFrames=null timestampNs=null" in it
-            },
-        )
+        for (boundary in AudioTimingBoundary.entries) fixture.monitor.sampleBoundary(boundary)
+        val looper = shadowOf(Looper.getMainLooper())
+        looper.idleFor(java.time.Duration.ofSeconds(2))
         fixture.lab.clearAndAwait()
-        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(500))
-        assertEquals(6, track.queryShadow.timestampReads, "Clear replaces the burst on the same track")
-        assertEquals(1, fixture.lab.state.value.entries.count { "track-timing" in it })
+        looper.idleFor(java.time.Duration.ofSeconds(2))
+        assertTrue(track.queryShadow.routeReads > 0)
+        assertTrue(samples.snapshot().any { it.getJSONObject("actual").getString("status") == "available" })
+        assertEquals(0, track.queryShadow.headReads, "diagnostics must never query the native playback head")
+        assertEquals(0, track.queryShadow.timestampReads, "diagnostics must never query the native timestamp")
+        observation.close()
         fixture.forget()
-        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(5))
-        assertEquals(6, track.queryShadow.timestampReads)
         fixture.lab.stop()
     }
 
     @Test
-    fun `confirmed departure samples the current track even inside the old timing cooldown`() = runTest {
+    fun `confirmed departure records only positions returned by the current output`() = runTest {
         val fixture = fixture()
         val track = fixture.track()
-        fixture.observe(track)
+        val old = fixture.observe(track)
         val looper = shadowOf(Looper.getMainLooper())
         fixture.lab.start()
         looper.idleFor(java.time.Duration.ofSeconds(31))
-        assertEquals(120, track.queryShadow.timestampReads)
-
+        old.observe(125_000)
         fixture.monitor.sampleBoundary(AudioTimingBoundary.ProjectionDeparture)
         val alias = fixture.lab.deviceAlias(fixture.device.id)
         assertTrue(
             fixture.lab.state.value.entries.any {
-                "edge=ProjectionDeparture" in it && "trackRoute=$alias:" in it
+                "edge=ProjectionDeparture" in it && "trackRoute=$alias:" in it && "outputPositionUs=125000" in it
             },
         )
         looper.idleFor(java.time.Duration.ofMillis(500))
-        assertEquals(123, track.queryShadow.timestampReads)
-        assertTrue(fixture.lab.state.value.entries.any { "track-timing" in it && "trackRoute=$alias:" in it })
+        assertEquals(
+            1,
+            fixture.lab.state.value.entries.count {
+                "track-timing" in it && "outputPositionUs=125000" in it
+            },
+        )
+        val successor = fixture.observe(fixture.track())
+        old.observe(999_000)
+        assertNull(fixture.monitor.latestOutputPosition())
+        successor.observe(600)
+        assertEquals(600L, fixture.monitor.latestOutputPosition()?.outputPositionUs)
 
         fixture.lab.stop()
         fixture.monitor.sampleBoundary(AudioTimingBoundary.RouteSafetyPause)
         looper.idleFor(java.time.Duration.ofSeconds(1))
-        assertEquals(123, track.queryShadow.timestampReads)
+        assertEquals(0, track.queryShadow.timestampReads)
+    }
+
+    @Test
+    fun `daily drive exports fresh Media3 samples without polling the track during the departure tail`() = runTest {
+        val f = fixture()
+        val track = f.track()
+        val output = f.observe(track)
+        val drive = DriveRouteTrace(f.monitor, backgroundScope, f.clock) {}
+        drive.boundary("drive-start", DriveRouteTrace.ARRIVAL_MS)
+        drive.departure()
+        val routeReads = track.queryShadow.routeReads
+        runCurrent()
+        f.clock.advanceBy(80.milliseconds)
+        output.observe(280_000)
+        advanceTimeBy(600)
+        runCurrent()
+        drive.close()
+        val report = JSONObject().also(drive::appendTo)
+        val clocks = report.getJSONArray("media3OutputClockSamples")
+        assertEquals(1, clocks.length(), "an unchanged cached observation must only be exported once")
+        assertEquals(280_000L, clocks.getJSONObject(0).getLong("outputPositionUs"))
+        assertEquals(output.epoch, clocks.getJSONObject(0).getLong("trackEpoch"))
+        assertEquals(routeReads, track.queryShadow.routeReads)
+        assertEquals(0, track.queryShadow.headReads)
+        assertEquals(0, track.queryShadow.timestampReads)
     }
 
     @Test
@@ -260,7 +294,7 @@ class AudioTrackRouteQueryTest {
         val alias = fixture.lab.deviceAlias(fixture.device.id)
         val row = fixture.lab.state.value.entries.single { "edge=RouteSafetyPause" in it }
         assertTrue("trackRoute=$alias:" in row)
-        assertTrue("trackEpoch=" in row && "headFrames=" in row && "monotonicNs=" in row)
+        assertTrue("trackEpoch=" in row && "outputPositionUs=null" in row && "monotonicNs=" in row)
 
         fixture.lab.stop()
         fixture.monitor.sampleBoundary(AudioTimingBoundary.RouteSafetyPause)
@@ -364,7 +398,7 @@ class AudioTrackRouteQueryTest {
         val endpoint = registry.reconcile(
             listOf(registry.observationOf(device)),
         ).single()
-        return Fixture(AudioTrackRouteMonitor(context, lab, clock, registry), device, endpoint.id, lab, registry)
+        return Fixture(AudioTrackRouteMonitor(context, lab, clock, registry), device, endpoint.id, lab, registry, clock)
     }
 
     private data class Fixture(
@@ -373,16 +407,14 @@ class AudioTrackRouteQueryTest {
         val endpointId: String,
         val lab: AudioRouteLab,
         val registry: LiveOutputEndpointRegistry,
+        val clock: TestAppClock,
     ) {
         fun track(): AudioTrack = Shadow.newInstanceOf(AudioTrack::class.java).also { it.queryShadow.route = device }
 
         // These are the exact seams called by the production Media3 output provider on replacement/release.
-        fun observe(track: AudioTrack) {
-            AudioTrackRouteMonitor::class.java.getDeclaredMethod("observe", AudioTrack::class.java).apply {
-                isAccessible = true
-                invoke(monitor, track)
-            }
-        }
+        fun observe(track: AudioTrack): ObservedOutputClock =
+            AudioTrackRouteMonitor::class.java.getDeclaredMethod("observe", AudioTrack::class.java)
+                .apply { isAccessible = true }.invoke(monitor, track) as ObservedOutputClock
 
         fun forget() {
             AudioTrackRouteMonitor::class.java.getDeclaredMethod("forget").apply {
@@ -400,6 +432,13 @@ class AudioTrackRouteQueryTest {
         var route: AudioDeviceInfo? = null
         var routeReads = 0
         var timestampReads = 0
+        var headReads = 0
+
+        @Implementation
+        fun getPlaybackHeadPosition(): Int {
+            headReads++
+            return 0
+        }
 
         @Implementation
         fun getTimestamp(timestamp: AudioTimestamp): Boolean {

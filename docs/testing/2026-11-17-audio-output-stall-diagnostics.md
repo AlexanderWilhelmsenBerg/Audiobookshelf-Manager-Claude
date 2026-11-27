@@ -1,5 +1,8 @@
 # Audio-output stall diagnostic
 
+The native timing fields below describe the November 17 build. Current captures use positions
+returned by Media3 during normal playback. [Current diagnostic fields](unified-diagnostics.md#reading-the-export)
+
 PLAY-001/002, ROUTE-001/002 and SET-002. Diagnostic follow-up stacked on PR #307 at
 `14e04448d5394cc3354bd24e260a0419e91a2e15` (build 2280). No playback recovery, routing protection,
 progress-write policy, player/session count or Media3 focus ownership changes.
