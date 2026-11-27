@@ -1,5 +1,9 @@
 # Audiobookshelf API compatibility
 
+The passive drive recorder exports `attempts[].media3OutputClockSamples` alongside route observations.
+Earlier local records can contain `nativeRouteSamples[].headFrames`. A single selected-drive export
+can contain drives from both versions. [Drive diagnostics](testing/unified-diagnostics.md#daily-android-auto-capture)
+
 The 2026-11-27 Android Auto drive export adds optional `attempts[].audioSinkFlushes` to the local
 JSON. Retained drives from earlier builds keep their original fields. The existing recorder and
 selected-drive sharing support both formats. See [drive diagnostics](testing/unified-diagnostics.md#daily-android-auto-capture).

@@ -14,6 +14,7 @@ internal class DiagnosticAudioOutput(
     private val epoch: Long,
     private val format: AudioOutputWriteTrace.Format,
     private val playerProbe: DriveFlushProbe.Player,
+    private val observeClock: (Long?) -> Unit = {},
     private val samplePreference: (String) -> Unit,
 ) : ForwardingAudioOutput(delegate) {
     private var blockedCapture: AudioOutputWriteTrace.Capture? = null
@@ -33,6 +34,7 @@ internal class DiagnosticAudioOutput(
     override fun getPositionUs(): Long {
         val capture = trace.active
         val positionUs = super.getPositionUs()
+        observeClock(positionUs)
         capture?.let { position.sample(it, positionUs) }
         return positionUs
     }
@@ -58,6 +60,7 @@ internal class DiagnosticAudioOutput(
     }
 
     override fun flush() {
+        observeClock(null)
         val capture = trace.active
         super.flush()
         blockedCapture = null
@@ -65,6 +68,7 @@ internal class DiagnosticAudioOutput(
     }
 
     override fun release() {
+        observeClock(null)
         val capture = trace.active
         super.release()
         capture?.let { trace.outputEvent(it, epoch, "audio-output-release") }

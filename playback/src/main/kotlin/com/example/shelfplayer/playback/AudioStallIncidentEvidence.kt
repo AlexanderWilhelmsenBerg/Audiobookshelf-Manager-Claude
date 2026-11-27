@@ -20,7 +20,7 @@ internal object AudioStallIncidentEvidence {
 
     fun isPinned(row: String): Boolean = row.substringAfter(' ').startsWith(PREFIX)
 
-    fun isTrigger(value: String): Boolean = value.startsWith("track-progress event=NoFrameProgress ") ||
+    fun isTrigger(value: String): Boolean = value.startsWith("track-progress event=NoOutputProgress ") ||
         value == "user-heard=Silence" || value == "user-heard=Skipping" ||
         (value.startsWith("playback-error ") && "StuckType=" in value)
 

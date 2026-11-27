@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
 @Config(sdk = [34])
 class AudioTrackTimingCaptureTest {
     @Test
-    fun `recording off avoids native queries and stopping prevents further samples`() {
+    fun `recording off avoids clock sampling and stopping prevents further samples`() {
         val fixture = Fixture()
         fixture.enabled = false
         fixture.request()
@@ -48,7 +48,7 @@ class AudioTrackTimingCaptureTest {
     }
 
     @Test
-    fun `replacement during native query discards its sample and retired release cannot cancel successor`() {
+    fun `replacement during clock sampling discards its sample and retired release cannot cancel successor`() {
         val fixture = Fixture()
         fixture.onRead = { fixture.epoch++ }
         fixture.request()
@@ -65,12 +65,12 @@ class AudioTrackTimingCaptureTest {
     }
 
     @Test
-    fun `unavailable timestamp remains unknown and export contains only numeric fields`() {
+    fun `unavailable output position remains unknown and export contains only numeric fields`() {
         val fixture = Fixture()
         fixture.request()
         fixture.advance(0)
         val evidence = fixture.records.single().evidence()
-        assertTrue(evidence.contains("timestampFrames=null timestampNs=null"))
+        assertTrue(evidence.contains("outputPositionUs=null"))
         assertTrue(
             evidence.split(' ').drop(1).all {
                 it.substringAfter('=') == "null" ||
@@ -95,7 +95,7 @@ class AudioTrackTimingCaptureTest {
             capture.request(token, { epoch == token }) {
                 reads++
                 onRead()
-                AudioTrackTimingSample(token, 1L, 3, 48_000, 2, 2, 4_096, 0L, null, null, 0, 1_000, 1_000)
+                AudioTrackTimingSample(token, reads.toLong(), null)
             }
         }
 

@@ -17,12 +17,7 @@ internal data class RouteReading(val status: String, val outputs: List<RoutePort
     }
 }
 
-internal data class NativeRoutePair(
-    val preferred: RouteReading,
-    val actual: RouteReading,
-    val headFrames: Long? = null,
-    val sampleRateHz: Int? = null,
-) {
+internal data class NativeRoutePair(val preferred: RouteReading, val actual: RouteReading) {
     companion object {
         val NoTrack = NativeRoutePair(RouteReading("no-track"), RouteReading("no-track"))
 
@@ -40,14 +35,7 @@ internal data class NativeRoutePair(
                 }
                 if (devices.isEmpty()) RouteReading("unreported") else RouteReading.devices(devices.map { it.port() })
             }
-            return NativeRoutePair(
-                preferred,
-                actual,
-                AudioTrackTimingSample.headFrames(track),
-                runCatching {
-                    track.sampleRate
-                }.getOrNull(),
-            )
+            return NativeRoutePair(preferred, actual)
         }
 
         private fun AudioDeviceInfo.port() = RoutePort(id, type)
@@ -131,8 +119,6 @@ internal class NativeRouteSamples(
             .put("readEndElapsedRealtimeNs", row.endNs).put("trackEpoch", row.epoch ?: JSONObject.NULL)
             .put("source", row.source).put("change", row.change)
             .put("preferred", outputJson(row.pair.preferred)).put("actual", outputJson(row.pair.actual))
-            .put("headFrames", row.pair.headFrames ?: JSONObject.NULL)
-            .put("sampleRateHz", row.pair.sampleRateHz ?: JSONObject.NULL)
     }
 
     private fun outputJson(reading: RouteReading): JSONObject {

@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -35,9 +36,15 @@ class AndroidAutoDiagnosticsCaptureTest {
         val legacy = AndroidAutoCaptureAttempt(1, at, 0.seconds, "projection", true, "headset")
         legacy.interrupted(at, 0.seconds, "audioFocusLoss")
         legacy.end(at.plusSeconds(1), 1.seconds, "projection-disconnect")
-        val oldRow = legacy.snapshot(1.seconds).apply { remove("recoveryStatsVersion") }
+        val oldRow = legacy.snapshot(1.seconds).apply {
+            remove("recoveryStatsVersion")
+            put("nativeRouteSamples", JSONArray().put(JSONObject().put("headFrames", 42)))
+        }
 
         val report = JSONObject(AndroidAutoCaptureReport.format("build test", 34, at, listOf(oldRow)))
+        val retained = report.getJSONArray("attempts").getJSONObject(0)
+        assertEquals(42, retained.getJSONArray("nativeRouteSamples").getJSONObject(0).getInt("headFrames"))
+        assertFalse(retained.has("media3OutputClockSamples"))
         assertEquals(1, report.getInt("legacyAttemptsExcludedFromRecoveryStats"))
         assertEquals(0, report.getJSONArray("failedHeadsetReconnects").length())
         assertFalse(report.getJSONArray("attempts").getJSONObject(0).has("audioSinkFlushes"))
@@ -79,6 +86,7 @@ class AndroidAutoDiagnosticsCaptureTest {
             assertEquals(1, stats.getInt("count"))
             assertEquals(700, stats.getInt("minMs"))
             val drive = report.getJSONArray("attempts").getJSONObject(0)
+            assertTrue(drive.has("media3OutputClockSamples"))
             assertEquals(0, drive.getJSONArray("audioSinkFlushes").length())
             val samples = drive.getJSONArray("nativeRouteSamples")
             val sources = List(samples.length()) { samples.getJSONObject(it).getString("source") }

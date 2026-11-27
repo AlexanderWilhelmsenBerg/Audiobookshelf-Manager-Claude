@@ -105,7 +105,7 @@ class AudioRouteLabStallIncidentTest {
     }
 
     @Test
-    fun `native timing and player position are exported together during steady playback`() = runTest {
+    fun `output clock and player position are exported together during steady playback`() = runTest {
         val f = Fixture(this)
         f.lab.start()
         f.lab.trackTiming(f.sample(100), f.snapshot)
@@ -115,7 +115,7 @@ class AudioRouteLabStallIncidentTest {
         f.lab.trackTiming(f.sample(44_200), f.snapshot.copy(positionMs = 2_100))
         val raw = f.lab.state.value.entries.filter { "track-timing" in it }.last()
 
-        assertTrue("headFrames=44200" in raw)
+        assertTrue("outputPositionUs=44200" in raw)
         assertTrue("positionMs=2100" in raw)
         assertTrue("playerState=3" in raw)
     }
@@ -124,7 +124,7 @@ class AudioRouteLabStallIncidentTest {
     fun `transition retains denser samples briefly and pins the seek reason with listener marking`() = runTest {
         val f = Fixture(this)
         val atNs = f.clock.elapsed().inWholeNanoseconds
-        val evidence = "trackEpoch=1 headFrames=100 trackRoute=d1:Ambiguous"
+        val evidence = "trackEpoch=1 outputPositionUs=100 trackRoute=d1:Ambiguous"
         f.lab.trackTimingBoundary(AudioTimingBoundary.ProjectionDeparture, atNs, f.snapshot, evidence)
         f.lab.playerDiscontinuity(Player.DISCONTINUITY_REASON_SEEK, 10, 20, true)
         assertTrue(f.lab.state.value.entries.isEmpty())
@@ -166,10 +166,7 @@ class AudioRouteLabStallIncidentTest {
         val lab = recorder()
         val snapshot = AudioTrackPlaybackSnapshot(true, Player.STATE_READY, 0, false, 100, 5_000, false, 1, 0)
         fun recorder() = AudioRouteLab(context, log, clock, router, background, dispatcher)
-        fun sample(head: Long) = AudioTrackTimingSample(
-            1, clock.elapsed().inWholeNanoseconds, 3, 22_050, 2, 2, 11_025,
-            head, null, null, 0, 1_000, 1_000,
-        )
+        fun sample(positionUs: Long) = AudioTrackTimingSample(1, clock.elapsed().inWholeNanoseconds, positionUs)
         fun stall() {
             lab.trackTiming(sample(100), snapshot)
             clock.advanceBy(2.seconds)

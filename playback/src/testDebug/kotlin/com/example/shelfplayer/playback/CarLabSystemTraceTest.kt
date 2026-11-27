@@ -12,10 +12,10 @@ class CarLabSystemTraceTest {
         repeat(2) { run ->
             val trace = CarLabSystemTrace(run, start, {}, incidents::add)
             trace.playback("playback-intent playWhenReady=true reason=userRequest", start)
-            trace.playback("track-progress event=NoFrameProgress frames=0", start)
+            trace.playback("track-progress event=NoOutputProgress frames=0", start)
             trace.playback("route-boundary edge=RouteSafetyPause positionMs=4500", start)
         }
-        assertEquals(listOf("NoFrameProgress", "NoFrameProgress"), incidents)
+        assertEquals(listOf("NoOutputProgress", "NoOutputProgress"), incidents)
     }
 
     @Test

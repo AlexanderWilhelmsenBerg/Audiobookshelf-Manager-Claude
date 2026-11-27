@@ -10,7 +10,7 @@ class AudioStallIncidentEvidenceTest {
         var pinned = AudioStallIncidentEvidence.capture(
             listOf(row("headset-take-back outcome=Requested"), row("output-proof confirmation=Verified")),
             listOf(row("bluetooth-event event=a2dp-connection peer=b2")),
-            row("track-progress event=NoFrameProgress"),
+            row("track-progress event=NoOutputProgress"),
         )
         repeat(1_000) {
             pinned =
@@ -34,7 +34,7 @@ class AudioStallIncidentEvidenceTest {
         val pinned = AudioStallIncidentEvidence.capture(
             List(500) { row("output-proof confirmation=Verified ordinal=$it") },
             List(500) { row("bluetooth-event peer=b1 ordinal=$it") },
-            row("track-progress event=NoFrameProgress"),
+            row("track-progress event=NoOutputProgress"),
         )
         assertEquals(89, pinned.size)
     }

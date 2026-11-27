@@ -139,10 +139,40 @@ class AudioOutputWriteTraceTest {
                 7,
                 pcm,
                 DriveFlushProbe().Player(),
-                calls::add,
+                samplePreference = calls::add,
             )
         output.setPreferredDevice(null)
         assertEquals(listOf("before-preference-write", "setPreferredDevice", "after-preference-write"), calls)
+    }
+
+    @Test
+    fun `each normal position request is forwarded once and flush and release discard the observation`() {
+        val clock = TestAppClock()
+        val observed = ObservedOutputClock(7, clock) { true }
+        val calls = mutableListOf<String>()
+        val type = AudioOutput::class.java
+        val delegate = Proxy.newProxyInstance(type.classLoader, arrayOf(type)) { _, method, _ ->
+            calls += method.name
+            if (method.name == "getPositionUs") 12_345L else null
+        } as AudioOutput
+        val output =
+            DiagnosticAudioOutput(
+                delegate,
+                AudioOutputWriteTrace(clock),
+                7,
+                pcm,
+                DriveFlushProbe().Player(),
+                observed::observe,
+            ) {
+            }
+        assertEquals(12_345L, output.positionUs)
+        assertEquals(12_345L, observed.latest?.outputPositionUs)
+        output.flush()
+        assertEquals(null, observed.latest)
+        assertEquals(12_345L, output.positionUs)
+        output.release()
+        assertEquals(null, observed.latest)
+        assertEquals(listOf("getPositionUs", "flush", "getPositionUs", "release"), calls)
     }
 
     private fun output(
