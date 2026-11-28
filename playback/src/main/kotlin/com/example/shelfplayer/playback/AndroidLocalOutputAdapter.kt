@@ -51,6 +51,11 @@ internal class AndroidLocalOutputAdapter(
     val endpointIds: Set<String> get() = live.keys
     fun nativeHandle(id: String): Int? = live[id]?.id
 
+    fun matchesBluetoothPeer(endpoint: String?, address: String): Boolean {
+        val identity = registry.diagnosticIdentity(endpoint) ?: return false
+        return identity == registry.bluetoothIdentity(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, address)
+    }
+
     /** Privacy-safe capability count; no identity material leaves this adapter. */
     val identifiedEndpointCount: Int get() = live.values.count { registry.find(it)?.identity != null }
     var collidingOutputIds: Set<String> = emptySet()

@@ -47,6 +47,14 @@ internal fun HeadsetOutputControls(
         enabled,
         select,
     )
+    CaseGroup(
+        R.string.headset_output_early,
+        R.string.headset_output_early_settings,
+        listOf(HeadsetOutputCase.EarlyTakeBack500, HeadsetOutputCase.EarlyTakeBack1000),
+        selected,
+        enabled,
+        select,
+    )
     var showOther by rememberSaveable { mutableStateOf(false) }
     TextButton(onClick = { showOther = !showOther }) { Text(stringResource(R.string.headset_output_earlier_cases)) }
     if (showOther) {
@@ -71,6 +79,7 @@ internal fun HeadsetOutputControls(
         HeadsetTestResult.PlayHeadsetFirst -> R.string.headset_output_verify_first
         HeadsetTestResult.CaptureUnsupported -> R.string.headset_output_unsupported
         HeadsetTestResult.TakeBackUnavailable -> R.string.headset_output_take_back_unavailable
+        HeadsetTestResult.TransferListUnavailable -> R.string.headset_output_early_unsupported
         HeadsetTestResult.Applied, null -> null
     }
     message?.let { Text(stringResource(it)) }
@@ -120,4 +129,6 @@ private fun HeadsetOutputCase.label() = when (this) {
     HeadsetOutputCase.Disconnect1000 -> R.string.headset_output_disconnect_1000
     HeadsetOutputCase.ConnectTakeBackOff -> R.string.headset_output_connection_off
     HeadsetOutputCase.ConnectTakeBackOn -> R.string.headset_output_connection_on
+    HeadsetOutputCase.EarlyTakeBack500 -> R.string.headset_output_early_500
+    HeadsetOutputCase.EarlyTakeBack1000 -> R.string.headset_output_early_1000
 }

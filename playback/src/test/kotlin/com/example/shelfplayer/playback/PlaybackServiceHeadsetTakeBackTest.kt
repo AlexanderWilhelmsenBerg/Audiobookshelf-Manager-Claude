@@ -52,8 +52,13 @@ class PlaybackServiceHeadsetTakeBackTest {
     private class Recorder(private val immediate: Boolean = true) : HeadsetTakeBack {
         override val automaticTransferEnabled = true
         var pending: (() -> Boolean)? = null
+        var early: EarlyHeadsetArrival? = null
         var verified = 0
         var displaced = 0
+        override fun armEarly(arrival: EarlyHeadsetArrival) {
+            early = arrival
+        }
+
         override fun onHeadsetVerified(endpointId: String, mayRemember: () -> Boolean) {
             verified++
         }
@@ -73,6 +78,24 @@ class PlaybackServiceHeadsetTakeBackTest {
         }
 
         override fun close() = cancelPending()
+    }
+
+    @Test
+    fun `an early connection case arms the heard headset and a case change revokes the request`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this, seedActualPlayback = true).use { f ->
+            val recorder = start(f)
+            val trials = f.service.audioTrackRouteMonitor.headsetTrials
+            trials.select(HeadsetOutputCase.EarlyTakeBack500, f.endpointId)
+            f.service.armEarlyHeadsetTakeBack()
+            assertNull(recorder.early)
+            f.service.carBluetoothWindow.onCarHandsFreeConnected("car")
+            f.service.armEarlyHeadsetTakeBack()
+            val arrival = assertNotNull(recorder.early)
+            assertEquals(f.endpointId, arrival.endpoint)
+            assertTrue(arrival.isCurrent())
+            trials.select(HeadsetOutputCase.EarlyTakeBack1000, f.endpointId)
+            assertFalse(arrival.isCurrent())
+        }
     }
 
     @Test

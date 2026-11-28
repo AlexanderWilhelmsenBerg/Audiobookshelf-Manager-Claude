@@ -21,12 +21,22 @@ enum class HeadsetOutputCase(
     Disconnect1000(pcmOverrideMs = 1_000, takeBackOverride = false),
     ConnectTakeBackOff(pcmOverrideMs = 500, takeBackOverride = false),
     ConnectTakeBackOn(pcmOverrideMs = 500, takeBackOverride = true),
+    EarlyTakeBack500(pcmOverrideMs = 500, takeBackOverride = true),
+    EarlyTakeBack1000(pcmOverrideMs = 1_000, takeBackOverride = true),
     ;
 
+    internal val earlyTakeBack get() = this == EarlyTakeBack500 || this == EarlyTakeBack1000
     internal val targetPcmMs get() = pcmOverrideMs ?: 500 // Media3's default PCM target.
 }
 
-enum class HeadsetTestResult { Applied, PauseFirst, PlayHeadsetFirst, CaptureUnsupported, TakeBackUnavailable }
+enum class HeadsetTestResult {
+    Applied,
+    PauseFirst,
+    PlayHeadsetFirst,
+    CaptureUnsupported,
+    TakeBackUnavailable,
+    TransferListUnavailable,
+}
 
 @androidx.annotation.OptIn(UnstableApi::class)
 internal class HeadsetOutputTrials {

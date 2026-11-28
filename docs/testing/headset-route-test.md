@@ -25,6 +25,7 @@ in the headset, then tap **Start headset route test**. Repeat with the same book
 | --- | --- | --- | --- |
 | Car disconnect | 500 ms and 1,000 ms | Normal playback capture, automatic headset take-back off | At car shutdown, listen for silence, repeated speech or a jump forward. |
 | Car connection | Take-back off and take-back on | 500 ms buffer, normal playback capture | At car startup, listen for the gap until narration returns to the same headset. |
+| Car connection · early headset take-back | Early take-back · 500 ms and Early take-back · 1,000 ms | Normal capture, identical early take-back, same headset | Does the extra queued audio help you hear uninterrupted narration when the car starts? |
 
 The buffer target is the phone's decoded PCM queue. Take-back on uses the existing Android 14+
 system transfer experiment and requires Nearby devices access. Each comparison takes precedence over
@@ -32,6 +33,26 @@ the saved take-back switch while active. Open **Other output tests**, select **N
 restore normal playback and the saved switch. A new service starts in normal mode. The earlier
 capture-blocking and 250 ms cases are also available. Blocking capture can disable internal-audio
 recording and live captions for BookWave.
+
+The two early cases require Android 15 or later and Nearby devices access. Use **Early take-back ·
+500 ms** first, finish the run, then repeat with **Early take-back · 1,000 ms**. For a timing
+comparison at the same buffer size use the existing **Take-back on** 500 ms case. No phone or car
+routing settings need to change. Each car-class hands-free connection opens one 30-second window.
+Once the verified headset becomes transferable and BookWave observes displacement or that headset's
+A2DP stream stopping, it can request one system transfer. Android decides whether to honor it.
+The test records these separate milestones:
+
+| JSON outcome | What the timestamp measures |
+| --- | --- |
+| `Transferable` | First observation of the reference headset in the system controller's transferable list, including a fresh offer if the route disappears and returns. |
+| `Requested` | BookWave issued the transfer request. |
+| `Selected` | Android selected the requested route. |
+| `TrackReturned` | BookWave measured its playing AudioTrack on the reference headset after displacement. |
+| `StreamStopped` / `StreamReturned` | Android reported the matching physical headset's A2DP streaming state. The listener's Connect note records when narration was audible. |
+
+In a drive export these appear as `headset-take-back` rows with `stage=Early` and milliseconds
+since arming. A manual run also stores `early-take-back-…` events with UTC and boot-clock timestamps.
+An absent `Requested` can be informative. Compare the offer, stream state, and route proof.
 
 Repeat the same connection and disconnect for each case. Listen with the screen off for several
 minutes before connecting, using your usual speed and EQ. Try a known spoken sequence to identify
@@ -83,3 +104,32 @@ For a matching system trace, optionally arm `python scripts/device-test/car-syst
 SERIAL arm --seconds 300 --scheduler` before the run. Starting the test signals Perfetto. Use the
 script's `pull` action with the printed filename afterwards. `arm --on-incident` keeps a rolling
 window for a single incident. Use the run ID and boot-clock timestamps to align the files.
+
+## Reduce a drive capture on the computer
+
+Place the selected BookWave drive or test exports (`bookwave*.json`), `btsnoop_hci.log`, its
+optional `.last` rotation, and any `*.perfetto-trace` files in one folder. Copy
+`scripts/device-test/summarize-drive-traces.py` into that folder, open PowerShell there and run:
+
+```powershell
+python .\summarize-drive-traces.py
+```
+
+Share **bookwave-drive-summary.json**. The script reads the top-level folder and leaves the original
+captures available for deeper analysis. It uses Python 3.11+ and a local Perfetto Trace Processor for
+the system trace. It detects the executable on PATH or in the standard Perfetto prebuilt cache.
+Use `--trace-processor PATH` for a different location. With only the BookWave export it still produces
+a report and labels each missing source.
+
+Each window starts three seconds before BookWave's connection or disconnect signal and ends
+16 seconds after the last related connection signal, or five seconds after departure. The report
+lists the case and drive/run IDs when present in the export. It preserves take-back milestones,
+the largest outbound Bluetooth packet gap, accepted AVDTP suspend/start exchanges and first
+outbound media after an accepted start. System evidence includes mixer changes, observations of
+zero ready frames, and up to five BookWave playback-loop calls lasting at least 50 ms per window.
+The hardware capture measures packets leaving the phone. Mark what you hear in the run separately.
+
+Perfetto timestamps use the trace's wall-clock snapshots. Bluetooth time is matched against
+independent BookWave and HCI connection events. If multiple offsets fit, packet timings are left
+unaligned. Supply `--hci-offset-seconds N` only if you independently know the seconds to add to the
+raw HCI clock to obtain UTC. The report distinguishes partial trace coverage and ambiguous streams.

@@ -29,7 +29,17 @@ class CarLabJournal internal constructor(context: Context) {
 
     @Volatile internal var onTraceIncident: ((Int, String) -> Unit)? = null
 
-    internal fun playbackMarker(row: String, at: Instant) = trace?.playback(row, at)
+    @Synchronized
+    internal fun playbackMarker(row: String, at: Instant) {
+        if (row.startsWith("headset-take-back ") && "stage=Early" in row) {
+            val run = active ?: return
+            if (at < Instant.parse(run.getString("startUtc"))) return
+            val outcome = row.substringAfter("outcome=", "").substringBefore(' ')
+            if (outcome in EARLY_OUTCOMES) record("early-take-back-$outcome", now = at)
+        } else {
+            trace?.playback(row, at)
+        }
+    }
 
     init {
         active?.let { finish("process-interrupted", Instant.parse(it.getString("lastObservedUtc")).plusNanos(1)) }
@@ -190,6 +200,10 @@ class CarLabJournal internal constructor(context: Context) {
     }
 
     companion object {
+        private val EARLY_OUTCOMES = setOf(
+            "Armed", "Transferable", "Requested", "Selected", "Failed", "TimedOut", "Unavailable",
+            "Ineligible", "HeadsetRouteUnknown", "TrackReturned", "StreamStopped", "StreamReturned",
+        )
         internal const val CASE_ID = "HeadsetRoute"
         private const val MAX_RUNS = 48
         private const val MAX_EVENTS = 160

@@ -347,6 +347,7 @@ class AndroidAutoDiagnosticsCapture @Inject internal constructor(
         private val CONNECTION_WINDOW = 30.seconds
         private val RETENTION = 30.days
         private val DEPARTURE_EVENTS = setOf(
+            "headset-take-back",
             "playback-intent",
             "media3-playback",
             "preferred-output-request",

@@ -47,6 +47,7 @@ internal interface SystemRoutePort {
     fun availability(): SystemRouteStatus
     fun audioMode(): Int
     fun routes(): List<SystemRouteCandidate>
+    fun transferableRouteIds(): Set<String> = emptySet()
     fun open(changed: () -> Unit, result: (String, SystemRouteStatus) -> Unit)
     fun transfer(id: String)
     fun close()

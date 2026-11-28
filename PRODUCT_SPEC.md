@@ -459,7 +459,11 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   A debug comparison can independently block capture of BookWave audio and request a 250 ms PCM
   buffer for a paused headset test. For a disconnect comparison, offer 500 ms and 1,000 ms PCM
   targets with normal capture and automatic headset take-back off. A separate connection comparison
-  selects take-back off or on with the same 500 ms target and normal capture. The selected case
+  selects take-back off or on with the same 500 ms target and normal capture. A third comparison
+  tests early headset take-back at 500 ms and 1,000 ms on Android 15 or later. Both cases use
+  normal capture and the same one-transfer allowance for the previously heard headset. Record
+  Android offering the route, BookWave requesting it, native track verification, and the matching
+  headset's A2DP stream restarting as distinct events in the drive and manual test exports. The selected case
   overrides the saved take-back preference for the test. Daily playback defaults to normal capture
   and Media3 buffering.
 - An internal route-safety pause of verified active headset playback may authorize one silent recovery

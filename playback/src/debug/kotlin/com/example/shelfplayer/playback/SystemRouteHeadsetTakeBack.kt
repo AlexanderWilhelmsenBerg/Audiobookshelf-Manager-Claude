@@ -14,6 +14,7 @@ internal class SystemRouteHeadsetTakeBack(
     private val port: SystemRoutePort,
     private val clock: AppClock,
     private val enabled: () -> Boolean = { true },
+    private val earlyEnabled: () -> Boolean = { false },
     private val log: (String, List<LogField>) -> Unit,
 ) : HeadsetTakeBack {
     override val automaticTransferEnabled: Boolean get() = enabled()
@@ -35,6 +36,7 @@ internal class SystemRouteHeadsetTakeBack(
     private var verified: Verified? = null
     private var headset: Headset? = null
     private var attempt: Attempt? = null
+    private var early: EarlyHeadsetTransfer? = null
     private val aliases = mutableMapOf<String, Int>()
 
     override fun onHeadsetVerified(endpointId: String, mayRemember: () -> Boolean) {
@@ -46,6 +48,44 @@ internal class SystemRouteHeadsetTakeBack(
         // Keep an issued request's correlation if playback returns before the selection callback.
         if (attempt?.requestedAt == null) attempt = null
         if (open()) remember()
+        early?.trackVerified(endpointId)
+    }
+
+    override fun armEarly(arrival: EarlyHeadsetArrival) {
+        early?.cancel()
+        early = null
+        if (!earlyEnabled() || !arrival.isCurrent() || !arrival.scope.isCurrent()) return
+        val started = clock.elapsed()
+        val emit: (String) -> Unit = { outcome ->
+            log(
+                "Headset take-back experiment",
+                listOf(
+                    LogField.Public("stage", "Early"),
+                    LogField.Public("outcome", outcome),
+                    LogField.Millis("elapsed", (clock.elapsed() - started).inWholeMilliseconds),
+                ),
+            )
+        }
+        val target = headset?.takeIf { it.endpoint == arrival.endpoint }
+        if (target == null || !open()) {
+            emit("HeadsetRouteUnknown")
+            return
+        }
+        early = EarlyHeadsetTransfer(arrival, target.route, port, emit)
+        emit("Armed")
+        early?.update()
+    }
+
+    override fun onHeadsetStream(playing: Boolean) {
+        early?.stream(playing)
+    }
+
+    override fun earlyTrackLost() {
+        early?.trackLost()
+    }
+
+    override fun onEarlyTrackRouteChanged() {
+        early?.update()
     }
 
     override fun onHeadsetDisplaced(
@@ -54,6 +94,11 @@ internal class SystemRouteHeadsetTakeBack(
         isCurrent: () -> Boolean,
     ) {
         verified = null
+        if (earlyEnabled()) {
+            early?.trackLost()
+            early?.update()
+            return
+        }
         if (!scope.isCurrent() || !isCurrent()) return
         if (!open()) {
             val status = port.availability()
@@ -66,6 +111,8 @@ internal class SystemRouteHeadsetTakeBack(
     }
 
     override fun cancelPending() {
+        early?.cancel()
+        early = null
         attempt = null
         verified = null
     }
@@ -94,6 +141,7 @@ internal class SystemRouteHeadsetTakeBack(
 
     private fun onRoutesChanged() {
         remember()
+        early?.update()
         advance()
     }
 
@@ -151,6 +199,7 @@ internal class SystemRouteHeadsetTakeBack(
     }
 
     private fun onResult(id: String, status: SystemRouteStatus) {
+        early?.result(id, status)
         val active = attempt?.takeIf { it.route == id && it.requestedAt != null } ?: return
         finish(active, if (active.isCurrent()) status.name else "Cancelled")
     }

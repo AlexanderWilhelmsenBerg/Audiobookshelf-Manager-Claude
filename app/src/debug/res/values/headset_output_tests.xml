@@ -1,4 +1,9 @@
 <resources>
+    <string name="headset_output_early">Car connection · early headset take-back</string>
+    <string name="headset_output_early_settings">Both cases watch for the first transfer back to your playing headset and allow normal playback capture.</string>
+    <string name="headset_output_early_500">Early take-back · 500 ms</string>
+    <string name="headset_output_early_1000">Early take-back · 1,000 ms</string>
+    <string name="headset_output_early_unsupported">Early take-back requires Android 15 or newer to read transferable routes.</string>
     <string name="headset_output_test_hint">Play through the headset once, pause, then choose and apply one case before starting a run.</string>
     <string name="headset_output_disconnect">Car disconnect · output buffer</string>
     <string name="headset_output_disconnect_settings">Normal playback capture. Automatic headset take-back is off.</string>

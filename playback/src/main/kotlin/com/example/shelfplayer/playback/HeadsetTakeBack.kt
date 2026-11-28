@@ -12,6 +12,10 @@ internal interface HeadsetTakeBack {
     /** Diagnostic comparison mode; null when this build has no automatic system-route experiment. */
     val automaticTransferEnabled: Boolean? get() = null
     val availableForTrial: Boolean get() = false
+    fun armEarly(arrival: EarlyHeadsetArrival) = Unit
+    fun onHeadsetStream(playing: Boolean) = Unit
+    fun earlyTrackLost() = Unit
+    fun onEarlyTrackRouteChanged() = Unit
 
     /** Playback is measured on the headset right now; remember which system route that is. */
     fun onHeadsetVerified(endpointId: String, mayRemember: () -> Boolean)
@@ -28,6 +32,14 @@ internal interface HeadsetTakeBack {
 
     fun close()
 }
+
+/** One previously verified output and the listener intent that owns this particular car arrival. */
+internal class EarlyHeadsetArrival(
+    val endpoint: String,
+    val scope: CarBluetoothArrivalWindow.TakeBackScope,
+    val isCurrent: () -> Boolean,
+    val trackMoved: () -> Boolean,
+)
 
 internal object NoHeadsetTakeBack : HeadsetTakeBack {
     override fun onHeadsetVerified(endpointId: String, mayRemember: () -> Boolean) = Unit
