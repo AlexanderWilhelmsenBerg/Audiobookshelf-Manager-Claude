@@ -30,7 +30,8 @@ class EarlyHeadsetJournalTest {
         assertEquals("case=EarlyTakeBack1000", run.getString("headsetOutputAtStart"))
         val names = (0 until events.length()).map { events.getJSONObject(it).getString("event") }
         assertEquals(kinds.map { "early-take-back-$it" }, names)
-        assertEquals(start.plusMillis(3).toString(), events.getJSONObject(3).getString("atUtc"))
+        val last = kinds.lastIndex
+        assertEquals(start.plusMillis(last.toLong()).toString(), events.getJSONObject(last).getString("atUtc"))
         assertFalse(report.contains("PrivateRoute"))
     }
 }
