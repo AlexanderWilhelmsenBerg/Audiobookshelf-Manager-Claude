@@ -457,7 +457,11 @@ The identifiers below are stable. Code, tests, pull requests, and issues should 
   was playing. Pause-time progress and the muted same-headset return share the position. A stale
   observation or a different command, book, profile, player or selected route cannot supply it.
   A debug comparison can independently block capture of BookWave audio and request a 250 ms PCM
-  buffer for a paused headset test. Daily playback defaults to normal capture and Media3 buffering.
+  buffer for a paused headset test. For a disconnect comparison, offer 500 ms and 1,000 ms PCM
+  targets with normal capture and automatic headset take-back off. A separate connection comparison
+  selects take-back off or on with the same 500 ms target and normal capture. The selected case
+  overrides the saved take-back preference for the test. Daily playback defaults to normal capture
+  and Media3 buffering.
 - An internal route-safety pause of verified active headset playback may authorize one silent recovery
   of that exact trusted headset. Allow up to five seconds when the pause follows a recent trusted Auto
   arrival for that headset or a recent car-class hands-free connection in normal audio mode. Use two

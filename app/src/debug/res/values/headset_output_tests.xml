@@ -1,5 +1,16 @@
 <resources>
-    <string name="headset_output_test_hint">Play your book through the headset once, pause, then apply a test before starting a run. Capture blocking can disable live captions for this book.</string>
+    <string name="headset_output_test_hint">Play through the headset once, pause, then choose and apply one case before starting a run.</string>
+    <string name="headset_output_disconnect">Car disconnect · output buffer</string>
+    <string name="headset_output_disconnect_settings">Normal playback capture. Automatic headset take-back is off.</string>
+    <string name="headset_output_connection">Car connection · headset take-back</string>
+    <string name="headset_output_connection_settings">Both cases use a 500 ms buffer and normal playback capture.</string>
+    <string name="headset_output_disconnect_500">500 ms buffer</string>
+    <string name="headset_output_disconnect_1000">1,000 ms buffer</string>
+    <string name="headset_output_connection_off">Take-back off</string>
+    <string name="headset_output_connection_on">Take-back on</string>
+    <string name="headset_output_earlier_cases">Other output tests</string>
+    <string name="headset_output_take_back_unavailable">Take-back on requires Android 14 or newer and Nearby devices access. You can grant access under Route comparison tools.</string>
+    <string name="headset_output_legacy_hint">These cases use your saved take-back setting. Blocking capture can disable live captions for this book.</string>
     <string name="headset_output_block_capture">Block playback capture</string>
     <string name="headset_output_short_buffer">250 ms headset buffer</string>
     <string name="headset_output_apply">Apply to paused book</string>

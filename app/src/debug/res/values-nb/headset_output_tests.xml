@@ -1,5 +1,16 @@
 <resources>
-    <string name="headset_output_test_hint">Spill av boken i hodetelefonene én gang, sett på pause og velg en test før du starter en måling. Blokkering av lydopptak kan slå av direkteteksting for boken.</string>
+    <string name="headset_output_test_hint">Spill av i hodetelefonene én gang og sett på pause. Velg og aktiver én test før du starter en måling.</string>
+    <string name="headset_output_disconnect">Frakobling av bilen · lydbuffer</string>
+    <string name="headset_output_disconnect_settings">Vanlig lydopptak. Automatisk tilbakeføring til hodetelefonene er av.</string>
+    <string name="headset_output_connection">Tilkobling til bilen · tilbakeføring til hodetelefonene</string>
+    <string name="headset_output_connection_settings">Begge testene bruker 500 ms buffer og vanlig lydopptak.</string>
+    <string name="headset_output_disconnect_500">500 ms buffer</string>
+    <string name="headset_output_disconnect_1000">1 000 ms buffer</string>
+    <string name="headset_output_connection_off">Tilbakeføring av</string>
+    <string name="headset_output_connection_on">Tilbakeføring på</string>
+    <string name="headset_output_earlier_cases">Andre lydtester</string>
+    <string name="headset_output_take_back_unavailable">Tilbakeføring krever Android 14 eller nyere og tilgang til enheter i nærheten. Du kan gi tilgang i verktøyene for rutesammenligning.</string>
+    <string name="headset_output_legacy_hint">Disse testene bruker den lagrede innstillingen for tilbakeføring. Blokkering av lydopptak kan slå av direkteteksting for boken.</string>
     <string name="headset_output_block_capture">Blokker opptak av avspillingen</string>
     <string name="headset_output_short_buffer">250 ms lydbuffer for hodetelefoner</string>
     <string name="headset_output_apply">Bruk på boken som er satt på pause</string>

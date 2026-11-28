@@ -9,5 +9,6 @@ import com.example.shelfplayer.core.common.time.AppClock
 internal fun createHeadsetTakeBack(
     context: Context,
     clock: AppClock,
+    trials: HeadsetOutputTrials,
     log: (String, List<LogField>) -> Unit,
 ): HeadsetTakeBack = NoHeadsetTakeBack

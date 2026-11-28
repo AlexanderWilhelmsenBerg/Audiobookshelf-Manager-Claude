@@ -40,6 +40,11 @@ class PlaybackServiceHeadsetTakeBackTest {
             assertEquals(f.player.currentPosition, snapshot.positionMs)
             assertEquals(f.player.totalBufferedDuration, snapshot.bufferedMs)
             assertEquals(true, snapshot.automaticTakeBack)
+            assertTrue(
+                f.service.audioTrackRouteMonitor.headsetTrialEvidence().contains(
+                    "captureMode=normal automaticTakeBack=true",
+                ),
+            )
             assertEquals(plays, f.rawPlayCalls)
         }
     }

@@ -17,24 +17,34 @@ same controls.
 
 ### Compare headset output settings
 
-Start with **Normal capture and buffer**. While the headset is playing, tap **Start headset route
-test**. For subsequent runs, finish the previous run and pause the book with the headset connected.
-Choose **Block playback capture**, **250 ms headset buffer**, or both, and tap **Apply to paused
-book**. Check the active test label. Press Play, confirm you hear the headset, then start the next
-run. Clear both choices and apply to return to normal. A new service starts in normal mode.
-Blocking capture can disable internal-audio recording and live captions for BookWave.
+Finish any previous run and pause the book with the verified headset still connected. Choose one
+case and tap **Apply to paused book**. Check the active test label, press Play, listen for narration
+in the headset, then tap **Start headset route test**. Repeat with the same book and headset.
+
+| Comparison | Cases | Settings shared by both cases | What to listen for |
+| --- | --- | --- | --- |
+| Car disconnect | 500 ms and 1,000 ms | Normal playback capture, automatic headset take-back off | At car shutdown, listen for silence, repeated speech or a jump forward. |
+| Car connection | Take-back off and take-back on | 500 ms buffer, normal playback capture | At car startup, listen for the gap until narration returns to the same headset. |
+
+The buffer target is the phone's decoded PCM queue. Take-back on uses the existing Android 14+
+system transfer experiment and requires Nearby devices access. Each comparison takes precedence over
+the saved take-back switch while active. Open **Other output tests**, select **Normal capture and buffer** and apply it to
+restore normal playback and the saved switch. A new service starts in normal mode. The earlier
+capture-blocking and 250 ms cases are also available. Blocking capture can disable internal-audio
+recording and live captions for BookWave.
 
 Repeat the same connection and disconnect for each case. Listen with the screen off for several
 minutes before connecting, using your usual speed and EQ. Try a known spoken sequence to identify
 a missing or repeated number. Also check deliberate **Play in car**, a real Pause, and unplugging
 the playing headset. Wireless projection alone must leave a healthy headset playing. The position
-correction is active in all four cases.
+correction is active in every case.
 
 Each manual run saves its starting output settings and a final sample. Each recorded drive includes
 `headset-output-test` events on opening, on a test change, at departure and after the observation
-window. Compare native buffer frames divided by sample rate to obtain the effective buffer duration.
-The 250 ms target respects Android’s device minimum. Compare underrun counts only within the same
-track epoch. Missing track readings are marked unavailable.
+window. Compare the case, requested capture policy, effective take-back switch and native capture
+policy. Divide native buffer frames by sample rate to obtain the effective buffer duration in
+seconds. Each PCM target respects Android’s device minimum. Compare underrun counts only within the
+same track epoch. Missing track readings are marked unavailable.
 
 1. Start the car normally and let wireless Android Auto connect. Turn off the car and listen through
    disconnection. Mark what you heard for **Connect** and **Disconnect**. A recovery after a gap

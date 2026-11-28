@@ -508,9 +508,10 @@ class PlaybackService : MediaLibraryService() {
             recordAutoConnection("car-bluetooth", confirmed = false)
             audioTrackRouteMonitor.sampleRouteObservers("car-hands-free-connected")
         }.also(CarBluetoothArrivalMonitor::start)
-        headsetTakeBack = createHeadsetTakeBack(applicationContext, clock) { message, fields ->
-            autoTraces.log(message, fields = fields + carSnapshotFields())
-        }
+        headsetTakeBack =
+            createHeadsetTakeBack(applicationContext, clock, audioTrackRouteMonitor.headsetTrials) { message, fields ->
+                autoTraces.log(message, fields = fields + carSnapshotFields())
+            }
         outputDevices.start(scope, DeviceActions())
         observeBrowseTreeInvalidation()
         logger.info(LogCategory.Playback, "Playback service started")
@@ -1180,6 +1181,7 @@ class PlaybackService : MediaLibraryService() {
         audioOutputs.isRecoveringHeadset = { false }
         audioOutputs.onBeforeRouteSafetyPause = {}
         audioTrackRouteMonitor.playbackSnapshot = { null }
+        audioTrackRouteMonitor.takeBackEnabled = { null }
         resumeFreshness.attach(null)
         autoRewind.attach(null)
         sleepTimer.attach(null)
@@ -2128,6 +2130,8 @@ class PlaybackService : MediaLibraryService() {
 
             test.blockCapture && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> HeadsetTestResult.CaptureUnsupported
 
+            test.takeBackOverride == true && !headsetTakeBack.availableForTrial -> HeadsetTestResult.TakeBackUnavailable
+
             test != HeadsetOutputCase.Normal && !hasHeadsetBook -> HeadsetTestResult.PlayHeadsetFirst
 
             else -> {
@@ -2152,6 +2156,7 @@ class PlaybackService : MediaLibraryService() {
         }
         val prepare =
             !current.playWhenReady && current.playbackState != Player.STATE_IDLE && current.currentMediaItem != null
+        headsetTakeBack.cancelPending()
         if (prepare) current.stop()
         trials.select(test, endpoint)
         current.setAudioAttributes(playbackAudioAttributes(appliedFocus, test), appliedFocus != FocusBehaviour.Ignore)
@@ -2230,6 +2235,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun bindOutputContinuity() {
+        audioTrackRouteMonitor.takeBackEnabled = { headsetTakeBack.automaticTransferEnabled }
         audioTrackRouteMonitor.playbackSnapshot = {
             player?.let { target ->
                 AudioTrackPlaybackSnapshot(
