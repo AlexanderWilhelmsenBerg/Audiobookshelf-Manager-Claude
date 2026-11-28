@@ -9,12 +9,13 @@ import com.example.shelfplayer.core.common.time.AppClock
 internal fun createHeadsetTakeBack(
     context: Context,
     clock: AppClock,
+    trials: HeadsetOutputTrials,
     log: (String, List<LogField>) -> Unit,
 ): HeadsetTakeBack = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
     SystemRouteHeadsetTakeBack(
         PlatformSystemRoutePort(context),
         clock,
-        enabled = { AutomaticHeadsetTakeBackSetting.enabled(context) },
+        enabled = { trials.active.value.takeBackOverride ?: AutomaticHeadsetTakeBackSetting.enabled(context) },
         log = log,
     )
 } else {

@@ -17,6 +17,7 @@ internal class SystemRouteHeadsetTakeBack(
     private val log: (String, List<LogField>) -> Unit,
 ) : HeadsetTakeBack {
     override val automaticTransferEnabled: Boolean get() = enabled()
+    override val availableForTrial: Boolean get() = port.availability() == SystemRouteStatus.Observing
     private data class Headset(val endpoint: String, val route: String)
     private data class Verified(val endpoint: String, val mayRemember: () -> Boolean)
     private class Attempt(

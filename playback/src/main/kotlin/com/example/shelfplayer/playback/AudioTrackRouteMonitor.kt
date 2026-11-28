@@ -86,10 +86,13 @@ internal class AudioTrackRouteMonitor @Inject constructor(
 
     private var listener: AudioRouting.OnRoutingChangedListener? = null
     internal val headsetTrials = HeadsetOutputTrials()
+    var takeBackEnabled: () -> Boolean? = { null }
 
     internal fun headsetTrialEvidence(): String {
         val selected = headsetTrials.active.value
-        val prefix = "case=${selected.name} targetPcmMs=${selected.targetPcmMs}"
+        val captureMode = if (selected.blockCapture) "blocked" else "normal"
+        val prefix = "case=${selected.name} targetPcmMs=${selected.targetPcmMs} captureMode=$captureMode " +
+            "automaticTakeBack=${takeBackEnabled() ?: "unavailable"}"
         val track = active ?: return "$prefix track=unavailable"
         val token = epoch.nextSnapshot()
         val details = runCatching {

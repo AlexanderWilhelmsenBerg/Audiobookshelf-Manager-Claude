@@ -15,6 +15,22 @@ import kotlin.test.assertEquals
 @Config(sdk = [34])
 class HeadsetOutputTrialsTest {
     @Test
+    fun `disconnect comparison changes only the PCM output buffer`() {
+        val trials = HeadsetOutputTrials()
+        for ((case, bytes) in mapOf(
+            HeadsetOutputCase.Disconnect500 to 48_000,
+            HeadsetOutputCase.Disconnect1000 to 96_000,
+        )) {
+            trials.select(case, "fixture")
+            assertEquals(
+                playbackAudioAttributes(FocusBehaviour.Duck),
+                playbackAudioAttributes(FocusBehaviour.Duck, case),
+            )
+            assertEquals(bytes, pcmBytes(trials, minimum = 1_024))
+        }
+    }
+
+    @Test
     fun `independent capture and output queue choices preserve focus and device minimum`() {
         val trials = HeadsetOutputTrials()
         for (case in HeadsetOutputCase.entries) {
@@ -25,9 +41,22 @@ class HeadsetOutputTrialsTest {
             assertEquals(defaultAttributes.contentType, attributes.contentType)
             val capture = if (case.blockCapture) C.ALLOW_CAPTURE_BY_NONE else defaultAttributes.allowedCapturePolicy
             assertEquals(capture, attributes.allowedCapturePolicy)
-            val durationBytes = if (case.shortBuffer) 24_000 else 48_000
+            val durationBytes = case.targetPcmMs * 96
             assertEquals(durationBytes, pcmBytes(trials, minimum = 1_024))
-            assertEquals(64_000, pcmBytes(trials, minimum = 64_000))
+            assertEquals(128_000, pcmBytes(trials, minimum = 128_000))
+        }
+    }
+
+    @Test
+    fun `connection cases have identical capture policy and half-second output queues`() {
+        val trials = HeadsetOutputTrials()
+        for (case in listOf(HeadsetOutputCase.ConnectTakeBackOff, HeadsetOutputCase.ConnectTakeBackOn)) {
+            trials.select(case, "fixture")
+            assertEquals(
+                playbackAudioAttributes(FocusBehaviour.Duck),
+                playbackAudioAttributes(FocusBehaviour.Duck, case),
+            )
+            assertEquals(48_000, pcmBytes(trials, minimum = 1_024))
         }
     }
 

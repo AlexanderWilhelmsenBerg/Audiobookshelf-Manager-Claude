@@ -1,10 +1,17 @@
 package com.example.shelfplayer.feature.settings
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import com.example.shelfplayer.playback.HeadsetOutputCase
+import com.example.shelfplayer.playback.HeadsetTestResult
 import com.example.shelfplayer.playback.SystemRouteExperimentState
 import com.example.shelfplayer.playback.SystemRouteRow
 import com.example.shelfplayer.playback.SystemRouteStatus
@@ -20,6 +27,34 @@ import kotlin.test.assertTrue
 @Config(sdk = [34])
 class SystemRouteExperimentControlsTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test
+    fun pairedDriveCasesApplyIndividuallyToThePausedBook() {
+        val applied = mutableListOf<HeadsetOutputCase>()
+        compose.setContent {
+            var active by remember { mutableStateOf(HeadsetOutputCase.Normal) }
+            Column {
+                HeadsetOutputControls(active, enabled = true) {
+                    applied += it
+                    active = it
+                    HeadsetTestResult.Applied
+                }
+            }
+        }
+        for ((label, case) in listOf(
+            "500 ms buffer" to HeadsetOutputCase.Disconnect500,
+            "1,000 ms buffer" to HeadsetOutputCase.Disconnect1000,
+            "Take-back off" to HeadsetOutputCase.ConnectTakeBackOff,
+            "Take-back on" to HeadsetOutputCase.ConnectTakeBackOn,
+        )) {
+            val count = applied.size
+            compose.onNodeWithText(label).performClick()
+            assertEquals(count, applied.size)
+            compose.onNodeWithText("Apply to paused book").performClick()
+            assertEquals(case, applied.last())
+            compose.onNodeWithText("Active output test · $label").assertExists()
+        }
+    }
 
     @Test
     fun comparisonToggleChangesOnlyTheAutomaticExperimentControl() {

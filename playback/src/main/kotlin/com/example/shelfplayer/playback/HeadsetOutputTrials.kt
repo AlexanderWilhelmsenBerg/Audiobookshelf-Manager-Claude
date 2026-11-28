@@ -8,22 +8,25 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlin.time.Duration.Companion.milliseconds
 
 /** Debug controls select a case explicitly while paused. Process recreation starts in Normal. */
-enum class HeadsetOutputCase(val blockCapture: Boolean, val shortBuffer: Boolean) {
-    Normal(false, false),
-    CaptureBlocked(true, false),
-    ShortBuffer(false, true),
-    Combined(true, true),
+enum class HeadsetOutputCase(
+    val blockCapture: Boolean = false,
+    internal val pcmOverrideMs: Int? = null,
+    internal val takeBackOverride: Boolean? = null,
+) {
+    Normal,
+    CaptureBlocked(blockCapture = true),
+    ShortBuffer(pcmOverrideMs = 250),
+    Combined(blockCapture = true, pcmOverrideMs = 250),
+    Disconnect500(pcmOverrideMs = 500, takeBackOverride = false),
+    Disconnect1000(pcmOverrideMs = 1_000, takeBackOverride = false),
+    ConnectTakeBackOff(pcmOverrideMs = 500, takeBackOverride = false),
+    ConnectTakeBackOn(pcmOverrideMs = 500, takeBackOverride = true),
     ;
 
-    internal val targetPcmMs get() = if (shortBuffer) SHORT_BUFFER_MS else NORMAL_BUFFER_MS
-
-    private companion object {
-        const val SHORT_BUFFER_MS = 250
-        const val NORMAL_BUFFER_MS = 500
-    }
+    internal val targetPcmMs get() = pcmOverrideMs ?: 500 // Media3's default PCM target.
 }
 
-enum class HeadsetTestResult { Applied, PauseFirst, PlayHeadsetFirst, CaptureUnsupported }
+enum class HeadsetTestResult { Applied, PauseFirst, PlayHeadsetFirst, CaptureUnsupported, TakeBackUnavailable }
 
 @androidx.annotation.OptIn(UnstableApi::class)
 internal class HeadsetOutputTrials {
@@ -38,11 +41,13 @@ internal class HeadsetOutputTrials {
         mutable.value = case
     }
 
-    private val small = DefaultAudioTrackBufferSizeProvider.Builder()
-        .setTargetPcmBufferDurationUs(
-            HeadsetOutputCase.ShortBuffer.targetPcmMs.milliseconds.inWholeMicroseconds.toInt(),
-        )
-        .build()
+    private val pcmProviders = HeadsetOutputCase.entries.mapNotNull {
+        it.pcmOverrideMs
+    }.distinct().associateWith { ms ->
+        DefaultAudioTrackBufferSizeProvider.Builder()
+            .setTargetPcmBufferDurationUs(ms.milliseconds.inWholeMicroseconds.toInt())
+            .build()
+    }
     val bufferProvider = DefaultAudioSink.AudioTrackBufferSizeProvider {
             min,
             encoding,
@@ -52,8 +57,9 @@ internal class HeadsetOutputTrials {
             bitrate,
             speed,
         ->
-        val provider = if (active.value.shortBuffer && mode == DefaultAudioSink.OUTPUT_MODE_PCM) {
-            small
+        val override = active.value.pcmOverrideMs
+        val provider = if (mode == DefaultAudioSink.OUTPUT_MODE_PCM && override != null) {
+            pcmProviders.getValue(override)
         } else {
             DefaultAudioSink.AudioTrackBufferSizeProvider.DEFAULT
         }
