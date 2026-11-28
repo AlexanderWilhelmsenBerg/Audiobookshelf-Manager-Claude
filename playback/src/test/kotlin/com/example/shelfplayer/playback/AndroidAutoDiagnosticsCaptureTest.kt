@@ -91,23 +91,6 @@ class AndroidAutoDiagnosticsCaptureTest {
             val output = (0 until events.length()).map(events::getJSONObject)
                 .single { it.getString("event") == "headset-output-test" }
             assertTrue(output.getString("details").contains("phase=start case=Normal targetPcmMs=500"))
-            val monitor = player.service.audioTrackRouteMonitor
-            monitor.headsetTrials.select(HeadsetOutputCase.Disconnect1000, player.endpointId)
-            monitor.takeBackEnabled = { false }
-            recorder.outputTestChanged()
-            val updated = JSONObject(recorder.report("build test")).getJSONArray("attempts").getJSONObject(0)
-                .getJSONArray("events")
-            val changed = (0 until updated.length()).map(updated::getJSONObject).last {
-                it.getString("event") ==
-                    "headset-output-test"
-            }
-            assertTrue(
-                changed.getString(
-                    "details",
-                ).contains(
-                    "phase=changed case=Disconnect1000 targetPcmMs=1000 captureMode=normal automaticTakeBack=false",
-                ),
-            )
             assertEquals(0, drive.getJSONArray("audioSinkFlushes").length())
             val samples = drive.getJSONArray("nativeRouteSamples")
             val sources = List(samples.length()) { samples.getJSONObject(it).getString("source") }
@@ -324,6 +307,28 @@ class AndroidAutoDiagnosticsCaptureTest {
             assertTrue(f.capture.drives.first().isEmpty())
         }
 
+    @Test
+    fun `drive export distinguishes a changed buffer case from its initial case`() = runTest {
+        PlaybackServiceCommandContinuityFixture(this).use { player ->
+            player.installServiceContinuityCallbacks()
+            val monitor = player.service.audioTrackRouteMonitor
+            val f = Fixture(this)
+            val recorder = f.open(monitor)
+            recorder.setEnabled(true)
+            recorder.confirmed("projection", true, null)
+            monitor.headsetTrials.select(HeadsetOutputCase.Disconnect1000, player.endpointId)
+            monitor.takeBackEnabled = { false }
+            recorder.outputTestChanged()
+            val events = f.report(recorder).getJSONArray("attempts").getJSONObject(0).getJSONArray("events")
+            val tests = (0 until events.length()).map(events::getJSONObject)
+                .filter { it.getString("event") == "headset-output-test" }.map { it.getString("details") }
+            assertEquals(2, tests.size)
+            assertTrue(tests.first().startsWith("phase=start case=Normal targetPcmMs=500"))
+            assertTrue(tests.last().startsWith("phase=changed case=Disconnect1000 targetPcmMs=1000"))
+            assertTrue(tests.last().contains("captureMode=normal automaticTakeBack=false"))
+        }
+    }
+
     private class Fixture(scope: TestScope) {
         private val context: Context = RuntimeEnvironment.getApplication()
         private val dispatcher = StandardTestDispatcher(scope.testScheduler)
@@ -332,7 +337,8 @@ class AndroidAutoDiagnosticsCaptureTest {
         private val log = EventLog(clock)
         val capture = open()
 
-        fun open() = AndroidAutoDiagnosticsCapture(context, clock, log, background, dispatcher)
+        fun open(monitor: AudioTrackRouteMonitor? = null) =
+            AndroidAutoDiagnosticsCapture(context, clock, log, background, dispatcher, monitor)
 
         fun key(code: Int) = log.write(
             LogLevel.Info,

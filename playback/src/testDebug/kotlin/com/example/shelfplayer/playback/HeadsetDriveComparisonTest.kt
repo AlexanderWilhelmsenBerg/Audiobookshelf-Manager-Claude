@@ -13,7 +13,7 @@ import kotlin.test.assertEquals
 @Config(sdk = [34])
 class HeadsetDriveComparisonTest {
     @Test
-    fun `bound transfer gate follows the active case and restores the saved choice after the test`() {
+    fun transferGateFollowsTheActiveCaseAndRestoresTheSavedChoice() {
         val context: Context = RuntimeEnvironment.getApplication()
         val trials = HeadsetOutputTrials()
         val takeBack = createHeadsetTakeBack(context, TestAppClock(), trials) { _, _ -> }
