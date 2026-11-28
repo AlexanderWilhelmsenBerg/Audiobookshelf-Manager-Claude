@@ -42,6 +42,7 @@ class PlatformSystemRoutePortTest {
         RouterShadow.controller = Shadow.newInstanceOf(MediaRouter2.RoutingController::class.java)
         RouterShadow.routes = listOf(route("private-headset", "Secret headset"), route("private-car", "Secret car"))
         RouterShadow.selected = listOf(RouterShadow.routes.last())
+        RouterShadow.transferable = emptyList()
         RouterShadow.requests.clear()
         RouterShadow.routeCallback = null
         RouterShadow.transferCallback = null
@@ -50,6 +51,18 @@ class PlatformSystemRoutePortTest {
             Manifest.permission.BLUETOOTH_CONNECT,
             Manifest.permission.BLUETOOTH_SCAN,
         )
+    }
+
+    @Test
+    @Config(sdk = [35])
+    fun transferableListUsesTheControllerOfferEvenWhenBothDevicesAreVisible() {
+        val port = PlatformSystemRoutePort(RuntimeEnvironment.getApplication())
+        port.open({}, { _, _ -> })
+        assertTrue(port.routes().size == 2)
+        assertTrue(port.transferableRouteIds().isEmpty())
+        RouterShadow.transferable = listOf(RouterShadow.routes.first())
+        assertEquals(setOf("private-headset"), port.transferableRouteIds())
+        port.close()
     }
 
     @Test
@@ -145,6 +158,7 @@ class PlatformSystemRoutePortTest {
             lateinit var controller: MediaRouter2.RoutingController
             var routes = emptyList<MediaRoute2Info>()
             var selected = emptyList<MediaRoute2Info>()
+            var transferable = emptyList<MediaRoute2Info>()
             val requests = mutableListOf<MediaRoute2Info>()
             var preference: RouteDiscoveryPreference? = null
             var routeCallback: MediaRouter2.RouteCallback? = null
@@ -163,5 +177,8 @@ class PlatformSystemRoutePortTest {
         fun getId() = "system"
 
         @Implementation fun getSelectedRoutes() = RouterShadow.selected
+
+        @Implementation(minSdk = 35)
+        fun getTransferableRoutes() = RouterShadow.transferable
     }
 }

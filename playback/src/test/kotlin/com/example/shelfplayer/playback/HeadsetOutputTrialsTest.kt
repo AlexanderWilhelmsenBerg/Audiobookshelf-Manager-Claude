@@ -15,6 +15,18 @@ import kotlin.test.assertEquals
 @Config(sdk = [34])
 class HeadsetOutputTrialsTest {
     @Test
+    fun `early take-back comparisons vary only the PCM buffer`() {
+        val trials = HeadsetOutputTrials()
+        for ((name, size) in mapOf("EarlyTakeBack500" to 48_000, "EarlyTakeBack1000" to 96_000)) {
+            val case = HeadsetOutputCase.valueOf(name)
+            trials.select(case, "verified")
+            assertEquals(true, case.takeBackOverride)
+            assertEquals(false, case.blockCapture)
+            assertEquals(size, pcmBytes(trials, minimum = 1_024))
+        }
+    }
+
+    @Test
     fun `disconnect comparison changes only the PCM output buffer`() {
         val trials = HeadsetOutputTrials()
         for ((case, bytes) in mapOf(

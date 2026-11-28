@@ -46,6 +46,8 @@ class SystemRouteExperimentControlsTest {
             "1,000 ms buffer" to HeadsetOutputCase.Disconnect1000,
             "Take-back off" to HeadsetOutputCase.ConnectTakeBackOff,
             "Take-back on" to HeadsetOutputCase.ConnectTakeBackOn,
+            "Early take-back · 500 ms" to HeadsetOutputCase.EarlyTakeBack500,
+            "Early take-back · 1,000 ms" to HeadsetOutputCase.EarlyTakeBack1000,
         )) {
             val count = applied.size
             compose.onNodeWithText(label).performClick()

@@ -16,6 +16,7 @@ internal fun createHeadsetTakeBack(
         PlatformSystemRoutePort(context),
         clock,
         enabled = { trials.active.value.takeBackOverride ?: AutomaticHeadsetTakeBackSetting.enabled(context) },
+        earlyEnabled = { trials.active.value.earlyTakeBack },
         log = log,
     )
 } else {

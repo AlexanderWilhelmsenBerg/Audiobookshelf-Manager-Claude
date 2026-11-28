@@ -10,26 +10,28 @@ internal class SystemRouteTakeBackFixture {
     val window = CarBluetoothArrivalWindow { clock.elapsed() }
     var current = true
     var enabled = true
+    var earlyEnabled = false
     private var linkStarted = false
     val outcomes = mutableListOf<String>()
     val rendered = mutableListOf<String>()
-    val takeBack = SystemRouteHeadsetTakeBack(port, clock, enabled = { enabled }) { _, fields ->
-        outcomes += fields.filterIsInstance<LogField.Public>().single { it.key == "outcome" }.value
-        rendered += fields.joinToString(" ") {
-            when (it) {
-                is LogField.Public -> "${it.key}=${it.value}"
+    val takeBack =
+        SystemRouteHeadsetTakeBack(port, clock, enabled = { enabled }, earlyEnabled = { earlyEnabled }) { _, fields ->
+            outcomes += fields.filterIsInstance<LogField.Public>().single { it.key == "outcome" }.value
+            rendered += fields.joinToString(" ") {
+                when (it) {
+                    is LogField.Public -> "${it.key}=${it.value}"
 
-                is LogField.Count -> "${it.key}=${it.value}"
+                    is LogField.Count -> "${it.key}=${it.value}"
 
-                is LogField.Millis -> "${it.key}=${it.value}"
+                    is LogField.Millis -> "${it.key}=${it.value}"
 
-                is LogField.ServerHost, is LogField.Username, is LogField.MediaTitle,
-                is LogField.FilePath, is LogField.Url, is LogField.Secret, is LogField.Identifier,
-                ->
-                    error("Unexpected private diagnostic field")
+                    is LogField.ServerHost, is LogField.Username, is LogField.MediaTitle,
+                    is LogField.FilePath, is LogField.Url, is LogField.Secret, is LogField.Identifier,
+                    ->
+                        error("Unexpected private diagnostic field")
+                }
             }
         }
-    }
 
     fun verify(endpoint: String = HEADSET) {
         takeBack.onHeadsetVerified(endpoint) { !window.isOpen() }
@@ -50,6 +52,7 @@ internal class SystemRouteTakeBackFixture {
         var mode = AudioManager.MODE_NORMAL
         var routes = listOf(route(HEADSET, selected = true))
         var failTransfer = false
+        var transferable = emptySet<String>()
         val requests = mutableListOf<String>()
         var changed: () -> Unit = {}
         var result: (String, SystemRouteStatus) -> Unit = { _, _ -> }
@@ -61,6 +64,7 @@ internal class SystemRouteTakeBackFixture {
         override fun availability() = status
         override fun audioMode() = mode
         override fun routes() = routes
+        override fun transferableRouteIds() = transferable
         override fun open(changed: () -> Unit, result: (String, SystemRouteStatus) -> Unit) {
             this.changed = changed
             this.result = result

@@ -1,4 +1,9 @@
 <resources>
+    <string name="headset_output_early">Biltilkobling · tidlig tilbakeføring</string>
+    <string name="headset_output_early_settings">Begge testene ser etter første mulighet til å flytte lyden tilbake til hodetelefonene og tillater vanlig lydopptak.</string>
+    <string name="headset_output_early_500">Tidlig tilbakeføring · 500 ms</string>
+    <string name="headset_output_early_1000">Tidlig tilbakeføring · 1 000 ms</string>
+    <string name="headset_output_early_unsupported">Tidlig tilbakeføring krever Android 15 eller nyere for å vise tilgjengelige ruter for overføring.</string>
     <string name="headset_output_test_hint">Spill av i hodetelefonene én gang og sett på pause. Velg og aktiver én test før du starter en måling.</string>
     <string name="headset_output_disconnect">Frakobling av bilen · lydbuffer</string>
     <string name="headset_output_disconnect_settings">Vanlig lydopptak. Automatisk tilbakeføring til hodetelefonene er av.</string>

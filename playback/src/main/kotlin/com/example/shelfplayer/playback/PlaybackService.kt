@@ -394,6 +394,7 @@ class PlaybackService : MediaLibraryService() {
     }
     internal var audioMode: () -> Int? = { getSystemService(AudioManager::class.java)?.mode }
     private var carBluetoothMonitor: CarBluetoothArrivalMonitor? = null
+    private var earlyStreamReceiver: HeadsetStreamReceiver? = null
 
     /** Debug-only experiment; release builds bind the no-op. Replaced in onCreate once a context exists. */
     internal var headsetTakeBack: HeadsetTakeBack = NoHeadsetTakeBack
@@ -506,6 +507,7 @@ class PlaybackService : MediaLibraryService() {
         carProjection.start(scope, ::onCarProjectionUpdate)
         carBluetoothMonitor = CarBluetoothArrivalMonitor(applicationContext, carBluetoothWindow, logger) {
             recordAutoConnection("car-bluetooth", confirmed = false)
+            armEarlyHeadsetTakeBack()
             audioTrackRouteMonitor.sampleRouteObservers("car-hands-free-connected")
         }.also(CarBluetoothArrivalMonitor::start)
         headsetTakeBack =
@@ -540,6 +542,7 @@ class PlaybackService : MediaLibraryService() {
         audioTrackRouteMonitor.onRouteChanged = {
             pauseLostCarOutput(projectionDeparted = false)
             audioOutputs.onActualTrackRouteChanged()
+            headsetTakeBack.onEarlyTrackRouteChanged()
             autoCapture?.trackRoute(audioTrackRouteMonitor::currentRouteDiagnostic)
         }
         audioOutputs.attach(exoPlayer, audioTrackRouteMonitor::currentRouteIds)
@@ -1116,6 +1119,11 @@ class PlaybackService : MediaLibraryService() {
      */
     private fun onCarPlatformInterruption(reason: Int) {
         val focusLoss = reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS
+        if (focusLoss && ::audioTrackRouteMonitor.isInitialized &&
+            audioTrackRouteMonitor.headsetTrials.active.value.earlyTakeBack
+        ) {
+            headsetTakeBack.cancelPending()
+        }
         if (focusLoss) positionEffects.forgetHeadsetPosition()
         val source = if (focusLoss) "audio-focus-loss" else "becoming-noisy"
         val trace = autoTraces.ensure(source)
@@ -1188,6 +1196,8 @@ class PlaybackService : MediaLibraryService() {
         unregisterReceiver(wallClockChanges)
         carProjection.stop()
         carBluetoothMonitor?.stop()
+        earlyStreamReceiver?.watch(false)
+        earlyStreamReceiver = null
         carBluetoothMonitor = null
         headsetTakeBack.close()
         headsetTakeBack = NoHeadsetTakeBack
@@ -2125,12 +2135,11 @@ class PlaybackService : MediaLibraryService() {
             it == audioOutputs.selectedId.value && it in audioOutputs.localOutputs.endpointIds
         }
         val hasHeadsetBook = current.currentMediaItem != null && headset != null
+        val unsupported = unsupportedHeadsetTest(test)
         return when {
             current.playWhenReady || guard.currentProbe != null -> HeadsetTestResult.PauseFirst
 
-            test.blockCapture && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> HeadsetTestResult.CaptureUnsupported
-
-            test.takeBackOverride == true && !headsetTakeBack.availableForTrial -> HeadsetTestResult.TakeBackUnavailable
+            unsupported != null -> unsupported
 
             test != HeadsetOutputCase.Normal && !hasHeadsetBook -> HeadsetTestResult.PlayHeadsetFirst
 
@@ -2139,6 +2148,17 @@ class PlaybackService : MediaLibraryService() {
                 HeadsetTestResult.Applied
             }
         }
+    }
+
+    private fun unsupportedHeadsetTest(test: HeadsetOutputCase): HeadsetTestResult? = when {
+        test.blockCapture && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> HeadsetTestResult.CaptureUnsupported
+
+        test.earlyTakeBack && Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM ->
+            HeadsetTestResult.TransferListUnavailable
+
+        test.takeBackOverride == true && !headsetTakeBack.availableForTrial -> HeadsetTestResult.TakeBackUnavailable
+
+        else -> null
     }
 
     private fun clearOutputTestOnTransfer(current: ExoPlayer?, outputId: String?) {
@@ -2159,6 +2179,18 @@ class PlaybackService : MediaLibraryService() {
         headsetTakeBack.cancelPending()
         if (prepare) current.stop()
         trials.select(test, endpoint)
+        if (test.earlyTakeBack && earlyStreamReceiver == null) {
+            earlyStreamReceiver = HeadsetStreamReceiver(applicationContext) { address, playing ->
+                if (audioOutputs.localOutputs.matchesBluetoothPeer(
+                        trials.endpoint,
+                        address,
+                    )
+                ) {
+                    headsetTakeBack.onHeadsetStream(playing)
+                }
+            }
+        }
+        earlyStreamReceiver?.watch(test.earlyTakeBack)
         current.setAudioAttributes(playbackAudioAttributes(appliedFocus, test), appliedFocus != FocusBehaviour.Ignore)
         if (prepare) current.prepare()
         autoCapture?.outputTestChanged()
@@ -2285,6 +2317,7 @@ class PlaybackService : MediaLibraryService() {
         audioOutputs.isRecoveringHeadset = { id -> carResumeEffects.isRecoveringHeadset(id) }
         audioOutputs.onBeforeRouteSafetyPause = {
             positionEffects.freezeGuardedHeadset(clock.elapsed())
+            headsetTakeBack.earlyTrackLost()
             audioTrackRouteMonitor.sampleBoundary(AudioTimingBoundary.RouteSafetyPause)
         }
     }
@@ -2353,6 +2386,16 @@ class PlaybackService : MediaLibraryService() {
         }
         val generation = routeOwnership.currentGeneration
         val headset = routeOwnership.measuredPlayingHeadsetForContinuity(outputs)
+        if (headset == null && ::audioTrackRouteMonitor.isInitialized) {
+            val trials = audioTrackRouteMonitor.headsetTrials
+            trials.endpoint?.takeIf { trials.active.value.earlyTakeBack && audioOutputs.isMeasuredHeadset(it) }
+                ?.let { id ->
+                    headsetTakeBack.onHeadsetVerified(id) {
+                        !carBluetoothWindow.isOpen() &&
+                            carLifecycle.definitelyAbsent
+                    }
+                }
+        }
         if (generation != null && headset != null) {
             if (currentPlayerSettings.lockPlayingHeadset) {
                 audioOutputs.protectMeasuredPlayingHeadset(
@@ -2383,6 +2426,39 @@ class PlaybackService : MediaLibraryService() {
             }
         }
     }
+
+    internal fun armEarlyHeadsetTakeBack() {
+        val trials = audioTrackRouteMonitor.headsetTrials
+        val endpoint = eligibleEarlyHeadset(trials) ?: return
+        val current = player ?: return
+        val link = carBluetoothWindow.takeBackScope() ?: return
+        val case = trials.active.value
+        val generation = routeOwnership.currentGeneration
+        val command = controllerCommandGeneration
+        val selection = currentExplicitSelectionSequence()
+        headsetTakeBack.armEarly(
+            EarlyHeadsetArrival(endpoint, link, isCurrent = {
+                val sameIntent =
+                    command == controllerCommandGeneration && selection == currentExplicitSelectionSequence()
+                val samePlayback = player === current && generation == routeOwnership.currentGeneration
+                val sameTest = trials.active.value == case && trials.endpoint == endpoint
+                governor.acceptingCommands && sameIntent && samePlayback && sameTest
+            }, trackMoved = { trackMovedFromHeadset(endpoint) }),
+        )
+    }
+
+    private fun eligibleEarlyHeadset(trials: HeadsetOutputTrials): String? {
+        if (!trials.active.value.earlyTakeBack || player?.isPlaying != true) return null
+        val heard = routeOwnership.heardRoute ?: return null
+        return trials.endpoint?.takeIf { it == heard.outputId && heard.generation == routeOwnership.currentGeneration }
+    }
+
+    private fun trackMovedFromHeadset(endpoint: String) =
+        when (val path = audioOutputs.currentTrackObservation()?.path) {
+            AudioTrackPath.RemoteSubmix, AudioTrackPath.Multiple -> true
+            is AudioTrackPath.Endpoint -> path.id != endpoint
+            else -> false
+        }
 
     private fun requestHeadsetTakeBack(target: CarArrivalResumeGate.Target) {
         val scope = carBluetoothWindow.takeBackScope() ?: return

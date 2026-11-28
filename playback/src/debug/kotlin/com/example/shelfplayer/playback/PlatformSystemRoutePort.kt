@@ -7,6 +7,7 @@ import android.media.AudioManager
 import android.media.MediaRoute2Info
 import android.media.MediaRouter2
 import android.media.RouteDiscoveryPreference
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.annotation.RequiresApi
@@ -34,6 +35,11 @@ internal class PlatformSystemRoutePort(private val context: Context) : SystemRou
         }
 
     override fun audioMode(): Int = context.getSystemService(AudioManager::class.java)?.mode ?: -1
+
+    override fun transferableRouteIds(): Set<String> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) return emptySet()
+        return router?.systemController?.transferableRoutes.orEmpty().map { it.id }.toSet()
+    }
 
     override fun routes(): List<SystemRouteCandidate> {
         val source = router ?: return emptyList()
@@ -99,6 +105,7 @@ internal class PlatformSystemRoutePort(private val context: Context) : SystemRou
         val target = source.routes.firstOrNull { it.id == id && it.isSystemRoute && it.type in BLUETOOTH_TYPES }
         requireNotNull(target)
         val deadline = Runnable { result?.invoke(id, SystemRouteStatus.TimedOut) }
+        timeout?.let(handler::removeCallbacks)
         timeout = deadline
         handler.postDelayed(deadline, TRANSFER_TIMEOUT_MS)
         source.transferTo(target)
